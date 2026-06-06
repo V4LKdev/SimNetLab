@@ -1,30 +1,16 @@
 add_library(core STATIC
-    src/core.cpp
-    src/simulation.cpp
-    src/systems.cpp
+        core.cpp
+        simulation.cpp
+        systems.cpp
 )
 
-target_include_directories(core PUBLIC src)
+# Allow other targets linking to 'core' to find its headers
+target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(flecs CONFIG REQUIRED)
+find_package(unofficial-enet CONFIG REQUIRED)
 
-if(SIMNETLAB_USE_SYSTEM_DEPS)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(ENET REQUIRED libenet)
-
-    target_link_libraries(core
-        PUBLIC flecs::flecs
-        PUBLIC ${ENET_LIBRARIES}
-    )
-
-    target_include_directories(core
-        PUBLIC ${ENET_INCLUDE_DIRS}
-    )
-else ()
-    find_package(unofficial-enet CONFIG REQUIRED)
-
-    target_link_libraries(core
+target_link_libraries(core
         PUBLIC flecs::flecs
         PUBLIC unofficial::enet::enet
-    )
-endif ()
+)

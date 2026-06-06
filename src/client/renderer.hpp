@@ -25,8 +25,11 @@ namespace simnet::client {
         bool is_running();
 
     private:
+        void Text(const char* text, Vector2 position, float size, Color tint) const;
+
         int width_;
         int height_;
+        Font font_ = GetFontDefault();
     };
 
 }

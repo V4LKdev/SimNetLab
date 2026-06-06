@@ -1,6 +1,5 @@
-#include "controller.hpp"
+#include "../core/controller.hpp"
 #include "renderer.hpp"
-#include "simulation.hpp"
 
 int main() {
 

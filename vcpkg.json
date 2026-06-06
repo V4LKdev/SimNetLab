@@ -4,6 +4,9 @@
   "dependencies": [
     "flecs",
     "enet",
-    "raylib"
+    {
+      "name": "raylib",
+      "platform": "!linux"
+    }
   ]
 }
