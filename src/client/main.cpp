@@ -10,6 +10,7 @@ int main() {
     auto test_entity = sim.world().entity();
     test_entity.set<simnet::ecs::Position3D>({0, 0, 0});
     test_entity.add<simnet::ecs::Renderable>();
+    test_entity.set<simnet::ecs::Velocity3D>({1.5f, 0.3f, -0.8f});
 
     simnet::client::Renderer renderer(800, 450, "SimNetLab_Client", sim.world());
 

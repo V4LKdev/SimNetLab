@@ -23,6 +23,24 @@ namespace simnet::sim {
             0.4f,
             10.0f
         });
+
+        world_.system<ecs::Position3D, ecs::Velocity3D>()
+            .kind(flecs::OnUpdate)
+            .run([](flecs::iter& it) {
+
+                float dt = it.delta_time();
+
+                while (it.next()) {
+                    auto pos = it.field<ecs::Position3D>(0);
+                    auto vel = it.field<ecs::Velocity3D>(1);
+
+                    for (auto i : it) {
+                        pos[i].x += vel[i].x * dt;
+                        pos[i].y += vel[i].y * dt;
+                        pos[i].z += vel[i].z * dt;
+                    }
+                }
+            });
     }
 
     void Simulation::step()
