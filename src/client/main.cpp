@@ -1,3 +1,4 @@
+#include "components.hpp"
 #include "../core/controller.hpp"
 #include "renderer.hpp"
 
@@ -6,7 +7,11 @@ int main() {
     simnet::sim::Simulation sim;
     simnet::core::TimestepController controller(sim);
 
-    simnet::client::Renderer renderer(800, 450, "SimNetLab_Client");
+    auto test_entity = sim.world().entity();
+    test_entity.set<simnet::ecs::Position3D>({0, 0, 0});
+    test_entity.add<simnet::ecs::Renderable>();
+
+    simnet::client::Renderer renderer(800, 450, "SimNetLab_Client", sim.world());
 
     while (renderer.is_running()) {
 

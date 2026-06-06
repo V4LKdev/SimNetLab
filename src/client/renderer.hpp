@@ -2,13 +2,14 @@
 #include <cstdint>
 #include <raylib.h>
 #include <string_view>
+#include <flecs.h>
 
 namespace simnet::client {
 
     class Renderer {
     public:
 
-        Renderer(int width, int height, std::string_view title);
+        Renderer(int width, int height, std::string_view title, const flecs::world& world);
         ~Renderer();
 
         Renderer& operator=(const Renderer&) = delete;
@@ -30,6 +31,7 @@ namespace simnet::client {
 
         void Text(const char* text, Vector2 position, float size, Color tint) const;
 
+        const flecs::world& world_;
         int width_;
         int height_;
         Font font_ = GetFontDefault();

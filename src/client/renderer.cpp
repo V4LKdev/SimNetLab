@@ -2,14 +2,16 @@
 
 #include <raylib.h>
 
+#include "components.hpp"
 #include "assets/font_jetbrains.h"
 
 namespace simnet::client {
 
-    Renderer::Renderer(int width, int height, std::string_view title)
+    Renderer::Renderer(int width, int height, std::string_view title, const flecs::world& world)
         :   width_(width),
             height_(height),
-            camera_(init_camera())
+            camera_(init_camera()),
+            world_(world)
     {
         InitWindow(width_, height_, title.data());
         SetTargetFPS(0);
@@ -45,8 +47,10 @@ namespace simnet::client {
 
         BeginMode3D(camera_);
 
-        DrawCube(Vector3(0.0f, 0.0f, 0.0f), 2.0f, 2.0f, 2.0f, RED);
-        DrawCubeWires(Vector3(0.0f, 0.0f, 0.0f), 2.0f, 2.0f, 2.0f, BLACK);
+        world_.query<const simnet::ecs::Position3D, const ecs::Renderable>().each(
+            [](const ecs::Position3D& pos, const ecs::Renderable&) {
+               DrawSphere({pos.x, pos.y, pos.z}, 0.2f, DARKBLUE);
+            });
 
         DrawGrid(10, 1.0f);
 

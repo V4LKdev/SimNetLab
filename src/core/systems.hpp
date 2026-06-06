@@ -1,4 +1,7 @@
 #pragma once
+#include <flecs.h>
 
-class systems {
-};
+namespace simet::ecs {
+
+
+}
