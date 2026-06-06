@@ -1,50 +1,29 @@
-#include <chrono>
 #include <iostream>
-#include <enet/enet.h>
-#include <flecs.h>
 #include <raylib.h>
 
-void simulation() {
-
-}
-
-constexpr int SIM_HZ = 30;
-constexpr std::chrono::nanoseconds SIM_DT = std::chrono::nanoseconds(1'000'000'000 / SIM_HZ);
-constexpr int MAX_SIM_STEPS = 5;
-constexpr auto MAX_ACCUM_NS = SIM_DT.count() * MAX_SIM_STEPS; // Spiral-of-death capping
+#include "controller.hpp"
+#include "simulation.hpp"
 
 int main() {
-    using Clock = std::chrono::steady_clock;
 
-    uint64_t sim_time_ns = 0;
-    int64_t accumulator_ns = 0;
-    std::chrono::time_point<Clock> last_time = Clock::now();
+    simnet::sim::Simulation sim;
+    simnet::core::TimestepController controller(sim);
 
     InitWindow(800, 450, "SimNetLab_Client");
     SetTargetFPS(0);
 
     while (!WindowShouldClose()) {
 
-        std::chrono::time_point<Clock> now = Clock::now();
-        std::chrono::nanoseconds frame_delta =
-            std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_time);
-        last_time = now;
-
-        // accumulate time but cap for spiral prevention
-        accumulator_ns += frame_delta.count();
-        accumulator_ns = std::min(accumulator_ns, MAX_ACCUM_NS);
-
-        // Simulation Loop
-        while (accumulator_ns >= SIM_DT.count())
-        {
-            sim_time_ns += SIM_DT.count();
-            accumulator_ns -= SIM_DT.count();
-
-            simulation();
-        }
+        const int steps = controller.update();
+        const double interp_alpha = controller.get_interpolation_alpha();
 
         BeginDrawing();
         ClearBackground(DARKGRAY);
+
+        DrawText(TextFormat("steps: %d", steps), 20, 20, 24, BLUE);
+        DrawText(TextFormat("alpha: %f", interp_alpha), 20, 50, 24, BLUE);
+        DrawText(TextFormat("tick: %llu", sim.current_tick()), 20, 80, 24, BLUE);
+
         EndDrawing();
     }
 

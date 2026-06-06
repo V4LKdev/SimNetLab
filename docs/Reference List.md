@@ -1,5 +1,5 @@
 
-### Used for fixed TPS simulation loop:
+### Fixed TPS simulation:
 https://www.gafferongames.com/post/fix_your_timestep/
 Relevancy: 4/5 
 Very relevant to my work, but not concretely the topic of my research
