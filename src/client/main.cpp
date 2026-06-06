@@ -22,6 +22,7 @@ int main() {
 
         renderer.begin_frame();
 
+        renderer.update_cam();
         renderer.draw_world();
 
         renderer.draw_debug(steps, alpha, sim.current_tick());

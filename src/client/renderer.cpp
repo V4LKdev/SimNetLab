@@ -3,18 +3,21 @@
 #include <raylib.h>
 
 #include "components.hpp"
+#include "config.hpp"
 #include "assets/font_jetbrains.h"
 
 namespace simnet::client {
 
     Renderer::Renderer(int width, int height, std::string_view title, const flecs::world& world)
-        :   width_(width),
+        :   world_(world),
+            width_(width),
             height_(height),
-            camera_(init_camera()),
-            world_(world)
+            camera_(init_camera())
     {
         InitWindow(width_, height_, title.data());
         SetTargetFPS(0);
+
+        // DisableCursor();
 
         font_ = LoadFontFromMemory(
             ".ttf",
@@ -34,7 +37,7 @@ namespace simnet::client {
     void Renderer::begin_frame()
     {
         BeginDrawing();
-        ClearBackground(RAYWHITE);
+        ClearBackground(BLACK);
     }
 
     void Renderer::end_frame()
@@ -44,7 +47,6 @@ namespace simnet::client {
 
     void Renderer::draw_world() const
     {
-
         BeginMode3D(camera_);
 
         world_.query<const simnet::ecs::Position3D, const ecs::Renderable>().each(
@@ -52,7 +54,14 @@ namespace simnet::client {
                DrawSphere({pos.x, pos.y, pos.z}, 0.2f, DARKBLUE);
             });
 
-        DrawGrid(10, 1.0f);
+        DrawCubeWires(
+            (Vector3){ 0.0f, 0.0f, 0.0f },
+            2.0f * config::WORLD_HALF,
+            2.0f * config::WORLD_HALF,
+            2.0f * config::WORLD_HALF,
+            RAYWHITE
+        );
+
 
         EndMode3D();
     }
@@ -83,6 +92,13 @@ namespace simnet::client {
         DrawFPS(20, 120);
     }
 
+    void Renderer::update_cam()
+    {
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            UpdateCamera(&camera_, CAMERA_THIRD_PERSON);
+        }
+    }
+
 
     bool Renderer::is_running()
     {
@@ -92,7 +108,7 @@ namespace simnet::client {
     Camera3D Renderer::init_camera()
     {
         Camera3D cam = { 0 };
-        cam.position = (Vector3){0.0f, 10.0f, 10.0f};
+        cam.position = (Vector3){10.f, 10.0f, 10.0f};
         cam.target = (Vector3){0.0f, 0.0f, 0.0f};
         cam.up = (Vector3){0.0f, 1.0f, 0.0f};
         cam.fovy = 45.0f;

@@ -24,6 +24,8 @@ namespace simnet::client {
         void draw_world() const;
         void draw_debug(int steps, double alpha, uint64_t tick);
 
+        void update_cam();
+
         bool is_running();
 
     private:

@@ -38,6 +38,15 @@ namespace simnet::sim {
                         pos[i].x += vel[i].x * dt;
                         pos[i].y += vel[i].y * dt;
                         pos[i].z += vel[i].z * dt;
+
+                        auto wrap = [](float& val) {
+                            if (val > config::WORLD_HALF) { val -= 2.0f * config::WORLD_HALF; }
+                            else if (val < -config::WORLD_HALF) { val += 2.0f * config::WORLD_HALF; }
+                        };
+
+                        wrap(pos[i].x);
+                        wrap(pos[i].y);
+                        wrap(pos[i].z);
                     }
                 }
             });

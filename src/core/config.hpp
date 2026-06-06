@@ -8,4 +8,6 @@ namespace simnet::config {
     constexpr int MAX_SIM_STEPS = 5;
     constexpr int64_t MAX_ACCUM_NS = SIM_DT.count() * MAX_SIM_STEPS; // Spiral-of-death capping
 
+    constexpr float WORLD_HALF = 5.0f;
+
 }
