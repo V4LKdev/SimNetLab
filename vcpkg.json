@@ -1,0 +1,9 @@
+{
+  "name": "simnetlab",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "flecs",
+    "enet",
+    "raylib"
+  ]
+}

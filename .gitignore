@@ -1,0 +1,20 @@
+# --- Build & Dependency Outputs ---
+build/
+out/
+vcpkg_installed/
+.vcpkg/
+
+# --- JetBrains / CLion ---
+.idea/
+cmake-build-*/
+
+# --- Visual Studio & VS Code ---
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln
+*.vcxproj
+
+# --- Obsidian ---
+.obsidian/
