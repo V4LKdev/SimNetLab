@@ -1,7 +1,5 @@
-#include <iostream>
-#include <raylib.h>
-
 #include "controller.hpp"
+#include "renderer.hpp"
 #include "simulation.hpp"
 
 int main() {
@@ -9,24 +7,18 @@ int main() {
     simnet::sim::Simulation sim;
     simnet::core::TimestepController controller(sim);
 
-    InitWindow(800, 450, "SimNetLab_Client");
-    SetTargetFPS(0);
+    simnet::client::Renderer renderer(800, 450, "SimNetLab_Client");
 
-    while (!WindowShouldClose()) {
+    while (renderer.is_running()) {
 
         const int steps = controller.update();
-        const double interp_alpha = controller.get_interpolation_alpha();
+        const double alpha = controller.get_interpolation_alpha();
+        const auto tick = sim.current_tick();
 
-        BeginDrawing();
-        ClearBackground(DARKGRAY);
-
-        DrawText(TextFormat("steps: %d", steps), 20, 20, 24, BLUE);
-        DrawText(TextFormat("alpha: %f", interp_alpha), 20, 50, 24, BLUE);
-        DrawText(TextFormat("tick: %llu", sim.current_tick()), 20, 80, 24, BLUE);
-
-        EndDrawing();
+        renderer.begin_frame();
+        renderer.draw_debug(steps, alpha, sim.current_tick());
+        renderer.end_frame();
     }
 
-    CloseWindow();
     return 0;
 }

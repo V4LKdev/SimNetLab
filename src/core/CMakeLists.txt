@@ -1,6 +1,7 @@
 add_library(core STATIC
     src/core.cpp
     src/simulation.cpp
+    src/systems.cpp
 )
 
 target_include_directories(core PUBLIC src)

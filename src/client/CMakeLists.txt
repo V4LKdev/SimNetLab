@@ -1,4 +1,7 @@
-add_executable(client src/main.cpp)
+add_executable(client
+        src/main.cpp
+        src/renderer.cpp
+)
 
 if(SIMNETLAB_USE_SYSTEM_DEPS)
     find_package(raylib REQUIRED)

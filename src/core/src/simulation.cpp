@@ -1,11 +1,14 @@
 #include "simulation.hpp"
 
-void simnet::sim::Simulation::step()
-{
-    ++tick_;
-}
+namespace simnet::sim {
 
-uint64_t simnet::sim::Simulation::current_tick() const
-{
-    return tick_;
+    void Simulation::step()
+    {
+        ++tick_;
+    }
+
+    uint64_t Simulation::current_tick() const
+    {
+        return tick_;
+    }
 }
