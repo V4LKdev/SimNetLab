@@ -9,8 +9,8 @@ On linux, system packages are preferred for raylib and GLFW-dependent stacks, be
 
 ### List of Packages and how they are included
 
-| Library | Linux                   | Windows / Mac OS |
-| ------- | ----------------------- | ---------------- |
-| raylib  | pacman                  | vcpkg            |
-| enet    | pacman (vcpkg fallback) | vcpkg            |
-| flecs   | vcpkg                   | vcpkg            |
+| Library | Linux  | Windows / Mac OS |
+| ------- | ------ | ---------------- |
+| raylib  | pacman | vcpkg            |
+| enet    | vcpkg  | vcpkg            |
+| flecs   | vcpkg  | vcpkg            |

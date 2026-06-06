@@ -20,16 +20,20 @@ namespace simnet::client {
         void begin_frame();
         void end_frame();
 
+        void draw_world() const;
         void draw_debug(int steps, double alpha, uint64_t tick);
 
         bool is_running();
 
     private:
+        Camera3D init_camera();
+
         void Text(const char* text, Vector2 position, float size, Color tint) const;
 
         int width_;
         int height_;
         Font font_ = GetFontDefault();
+        Camera3D camera_;
     };
 
 }

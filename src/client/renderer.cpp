@@ -8,7 +8,8 @@ namespace simnet::client {
 
     Renderer::Renderer(int width, int height, std::string_view title)
         :   width_(width),
-            height_(height)
+            height_(height),
+            camera_(init_camera())
     {
         InitWindow(width_, height_, title.data());
         SetTargetFPS(0);
@@ -28,16 +29,32 @@ namespace simnet::client {
         CloseWindow();
     }
 
-    void Renderer::begin_frame() {
+    void Renderer::begin_frame()
+    {
         BeginDrawing();
-        ClearBackground(DARKGRAY);
+        ClearBackground(RAYWHITE);
     }
 
-    void Renderer::end_frame() {
+    void Renderer::end_frame()
+    {
         EndDrawing();
     }
 
-    void Renderer::draw_debug(int steps, double alpha, uint64_t tick) {
+    void Renderer::draw_world() const
+    {
+
+        BeginMode3D(camera_);
+
+        DrawCube(Vector3(0.0f, 0.0f, 0.0f), 2.0f, 2.0f, 2.0f, RED);
+        DrawCubeWires(Vector3(0.0f, 0.0f, 0.0f), 2.0f, 2.0f, 2.0f, BLACK);
+
+        DrawGrid(10, 1.0f);
+
+        EndMode3D();
+    }
+
+    void Renderer::draw_debug(int steps, double alpha, uint64_t tick)
+    {
 
         Text(
             TextFormat("steps: %d", steps),
@@ -58,14 +75,29 @@ namespace simnet::client {
             24,
             BLUE
         );
+
+        DrawFPS(20, 120);
     }
 
 
-    bool Renderer::is_running() {
+    bool Renderer::is_running()
+    {
         return !WindowShouldClose();
     }
 
-    void Renderer::Text(const char *text, Vector2 position, float size, Color tint) const {
+    Camera3D Renderer::init_camera()
+    {
+        Camera3D cam = { 0 };
+        cam.position = (Vector3){0.0f, 10.0f, 10.0f};
+        cam.target = (Vector3){0.0f, 0.0f, 0.0f};
+        cam.up = (Vector3){0.0f, 1.0f, 0.0f};
+        cam.fovy = 45.0f;
+        cam.projection = CAMERA_PERSPECTIVE;
+        return cam;
+    }
+
+    void Renderer::Text(const char *text, Vector2 position, float size, Color tint) const
+    {
         DrawTextEx(
             font_,
             text,

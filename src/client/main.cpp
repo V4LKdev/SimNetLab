@@ -15,6 +15,9 @@ int main() {
         const auto tick = sim.current_tick();
 
         renderer.begin_frame();
+
+        renderer.draw_world();
+
         renderer.draw_debug(steps, alpha, sim.current_tick());
         renderer.end_frame();
     }
