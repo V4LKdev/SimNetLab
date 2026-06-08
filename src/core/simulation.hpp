@@ -6,7 +6,6 @@ namespace simnet::sim {
     class Simulation {
 
     public:
-
         Simulation();
 
         void step();
@@ -18,6 +17,8 @@ namespace simnet::sim {
         const flecs::world& world() const { return world_; }
 
     private:
+        void spawn_boids(uint32_t count);
+
         flecs::world world_;
         uint64_t tick_ = 0;
     };
