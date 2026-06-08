@@ -9,7 +9,7 @@ namespace simnet::ecs {
     {
         world.component<BoidConfig>();
         world.component<BoidPerception>();
-        world.component<BoidScratchpad>();
+        world.component<BoidScratchpadSoA>();
         world.component<BoidFeatures>();
 
 
@@ -20,32 +20,29 @@ namespace simnet::ecs {
         cfg.separation_weight = 2.5f;
         cfg.alignment_weight = 1.2f;
         cfg.cohesion_weight = 0.5f;
-        cfg.drag_coef = 0.2f;
         world.set<BoidConfig>(cfg);
 
 
         BoidPerception per{};
-        per.separation_radius = 15.0f;
+        per.separation_radius = 25.0f;
         per.cohesion_radius = 50.0f;
         per.alignment_radius = 40.0f;
-        per.fov_cos = 0.707f;
+        per.fov_cos = -1.0f;
         world.set<BoidPerception>(per);
 
 
         BoidFeatures feat{};
-        feat.use_scratchpad = true;
         feat.separation = true;
         feat.cohesion = true;
         feat.alignment = true;
-        feat.use_drag = false;
         world.set<BoidFeatures>(feat);
 
 
-        BoidScratchpad scratch{};
+        BoidScratchpadSoA scratch{};
         scratch.count = 0;
         scratch.positions.resize(config::MAX_BOIDS);
         scratch.velocities.resize(config::MAX_BOIDS);
-        world.set<BoidScratchpad>(scratch);
+        world.set<BoidScratchpadSoA>(scratch);
     }
 
 }

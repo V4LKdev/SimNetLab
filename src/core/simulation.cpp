@@ -23,6 +23,7 @@ namespace simnet::sim {
 
     Simulation::Simulation()
     {
+
         // Components
         world_.component<ecs::Position3D>();
         world_.component<ecs::Velocity3D>();

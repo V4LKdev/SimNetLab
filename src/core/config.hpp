@@ -15,4 +15,10 @@ namespace simnet::config {
     constexpr float WORLD_HALF = 500.0f;
     constexpr float BOID_SCALE = 5.0f;
 
+    enum class EvalMode {
+        ArrayOfStructures,
+        StructureOfArrays,
+    };
+    constexpr EvalMode EVAL_MODE = EvalMode::ArrayOfStructures;
+
 }
