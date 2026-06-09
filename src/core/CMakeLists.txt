@@ -1,5 +1,4 @@
 add_library(core STATIC
-        core.cpp
         simulation.cpp
         ecs/systems.cpp
         boid/boid_steering.cpp
@@ -18,3 +17,7 @@ target_link_libraries(core
         PUBLIC unofficial::enet::enet
         PUBLIC hwy
 )
+
+if (TELEMETRY_ENABLED)
+    target_link_libraries(core PUBLIC telemetry)
+endif ()

@@ -6,6 +6,7 @@
 
 #include "ecs/components.hpp"
 #include "config.hpp"
+#include "telemetry.hpp"
 #include "ecs/systems.hpp"
 
 namespace {
@@ -32,6 +33,19 @@ namespace simnet::sim {
         ecs::init_systems(world_);
 
         spawn_boids(config::MAX_BOIDS);
+
+#ifdef TELEMETRY_ENABLED
+        telemetry::init("SimNetLab", "simnet_telemetry.log");
+#endif
+    }
+
+    Simulation::~Simulation()
+    {
+        world_.quit();
+
+#ifdef TELEMETRY_ENABLED
+        telemetry::shutdown();
+#endif
     }
 
     void Simulation::step()

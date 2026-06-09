@@ -6,6 +6,8 @@ namespace simnet::sim {
     public:
         Simulation();
 
+        ~Simulation();
+
         void step();
 
         [[nodiscard]]

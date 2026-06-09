@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(TELEMETRY_ENABLED "Build with telemetry, diagnostics, and benchmarking library" ON)
+
+if (TELEMETRY_ENABLED)
+    add_compile_definitions(TELEMETRY_ENABLED)
+    add_subdirectory(src/telemetry)
+endif ()
+
 # Include targets
 add_subdirectory(src/core)
 add_subdirectory(src/server)
