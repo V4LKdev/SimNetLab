@@ -47,31 +47,10 @@ namespace simnet::ecs {
                         if (count == 0)
                             continue;
 
-                        static uint64_t debug_frame = 0;
-                        if (++debug_frame % 500 == 0) {
-                            TELEM_LOG_DEBUG("Steering chunk size: {} entities", count);
-                        }
-
-
                         // Direct access to contiguous component arrays for this chunk
                         const Position *pos = &it.field<const Position>(0)[0];
                         const Velocity *vel = &it.field<const Velocity>(1)[0];
                         DesiredVelocity *out = &it.field<DesiredVelocity>(2)[0];
-
-
-                        static bool once = false;
-                        if (!once) {
-                            TELEM_LOG_DEBUG("Boid system: count={}, sizeof(Position)={}, alignment={}",
-                                            count, sizeof(Position), alignof(Position));
-
-                            // Verify contiguity: pointer differences should equal sizeof
-                            if (count >= 2) {
-                                auto diff = reinterpret_cast<const char *>(&pos[1]) -
-                                            reinterpret_cast<const char *>(&pos[0]);
-                                TELEM_LOG_DEBUG("Position stride measured: {} (expected {})", diff, sizeof(Position));
-                            }
-                            once = true;
-                        }
 
 
                         boid::compute_boid_steering(
