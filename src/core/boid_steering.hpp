@@ -3,73 +3,74 @@
 #include "boid_math.hpp"
 #include "components.hpp"
 #include <initializer_list>
-#include <cstdint>
 #include <hwy/highway.h>
-
-#include "config.hpp"
-
+#include <cstdint>
 
 namespace simnet::boid {
 
-    struct alignas(32) Vec3SimdPack
-    {
-        float x[8];
-        float y[8];
-        float z[8];
-    };
+    // ------------------------------------------------------------
+    //  AoS – per‑boid input (used by scalar path)
+    // ------------------------------------------------------------
 
     struct SteeringInput {
         Vec3                        position;
         Vec3                        velocity;
         const ecs::BoidConfig&      config;
         const ecs::BoidPerception&  perception;
-        const ecs::BoidFeatures&    features;
-        const ecs::BoidScratchpadAoS&  scratchpadAoS;
-        uint32_t                    self_index{};
+        ecs::BoidScratchpadAoS      scratchpadAoS;
+        uint32_t                    self_index;
     };
 
-    // Add this inside namespace simnet::boid
+
+    // ------------------------------------------------------------
+    //  SoA – batched input for SIMD path
+    // ------------------------------------------------------------
+
     struct SteeringInputSoA {
-        // Number of boids to process
-        size_t num_boids;
+        size_t num_boids = 0;
 
-        // Boid state – SoA pointers, each array has num_boids elements
-        const float* HWY_RESTRICT pos_x;
-        const float* HWY_RESTRICT pos_y;
-        const float* HWY_RESTRICT pos_z;
-        const float* HWY_RESTRICT vel_x;
-        const float* HWY_RESTRICT vel_y;
-        const float* HWY_RESTRICT vel_z;
+        // Boid state (SoA pointers)
+        const float* HWY_RESTRICT pos_x = nullptr;
+        const float* HWY_RESTRICT pos_y = nullptr;
+        const float* HWY_RESTRICT pos_z = nullptr;
+        const float* HWY_RESTRICT vel_x = nullptr;
+        const float* HWY_RESTRICT vel_y = nullptr;
+        const float* HWY_RESTRICT vel_z = nullptr;
 
-        // Per‑boid config (can be uniform; broadcast if nullptr)
-        const float* HWY_RESTRICT config_sep_weight;
-        const float* HWY_RESTRICT config_ali_weight;
-        const float* HWY_RESTRICT config_coh_weight;
+        // Per‑boid config (may be nullptr later for broadcasting)
+        const float* HWY_RESTRICT config_sep_weight = nullptr;
+        const float* HWY_RESTRICT config_ali_weight = nullptr;
+        const float* HWY_RESTRICT config_coh_weight = nullptr;
 
-        // Per‑boid perception – squared radii for speed
-        const float* HWY_RESTRICT perception_sep_radius_sq;
-        const float* HWY_RESTRICT perception_ali_radius_sq;
-        const float* HWY_RESTRICT perception_coh_radius_sq;
-        const float* HWY_RESTRICT perception_fov_cos;   // nullptr if no FOV
+        // Per‑boid perception
+        const float* HWY_RESTRICT perception_sep_radius_sq = nullptr;
+        const float* HWY_RESTRICT perception_ali_radius_sq = nullptr;
+        const float* HWY_RESTRICT perception_coh_radius_sq = nullptr;
+        const float* HWY_RESTRICT perception_fov_cos      = nullptr;
 
-        // Boid self‑indices (to avoid self‑comparison)
-        const int32_t* HWY_RESTRICT boid_indices;
+        // Self‑indices
+        const int32_t* HWY_RESTRICT boid_indices = nullptr;
 
-        // Neighbour list (still AoS, processed one neighbour at a time)
-        const ecs::AoSNeighbour* HWY_RESTRICT neighbours;
-        size_t num_neighbours;
+        // Neighbour list (still AoS)
+        const ecs::AoSNeighbour* HWY_RESTRICT neighbours = nullptr;
+        size_t num_neighbours = 0;
 
-        // Output force arrays – each has num_boids elements
-        float* HWY_RESTRICT sep_x;
-        float* HWY_RESTRICT sep_y;
-        float* HWY_RESTRICT sep_z;
-        float* HWY_RESTRICT ali_x;
-        float* HWY_RESTRICT ali_y;
-        float* HWY_RESTRICT ali_z;
-        float* HWY_RESTRICT coh_x;
-        float* HWY_RESTRICT coh_y;
-        float* HWY_RESTRICT coh_z;
+        // Output forces (SoA pointers)
+        float* HWY_RESTRICT sep_x = nullptr;
+        float* HWY_RESTRICT sep_y = nullptr;
+        float* HWY_RESTRICT sep_z = nullptr;
+        float* HWY_RESTRICT ali_x = nullptr;
+        float* HWY_RESTRICT ali_y = nullptr;
+        float* HWY_RESTRICT ali_z = nullptr;
+        float* HWY_RESTRICT coh_x = nullptr;
+        float* HWY_RESTRICT coh_y = nullptr;
+        float* HWY_RESTRICT coh_z = nullptr;
     };
+
+
+    // ------------------------------------------------------------
+    //  Result struct
+    // ------------------------------------------------------------
 
     struct SteeringForces {
         Vec3 separation;
@@ -77,14 +78,19 @@ namespace simnet::boid {
         Vec3 cohesion;
     };
 
-    SteeringForces compute_steering_forces(const SteeringInput& in);
 
-    // TODO: move to cpp
+    // ------------------------------------------------------------
+    //  Function declarations
+    // ------------------------------------------------------------
+
+    // AoS scalar path – one boid at a time
     SteeringForces compute_steering_forces_AoS(const SteeringInput& in);
-    SteeringForces compute_steering_forces_SoA(const SteeringInput& in);
 
+    // SoA SIMD path – all boids in one call
+    void compute_steering_forces_SoA(const SteeringInputSoA& in);
+
+    // Helpers
     Vec3 combine_steering(std::initializer_list<Vec3> forces, float max_force) noexcept;
-
     Vec3 desired_velocity(const Vec3& current_vel, const Vec3& total_steer) noexcept;
 
 } // namespace simnet::boid

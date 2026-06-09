@@ -23,7 +23,6 @@ namespace simnet::sim {
 
     Simulation::Simulation()
     {
-
         // Components
         world_.component<ecs::Position3D>();
         world_.component<ecs::Velocity3D>();
@@ -32,9 +31,7 @@ namespace simnet::sim {
         // Tags
         world_.component<ecs::Boid>();
 
-
         ecs::init_singletons(world_);
-
         ecs::init_systems(world_);
 
         spawn_boids(config::MAX_BOIDS);
@@ -59,19 +56,21 @@ namespace simnet::sim {
         for (uint32_t i = 0; i < count; ++i) {
             auto e = world_.entity();
 
-            // e.set<ecs::Position3D>({
-            //     random_float(-half, half),
-            //     random_float(-half, half),
-            //     random_float(-half, half),
-            // });
-            //
-            // e.set<ecs::Velocity3D>({
-            // random_float(-half, half),
-            // random_float(-half, half),
-            // random_float(-half, half),
-            // });
-            //
-            // e.set<ecs::DesiredVelocity3D>({0.0f, 0.0f, 0.0f});
+            e.set<ecs::Position3D>({
+                Vec3(random_float(-half, half),
+                     random_float(-half, half),
+                     random_float(-half, half))
+            });
+
+            e.set<ecs::Velocity3D>({
+                Vec3(random_float(-half, half),
+                     random_float(-half, half),
+                     random_float(-half, half))
+            });
+
+            e.set<ecs::DesiredVelocity3D>({
+                Vec3(0.0f, 0.0f, 0.0f)
+            });
 
             e.add<ecs::Boid>();
         }

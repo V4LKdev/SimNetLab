@@ -46,14 +46,15 @@ namespace simnet {
 
         static void wrap_position(Vec3& v, float half) noexcept
         {
-            auto wrap = [half](float val) {
-                if (val > half) val -= 2.f * half;
-                else if (val < -half) val += 2.f * half;
+            auto wrap = [half](float& val) {
+                if (val > half)        val -= 2.f * half;
+                else if (val < -half)  val += 2.f * half;
             };
             wrap(v.x);
             wrap(v.y);
             wrap(v.z);
         }
+
 
         static Vec3 forward_direction(const Vec3& velocity) noexcept
         {

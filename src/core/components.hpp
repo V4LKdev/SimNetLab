@@ -10,8 +10,12 @@
 
 namespace simnet::ecs {
 
+    // --------------------------------------------------------
+    //  Core ECS components
+    // --------------------------------------------------------
+
     struct Position3D {
-        simnet::Vec3 pos;
+        Vec3 pos;
     };
 
     struct Velocity3D {
@@ -22,47 +26,60 @@ namespace simnet::ecs {
         Vec3 desired;
     };
 
-    struct BoidConfig {
-        float max_speed;
-        float max_force;
-        float mass;
-        float separation_weight;
-        float alignment_weight;
-        float cohesion_weight;
+    struct Boid {
+        uint32_t scratch_index = 0;
     };
 
+
+    // --------------------------------------------------------
+    //  Boid parameters (singletons)
+    // --------------------------------------------------------
+
+    struct BoidConfig {
+        float max_speed        = 150.0f;
+        float max_force        = 8.0f;
+        float mass             = 1.0f;
+        float separation_weight = 2.5f;
+        float alignment_weight  = 1.2f;
+        float cohesion_weight   = 0.5f;
+    };
 
     struct BoidPerception {
-        float separation_radius;
-        float cohesion_radius;
-        float alignment_radius;
-        float fov_cos;
+        float separation_radius = 25.0f;
+        float cohesion_radius   = 50.0f;
+        float alignment_radius  = 40.0f;
+        float fov_cos           = -1.0f;
     };
 
-    struct Boid {
-        uint32_t scratch_index;
-    };
+    // --------------------------------------------------------
+    //  AoS neighbour representation
+    // --------------------------------------------------------
 
     struct AoSNeighbour {
         Vec3 pos;
         Vec3 vel;
     };
 
+    // Global neighbour list - built once per frame
+    struct NeighbourList {
+        std::vector<AoSNeighbour> neighbours;
+    };
+
+
+    // --------------------------------------------------------
+    //  Per‑boid scratchpad - AoS (used by scalar path)
+    // --------------------------------------------------------
+
     struct BoidScratchpadAoS {
-        // Can use a pointer here since Vec3 is alignas(16)
-        const AoSNeighbour* neighbours;
-        uint32_t count;
-    };
-
-    // TODO: Replace with null weights
-    struct BoidFeatures {
-        bool separation = true;
-        bool alignment = true;
-        bool cohesion = true;
+        const AoSNeighbour* neighbours;     // pointer into NeighbourList
+        uint32_t            count;
     };
 
 
-    // 64-byte aligned allocator for SIMD buffers
+    // --------------------------------------------------------
+    //  Per‑boid scratchpad - SoA (used by SIMD path)
+    // --------------------------------------------------------
+
     template <typename T, size_t Align = 64>
     struct AlignedAllocator {
         using value_type = T;
@@ -104,4 +121,28 @@ namespace simnet::ecs {
         bool operator!=(const AlignedAllocator<U, A>&) const noexcept { return false; }
     };
 
-}
+    struct BoidScratchpadSoA {
+        // --- Boid state ---
+        std::vector<float, AlignedAllocator<float>> pos_x;
+        std::vector<float, AlignedAllocator<float>> pos_y;
+        std::vector<float, AlignedAllocator<float>> pos_z;
+        std::vector<float, AlignedAllocator<float>> vel_x;
+        std::vector<float, AlignedAllocator<float>> vel_y;
+        std::vector<float, AlignedAllocator<float>> vel_z;
+
+        // --- Per‑boid weights & radii (populated from singletons) ---
+        std::vector<float, AlignedAllocator<float>> config_sep_weight;
+        std::vector<float, AlignedAllocator<float>> config_ali_weight;
+        std::vector<float, AlignedAllocator<float>> config_coh_weight;
+        std::vector<float, AlignedAllocator<float>> perception_sep_radius_sq;
+        std::vector<float, AlignedAllocator<float>> perception_ali_radius_sq;
+        std::vector<float, AlignedAllocator<float>> perception_coh_radius_sq;
+        std::vector<float, AlignedAllocator<float>> perception_fov_cos;
+
+        // --- Self‑indices (0..count-1) ---
+        std::vector<int32_t> boid_indices;
+
+        size_t count = 0;
+    };
+
+} // namespace simnet::ecs

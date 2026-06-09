@@ -253,9 +253,8 @@ namespace simnet::boid {
     }
 }
 
-
 // -------------------------------------------------
-// Only‑once section (dynamic dispatch table, wrapper)
+// Only‑once section (dynamic dispatch, AoS scalar, helpers)
 // -------------------------------------------------
 #if HWY_ONCE
 namespace simnet::boid {
@@ -266,90 +265,73 @@ namespace simnet::boid {
         return HWY_DYNAMIC_DISPATCH(ComputeSteeringForcesSoA_Impl)(in);
     }
 
-   SteeringForces compute_steering_forces(const SteeringInput &in)
+    SteeringForces compute_steering_forces_AoS(const SteeringInput& in)
     {
-        switch (config::EVAL_MODE) {
-            case config::EvalMode::ArrayOfStructures:
-                return compute_steering_forces_AoS(in);
-            case config::EvalMode::StructureOfArrays:
-                return compute_steering_forces_SoA(in);
-            default:
-                return {};
-        }
-    }
-
-   SteeringForces compute_steering_forces_AoS(const SteeringInput& in)
-{
-
         SteeringForces forces{};
 
-    int sepCount = 0;
-    int aliCount = 0;
-    int cohCount = 0;
+        int sepCount = 0;
+        int aliCount = 0;
+        int cohCount = 0;
 
-    const bool doSep = in.features.separation;
-    const bool doAli = in.features.alignment;
-    const bool doCoh = in.features.cohesion;
+        const Vec3 forward = Vec3::forward_direction(in.velocity);
 
-    const Vec3 forward = Vec3::forward_direction(in.velocity);
+        const float separationRadiusSq = in.perception.separation_radius * in.perception.separation_radius;
+        const float alignmentRadiusSq  = in.perception.alignment_radius * in.perception.alignment_radius;
+        const float cohesionRadiusSq   = in.perception.cohesion_radius * in.perception.cohesion_radius;
+        const float maxRadiusSq        = std::max({ separationRadiusSq, alignmentRadiusSq, cohesionRadiusSq });
 
-    const float separationRadiusSq = in.perception.separation_radius * in.perception.separation_radius;
-    const float alignmentRadiusSq  = in.perception.alignment_radius * in.perception.alignment_radius;
-    const float cohesionRadiusSq   = in.perception.cohesion_radius * in.perception.cohesion_radius;
-    const float maxRadiusSq        = std::max({ separationRadiusSq, alignmentRadiusSq, cohesionRadiusSq });
+        constexpr float epsilon = 1e-10f;
 
-    constexpr float epsilon = 1e-10f;
-
-    for (uint32_t j = 0; j < in.scratchpadAoS.count; ++j)
-    {
-        if (j == in.self_index)
-            continue;
-
-        const Vec3 neighborPos = in.scratchpadAoS.neighbours[j].pos;
-
-        Vec3 delta = Vec3::wrap_delta(neighborPos, in.position, config::WORLD_HALF);
-        const float distSq = delta.length_sq();
-
-        if (distSq < epsilon || distSq > maxRadiusSq)
-            continue;
-
-        if (in.perception.fov_cos > -1.0f)
+        for (uint32_t j = 0; j < in.scratchpadAoS.count; ++j)
         {
-            const float invDist = 1.0f / std::sqrt(distSq);
-            const Vec3 dir = delta * invDist;
-
-            if (Vec3::dot(forward, dir) < in.perception.fov_cos)
+            if (j == in.self_index)
                 continue;
+
+            const Vec3 neighborPos = in.scratchpadAoS.neighbours[j].pos;
+
+            Vec3 delta = Vec3::wrap_delta(neighborPos, in.position, config::WORLD_HALF);
+            const float distSq = delta.length_sq();
+
+            if (distSq < epsilon || distSq > maxRadiusSq)
+                continue;
+
+            if (in.perception.fov_cos > -1.0f)
+            {
+                const float invDist = 1.0f / std::sqrt(distSq);
+                const Vec3 dir = delta * invDist;
+
+                if (Vec3::dot(forward, dir) < in.perception.fov_cos)
+                    continue;
+            }
+
+            // Separation
+            if (in.config.separation_weight != 0.0f && distSq < separationRadiusSq)
+            {
+                forces.separation -= delta;
+                ++sepCount;
+            }
+
+            // Alignment
+            if (in.config.alignment_weight != 0.0f && distSq < alignmentRadiusSq)
+            {
+                forces.alignment += in.scratchpadAoS.neighbours[j].vel;
+                ++aliCount;
+            }
+
+            // Cohesion
+            if (in.config.cohesion_weight != 0.0f && distSq < cohesionRadiusSq)
+            {
+                forces.cohesion += in.position + delta;
+                ++cohCount;
+            }
         }
 
-        // Separation
-        if (doSep && distSq < separationRadiusSq)
-        {
-            forces.separation -= delta;
-            ++sepCount;
-        }
+        if (sepCount > 0) forces.separation = (forces.separation / static_cast<float>(sepCount)) * in.config.separation_weight;
+        if (aliCount > 0) forces.alignment  = ((forces.alignment / static_cast<float>(aliCount)) - in.velocity) * in.config.alignment_weight;
+        if (cohCount > 0) forces.cohesion   = ((forces.cohesion / static_cast<float>(cohCount)) - in.position) * in.config.cohesion_weight;
 
-        // Alignment
-        if (doAli && distSq < alignmentRadiusSq)
-        {
-            forces.alignment += in.scratchpadAoS.neighbours[j].vel;
-            ++aliCount;
-        }
-
-        // Cohesion
-        if (doCoh && distSq < cohesionRadiusSq)
-        {
-            forces.cohesion += in.position + delta;
-            ++cohCount;
-        }
+        return forces;
     }
-
-    if (sepCount > 0) forces.separation = (forces.separation / static_cast<float>(sepCount)) * in.config.separation_weight;
-    if (aliCount > 0) forces.alignment  = ((forces.alignment / static_cast<float>(aliCount)) - in.velocity) * in.config.alignment_weight;
-    if (cohCount > 0) forces.cohesion   = ((forces.cohesion / static_cast<float>(cohCount)) - in.position) * in.config.cohesion_weight;
-
-    return forces;
-}
 
     Vec3 combine_steering(
         const std::initializer_list<Vec3> forces,

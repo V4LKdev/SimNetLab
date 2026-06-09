@@ -52,10 +52,15 @@ namespace simnet::client {
         BeginMode3D(camera_);
 
         world_.query<const ecs::Position3D, const ecs::Boid>().each(
-            [](const ecs::Position3D& position, const ecs::Boid& boid)
+            [](const ecs::Position3D& position, const ecs::Boid& /*boid*/)
             {
-            //    DrawSphere({position.x, position.y, position.z}, config::BOID_SCALE, BLUE);
+                DrawSphere(
+                    { position.pos.x, position.pos.y, position.pos.z },
+                    config::BOID_SCALE,
+                    BLUE
+                );
             });
+
 
         DrawCubeWires(
             {0.0f, 0.0f, 0.0f},

@@ -17,8 +17,8 @@ namespace simnet::config {
 
     enum class EvalMode {
         ArrayOfStructures,
-        StructureOfArrays,
+        StructureOfArrays, // SIMD
     };
-    constexpr EvalMode EVAL_MODE = EvalMode::ArrayOfStructures;
+    constexpr EvalMode EVAL_MODE = EvalMode::StructureOfArrays;
 
 }
