@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
-#include <spdlog/spdlog.h>
 
 #include "ecs/components.hpp"
 #include "config.hpp"
@@ -22,6 +21,8 @@ namespace {
 namespace simnet::sim {
     Simulation::Simulation()
     {
+        world_.set_threads(0);
+
         // Components
         world_.component<ecs::Position>();
         world_.component<ecs::Velocity>();
@@ -43,6 +44,7 @@ namespace simnet::sim {
 
     Simulation::~Simulation()
     {
+        world_.set_threads(0);
         world_.quit();
 
 #ifdef TELEMETRY_ENABLED
@@ -52,10 +54,18 @@ namespace simnet::sim {
 
     void Simulation::step()
     {
-        TELEM_FRAME_BEGIN();
+        TELEM_TRACY_ZONE_C("SimulationFrame", TELEM_COLOR_SIM);
         world_.progress(config::SIM_DT_SECONDS);
         ++tick_;
-        TELEM_FRAME_END();
+
+
+        if (tick_ % 100 == 0) {
+            TELEM_LOG_DEBUG("Sim tick {} complete", tick_);
+        }
+
+        TELEM_TRACY_PLOT("SimTick", static_cast<int64_t>(tick_));
+
+        TELEM_TRACY_FRAME("SimFrame");
     }
 
 

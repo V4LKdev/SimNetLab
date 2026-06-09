@@ -5,6 +5,7 @@
 
 #include "../core/ecs/components.hpp"
 #include "config.hpp"
+#include "telemetry.hpp"
 #include "assets/font_jetbrains.h"
 
 namespace simnet::client {
@@ -44,6 +45,8 @@ namespace simnet::client {
 
     void Renderer::render()
     {
+        TELEM_TRACY_ZONE_C("Render", TELEM_COLOR_RENDER);
+
         update_cam();
 
         BeginDrawing();
@@ -112,7 +115,10 @@ namespace simnet::client {
     Camera3D Renderer::init_camera()
     {
         Camera3D cam = {0};
-        cam.position = (Vector3){1100.f, 1100.0f, 1100.0f};
+
+        const float scaledCamDist = config::WORLD_HALF * 2.f + 20.f;
+
+        cam.position = (Vector3){scaledCamDist, scaledCamDist, scaledCamDist};
         cam.target = (Vector3){0.0f, 0.0f, 0.0f};
         cam.up = (Vector3){0.0f, 1.0f, 0.0f};
         cam.fovy = 45.0f;

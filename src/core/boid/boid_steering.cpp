@@ -6,6 +6,8 @@
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
 
+#include "telemetry.hpp"
+
 // -------------------------------------------------
 // Per‑target SIMD implementation (compiled multiple times)
 // -------------------------------------------------
@@ -32,6 +34,8 @@ namespace simnet::boid {
                                                ecs::DesiredVelocity * HWY_RESTRICT out,
                                                const NeighborQuery &query)
         {
+            TELEM_TRACY_ZONE("ComputeBoidSteering_Impl");
+
             const hn::ScalableTag<float> d;
             const size_t N = Lanes(d);
             const hn::Vec<decltype(d)> v_zero = hn::Zero(d);
@@ -69,6 +73,13 @@ namespace simnet::boid {
             hwy::AlignedFreeUniquePtr<float[]> nvx = hwy::AllocateAligned<float>(n);
             hwy::AlignedFreeUniquePtr<float[]> nvy = hwy::AllocateAligned<float>(n);
             hwy::AlignedFreeUniquePtr<float[]> nvz = hwy::AllocateAligned<float>(n);
+
+            TELEM_TRACY_ALLOC(nx.get(), n * sizeof(float));
+            TELEM_TRACY_ALLOC(ny.get(), n * sizeof(float));
+            TELEM_TRACY_ALLOC(nz.get(), n * sizeof(float));
+            TELEM_TRACY_ALLOC(nvx.get(), n * sizeof(float));
+            TELEM_TRACY_ALLOC(nvy.get(), n * sizeof(float));
+            TELEM_TRACY_ALLOC(nvz.get(), n * sizeof(float));
 
             // ------------------------------------------------------------------
             // 3. Outer loop over boids
@@ -285,6 +296,13 @@ namespace simnet::boid {
 
                 out[i].value = {dvx, dvy, dvz};
             }
+
+            TELEM_TRACY_FREE(nx.get());
+            TELEM_TRACY_FREE(ny.get());
+            TELEM_TRACY_FREE(nz.get());
+            TELEM_TRACY_FREE(nvx.get());
+            TELEM_TRACY_FREE(nvy.get());
+            TELEM_TRACY_FREE(nvz.get());
         }
     } // namespace HWY_NAMESPACE
 } // namespace simnet::boid

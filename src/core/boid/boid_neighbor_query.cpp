@@ -1,5 +1,7 @@
 #include "boid_neighbor_query.hpp"
 
+#include "telemetry.hpp"
+
 namespace simnet::boid {
     std::uint32_t query_bruteforce(
         const ecs::Position &center,
@@ -11,6 +13,8 @@ namespace simnet::boid {
         std::uint32_t max_out,
         float max_dist2)
     {
+        TELEM_TRACY_ZONE("BruteforceQuery");
+
         std::uint32_t n = 0;
 
         for (std::uint32_t i = 0; i < count && n < max_out; ++i) {

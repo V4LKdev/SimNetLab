@@ -10,10 +10,7 @@ namespace simnet::telemetry {
 
     void shutdown()
     {
-        dump_summary();
-        
-        // flush logs
-        if (auto logger = get_logger(); logger) {
+        if (const auto logger = get_logger(); logger) {
             logger->flush();
         }
     }

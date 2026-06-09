@@ -29,8 +29,8 @@ namespace simnet::ecs {
         float mass = 1.0f;
 
         float separation_weight = 0.0f;
-        float alignment_weight = 0.5f;
-        float cohesion_weight = 0.5f;
+        float alignment_weight = 0.0f;
+        float cohesion_weight = 0.0f;
     };
 
     struct BoidPerception {

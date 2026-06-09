@@ -11,14 +11,15 @@ namespace simnet::telemetry {
         auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_file_path.data(), true);
 
-        spdlog::sinks_init_list sinks = {
-            console_sink, file_sink
-        };
+        // Allow all messages through the sinks (the logger's level will still apply)
+        console_sink->set_level(spdlog::level::trace);
+        file_sink->set_level(spdlog::level::trace);
 
+        spdlog::sinks_init_list sinks = {console_sink, file_sink};
         g_logger = std::make_shared<spdlog::logger>(app_name.data(), sinks.begin(), sinks.end());
-        g_logger->set_level(spdlog::level::debug); // Default rn
+        g_logger->set_level(spdlog::level::debug);
         spdlog::register_logger(g_logger);
-        g_logger->flush_on(spdlog::level::info);
+        g_logger->flush_on(spdlog::level::debug);
     }
 
     std::shared_ptr<spdlog::logger> get_logger()

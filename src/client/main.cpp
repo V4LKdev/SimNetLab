@@ -27,6 +27,8 @@ int main()
     simnet::client::Renderer renderer(1920, 1080, "SimNetLab_Client", sim.world());
 
     while (g_running && simnet::client::Renderer::is_running()) {
+        TELEM_TRACY_ZONE("ClientFrame");
+
         const int steps = controller.update();
         const double alpha = controller.get_interpolation_alpha();
         const auto tick = sim.current_tick();

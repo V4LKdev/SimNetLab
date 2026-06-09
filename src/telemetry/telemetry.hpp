@@ -4,7 +4,7 @@
 #include <string_view>
 
 // -----------------------------------------------------------------------
-// Master switch - if TELEMETRY_ENABLED is not defined, all macros become no-ops.
+// Master switch
 // -----------------------------------------------------------------------
 #ifdef TELEMETRY_ENABLED
 
@@ -14,54 +14,67 @@
 #include <tracy/Tracy.hpp>
 #endif
 
-#include "timer.hpp"
 #include "logger.hpp"
+#include "colors.hpp"
 
 namespace simnet::telemetry {
-    void init(std::string_view app_name, std::string_view log_file_path = "simnet_telemetry.log");
+        void init(std::string_view app_name, std::string_view log_file_path = "simnet_telemetry.log");
 
-    void shutdown();
+        void shutdown();
 }
 
-// Convenience macros
-
-// Scoped high‑res timer
-#define TELEM_SCOPED_TIMER(name) \
-    ::simnet::telemetry::ScopedTimer TELEM_CONCAT(_telem_timer_, __LINE__)(name)
-
-// Frame markers
-#define TELEM_FRAME_BEGIN() ::simnet::telemetry::frame_marker(::simnet::telemetry::FrameEvent::Begin)
-#define TELEM_FRAME_END()   ::simnet::telemetry::frame_marker(::simnet::telemetry::FrameEvent::End)
-
-// Logging macros
-#define TELEM_LOG_TRACE(...)    SPDLOG_LOGGER_TRACE(::simnet::telemetry::get_logger(), __VA_ARGS__)
-#define TELEM_LOG_DEBUG(...)    SPDLOG_LOGGER_DEBUG(::simnet::telemetry::get_logger(), __VA_ARGS__)
-#define TELEM_LOG_INFO(...)     SPDLOG_LOGGER_INFO(::simnet::telemetry::get_logger(), __VA_ARGS__)
-#define TELEM_LOG_WARN(...)     SPDLOG_LOGGER_WARN(::simnet::telemetry::get_logger(), __VA_ARGS__)
-#define TELEM_LOG_ERROR(...)    SPDLOG_LOGGER_ERROR(::simnet::telemetry::get_logger(), __VA_ARGS__)
-
-// Tracy zone
-#if TRACY_ENABLED
-#define TELEM_TRACY_ZONE(name) ZoneScopedN(name)
+// --------------- Tracy zones and frame marking ---------------
+#ifdef TRACY_ENABLED
+// High-res CPU zone, automatically ends at scope exit
+#define TELEM_TRACY_ZONE(name)          ZoneScopedN(name)
+#define TELEM_TRACY_ZONE_C(name, color) ZoneScopedNC(name, color)
+// Push numeric value into named plot on the timeline
+#define TELEM_TRACY_PLOT(name, val)     TracyPlot(name, val)
+// Mark the end of a logical frame
+#define TELEM_TRACY_FRAME(name)         FrameMarkNamed(name)
+// Send log message inline into the trace
+#define TELEM_TRACY_MESSAGE(txt, size)   TracyMessage(txt, size)
+// Track an aligned memory allocation
+#define TELEM_TRACY_ALLOC(ptr, size)    TracyAlloc(ptr, size)
+// Track freeing of memory
+#define TELEM_TRACY_FREE(ptr)           TracyFree(ptr)
 #else
 #define TELEM_TRACY_ZONE(name)
+#define TELEM_TRACY_PLOT(name, val)
+#define TELEM_TRACY_FRAME(name)
 #endif
+
+// --------------- Logging ---------------
+#define TELEM_LOG_TRACE(...)                                            \
+    do { if (auto _log = ::simnet::telemetry::get_logger())              \
+            _log->trace(__VA_ARGS__); } while(0)
+
+#define TELEM_LOG_DEBUG(...)                                            \
+    do { if (auto _log = ::simnet::telemetry::get_logger())              \
+            _log->debug(__VA_ARGS__); } while(0)
+
+#define TELEM_LOG_INFO(...)                                             \
+    do { if (auto _log = ::simnet::telemetry::get_logger())              \
+            _log->info(__VA_ARGS__); } while(0)
+
+#define TELEM_LOG_WARN(...)                                             \
+    do { if (auto _log = ::simnet::telemetry::get_logger())              \
+            _log->warn(__VA_ARGS__); } while(0)
+
+#define TELEM_LOG_ERROR(...)                                            \
+    do { if (auto _log = ::simnet::telemetry::get_logger())              \
+            _log->error(__VA_ARGS__); } while(0)
 
 #else  // TELEMETRY_ENABLED not defined
 
-#define TELEM_SCOPED_TIMER(name)
-#define TELEM_FRAME_BEGIN()
-#define TELEM_FRAME_END()
-#define TELEM_VALIDATE(condition, message)
+#define TELEM_TRACY_ZONE(name)
+#define TELEM_TRACY_PLOT(name, val)
+#define TELEM_TRACY_FRAME(name)
 #define TELEM_LOG_TRACE(...)
 #define TELEM_LOG_DEBUG(...)
 #define TELEM_LOG_INFO(...)
 #define TELEM_LOG_WARN(...)
 #define TELEM_LOG_ERROR(...)
-#define TELEM_TRACY_ZONE(name)
+#define TELEM_VALIDATE_STEERING(pos, vel, out, count, cfg)
 
 #endif
-
-// Helper for concatenating names
-#define TELEM_CONCAT_IMPL(x, y) x##y
-#define TELEM_CONCAT(x, y) TELEM_CONCAT_IMPL(x, y)

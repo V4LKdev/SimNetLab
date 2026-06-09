@@ -23,12 +23,12 @@ namespace simnet::ecs {
         world.system<const Position, const Velocity, DesiredVelocity>("BoidSteering")
                 .with<Boid>()
                 .kind(flecs::OnUpdate)
-                .multi_threaded(false)
+                .multi_threaded(true)
                 .term_at(0).in()
                 .term_at(1).in()
                 .term_at(2).out()
                 .run([](flecs::iter &it) {
-                    TELEM_TRACY_ZONE("BoidSteeringSystem");
+                    TELEM_TRACY_ZONE_C("BoidSteeringSystem", TELEM_COLOR_BOID);
 
                     // Access singletons
                     flecs::world w = it.world();
@@ -47,13 +47,33 @@ namespace simnet::ecs {
                         if (count == 0)
                             continue;
 
+                        static uint64_t debug_frame = 0;
+                        if (++debug_frame % 500 == 0) {
+                            TELEM_LOG_DEBUG("Steering chunk size: {} entities", count);
+                        }
+
 
                         // Direct access to contiguous component arrays for this chunk
                         const Position *pos = &it.field<const Position>(0)[0];
                         const Velocity *vel = &it.field<const Velocity>(1)[0];
                         DesiredVelocity *out = &it.field<DesiredVelocity>(2)[0];
 
-                        TELEM_SCOPED_TIMER("SIM_BoidSteering");
+
+                        static bool once = false;
+                        if (!once) {
+                            TELEM_LOG_DEBUG("Boid system: count={}, sizeof(Position)={}, alignment={}",
+                                            count, sizeof(Position), alignof(Position));
+
+                            // Verify contiguity: pointer differences should equal sizeof
+                            if (count >= 2) {
+                                auto diff = reinterpret_cast<const char *>(&pos[1]) -
+                                            reinterpret_cast<const char *>(&pos[0]);
+                                TELEM_LOG_DEBUG("Position stride measured: {} (expected {})", diff, sizeof(Position));
+                            }
+                            once = true;
+                        }
+
+
                         boid::compute_boid_steering(
                             pos,
                             vel,
@@ -63,6 +83,8 @@ namespace simnet::ecs {
                             *per,
                             query
                         );
+
+                        TELEM_TRACY_PLOT("NumBoids", static_cast<int64_t>(count));
                     }
                 });
     }
@@ -76,6 +98,8 @@ namespace simnet::ecs {
                 .kind(flecs::PostUpdate)
                 .multi_threaded()
                 .run([](flecs::iter &it) {
+                    TELEM_TRACY_ZONE("ApplyVelocity");
+
                     const BoidConfig *cfg = it.world().try_get<BoidConfig>();
                     if (!cfg) return;
 
@@ -108,6 +132,9 @@ namespace simnet::ecs {
                 .kind(flecs::PostUpdate)
                 .multi_threaded()
                 .run([](flecs::iter &it) {
+                    TELEM_TRACY_ZONE("IntegratePosition");
+
+
                     constexpr float dt = static_cast<float>(config::SIM_DT.count()) / 1'000'000'000.0f;
 
                     while (it.next()) {

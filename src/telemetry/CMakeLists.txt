@@ -2,7 +2,6 @@ add_library(telemetry STATIC
         telemetry.cpp)
 
 target_sources(telemetry PRIVATE
-        timer.cpp
         logger.cpp
 )
 
