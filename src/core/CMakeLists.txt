@@ -1,8 +1,9 @@
 add_library(core STATIC
         core.cpp
         simulation.cpp
-        systems.cpp
-        boid_steering.cpp
+        ecs/systems.cpp
+        boid/boid_steering.cpp
+        boid/boid_neighbor_query.cpp
 )
 
 # Allow other targets linking to 'core' to find its headers

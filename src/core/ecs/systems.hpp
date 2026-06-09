@@ -5,9 +5,6 @@ namespace simnet::ecs {
 
     void init_systems(flecs::world& world);
 
-    // PreUpdate
-    void register_scratchpad_builder(const flecs::world& world);
-
     // Update
     void register_boid_steering_system(const flecs::world& world);
 

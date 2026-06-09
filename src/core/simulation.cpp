@@ -4,13 +4,11 @@
 #include <cmath>
 #include <random>
 
-#include "components.hpp"
+#include "ecs/components.hpp"
 #include "config.hpp"
-#include "singletons.hpp"
-#include "systems.hpp"
+#include "ecs/systems.hpp"
 
-namespace
-{
+namespace {
     float random_float(float min, float max)
     {
         thread_local std::mt19937 gen(std::random_device{}());
@@ -20,18 +18,17 @@ namespace
 }
 
 namespace simnet::sim {
-
     Simulation::Simulation()
     {
         // Components
-        world_.component<ecs::Position3D>();
-        world_.component<ecs::Velocity3D>();
-        world_.component<ecs::DesiredVelocity3D>();
+        world_.component<ecs::Position>();
+        world_.component<ecs::Velocity>();
+        world_.component<ecs::DesiredVelocity>();
 
         // Tags
         world_.component<ecs::Boid>();
 
-        ecs::init_singletons(world_);
+        init_singletons();
         ecs::init_systems(world_);
 
         spawn_boids(config::MAX_BOIDS);
@@ -56,19 +53,19 @@ namespace simnet::sim {
         for (uint32_t i = 0; i < count; ++i) {
             auto e = world_.entity();
 
-            e.set<ecs::Position3D>({
+            e.set<ecs::Position>({
                 Vec3(random_float(-half, half),
                      random_float(-half, half),
                      random_float(-half, half))
             });
 
-            e.set<ecs::Velocity3D>({
+            e.set<ecs::Velocity>({
                 Vec3(random_float(-half, half),
                      random_float(-half, half),
                      random_float(-half, half))
             });
 
-            e.set<ecs::DesiredVelocity3D>({
+            e.set<ecs::DesiredVelocity>({
                 Vec3(0.0f, 0.0f, 0.0f)
             });
 
@@ -76,4 +73,17 @@ namespace simnet::sim {
         }
     }
 
+    void Simulation::init_singletons()
+    {
+        world_.component<ecs::Boid>();
+        world_.component<ecs::Position>();
+        world_.component<ecs::Velocity>();
+        world_.component<ecs::DesiredVelocity>();
+
+        world_.component<ecs::BoidConfig>();
+        world_.component<ecs::BoidPerception>();
+
+        world_.set<ecs::BoidConfig>({});
+        world_.set<ecs::BoidPerception>({});
+    }
 }
