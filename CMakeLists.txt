@@ -9,7 +9,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(TELEMETRY_ENABLED "Build with telemetry, diagnostics, and benchmarking library" ON)
 
 if (TELEMETRY_ENABLED)
-    add_compile_definitions(TELEMETRY_ENABLED)
     add_subdirectory(src/telemetry)
 endif ()
 

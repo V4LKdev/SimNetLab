@@ -12,8 +12,8 @@
     "fmt",
     "spdlog",
     "nlohmann-json",
-    "tracy",
     "catch2",
-    "benchmark"
+    "benchmark",
+    "tracy"
   ]
 }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <spdlog/spdlog.h>
 
 #include "ecs/components.hpp"
 #include "config.hpp"
@@ -35,7 +36,8 @@ namespace simnet::sim {
         spawn_boids(config::MAX_BOIDS);
 
 #ifdef TELEMETRY_ENABLED
-        telemetry::init("SimNetLab", "simnet_telemetry.log");
+        telemetry::init("SimNetLab", "log/simnet_telemetry.log");
+        TELEM_LOG_INFO("Telemetry initialized successfully");
 #endif
     }
 
@@ -50,10 +52,12 @@ namespace simnet::sim {
 
     void Simulation::step()
     {
+        TELEM_FRAME_BEGIN();
         world_.progress(config::SIM_DT_SECONDS);
-
         ++tick_;
+        TELEM_FRAME_END();
     }
+
 
     uint64_t Simulation::current_tick() const
     {

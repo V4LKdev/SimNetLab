@@ -65,4 +65,13 @@ namespace simnet::telemetry {
     Duration last_frame_time();
 
     double last_frame_time_ms();
+
+    struct FrameStats {
+        double avg_ms = 0.0;
+        uint64_t frame_count = 0;
+    };
+
+    FrameStats get_frame_stats();
+
+    void dump_summary();
 } // namespace simnet::telemetry

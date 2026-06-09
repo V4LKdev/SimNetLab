@@ -4,6 +4,9 @@ out/
 vcpkg_installed/
 .vcpkg/
 
+# --- Telemetry & Logging ---
+log/
+
 # --- JetBrains / CLion ---
 .idea/
 cmake-build-*/

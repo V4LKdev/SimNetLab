@@ -8,6 +8,12 @@
 // -----------------------------------------------------------------------
 #ifdef TELEMETRY_ENABLED
 
+#include <spdlog/spdlog.h>
+
+#ifdef TRACY_ENABLED
+#include <tracy/Tracy.hpp>
+#endif
+
 #include "timer.hpp"
 #include "logger.hpp"
 
@@ -15,7 +21,7 @@ namespace simnet::telemetry {
     void init(std::string_view app_name, std::string_view log_file_path = "simnet_telemetry.log");
 
     void shutdown();
-} // namespace simnet::telemetry
+}
 
 // Convenience macros
 
@@ -26,10 +32,6 @@ namespace simnet::telemetry {
 // Frame markers
 #define TELEM_FRAME_BEGIN() ::simnet::telemetry::frame_marker(::simnet::telemetry::FrameEvent::Begin)
 #define TELEM_FRAME_END()   ::simnet::telemetry::frame_marker(::simnet::telemetry::FrameEvent::End)
-
-// Validation checks
-#define TELEM_VALIDATE(condition, message) \
-    ::simnet::telemetry::validate(condition, message, __FILE__, __LINE__)
 
 // Logging macros
 #define TELEM_LOG_TRACE(...)    SPDLOG_LOGGER_TRACE(::simnet::telemetry::get_logger(), __VA_ARGS__)
@@ -58,7 +60,7 @@ namespace simnet::telemetry {
 #define TELEM_LOG_ERROR(...)
 #define TELEM_TRACY_ZONE(name)
 
-#endif  // TELEMETRY_ENABLED
+#endif
 
 // Helper for concatenating names
 #define TELEM_CONCAT_IMPL(x, y) x##y

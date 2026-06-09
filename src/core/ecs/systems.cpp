@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "components.hpp"
+#include "telemetry.hpp"
 #include "../config.hpp"
 #include "../boid/boid_steering.hpp"
 
@@ -27,6 +28,8 @@ namespace simnet::ecs {
                 .term_at(1).in()
                 .term_at(2).out()
                 .run([](flecs::iter &it) {
+                    TELEM_TRACY_ZONE("BoidSteeringSystem");
+
                     // Access singletons
                     flecs::world w = it.world();
                     const BoidConfig *cfg = w.try_get<BoidConfig>();
@@ -38,6 +41,8 @@ namespace simnet::ecs {
 
                     // Iterate over ECS tables
                     while (it.next()) {
+                        TELEM_TRACY_ZONE("SteeringChunk");
+
                         const uint64_t count = it.count();
                         if (count == 0)
                             continue;
@@ -48,6 +53,7 @@ namespace simnet::ecs {
                         const Velocity *vel = &it.field<const Velocity>(1)[0];
                         DesiredVelocity *out = &it.field<DesiredVelocity>(2)[0];
 
+                        TELEM_SCOPED_TIMER("SIM_BoidSteering");
                         boid::compute_boid_steering(
                             pos,
                             vel,
