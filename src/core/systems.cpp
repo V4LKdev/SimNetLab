@@ -22,47 +22,47 @@ namespace simnet::ecs {
             .kind(flecs::PreUpdate)
             .run([](flecs::iter& it)
         {
-            BoidScratchpadSoA& scratch = it.world().get_mut<BoidScratchpadSoA>();
-
-            uint32_t count = 0;
-
-            const uint32_t estimated =
-                static_cast<uint32_t>(it.world().count<Boid>());
-
-            scratch.posX.resize(estimated);
-            scratch.posY.resize(estimated);
-            scratch.posZ.resize(estimated);
-
-            scratch.velX.resize(estimated);
-            scratch.velY.resize(estimated);
-            scratch.velZ.resize(estimated);
-
-            while (it.next())
-            {
-                auto pos_field  = it.field<const Position3D>(0);
-                auto vel_field  = it.field<const Velocity3D>(1);
-                auto boid_field = it.field<Boid>(2);
-
-                for (const uint64_t i : it)
-                {
-                    const auto& p = pos_field[i].pos;
-                    const auto& v = vel_field[i].vel;
-
-                    scratch.posX[count] = p.x;
-                    scratch.posY[count] = p.y;
-                    scratch.posZ[count] = p.z;
-
-                    scratch.velX[count] = v.x;
-                    scratch.velY[count] = v.y;
-                    scratch.velZ[count] = v.z;
-
-                    boid_field[i].scratch_index = count;
-
-                    ++count;
-                }
-            }
-
-            scratch.count = count;
+            //     BoidScratchpadSoA& scratch = it.world().get_mut<BoidScratchpadSoA>();
+            //
+            // uint32_t count = 0;
+            //
+            // const uint32_t estimated =
+            //     static_cast<uint32_t>(it.world().count<Boid>());
+            //
+            // scratch.posX.resize(estimated);
+            // scratch.posY.resize(estimated);
+            // scratch.posZ.resize(estimated);
+            //
+            // scratch.velX.resize(estimated);
+            // scratch.velY.resize(estimated);
+            // scratch.velZ.resize(estimated);
+            //
+            // while (it.next())
+            // {
+            //     auto pos_field  = it.field<const Position3D>(0);
+            //     auto vel_field  = it.field<const Velocity3D>(1);
+            //     auto boid_field = it.field<Boid>(2);
+            //
+            //     for (const uint64_t i : it)
+            //     {
+            //         const auto& p = pos_field[i].pos;
+            //         const auto& v = vel_field[i].vel;
+            //
+            //         scratch.posX[count] = p.x;
+            //         scratch.posY[count] = p.y;
+            //         scratch.posZ[count] = p.z;
+            //
+            //         scratch.velX[count] = v.x;
+            //         scratch.velY[count] = v.y;
+            //         scratch.velZ[count] = v.z;
+            //
+            //         boid_field[i].scratch_index = count;
+            //
+            //         ++count;
+            //     }
+            // }
+            //
+            // scratch.count = count;
         });
     }
 
@@ -78,39 +78,39 @@ namespace simnet::ecs {
         .multi_threaded()
         .run([](flecs::iter& it) {
 
-            const BoidConfig*      cfg = it.world().try_get<BoidConfig>();
-            const BoidPerception*  per = it.world().try_get<BoidPerception>();
-            const BoidFeatures*    f   = it.world().try_get<BoidFeatures>();
-            const BoidScratchpadSoA*  sp  = it.world().try_get<BoidScratchpadSoA>();
-            if (!cfg || !per || !f || !sp) return;
-
-            while (it.next()) {
-                auto pos_field = it.field<const Position3D>(0);
-                auto vel_field = it.field<const Velocity3D>(1);
-                auto out_field = it.field<DesiredVelocity3D>(3);
-
-                for (const uint64_t i : it) {
-                    // Wrap input
-                    boid::SteeringInput in{
-                        pos_field[i].pos,
-                        vel_field[i].vel,
-                        *cfg,
-                        *per,
-                        *f,
-                        *sp,
-                        it.field<const Boid>(2)[i].scratch_index
-                    };
-
-                    auto forces = boid::compute_steering_forces(in, boid::EvalMode::SIMD);
-
-                    Vec3 total_steer = boid::combine_steering(
-                        { forces.separation, forces.alignment, forces.cohesion },
-                        cfg->max_force
-                    );
-
-                    out_field[i].desired = boid::desired_velocity(vel_field[i].vel, total_steer);
-                }
-            }
+            // const BoidConfig*      cfg = it.world().try_get<BoidConfig>();
+            // const BoidPerception*  per = it.world().try_get<BoidPerception>();
+            // const BoidFeatures*    f   = it.world().try_get<BoidFeatures>();
+            // const BoidScratchpadSoA*  sp  = it.world().try_get<BoidScratchpadSoA>();
+            // if (!cfg || !per || !f || !sp) return;
+            //
+            // while (it.next()) {
+            //     auto pos_field = it.field<const Position3D>(0);
+            //     auto vel_field = it.field<const Velocity3D>(1);
+            //     auto out_field = it.field<DesiredVelocity3D>(3);
+            //
+            //     for (const uint64_t i : it) {
+            //         // Wrap input
+            //         boid::SteeringInput in{
+            //             pos_field[i].pos,
+            //             vel_field[i].vel,
+            //             *cfg,
+            //             *per,
+            //             *f,
+            //             *sp,
+            //             it.field<const Boid>(2)[i].scratch_index
+            //         };
+            //
+            //         auto forces = boid::compute_steering_forces(in, boid::EvalMode::SIMD);
+            //
+            //         Vec3 total_steer = boid::combine_steering(
+            //             { forces.separation, forces.alignment, forces.cohesion },
+            //             cfg->max_force
+            //         );
+            //
+            //         out_field[i].desired = boid::desired_velocity(vel_field[i].vel, total_steer);
+            //     }
+            // }
         });
     }
 

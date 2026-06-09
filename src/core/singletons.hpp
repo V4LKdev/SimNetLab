@@ -9,7 +9,7 @@ namespace simnet::ecs {
     {
         world.component<BoidConfig>();
         world.component<BoidPerception>();
-        world.component<BoidScratchpadSoA>();
+        //world.component<BoidScratchpadSoA>();
         world.component<BoidFeatures>();
 
 
@@ -38,11 +38,11 @@ namespace simnet::ecs {
         world.set<BoidFeatures>(feat);
 
 
-        BoidScratchpadSoA scratch{};
-        scratch.count = 0;
-        scratch.positions.resize(config::MAX_BOIDS);
-        scratch.velocities.resize(config::MAX_BOIDS);
-        world.set<BoidScratchpadSoA>(scratch);
+        // BoidScratchpadSoA scratch{};
+        // scratch.count = 0;
+        // scratch.positions.resize(config::MAX_BOIDS);
+        // scratch.velocities.resize(config::MAX_BOIDS);
+        // world.set<BoidScratchpadSoA>(scratch);
     }
 
 }

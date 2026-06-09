@@ -10,10 +10,10 @@ target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(flecs CONFIG REQUIRED)
 find_package(unofficial-enet CONFIG REQUIRED)
-find_package(Highway CONFIG REQUIRED)
+find_package(HWY CONFIG REQUIRED)
 
 target_link_libraries(core
         PUBLIC flecs::flecs
         PUBLIC unofficial::enet::enet
-        PUBLIC Highway::Highway
+        PUBLIC hwy
 )

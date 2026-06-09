@@ -1,6 +1,5 @@
 #pragma once
 #include <cmath>
-#include "components.hpp"
 
 namespace simnet {
 

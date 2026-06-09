@@ -54,7 +54,7 @@ namespace simnet::client {
         world_.query<const ecs::Position3D, const ecs::Boid>().each(
             [](const ecs::Position3D& position, const ecs::Boid& boid)
             {
-                DrawSphere({position.x, position.y, position.z}, config::BOID_SCALE, BLUE);
+            //    DrawSphere({position.x, position.y, position.z}, config::BOID_SCALE, BLUE);
             });
 
         DrawCubeWires(
