@@ -1,18 +1,67 @@
-#include "systems.hpp"
+#include "../src/core/ecs/systems.hpp"
 
 #include <cmath>
 
-#include "components.hpp"
+#include "../src/core/ecs/components.hpp"
 #include "telemetry.hpp"
-#include "../config.hpp"
-#include "../boid/boid_steering.hpp"
+#include "../src/core/config.hpp"
+#include "../src/core/boid/boid_steering.hpp"
+
+
+namespace {
+    using namespace simnet::ecs;
+
+    void register_boid_neighbor_query(const flecs::world &world)
+    {
+    }
+
+    void register_boid_rule_alignment(const flecs::world &world)
+    {
+    }
+
+    void register_boid_rule_cohesion(const flecs::world &world)
+    {
+    }
+
+    void register_boid_rule_separation(const flecs::world &world)
+    {
+    }
+
+    void register_boid_accumulate_steering(const flecs::world &world)
+    {
+    }
+
+
+    void register_boid_apply_steering(const flecs::world &world)
+    {
+    }
+
+    void register_boid_integrate_position(const flecs::world &world)
+    {
+    }
+
+    void register_boid_clear_accumulators(const flecs::world &world)
+    {
+    }
+}
+
 
 namespace simnet::ecs {
     void init_systems(flecs::world &world)
     {
-        register_boid_steering_system(world);
-        register_boid_apply_velocity(world);
+        // OnUpdate
+        register_boid_neighbor_query(world);
+
+        register_boid_rule_alignment(world);
+        register_boid_rule_cohesion(world);
+        register_boid_rule_separation(world);
+
+        register_boid_accumulate_steering(world);
+
+        // PostUpdate
+        register_boid_apply_steering(world);
         register_boid_integrate_position(world);
+        register_boid_clear_accumulators(world);
     }
 
     // ------------------------------------------------------------------
@@ -20,7 +69,7 @@ namespace simnet::ecs {
     // ------------------------------------------------------------------
     void register_boid_steering_system(const flecs::world &world)
     {
-        world.system<const Position, const Velocity, DesiredVelocity>("BoidSteering")
+        world.system<const Position, const Velocity, SteeringAccumulate>("BoidSteering")
                 .with<Boid>()
                 .kind(flecs::OnUpdate)
                 .multi_threaded(true)
@@ -50,7 +99,7 @@ namespace simnet::ecs {
                         // Direct access to contiguous component arrays for this chunk
                         const Position *pos = &it.field<const Position>(0)[0];
                         const Velocity *vel = &it.field<const Velocity>(1)[0];
-                        DesiredVelocity *out = &it.field<DesiredVelocity>(2)[0];
+                        SteeringAccumulate *out = &it.field<SteeringAccumulate>(2)[0];
 
 
                         boid::compute_boid_steering(
@@ -73,7 +122,7 @@ namespace simnet::ecs {
     // ------------------------------------------------------------------
     void register_boid_apply_velocity(const flecs::world &world)
     {
-        world.system<Velocity, const DesiredVelocity>("ApplyVelocity")
+        world.system<Velocity, const SteeringAccumulate>("ApplyVelocity")
                 .kind(flecs::PostUpdate)
                 .multi_threaded()
                 .run([](flecs::iter &it) {
@@ -84,7 +133,7 @@ namespace simnet::ecs {
 
                     while (it.next()) {
                         auto vel_out = it.field<Velocity>(0);
-                        auto desired_in = it.field<const DesiredVelocity>(1);
+                        auto desired_in = it.field<const SteeringAccumulate>(1);
 
                         for (const uint64_t i: it) {
                             Vec3 desired = desired_in[i].value;

@@ -56,10 +56,21 @@ namespace simnet::client {
 
         world_.query<const ecs::Position, const ecs::Boid>().each(
             [](const ecs::Position &position, const ecs::Boid & /*boid*/) {
+                // 1. Draw the actual boid body
                 DrawSphere(
                     {position.value.x, position.value.y, position.value.z},
                     config::BOID_SCALE,
                     BLUE
+                );
+
+                // 2. Draw the transparent wireframe influence radius
+                // Replace config::NEIGHBOR_RADIUS with your actual radius variable name
+                DrawSphereWires(
+                    {position.value.x, position.value.y, position.value.z},
+                    150.f,
+                    16, // Number of rings (smoothness)
+                    16, // Number of slices (smoothness)
+                    Fade(BLUE, 0.2f) // Fades the color to 20% opacity
                 );
             });
 

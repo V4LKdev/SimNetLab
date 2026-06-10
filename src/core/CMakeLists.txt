@@ -1,11 +1,19 @@
 add_library(core STATIC
         simulation.cpp
-        ecs/systems.cpp
-        boid/boid_steering.cpp
-        boid/boid_neighbor_query.cpp
+
+        # ECS pipeline
+        ecs/pipeline.cpp
+
+        # Individual systems
+        ecs/systems/neighbor_cache.cpp
+        ecs/systems/alignment.cpp
+        ecs/systems/cohesion.cpp
+        ecs/systems/separation.cpp
+        ecs/systems/apply_steering.cpp
+        ecs/systems/integrate_position.cpp
+        ecs/systems/clear_accumulator.cpp
 )
 
-# Allow other targets linking to 'core' to find its headers
 target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(flecs CONFIG REQUIRED)

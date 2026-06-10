@@ -9,7 +9,7 @@ namespace simnet::boid {
     void compute_boid_steering(
         const ecs::Position *pos,
         const ecs::Velocity *vel,
-        ecs::DesiredVelocity *out,
+        ecs::SteeringAccumulate *out,
         std::uint64_t count,
         const ecs::BoidConfig &config,
         const ecs::BoidPerception &perception,
