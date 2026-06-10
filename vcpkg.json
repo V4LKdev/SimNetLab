@@ -9,11 +9,9 @@
       "platform": "!linux"
     },
     "highway",
-    "fmt",
     "spdlog",
     "nlohmann-json",
     "catch2",
-    "benchmark",
     "tracy"
   ]
 }

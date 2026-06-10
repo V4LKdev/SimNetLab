@@ -39,6 +39,14 @@ namespace simnet {
             return *this;
         }
 
+        constexpr Vec3 &operator/=(const float s)
+        {
+            x /= s;
+            y /= s;
+            z /= s;
+            return *this;
+        }
+
         [[nodiscard]]
         constexpr float dist2(const Vec3 &v) const noexcept
         {

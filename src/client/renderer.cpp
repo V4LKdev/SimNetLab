@@ -65,13 +65,13 @@ namespace simnet::client {
 
                 // 2. Draw the transparent wireframe influence radius
                 // Replace config::NEIGHBOR_RADIUS with your actual radius variable name
-                DrawSphereWires(
-                    {position.value.x, position.value.y, position.value.z},
-                    150.f,
-                    16, // Number of rings (smoothness)
-                    16, // Number of slices (smoothness)
-                    Fade(BLUE, 0.2f) // Fades the color to 20% opacity
-                );
+                // DrawSphereWires(
+                //     {position.value.x, position.value.y, position.value.z},
+                //     150.f,
+                //     16, // Number of rings (smoothness)
+                //     16, // Number of slices (smoothness)
+                //     Fade(BLUE, 0.2f) // Fades the color to 20% opacity
+                // );
             });
 
         DrawCubeWires(

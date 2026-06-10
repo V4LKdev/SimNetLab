@@ -10,7 +10,7 @@ namespace simnet::config {
     constexpr int64_t MAX_ACCUM_NS = SIM_DT.count() * MAX_SIM_STEPS; // Spiral-of-death capping
 
     // Boids
-    constexpr uint32_t MAX_BOIDS = 1000;
+    constexpr uint32_t MAX_BOIDS = 200;
     constexpr float WORLD_HALF = 100.0f;
     constexpr float BOID_SCALE = 5.0f;
 }

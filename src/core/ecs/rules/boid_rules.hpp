@@ -3,7 +3,8 @@
 #include <flecs.h>
 #include <span>
 #include <vector>
-#include "boid/boid_math.hpp"
+
+#include "vec3.hpp"
 
 namespace simnet::ecs {
     void find_neighbors_brute_force(

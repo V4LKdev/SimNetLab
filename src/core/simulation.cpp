@@ -22,7 +22,7 @@ namespace {
 namespace simnet::sim {
     Simulation::Simulation()
     {
-        world_.set_threads(4);
+        world_.set_threads(0);
 
         ecs::init_simulation(world_);
 
@@ -66,7 +66,7 @@ namespace simnet::sim {
         return tick_;
     }
 
-#define USE_DEBUG_BOIDS 1
+#define USE_DEBUG_BOIDS 0
 
     void Simulation::spawn_boids(uint32_t count)
     {

@@ -48,6 +48,8 @@ namespace simnet::ecs {
                 flecs::entity e = it.entity(i);
                 const Position &e_pos = e.get<Position>();
 
+                // Seam here for later alternative query functions (SIMD bruteforce, SpatPart, etc)
+
                 build_neighbor_cache_bruteforce(
                     e,
                     e_pos,
