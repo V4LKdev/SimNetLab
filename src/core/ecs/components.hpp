@@ -29,13 +29,10 @@ namespace simnet::ecs {
     // --- Caches ---
     struct PositionCache {
         std::vector<Vec3> positions;
-        std::unordered_map<flecs::entity_t, uint32_t> entity_to_index;
     };
 
     struct VelocityCache {
         std::vector<Vec3> velocities;
-        // Same as in PositionsCache, for now just duplicated
-        std::unordered_map<flecs::entity_t, uint32_t> entity_to_index;
     };
 
 

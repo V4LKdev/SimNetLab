@@ -16,10 +16,7 @@ namespace simnet::ecs {
 
             for (uint32_t j = 0; j < all_positions.size(); ++j) {
                 if (j == self_idx) continue;
-
-                const float dist2 = all_positions[j].dist2(self_pos);
-
-                if (dist2 < radius_sq) {
+                if (all_positions[j].dist2(self_pos) < radius_sq) {
                     out_indices.push_back(j);
                 }
             }
@@ -37,31 +34,27 @@ namespace simnet::ecs {
             p.alignment_radius,
             p.cohesion_radius
         });
-
         const float radius_sq = radius * radius;
 
-        {
-            TELEM_TRACY_ZONE("BruteforceNeighbors");
-            const auto &pos_cache = it.world().get<PositionCache>();
+        const PositionCache &pos_cache = it.world().get<PositionCache>();
+        const auto &positions = pos_cache.positions;
 
-            while (it.next()) {
-                auto nl = it.field<NeighborList>(1);
+        while (it.next()) {
+            auto nl = it.field<NeighborList>(1);
 
-                for (const uint64_t i: it) {
-                    flecs::entity e = it.entity(i);
-                    auto self_it = pos_cache.entity_to_index.find(e);
-                    if (self_it == pos_cache.entity_to_index.end()) continue;
+            for (uint64_t i: it) {
+                uint32_t self_idx = static_cast<uint32_t>(i);
+                Vec3 self_pos = positions[self_idx];
 
-                    const uint32_t self_idx = self_it->second;
-                    const Vec3 self_pos = pos_cache.positions[self_idx];
+                std::vector<uint32_t> &neighbors = nl[i].indices;
+                neighbors.clear();
 
-                    compute_neighbors_bruteforce(
-                        self_idx,
-                        self_pos,
-                        pos_cache.positions,
-                        radius_sq,
-                        nl[i].indices);
-                }
+                compute_neighbors_bruteforce(
+                    self_idx,
+                    self_pos,
+                    positions,
+                    radius_sq,
+                    neighbors);
             }
         }
     }

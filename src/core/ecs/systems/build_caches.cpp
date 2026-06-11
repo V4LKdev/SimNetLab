@@ -9,18 +9,20 @@ namespace simnet::ecs {
         void build_caches(const flecs::world &world, PositionCache &pos_cache, VelocityCache &vel_cache)
         {
             pos_cache.positions.clear();
-            pos_cache.entity_to_index.clear();
             vel_cache.velocities.clear();
-            vel_cache.entity_to_index.clear();
 
-            const auto q = world.query_builder<const Position, const Velocity>().with<Boid>().build();
+            auto q = world.query_builder<const Position, const Velocity>()
+                    .with<Boid>()
+                    .build();
 
-            q.each([&](const flecs::entity e, const Position &p, const Velocity &v) {
-                uint32_t idx = static_cast<uint32_t>(pos_cache.positions.size());
+            // Reserve to avoid reallocations
+            size_t count = q.count();
+            pos_cache.positions.reserve(count);
+            vel_cache.velocities.reserve(count);
+
+            q.each([&](const Position &p, const Velocity &v) {
                 pos_cache.positions.push_back(p.value);
                 vel_cache.velocities.push_back(v.value);
-                pos_cache.entity_to_index[e] = idx;
-                vel_cache.entity_to_index[e] = idx;
             });
         }
     }
