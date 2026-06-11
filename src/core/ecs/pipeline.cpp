@@ -50,19 +50,23 @@ namespace simnet::ecs {
                                 .run(separation_system);
 
                 // --- Apply Phase ---
+                // Ensure they always run in sequence
                 auto apply_steering = world.system<const SteeringAccumulate, Velocity>("ApplySteering")
                                 .with<Boid>()
                                 .kind(s_sim_apply)
+                                .multi_threaded(true)
                                 .run(apply_steering_system);
 
                 auto integrate_position = world.system<const Velocity, Position>("IntegratePosition")
                                 .with<Boid>()
                                 .kind(s_sim_apply)
+                                .multi_threaded(true)
                                 .run(integrate_position_system);
 
                 auto clear_accumulator = world.system<SteeringAccumulate>("ClearAccumulate")
                                 .with<Boid>()
                                 .kind(s_sim_apply)
+                                .multi_threaded(true)
                                 .run(clear_accumulator_system);
         }
 

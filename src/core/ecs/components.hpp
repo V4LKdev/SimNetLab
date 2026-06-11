@@ -54,7 +54,7 @@ namespace simnet::ecs {
     };
 
     struct BoidPerception {
-        float separation_radius = 20.0f;
+        float separation_radius = 100.0f;
         float alignment_radius = 20.0f;
         float cohesion_radius = 20.0f;
 

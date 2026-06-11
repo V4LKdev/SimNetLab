@@ -22,7 +22,7 @@ namespace {
 namespace simnet::sim {
     Simulation::Simulation()
     {
-        world_.set_threads(0);
+        world_.set_threads(8);
 
         ecs::init_simulation(world_);
 
@@ -99,7 +99,7 @@ namespace simnet::sim {
 #else
         // Random spawn using the provided 'count'
         const float half = config::WORLD_HALF;
-        const float max_speed = 1.f;
+        const float max_speed = 50.f;
 
         for (uint32_t i = 0; i < count; ++i) {
             auto e = world_.entity();
