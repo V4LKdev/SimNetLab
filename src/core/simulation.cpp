@@ -22,7 +22,7 @@ namespace {
 namespace simnet::sim {
     Simulation::Simulation()
     {
-        world_.set_threads(8);
+        world_.set_threads(0);
 
         ecs::init_simulation(world_);
 

@@ -3,6 +3,8 @@
 #include <flecs.h>
 
 namespace simnet::ecs {
+    void build_caches_system(flecs::iter &it);
+
     void neighbor_cache_system(flecs::iter &it);
 
     void alignment_system(flecs::iter &it);
