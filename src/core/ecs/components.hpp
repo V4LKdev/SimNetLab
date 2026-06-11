@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 #include "vec3.hpp"
 
@@ -22,8 +23,21 @@ namespace simnet::ecs {
     };
 
     struct NeighborList {
-        std::vector<flecs::entity_t> indices;
+        std::vector<uint32_t> indices;
     };
+
+    // --- Caches ---
+    struct PositionCache {
+        std::vector<Vec3> positions;
+        std::unordered_map<flecs::entity_t, uint32_t> entity_to_index;
+    };
+
+    struct VelocityCache {
+        std::vector<Vec3> velocities;
+        // Same as in PositionsCache, for now just duplicated
+        std::unordered_map<flecs::entity_t, uint32_t> entity_to_index;
+    };
+
 
     // --- Tags ---
     struct Boid {
@@ -60,9 +74,13 @@ namespace simnet::ecs {
         world.component<NeighborList>();
 
         // Singletons
+        world.component<PositionCache>();
+        world.component<VelocityCache>();
         world.component<BoidConfig>();
         world.component<BoidPerception>();
 
+        world.set<PositionCache>({});
+        world.set<VelocityCache>({});
         world.set<BoidConfig>({});
         world.set<BoidPerception>({});
     }

@@ -35,16 +35,18 @@ namespace simnet::ecs {
                                 .multi_threaded(true)
                                 .run(alignment_system);
 
-                auto cohesion = world.system<const Position, const Velocity, const NeighborList, SteeringAccumulate>(
+                auto cohesion = world.system<const Position, const NeighborList, SteeringAccumulate>(
                                         "Cohesion")
                                 .with<Boid>()
                                 .kind(s_sim_compute)
+                                .multi_threaded(true)
                                 .run(cohesion_system);
 
-                auto separation = world.system<const Position, const Velocity, const NeighborList, SteeringAccumulate>(
+                auto separation = world.system<const Position, const NeighborList, SteeringAccumulate>(
                                         "Separation")
                                 .with<Boid>()
                                 .kind(s_sim_compute)
+                                .multi_threaded(true)
                                 .run(separation_system);
 
                 // --- Apply Phase ---

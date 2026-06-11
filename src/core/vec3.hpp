@@ -57,9 +57,16 @@ namespace simnet {
         }
 
         [[nodiscard]]
+        constexpr float length_sq() const noexcept
+        {
+            return x * x + y * y + z * z;
+        }
+
+
+        [[nodiscard]]
         constexpr float length() const noexcept
         {
-            return std::sqrt(x * x + y * y + z * z);
+            return std::sqrt(length_sq());
         }
 
         [[nodiscard]]
