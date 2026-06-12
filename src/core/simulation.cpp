@@ -22,7 +22,7 @@ namespace {
 namespace simnet::sim {
     Simulation::Simulation()
     {
-        world_.set_threads(4);
+        world_.set_threads(0);
 
         ecs::init_simulation(world_);
 
@@ -66,14 +66,14 @@ namespace simnet::sim {
         return tick_;
     }
 
-#define USE_DEBUG_BOIDS 0
+#define USE_DEBUG_BOIDS 1
 
     void Simulation::spawn_boids(uint32_t count)
     {
 #if USE_DEBUG_BOIDS
         const uint32_t TEST_COUNT = 5;
         const float distance = config::WORLD_HALF - 20.f;
-        const float max_speed = 1.f;
+        const float max_speed = 50.f;
 
         Vec3 positions[TEST_COUNT] = {
             Vec3(distance, 0.0f, 0.0f), // +X Face center (Right)

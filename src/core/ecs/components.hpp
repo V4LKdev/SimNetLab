@@ -2,7 +2,7 @@
 
 #include <unordered_map>
 #include <vector>
-#include "vec3.hpp"
+#include "../math/vec3.hpp"
 
 namespace simnet::ecs {
     // --- Boid Components ---
@@ -46,14 +46,12 @@ namespace simnet::ecs {
         float max_accel = 30.f;
 
         float separation_weight = 1.0f;
-        float alignment_weight = 1.0f;
-        float cohesion_weight = 1.0f;
-    };
+        float alignment_weight = 0.0f;
+        float cohesion_weight = 0.0f;
 
-    struct BoidPerception {
-        float separation_radius = 100.0f;
-        float alignment_radius = 20.0f;
-        float cohesion_radius = 20.0f;
+        float separation_radius = 80.0f;
+        float alignment_radius = 150.0f;
+        float cohesion_radius = 150.0f;
 
         float separation_fov_cos = -0.707f; // ~135deg
         float alignment_fov_cos = 0.7f; // ~45deg
@@ -74,11 +72,9 @@ namespace simnet::ecs {
         world.component<PositionCache>();
         world.component<VelocityCache>();
         world.component<BoidConfig>();
-        world.component<BoidPerception>();
 
         world.set<PositionCache>({});
         world.set<VelocityCache>({});
         world.set<BoidConfig>({});
-        world.set<BoidPerception>({});
     }
 }

@@ -2,34 +2,9 @@
 
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
+#include "math/rules_scalar.hpp"
 
 namespace simnet::ecs {
-    namespace {
-        Vec3 apply_steering_scalar(
-            const Vec3 &steering,
-            Vec3 current_vel,
-            float max_force,
-            float max_speed,
-            float dt)
-        {
-            // Truncate steering to max_force
-            float steer_len = steering.length();
-            if (steer_len > max_force) {
-                current_vel += steering * (max_force / steer_len) * dt;
-            } else {
-                current_vel += steering * dt;
-            }
-
-            // Truncate speed to max_speed
-            float speed = current_vel.length();
-            if (speed > max_speed) {
-                current_vel = current_vel * (max_speed / speed);
-            }
-
-            return current_vel;
-        }
-    }
-
     void apply_steering_system(flecs::iter &it)
     {
         TELEM_TRACY_ZONE("Sim_ApplySteering");
@@ -42,7 +17,7 @@ namespace simnet::ecs {
             auto vel = it.field<Velocity>(1);
 
             for (uint64_t i: it) {
-                vel[i].value = apply_steering_scalar(
+                vel[i].value = scalar::apply_steering(
                     acc[i].value,
                     vel[i].value,
                     cfg.max_accel,

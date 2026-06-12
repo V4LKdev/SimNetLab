@@ -1,7 +1,7 @@
 #include <flecs.h>
 
 #include "telemetry.hpp"
-#include "../../vec3.hpp"
+#include "../../math/vec3.hpp"
 #include "ecs/components.hpp"
 
 

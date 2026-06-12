@@ -3,51 +3,46 @@
 
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
+#include "math/rules_scalar.hpp"
 
 namespace simnet::ecs {
-    namespace {
-        Vec3 compute_separation_scalar(
-            const Vec3 &self_pos,
-            const std::vector<uint32_t> &neighbors,
-            const std::vector<Vec3> &all_positions)
-        {
-            if (neighbors.empty()) return Vec3{0.0f, 0.0f, 0.0f};
-
-            Vec3 force{0.0f, 0.0f, 0.0f};
-            for (const uint32_t n: neighbors) {
-                Vec3 offset = self_pos - all_positions[n];
-                const float dist = offset.length();
-                if (dist < 1e-8f) continue;
-
-                // Reynolds: repulsive force = normalize(offset) * (1 / dist²)
-                float invDist = 1.0f / dist;
-                float scale = invDist * invDist * invDist;
-
-                force += offset * scale;
-            }
-
-            // Sum of repulsive forces (not averaged)
-            return force;
-        }
-    }
-
-
     void separation_system(flecs::iter &it)
     {
         TELEM_TRACY_ZONE("Sim_Separation");
 
+        const BoidConfig &cfg = it.world().get<BoidConfig>();
         const PositionCache &pos_cache = it.world().get<PositionCache>();
 
+        const float weight = cfg.separation_weight;
+        const float radius = cfg.separation_radius;
+        const float fov_cos = cfg.separation_fov_cos;
+
+        // Early return when the rule is turned off
+        if (weight <= 0.0f) {
+            return;
+        }
+
         while (it.next()) {
-            auto pos = it.field<const Position>(0);
+            auto hd = it.field<const Heading>(0);
             auto nl = it.field<const NeighborList>(1);
             auto acc = it.field<SteeringAccumulate>(2);
 
-            for (const uint64_t i: it) {
-                const Vec3 steering = compute_separation_scalar(
-                    pos[i].value,
-                    nl[i].indices,
-                    pos_cache.positions);
+            for (int64_t i = 0; i < it.count(); ++i) {
+                const uint32_t self_idx = it.entity(i);
+
+                Vec3 steering =
+                        scalar::compute_separation(
+                            hd[i].value,
+                            self_idx,
+                            nl[i].indices,
+                            pos_cache.positions,
+                            radius,
+                            fov_cos);
+
+
+                // Apply strength mod
+                steering = steering * weight;
+
                 acc[i].value += steering;
             }
         }

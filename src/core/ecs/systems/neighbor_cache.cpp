@@ -23,16 +23,15 @@ namespace simnet::ecs {
         }
     }
 
-    // Flecs system callback
     void neighbor_cache_system(flecs::iter &it)
     {
         TELEM_TRACY_ZONE("Sim_NeighborCacheSystem");
 
-        const BoidPerception &p = it.world().get<BoidPerception>();
+        const BoidConfig &cfg = it.world().get<BoidConfig>();
         const float radius = std::max({
-            p.separation_radius,
-            p.alignment_radius,
-            p.cohesion_radius
+            cfg.separation_radius,
+            cfg.alignment_radius,
+            cfg.cohesion_radius
         });
         const float radius_sq = radius * radius;
 

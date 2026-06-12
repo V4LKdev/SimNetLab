@@ -58,7 +58,7 @@ namespace simnet::client {
             [](const ecs::Position &position, const ecs::Boid & /*boid*/) {
                 // 1. Draw the actual boid body
                 DrawSphere(
-                    {position.value.x, position.value.y, position.value.z},
+                    {position.value.x(), position.value.y(), position.value.z()},
                     config::BOID_SCALE,
                     BLUE
                 );

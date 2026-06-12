@@ -3,43 +3,47 @@
 
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
+#include "math/rules_scalar.hpp"
 
 namespace simnet::ecs {
-    namespace {
-        Vec3 compute_cohesion_scalar(
-            const Vec3 &self_pos,
-            const std::vector<uint32_t> &neighbors,
-
-            const std::vector<Vec3> &all_positions)
-        {
-            if (neighbors.empty()) return Vec3{0, 0, 0};
-
-            Vec3 center{0.0f, 0.0f, 0.0f};
-            for (uint32_t n: neighbors) {
-                center += all_positions[n];
-            }
-            center /= static_cast<float>(neighbors.size());
-
-            return center - self_pos;
-        }
-    }
-
     void cohesion_system(flecs::iter &it)
     {
         TELEM_TRACY_ZONE("Sim_Cohesion");
 
+        const BoidConfig &cfg = it.world().get<BoidConfig>();
         const PositionCache &pos_cache = it.world().get<PositionCache>();
+        const VelocityCache &vel_cache = it.world().get<VelocityCache>();
+
+        const float weight = cfg.cohesion_weight;
+        const float radius = cfg.cohesion_radius;
+        const float fov_cos = cfg.cohesion_fov_cos;
+
+        if (weight <= 0.0f) {
+            return;
+        }
 
         while (it.next()) {
-            auto pos = it.field<const Position>(0);
+            auto hd = it.field<const Heading>(0);
             auto nl = it.field<const NeighborList>(1);
             auto acc = it.field<SteeringAccumulate>(2);
 
-            for (const uint64_t i: it) {
-                const Vec3 steering = compute_cohesion_scalar(
-                    pos[i].value,
-                    nl[i].indices,
-                    pos_cache.positions);
+            for (int64_t i = 0; i < it.count(); ++i) {
+                const uint32_t self_idx = it.entity(i);
+
+                Vec3 steering =
+                        scalar::compute_cohesion(
+                            hd[i].value,
+                            self_idx,
+                            nl[i].indices,
+                            pos_cache.positions,
+                            vel_cache.velocities,
+                            radius,
+                            fov_cos
+                        );
+
+
+                steering = steering * weight;
+
                 acc[i].value += steering;
             }
         }

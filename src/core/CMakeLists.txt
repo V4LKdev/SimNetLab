@@ -13,6 +13,7 @@ add_library(core STATIC
         ecs/systems/integrate_position.cpp
         ecs/systems/clear_accumulator.cpp
         ecs/systems/build_caches.cpp
+        ecs/systems/align_heading.cpp
 )
 
 target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
