@@ -21,6 +21,12 @@ namespace simnet {
         {
         }
 
+        [[nodiscard]]
+        static constexpr Vec3 zero() noexcept
+        {
+            return {};
+        }
+
         // ---- Indexing (for SIMD/SoA generation) ----
         constexpr float &operator[](int i) noexcept { return data[i]; }
         constexpr const float &operator[](int i) const noexcept { return data[i]; }
@@ -142,14 +148,36 @@ namespace simnet {
             };
         }
 
+
         // ---- Comparison ----
         constexpr bool operator==(const Vec3 &o) const noexcept = default;
 
-
-        [[nodiscard]]
-        static constexpr Vec3 zero() noexcept
+        // ---- Wrapping ----
+        Vec3 wrap(float half) noexcept
         {
-            return {};
+            auto wrap_one = [half](float v) -> float {
+                if (v > half) v -= 2.f * half;
+                else if (v < -half) v += 2.f * half;
+                return v;
+            };
+
+            data[0] = wrap_one(data[0]);
+            data[1] = wrap_one(data[1]);
+            data[2] = wrap_one(data[2]);
+            return *this;
+        }
+
+        static Vec3 wrap_delta(const Vec3 &a, const Vec3 &b, float half) noexcept
+        {
+            auto delta = [half](float va, float vb) -> float {
+                float d = vb - va;
+                if (d > half) d -= 2.f * half;
+                else if (d < -half) d += 2.f * half;
+                return d;
+            };
+            return Vec3(delta(a.x(), b.x()),
+                        delta(a.y(), b.y()),
+                        delta(a.z(), b.z()));
         }
     };
 

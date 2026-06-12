@@ -1,5 +1,6 @@
 #include <flecs.h>
 
+#include "config.hpp"
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
 
@@ -26,7 +27,7 @@ namespace simnet::ecs {
             auto pos = it.field<Position>(1);
 
             for (uint64_t i: it) {
-                pos[i].value = integrate_position_scalar(pos[i].value, vel[i].value, dt);
+                pos[i].value = integrate_position_scalar(pos[i].value, vel[i].value, dt).wrap(config::WORLD_HALF);
             }
         }
     }

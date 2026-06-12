@@ -11,14 +11,14 @@ namespace simnet::ecs {
         TELEM_TRACY_ZONE("Sim_Separation");
 
         const BoidConfig &cfg = it.world().get<BoidConfig>();
-        const PositionCache &pos_cache = it.world().get<PositionCache>();
+        // const PositionCache &pos_cache = it.world().get<PositionCache>();
 
-        const float weight = cfg.separation_weight;
+        const float strength = cfg.separation_strength;
         const float radius = cfg.separation_radius;
         const float fov_cos = cfg.separation_fov_cos;
 
         // Early return when the rule is turned off
-        if (weight <= 0.0f) {
+        if (strength <= 0.0f) {
             return;
         }
 
@@ -26,22 +26,21 @@ namespace simnet::ecs {
             auto hd = it.field<const Heading>(0);
             auto nl = it.field<const NeighborList>(1);
             auto acc = it.field<SteeringAccumulate>(2);
+            auto pos = it.field<const Position>(3);
 
             for (int64_t i = 0; i < it.count(); ++i) {
-                const uint32_t self_idx = it.entity(i);
-
                 Vec3 steering =
                         scalar::compute_separation(
                             hd[i].value,
-                            self_idx,
+                            i,
                             nl[i].indices,
-                            pos_cache.positions,
+                            &pos[0],
                             radius,
                             fov_cos);
 
 
                 // Apply strength mod
-                steering = steering * weight;
+                steering = steering * strength;
 
                 acc[i].value += steering;
             }

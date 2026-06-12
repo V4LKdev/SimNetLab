@@ -3,6 +3,7 @@
 #include <ranges>
 #include <vector>
 
+#include "config.hpp"
 #include "vec3.hpp"
 
 namespace simnet::scalar {
@@ -10,31 +11,31 @@ namespace simnet::scalar {
         const Vec3 &self_heading,
         const Vec3 &self_pos,
         const std::vector<uint32_t> &neighbors,
-        const std::vector<Vec3> &all_pos,
+        const ecs::Position *all_pos,
         const float radius,
         const float fov_cos)
     {
         const float r2 = radius * radius;
 
         auto is_relevant = [
-                    &all_pos,
+                    all_pos,
                     &self_heading,
                     &self_pos,
                     r2,
                     fov_cos]
         (uint32_t nb) -> bool {
-            const Vec3 &other = all_pos[nb];
-            const Vec3 to_other = other - self_pos;
+            const Vec3 &other = all_pos[nb].value;
+            const Vec3 to_other = Vec3::wrap_delta(self_pos, other, config::WORLD_HALF);
             const float d2 = to_other.length_sq();
 
-            if (d2 < 1e-12f || d2 > r2) return false;
-            return false;
+            if (d2 < 1e-12f || d2 > r2) {
+                return false;
+            }
+
 
             if (fov_cos > -1.0f) {
-                const float dot = to_other.dot(self_heading);
-                // cos(angle) = dot / sqrt(d2)  =>  condition: dot^2 >= fov_cos^2 * d2
-                if (dot * dot < fov_cos * fov_cos * d2)
-                    return false;
+                float forwardness = self_heading.dot(to_other) / std::sqrt(d2);
+                if (forwardness < fov_cos) return false;
             }
 
             return true;
@@ -49,102 +50,101 @@ namespace simnet::scalar {
         const Vec3 &self_heading,
         const uint32_t self_idx,
         const std::vector<uint32_t> &neighbors,
-        const std::vector<Vec3> &all_pos,
+        const ecs::Position *all_pos,
         const float radius,
         const float fov_cos)
     {
         if (neighbors.empty()) return Vec3::zero();
 
-        const Vec3 self_pos = all_pos[self_idx];
+        const Vec3 self_pos = all_pos[self_idx].value;
         Vec3 sum = Vec3::zero();
 
         for (uint32_t nb: relevant_neighbors(self_heading, self_pos, neighbors, all_pos, radius, fov_cos)) {
-            const Vec3 to_other = all_pos[nb] - self_pos;
-            const float d2 = to_other.length_sq();
-            const float d = std::sqrt(d2);
-            const float inv_d3 = 1.0f / (d * d2);
-            sum += (self_pos - all_pos[nb]) * inv_d3;
+            Vec3 to_neighbor = Vec3::wrap_delta(self_pos, all_pos[nb].value, config::WORLD_HALF);
+            float d_sq = to_neighbor.length_sq();
+            if (d_sq < radius * radius && d_sq > 0.001f * 0.001f) {
+                sum += to_neighbor / -d_sq;
+            }
         }
-        return sum;
+
+        return (sum == Vec3::zero()) ? Vec3::zero() : sum.normalized();
     }
+
 
     inline Vec3 compute_cohesion(
         const Vec3 &self_heading,
         const uint32_t self_idx,
         const std::vector<uint32_t> &neighbors,
-        const std::vector<Vec3> &all_pos,
-        const std::vector<Vec3> &all_vel,
+        const ecs::Position *all_pos,
         const float radius,
         const float fov_cos)
     {
         if (neighbors.empty()) return Vec3::zero();
 
-        const Vec3 self_pos = all_pos[self_idx];
-        Vec3 sum_pos = Vec3::zero();
+        const Vec3 self_pos = all_pos[self_idx].value;
+        Vec3 sum = Vec3::zero();
         uint32_t count = 0;
 
-        for (uint32_t nb: relevant_neighbors(
-                 self_heading, self_pos, neighbors, all_pos, radius, fov_cos)) {
-            sum_pos += all_vel[nb];
+        for (uint32_t nb: relevant_neighbors(self_heading, self_pos, neighbors, all_pos, radius, fov_cos)) {
+            sum += self_pos + Vec3::wrap_delta(self_pos, all_pos[nb].value, config::WORLD_HALF);
             ++count;
         }
+
         if (count == 0) return Vec3::zero();
 
-        const Vec3 avg_pos = sum_pos / static_cast<float>(count);
-        return avg_pos - self_pos;
+        const Vec3 avg_pos = sum / static_cast<float>(count);
+        return (avg_pos - self_pos).normalized();
     }
+
 
     inline Vec3 compute_alignment(
         const Vec3 &self_heading,
         const uint32_t self_idx,
         const std::vector<uint32_t> &neighbors,
-        const std::vector<Vec3> &all_pos,
-        const std::vector<Vec3> &all_vel,
+        const ecs::Position *all_pos,
+        const ecs::Heading *all_heading,
         const float radius,
         const float fov_cos)
     {
         if (neighbors.empty()) return Vec3::zero();
 
-        const Vec3 self_pos = all_pos[self_idx];
-        const Vec3 self_vel = all_vel[self_idx];
+        const Vec3 self_pos = all_pos[self_idx].value;
         Vec3 sum = Vec3::zero();
         uint32_t count = 0;
 
         for (uint32_t nb: relevant_neighbors(self_heading, self_pos, neighbors, all_pos, radius, fov_cos)) {
-            sum += all_vel[nb];
+            sum += all_heading[nb].value; // sum forward vectors
             ++count;
         }
 
         if (count == 0) return Vec3::zero();
 
-        const Vec3 avg_vel = sum / static_cast<float>(count);
-        return avg_vel - self_vel;
+        const Vec3 average_forward = sum / static_cast<float>(count);
+        return (average_forward - self_heading).normalized();
     }
 
     inline Vec3 apply_steering(
         const Vec3 &accum_steer,
         const Vec3 current_vel,
-        const float max_force,
+        const float max_accel,
         const float max_speed,
         const float dt)
     {
-        Vec3 out_vel = current_vel;
-
-        float steer_length = accum_steer.length();
-
-        // Truncate steering force
-        if (steer_length > max_force) {
-            out_vel += accum_steer * (max_force / steer_length) * dt;
-        } else {
-            out_vel += accum_steer * dt;
+        // Truncate steering force to max_accel
+        Vec3 steer = accum_steer;
+        float steer_len = steer.length();
+        if (steer_len > max_accel) {
+            steer *= (max_accel / steer_len);
         }
 
-        // Truncate overall speed
-        float speed = current_vel.length();
+        // Integrate
+        Vec3 out_vel = current_vel + steer * dt;
+
+        // Clamp speed to max_speed
+        float speed = out_vel.length();
         if (speed > max_speed) {
-            out_vel = current_vel * (max_speed / speed);
+            out_vel *= (max_speed / speed);
         }
-
         return out_vel;
     }
 }

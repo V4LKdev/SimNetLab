@@ -11,39 +11,28 @@ namespace simnet::ecs {
         TELEM_TRACY_ZONE("Sim_Cohesion");
 
         const BoidConfig &cfg = it.world().get<BoidConfig>();
-        const PositionCache &pos_cache = it.world().get<PositionCache>();
-        const VelocityCache &vel_cache = it.world().get<VelocityCache>();
-
-        const float weight = cfg.cohesion_weight;
+        const float weight = cfg.cohesion_strength;
         const float radius = cfg.cohesion_radius;
         const float fov_cos = cfg.cohesion_fov_cos;
 
-        if (weight <= 0.0f) {
-            return;
-        }
+        if (weight <= 0.0f) return;
 
         while (it.next()) {
             auto hd = it.field<const Heading>(0);
             auto nl = it.field<const NeighborList>(1);
             auto acc = it.field<SteeringAccumulate>(2);
+            auto pos = it.field<const Position>(3);
 
             for (int64_t i = 0; i < it.count(); ++i) {
-                const uint32_t self_idx = it.entity(i);
+                Vec3 steering = scalar::compute_cohesion(
+                    hd[i].value,
+                    i,
+                    nl[i].indices,
+                    &pos[0],
+                    radius,
+                    fov_cos);
 
-                Vec3 steering =
-                        scalar::compute_cohesion(
-                            hd[i].value,
-                            self_idx,
-                            nl[i].indices,
-                            pos_cache.positions,
-                            vel_cache.velocities,
-                            radius,
-                            fov_cos
-                        );
-
-
-                steering = steering * weight;
-
+                steering *= weight;
                 acc[i].value += steering;
             }
         }

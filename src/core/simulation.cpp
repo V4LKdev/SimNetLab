@@ -40,8 +40,8 @@ namespace simnet::sim {
         telemetry::shutdown();
 #endif
 
-        world_.quit();
         world_.set_threads(0);
+        world_.quit();
     }
 
     void Simulation::step()
@@ -66,21 +66,21 @@ namespace simnet::sim {
         return tick_;
     }
 
-#define USE_DEBUG_BOIDS 1
+#define USE_DEBUG_BOIDS 0
 
     void Simulation::spawn_boids(uint32_t count)
     {
 #if USE_DEBUG_BOIDS
-        const uint32_t TEST_COUNT = 5;
-        const float distance = config::WORLD_HALF - 20.f;
-        const float max_speed = 50.f;
+        const uint32_t TEST_COUNT = 2;
+        const float distance = config::WORLD_HALF / 2.f;
+        const float max_speed = 10.f;
 
         Vec3 positions[TEST_COUNT] = {
             Vec3(distance, 0.0f, 0.0f), // +X Face center (Right)
-            Vec3(-distance, 0.0f, 0.0f), // -X Face center (Left)
-            Vec3(0.0f, distance, 0.0f), // +Y Face center (Top)
+            // Vec3(-distance, 0.0f, 0.0f), // -X Face center (Left)
+            // Vec3(0.0f, distance, 0.0f), // +Y Face center (Top)
             Vec3(0.0f, 0.0f, distance), // +Z Face center (Front)
-            Vec3(0.0f, 0.0f, -distance) // -Z Face center (Back)
+            // Vec3(0.0f, 0.0f, -distance) // -Z Face center (Back)
         };
 
         for (uint32_t i = 0; i < TEST_COUNT; ++i) {
@@ -92,7 +92,7 @@ namespace simnet::sim {
             e.set<ecs::Position>({pos});
             e.set<ecs::Velocity>({vel});
             e.set<ecs::SteeringAccumulate>({Vec3(0.0f, 0.0f, 0.0f)});
-            e.set<ecs::Heading>({});
+            e.set<ecs::Heading>({vel.normalized()});
             e.set<ecs::NeighborList>({});
             e.add<ecs::Boid>();
         }

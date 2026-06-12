@@ -12,6 +12,8 @@ namespace simnet::ecs {
         const BoidConfig &cfg = it.world().get<BoidConfig>();
         const float dt = it.delta_time();
 
+        const float max_accel = cfg.max_speed * cfg.max_accel_frac;
+
         while (it.next()) {
             auto acc = it.field<const SteeringAccumulate>(0);
             auto vel = it.field<Velocity>(1);
@@ -20,7 +22,7 @@ namespace simnet::ecs {
                 vel[i].value = scalar::apply_steering(
                     acc[i].value,
                     vel[i].value,
-                    cfg.max_accel,
+                    max_accel,
                     cfg.max_speed,
                     dt);
             }

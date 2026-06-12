@@ -3,7 +3,6 @@
 #include <flecs.h>
 
 namespace simnet::ecs {
-
     void align_heading_system(flecs::iter &it);
 
     void build_caches_system(flecs::iter &it);
@@ -21,4 +20,6 @@ namespace simnet::ecs {
     void integrate_position_system(flecs::iter &it);
 
     void clear_accumulator_system(flecs::iter &it);
+
+    void flock_statistics_system(flecs::iter &it);
 } // namespace simnet::ecs
