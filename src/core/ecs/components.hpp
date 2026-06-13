@@ -26,9 +26,9 @@ namespace simnet::ecs {
         Vec3 value{};
     };
 
-    /// Temporary list of neighboring entities, rebuilt each frame.
-    struct NeighborList {
-        std::vector<uint32_t> indices;
+    /// Tick-local per-entity index assigned during snapshot construction.
+    struct BoidIdx {
+        uint32_t index = 0;
     };
 
     // --- Tags ---
@@ -67,6 +67,13 @@ namespace simnet::ecs {
         int boid_count = 0;
     };
 
+    /// Singleton read-only neighbor cache for current tick.
+    struct NeighborSnapshot {
+        std::vector<Vec3> positions;
+        std::vector<Vec3> headings;
+        std::vector<size_t> offsets;
+        std::vector<uint32_t> entries;
+    };
 
     inline void register_components(flecs::world &world)
     {
@@ -74,14 +81,16 @@ namespace simnet::ecs {
         world.component<Velocity>();
         world.component<Heading>();
         world.component<SteeringAccumulate>();
+        world.component<BoidIdx>();
 
         world.component<Boid>();
-        world.component<NeighborList>();
 
         // Singletons
         world.component<BoidConfig>().add(flecs::Singleton);
         world.component<FlockStats>().add(flecs::Singleton);
+        world.component<NeighborSnapshot>().add(flecs::Singleton);
         world.set<BoidConfig>({});
         world.set<FlockStats>({});
+        world.set<NeighborSnapshot>({});
     }
 }

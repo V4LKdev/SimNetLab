@@ -13,7 +13,7 @@ namespace simnet::ecs {
             auto vel = it.field<const Velocity>(0);
             auto hd = it.field<Heading>(1);
 
-            for (int64_t i = 0; i < it.count(); i++) {
+            for (size_t i = 0; i < it.count(); i++) {
                 Vec3 normal_forward;
 
                 if (vel[i].value.length_sq() > 1e-12f) {
@@ -24,7 +24,7 @@ namespace simnet::ecs {
                     continue;
                 } else {
                     // Save fallback
-                    normal_forward = Vec3{1, 0, 0};
+                    normal_forward = Vec3::forward();
                 }
                 hd[i].value = normal_forward;
             }

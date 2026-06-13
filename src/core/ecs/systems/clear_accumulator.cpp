@@ -13,8 +13,8 @@ namespace simnet::ecs {
         while (it.next()) {
             auto acc = it.field<SteeringAccumulate>(0);
 
-            for (const uint64_t i: it) {
-                acc[i].value = Vec3{0.0f, 0.0f, 0.0f};
+            for (size_t i: it) {
+                acc[i].value = Vec3::zero();
             }
         }
     }

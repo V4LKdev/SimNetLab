@@ -3,6 +3,8 @@
 #include <string_view>
 #include <flecs.h>
 
+#include "ecs/components.hpp"
+
 namespace simnet::client {
     /*
      *  Client-side renderer using raylib.
@@ -42,6 +44,8 @@ namespace simnet::client {
         int width_;
         int height_;
         Font font_ = GetFontDefault();
+
+        flecs::query<const ecs::Position, const ecs::Heading> boid_query_;
 
         float camera_distance_;
         float camera_yaw_, camera_pitch_;

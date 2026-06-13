@@ -21,7 +21,7 @@ namespace {
 namespace simnet::sim {
     Simulation::Simulation()
     {
-        world_.set_threads(0);
+        world_.set_threads(4);
 
         ecs::init_simulation(world_);
         spawn_boids(config::MAX_BOIDS);
@@ -52,7 +52,7 @@ namespace simnet::sim {
         return tick_;
     }
 
-    void Simulation::spawn_boids(const uint32_t count) const
+    void Simulation::spawn_boids(const uint32_t count)
     {
         if constexpr (USE_DEBUG_BOIDS) {
             constexpr uint32_t TEST_COUNT = 2;
@@ -64,16 +64,16 @@ namespace simnet::sim {
                 Vec3(0.0f, 0.0f, distance) // +Z
             };
 
-            for (auto pos : positions) {
+            for (auto pos: positions) {
                 auto e = world_.entity();
                 Vec3 dir = Vec3(0.0f, 0.0f, 0.0f) - pos;
                 Vec3 vel = dir.normalized() * max_speed;
 
                 e.set<ecs::Position>({pos});
                 e.set<ecs::Velocity>({vel});
-                e.set<ecs::SteeringAccumulate>({Vec3(0.0f, 0.0f, 0.0f)});
+                e.set<ecs::SteeringAccumulate>({Vec3::zero()});
                 e.set<ecs::Heading>({vel.normalized()});
-                e.set<ecs::NeighborList>({});
+                e.set<ecs::BoidIdx>({});
                 e.add<ecs::Boid>();
             }
         } else {
@@ -84,8 +84,8 @@ namespace simnet::sim {
                 auto e = world_.entity();
 
                 const Vec3 pos(random_float(-half, half),
-                         random_float(-half, half),
-                         random_float(-half, half));
+                               random_float(-half, half),
+                               random_float(-half, half));
 
                 Vec3 dir(random_float(-1.f, 1.f),
                          random_float(-1.f, 1.f),
@@ -94,9 +94,9 @@ namespace simnet::sim {
 
                 e.set<ecs::Position>({pos});
                 e.set<ecs::Velocity>({vel});
-                e.set<ecs::SteeringAccumulate>({Vec3(0.0f, 0.0f, 0.0f)});
+                e.set<ecs::SteeringAccumulate>({Vec3::zero()});
                 e.set<ecs::Heading>({vel.normalized()});
-                e.set<ecs::NeighborList>({});
+                e.set<ecs::BoidIdx>({});
                 e.add<ecs::Boid>();
             }
         }

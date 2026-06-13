@@ -28,6 +28,8 @@ namespace simnet {
             return {};
         }
 
+        static constexpr Vec3 forward() noexcept { return {1.0f, 0.0f, 0.0f}; };
+
         // ---- Indexing (for SIMD/SoA generation) ----
         constexpr float &operator[](int i) noexcept { return data[i]; }
         constexpr const float &operator[](int i) const noexcept { return data[i]; }
@@ -115,7 +117,7 @@ namespace simnet {
         }
 
         [[nodiscard]]
-        constexpr float dist2(const Vec3 &v) const noexcept
+        constexpr float dist_sq(const Vec3 &v) const noexcept
         {
             const float dx = v.x() - x();
             const float dy = v.y() - y();

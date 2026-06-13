@@ -1,6 +1,7 @@
 #pragma once
 #include <flecs.h>
 
+#include "ecs/components.hpp"
 
 namespace simnet::sim {
     /*
@@ -26,7 +27,7 @@ namespace simnet::sim {
         const flecs::world &world() const { return world_; }
 
     private:
-        void spawn_boids(uint32_t count) const;
+        void spawn_boids(uint32_t count);
 
         flecs::world world_;
         uint64_t tick_ = 0;

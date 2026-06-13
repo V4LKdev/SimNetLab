@@ -13,6 +13,8 @@ namespace simnet::client {
         : world_(world),
           width_(width),
           height_(height),
+          boid_query_(
+              world.query_builder<const ecs::Position, const ecs::Heading>().with<ecs::Boid>().cached().build()),
           camera_distance_(0),
           camera_yaw_(0),
           camera_pitch_(0),
@@ -52,17 +54,17 @@ namespace simnet::client {
 
         BeginMode3D(camera_);
 
-        world_.query<const ecs::Position, const ecs::Boid>().each(
-            [](const ecs::Position &position, const ecs::Boid & /*boid*/) {
-                // 1. Draw the actual boid body
-                DrawSphere(
-                    {position.value.x(), position.value.y(), position.value.z()},
-                    config::BOID_SCALE,
-                    BLUE
-                );
+        boid_query_.each([](const ecs::Position &pos, const ecs::Heading &heading) {
+            // 1. Draw the actual boid body
+            DrawSphere(
+                {pos.value.x(), pos.value.y(), pos.value.z()},
+                config::BOID_SCALE,
+                BLUE
+            );
 
-                // TODO: Debug visualisation for boid heading and radius and vision.
-            });
+            // TODO: Debug visualisation for boid heading and radius and vision.
+        });
+
 
         DrawCubeWires(
             {0.0f, 0.0f, 0.0f},

@@ -26,7 +26,7 @@ namespace simnet::ecs {
             auto vel = it.field<const Velocity>(0);
             auto pos = it.field<Position>(1);
 
-            for (uint64_t i: it) {
+            for (size_t i: it) {
                 pos[i].value = integrate_position_scalar(pos[i].value, vel[i].value, dt).wrap(config::WORLD_HALF);
             }
         }

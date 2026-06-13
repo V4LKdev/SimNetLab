@@ -5,9 +5,7 @@
 namespace simnet::ecs {
     void align_heading_system(flecs::iter &it);
 
-    void build_caches_system(flecs::iter &it);
-
-    void neighbor_cache_system(flecs::iter &it);
+    void build_neighbor_snapshot_system(flecs::iter &it);
 
     void alignment_system(flecs::iter &it);
 

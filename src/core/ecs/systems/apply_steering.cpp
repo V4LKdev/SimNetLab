@@ -18,7 +18,7 @@ namespace simnet::ecs {
             auto acc = it.field<const SteeringAccumulate>(0);
             auto vel = it.field<Velocity>(1);
 
-            for (uint64_t i: it) {
+            for (size_t i: it) {
                 vel[i].value = scalar::apply_steering(
                     acc[i].value,
                     vel[i].value,

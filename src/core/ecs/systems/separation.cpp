@@ -11,37 +11,43 @@ namespace simnet::ecs {
         TELEM_TRACY_ZONE("Sim_Separation");
 
         const BoidConfig &cfg = it.world().get<BoidConfig>();
-        // const PositionCache &pos_cache = it.world().get<PositionCache>();
 
         const float strength = cfg.separation_strength;
         const float radius = cfg.separation_radius;
         const float fov_cos = cfg.separation_fov_cos;
 
         // Early return when the rule is turned off
-        if (strength <= 0.0f) {
+        if (strength <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
             return;
         }
 
+        const NeighborSnapshot &snap = it.world().get<NeighborSnapshot>();
+
         while (it.next()) {
-            auto hd = it.field<const Heading>(0);
-            auto nl = it.field<const NeighborList>(1);
-            auto acc = it.field<SteeringAccumulate>(2);
-            auto pos = it.field<const Position>(3);
+            auto idx = it.field<const BoidIdx>(0);
+            auto acc = it.field<SteeringAccumulate>(1);
 
-            for (int64_t i = 0; i < it.count(); ++i) {
-                Vec3 steering =
-                        scalar::compute_separation(
-                            hd[i].value,
-                            i,
-                            nl[i].indices,
-                            &pos[0],
-                            radius,
-                            fov_cos);
+            for (size_t i = 0; i < it.count(); ++i) {
+                const uint32_t g = idx[i].index;
+                const size_t beg = snap.offsets[g];
+                const size_t end = snap.offsets[g + 1];
+
+                // Lightweight view into snapshot neighbors
+                const uint32_t *neighbors = snap.entries.data() + beg;
+                const size_t count = end - beg;
+
+                Vec3 steering = scalar::compute_separation(
+                    snap.positions[g],
+                    snap.headings[g],
+                    neighbors,
+                    count,
+                    snap.positions.data(),
+                    snap.headings.data(),
+                    radius,
+                    fov_cos);
 
 
-                // Apply strength mod
-                steering = steering * strength;
-
+                steering *= strength;
                 acc[i].value += steering;
             }
         }

@@ -15,20 +15,32 @@ namespace simnet::ecs {
         const float radius = cfg.cohesion_radius;
         const float fov_cos = cfg.cohesion_fov_cos;
 
-        if (weight <= 0.0f) return;
+        // Early return when the rule is turned off or ineffective
+        if (weight <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
+            return;
+        }
+
+        const NeighborSnapshot &snap = it.world().get<NeighborSnapshot>();
 
         while (it.next()) {
-            auto hd = it.field<const Heading>(0);
-            auto nl = it.field<const NeighborList>(1);
-            auto acc = it.field<SteeringAccumulate>(2);
-            auto pos = it.field<const Position>(3);
+            auto idx = it.field<const BoidIdx>(0);
+            auto acc = it.field<SteeringAccumulate>(1);
 
-            for (int64_t i = 0; i < it.count(); ++i) {
+            for (size_t i = 0; i < it.count(); ++i) {
+                const uint32_t g = idx[i].index;
+                const size_t beg = snap.offsets[g];
+                const size_t end = snap.offsets[g + 1];
+
+                const uint32_t *neighbors = snap.entries.data() + beg;
+                const size_t count = end - beg;
+
                 Vec3 steering = scalar::compute_cohesion(
-                    hd[i].value,
-                    i,
-                    nl[i].indices,
-                    &pos[0],
+                    snap.positions[g],
+                    snap.headings[g],
+                    neighbors,
+                    count,
+                    snap.positions.data(),
+                    snap.headings.data(),
                     radius,
                     fov_cos);
 

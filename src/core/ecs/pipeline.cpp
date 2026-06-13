@@ -1,5 +1,6 @@
 #include "pipeline.hpp"
 
+#include <memory>
 #include "components.hpp"
 #include "systems/system_functions.hpp"
 
@@ -11,6 +12,7 @@ namespace simnet::ecs {
     void init_simulation(flecs::world &world)
     {
         register_components(world);
+
 
         s_sim_prepare = world.entity("SimPrepare")
                 .add(flecs::Phase);
@@ -34,33 +36,28 @@ namespace simnet::ecs {
                 .multi_threaded(true)
                 .run(align_heading_system);
 
-        auto build_caches = world.system<>("BuildCaches")
-                .kind(s_sim_prepare)
-                .multi_threaded(false) // Writes to singletons
-                .run(build_caches_system);
-
-        auto neighbor_cache = world.system<const Position, NeighborList>("NeighborCache")
+        auto build_snapshot = world.system<const Position, const Heading>("BuildNeighborSnapshot")
                 .with<Boid>()
                 .kind(s_sim_prepare)
                 .multi_threaded(false)
-                .run(neighbor_cache_system);
+                .run(build_neighbor_snapshot_system);
 
         // --- Compute Phase ---
-        auto alignment = world.system<const Heading, const NeighborList, SteeringAccumulate, const Position>(
+        auto alignment = world.system<const BoidIdx, SteeringAccumulate>(
                     "Alignment")
                 .with<Boid>()
                 .kind(s_sim_compute)
                 .multi_threaded(true)
                 .run(alignment_system);
 
-        auto cohesion = world.system<const Heading, const NeighborList, SteeringAccumulate, const Position>(
+        auto cohesion = world.system<const BoidIdx, SteeringAccumulate>(
                     "Cohesion")
                 .with<Boid>()
                 .kind(s_sim_compute)
                 .multi_threaded(true)
                 .run(cohesion_system);
 
-        auto separation = world.system<const Heading, const NeighborList, SteeringAccumulate, const Position>(
+        auto separation = world.system<const BoidIdx, SteeringAccumulate>(
                     "Separation")
                 .with<Boid>()
                 .kind(s_sim_compute)
@@ -87,10 +84,11 @@ namespace simnet::ecs {
 #ifdef TELEMETRY_ENABLED
         auto flock_statistics = world.system<const Position, const Velocity, const Heading, const
                     SteeringAccumulate,
-                    const NeighborList>("FlockStatistics")
+                    const BoidIdx>("FlockStatistics")
                 .with<Boid>()
                 .kind(s_sim_apply)
                 .multi_threaded(false) // Writes to singleton
+                .rate(60) // run every 60th tic
                 .run(flock_statistics_system);
 
         flock_statistics.depends_on(integrate_position);
