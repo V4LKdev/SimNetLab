@@ -9,18 +9,15 @@
 #include "assets/font_jetbrains.h"
 
 namespace simnet::client {
-    Renderer::Renderer(int width, int height, std::string_view title, const flecs::world &world)
+    Renderer::Renderer(const int width, const int height, const std::string_view title, const flecs::world &world)
         : world_(world),
           width_(width),
           height_(height),
+          camera_distance_(0),
+          camera_yaw_(0),
+          camera_pitch_(0),
           camera_(init_camera())
     {
-#ifdef NDEBUG
-        SetTraceLogLevel(LOG_TRACE);
-#else
-        SetTraceLogLevel(LOG_ERROR);
-#endif
-
         int flags = FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE;
 
         // SetConfigFlags(flags);
@@ -28,9 +25,10 @@ namespace simnet::client {
         SetExitKey(0);
 
         InitWindow(width_, height_, title.data());
+        // Fatal issue with raylib
         if (!IsWindowReady()) {
-            TraceLog(LOG_ERROR, "Unable to initialize OpenGL context");
-            return;
+            TELEM_LOG_ERROR("Fatal: unable to initialise OpenGL window");
+            std::abort();
         }
 
         font_ = load_jetbrains_font();
@@ -63,15 +61,7 @@ namespace simnet::client {
                     BLUE
                 );
 
-                // 2. Draw the transparent wireframe influence radius
-                // Replace config::NEIGHBOR_RADIUS with your actual radius variable name
-                // DrawSphereWires(
-                //     {position.value.x, position.value.y, position.value.z},
-                //     150.f,
-                //     16, // Number of rings (smoothness)
-                //     16, // Number of slices (smoothness)
-                //     Fade(BLUE, 0.2f) // Fades the color to 20% opacity
-                // );
+                // TODO: Debug visualisation for boid heading and radius and vision.
             });
 
         DrawCubeWires(
@@ -92,24 +82,26 @@ namespace simnet::client {
 
     void Renderer::update_cam()
     {
+        TELEM_TRACY_ZONE("UpdateCam");
+
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-            Vector2 md = GetMouseDelta();
+            const Vector2 md = GetMouseDelta();
             camera_yaw_ -= md.x * cam_orbit_sensitivity_deg_ * DEG2RAD;
             camera_pitch_ += md.y * cam_orbit_sensitivity_deg_ * DEG2RAD;
 
-            const float maxPitch = 89.0f * DEG2RAD;
+            constexpr float maxPitch = 89.0f * DEG2RAD;
             if (camera_pitch_ > maxPitch) camera_pitch_ = maxPitch;
             if (camera_pitch_ < -maxPitch) camera_pitch_ = -maxPitch;
         }
 
-        float wheel = GetMouseWheelMove();
+        const float wheel = GetMouseWheelMove();
         if (wheel != 0.0f) {
             camera_distance_ -= wheel * cam_zoom_sensitivity_;
             if (camera_distance_ < cam_min_distance_) camera_distance_ = cam_min_distance_;
             if (camera_distance_ > cam_max_distance_) camera_distance_ = cam_max_distance_;
         }
 
-        float cosPitch = cosf(camera_pitch_);
+        const float cosPitch = cosf(camera_pitch_);
         camera_.position.x = camera_.target.x + camera_distance_ * cosPitch * sinf(camera_yaw_);
         camera_.position.y = camera_.target.y + camera_distance_ * sinf(camera_pitch_);
         camera_.position.z = camera_.target.z + camera_distance_ * cosPitch * cosf(camera_yaw_);
@@ -127,7 +119,7 @@ namespace simnet::client {
     {
         Camera3D cam = {0};
 
-        const float scaledCamDist = config::WORLD_HALF * 2.f + 20.f;
+        constexpr float scaledCamDist = config::WORLD_HALF * 2.f + 20.f;
 
         cam.position = (Vector3){scaledCamDist, scaledCamDist, scaledCamDist};
         cam.target = (Vector3){0.0f, 0.0f, 0.0f};
@@ -135,9 +127,9 @@ namespace simnet::client {
         cam.fovy = 45.0f;
         cam.projection = CAMERA_PERSPECTIVE;
 
-        float dx = cam.position.x - cam.target.x;
-        float dy = cam.position.y - cam.target.y;
-        float dz = cam.position.z - cam.target.z;
+        const float dx = cam.position.x - cam.target.x;
+        const float dy = cam.position.y - cam.target.y;
+        const float dz = cam.position.z - cam.target.z;
         camera_distance_ = sqrtf(dx * dx + dy * dy + dz * dz);
 
         camera_yaw_ = atan2f(dx, dz);
@@ -158,7 +150,7 @@ namespace simnet::client {
         );
     }
 
-    void Renderer::text(const char *text, Vector2 position, float size, Color tint) const
+    void Renderer::text(const char *text, const Vector2 position, const float size, const Color tint) const
     {
         DrawTextEx(
             font_,

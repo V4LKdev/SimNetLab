@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <string_view>
 
 // -----------------------------------------------------------------------
@@ -42,6 +41,9 @@ namespace simnet::telemetry {
 #define TELEM_TRACY_ZONE(name)
 #define TELEM_TRACY_PLOT(name, val)
 #define TELEM_TRACY_FRAME(name)
+#define TELEM_TRACY_MESSAGE(txt, size)
+#define TELEM_TRACY_ALLOC(ptr, size)
+#define TELEM_TRACY_FREE(ptr)
 #endif
 
 // --------------- Logging ---------------
@@ -75,6 +77,5 @@ namespace simnet::telemetry {
 #define TELEM_LOG_INFO(...)
 #define TELEM_LOG_WARN(...)
 #define TELEM_LOG_ERROR(...)
-#define TELEM_VALIDATE_STEERING(pos, vel, out, count, cfg)
 
 #endif
