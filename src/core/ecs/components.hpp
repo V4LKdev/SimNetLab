@@ -6,49 +6,46 @@
 
 namespace simnet::ecs {
     // --- Boid Components ---
+    /// 3D position of a entity.
     struct Position {
         Vec3 value;
     };
 
+    /// 3D velocity vector of an entity.
     struct Velocity {
         Vec3 value;
     };
 
+    /// Normalized forward direction. Defaults to +X or the last non-zero velocity.
     struct Heading {
-        Vec3 value = {1.0f, 0.0f, 0.0f}; // last non-zero forward
+        Vec3 value = {1.0f, 0.0f, 0.0f};
     };
 
+    /// Accumulated steering force for this tick.
     struct SteeringAccumulate {
         Vec3 value{};
     };
 
+    /// Temporary list of neighboring entities, rebuilt each frame.
     struct NeighborList {
         std::vector<uint32_t> indices;
     };
 
-    // --- Caches ---
-    struct PositionCache {
-        std::vector<Vec3> positions;
-    };
-
-    struct VelocityCache {
-        std::vector<Vec3> velocities;
-    };
-
-
     // --- Tags ---
+    /// Marking entities that participate in flocking.
     struct Boid {
     };
 
     // --- Global Configuration ---
+    /// Singleton holding flock-level tuning parameters.
     struct BoidConfig {
         float max_speed = 10.0f;
         // fraction of max speed
         float max_accel_frac = 3.0f;
 
-        float separation_strength = 12.0f; // 12
-        float alignment_strength = 8.0f; // 8
-        float cohesion_strength = 8.0f; // 8
+        float separation_strength = 12.0f;
+        float alignment_strength = 8.0f;
+        float cohesion_strength = 8.0f;
 
         float separation_radius = 5.0f;
         float alignment_radius = 7.5f;
@@ -60,6 +57,7 @@ namespace simnet::ecs {
     };
 
     // --- Telemetry Singletons ---
+    /// Singleton updated each frame with aggregate flock statistics.
     struct FlockStats {
         float avg_speed = 0.0f;
         float avg_steer = 0.0f;
@@ -81,13 +79,8 @@ namespace simnet::ecs {
         world.component<NeighborList>();
 
         // Singletons
-        // world.component<PositionCache>();
-        // world.component<VelocityCache>();
-        world.component<BoidConfig>();
-        world.component<FlockStats>();
-
-        // world.set<PositionCache>({});
-        // world.set<VelocityCache>({});
+        world.component<BoidConfig>().add(flecs::Singleton);
+        world.component<FlockStats>().add(flecs::Singleton);
         world.set<BoidConfig>({});
         world.set<FlockStats>({});
     }

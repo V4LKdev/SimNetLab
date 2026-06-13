@@ -34,7 +34,7 @@ namespace simnet::ecs {
                 auto &neighbors = nl[i].indices;
                 neighbors.clear();
 
-                // TODO: extract out again
+                // TODO: extract out again to regain the seam for alternative SIMD and spatial partitioning functions later
                 const uint64_t total = it.count(); // number of boids in this chunk
                 for (uint64_t j = 0; j < total; ++j) {
                     if (j == i) continue;

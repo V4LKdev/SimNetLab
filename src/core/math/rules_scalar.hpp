@@ -1,8 +1,7 @@
 #pragma once
-#include <cstdint>
 #include <ranges>
 #include <vector>
-
+#include "ecs/components.hpp"
 #include "config.hpp"
 #include "vec3.hpp"
 

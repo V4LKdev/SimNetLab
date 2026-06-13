@@ -26,8 +26,6 @@ namespace simnet::core {
          */
         int update()
         {
-            TELEM_TRACY_ZONE("ControllerUpdate");
-
             const std::chrono::time_point now = Clock::now();
             const std::chrono::nanoseconds elapsed = now - last_time_;
             last_time_ = now;

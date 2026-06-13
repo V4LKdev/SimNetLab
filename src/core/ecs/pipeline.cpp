@@ -34,18 +34,16 @@ namespace simnet::ecs {
                 .multi_threaded(true)
                 .run(align_heading_system);
 
-        // auto build_caches = world.system("BuildCaches")
-        //         .kind(s_sim_prepare)
-        //         .multi_threaded(false) // Writes to singletons
-        //         .run(build_caches_system);
+        auto build_caches = world.system<>("BuildCaches")
+                .kind(s_sim_prepare)
+                .multi_threaded(false) // Writes to singletons
+                .run(build_caches_system);
 
         auto neighbor_cache = world.system<const Position, NeighborList>("NeighborCache")
                 .with<Boid>()
                 .kind(s_sim_prepare)
-                .multi_threaded(true)
+                .multi_threaded(false)
                 .run(neighbor_cache_system);
-
-        // neighbor_cache.depends_on(build_caches);
 
         // --- Compute Phase ---
         auto alignment = world.system<const Heading, const NeighborList, SteeringAccumulate, const Position>(
@@ -83,14 +81,21 @@ namespace simnet::ecs {
                 .multi_threaded(true)
                 .run(integrate_position_system);
 
-        auto flock_statistics = world.system<const Position, const Velocity, const Heading, const SteeringAccumulate,
+        integrate_position.depends_on(apply_steering);
+
+
+#ifdef TELEMETRY_ENABLED
+        auto flock_statistics = world.system<const Position, const Velocity, const Heading, const
+                    SteeringAccumulate,
                     const NeighborList>("FlockStatistics")
                 .with<Boid>()
                 .kind(s_sim_apply)
                 .multi_threaded(false) // Writes to singleton
                 .run(flock_statistics_system);
 
-        integrate_position.depends_on(apply_steering);
+        flock_statistics.depends_on(integrate_position);
+
+#endif
     }
 
     void run_tick(flecs::world &world, float dt)
