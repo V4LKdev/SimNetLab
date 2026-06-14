@@ -20,5 +20,6 @@ if (SIMD_ENABLED)
 endif ()
 
 add_subdirectory(src/core)
+add_subdirectory(src/network)
 add_subdirectory(src/server)
 add_subdirectory(src/client)

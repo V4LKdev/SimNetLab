@@ -2,6 +2,7 @@
 #include <csignal>
 
 #include "controller.hpp"
+#include "network_client.hpp"
 #include "renderer.hpp"
 #include "simulation.hpp"
 #include "telemetry.hpp"
@@ -19,28 +20,46 @@ namespace {
 
 int main()
 {
+    // --- signals and telemetry ---
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
     simnet::telemetry::init("SimNetLab_Client", "log/client_telemetry.log");
 
+    // --- network handshake ---
+    simnet::client::network_client net;
+    if (!net.connect("127.0.0.1", 7777)) {
+        TELEM_LOG_ERROR("Fatal: Failed to establish network connection");
+        simnet::telemetry::shutdown();
+        return EXIT_FAILURE;
+    }
+
+    // --- local simulation and rendering ---
     simnet::sim::Simulation sim;
     simnet::core::TimestepController controller(sim);
 
     simnet::client::Renderer renderer(1920, 1080, "SimNetLab_Client", sim.world());
 
+    // --- main loop ---
     while (g_running && renderer.is_running()) {
         TELEM_TRACY_ZONE("ClientFrame");
 
+        // 1. process network events (non-blocking)
+        net.service();
+
+        // 2. fixed-step simulation update
         // Currently unused, kept as documentation of the available sim to render API
         const int steps = controller.update();
         const double alpha = controller.get_interpolation_alpha();
         const auto tick = sim.current_tick();
 
+        // 3. render
         renderer.render();
         TELEM_TRACY_FRAME("ClientFrame");
     }
 
+    // --- shutdown ---
+    net.disconnect(); // blocking
     simnet::telemetry::shutdown();
     return 0;
 }

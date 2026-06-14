@@ -1,6 +1,7 @@
 add_executable(client
         main.cpp
         renderer.cpp
+        network_client.cpp
 )
 
 find_package(raylib REQUIRED)
