@@ -25,6 +25,7 @@ namespace simnet::client {
         // SetConfigFlags(flags);
         SetTargetFPS(0);
         SetExitKey(0);
+        SetTraceLogLevel(LOG_WARNING);
 
         InitWindow(width_, height_, title.data());
         // Fatal issue with raylib

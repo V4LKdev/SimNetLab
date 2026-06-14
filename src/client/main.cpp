@@ -28,11 +28,8 @@ int main()
 
     // --- network handshake ---
     simnet::client::network_client net;
-    if (!net.connect("127.0.0.1", 7777)) {
-        TELEM_LOG_ERROR("Fatal: Failed to establish network connection");
-        simnet::telemetry::shutdown();
-        return EXIT_FAILURE;
-    }
+
+    net.start_connect("127.0.0.1", 7777);
 
     // --- local simulation and rendering ---
     simnet::sim::Simulation sim;
@@ -59,7 +56,6 @@ int main()
     }
 
     // --- shutdown ---
-    net.disconnect(); // blocking
     simnet::telemetry::shutdown();
     return 0;
 }

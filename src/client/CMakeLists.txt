@@ -9,4 +9,5 @@ find_package(raylib REQUIRED)
 target_link_libraries(client
         PRIVATE core
         PRIVATE raylib
+        PRIVATE network_protocol
 )
