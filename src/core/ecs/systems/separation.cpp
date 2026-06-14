@@ -16,14 +16,14 @@ namespace simnet::ecs {
         const float radius = cfg.separation_radius;
         const float fov_cos = cfg.separation_fov_cos;
 
-        // Early return when the rule is turned off
-        if (strength <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
-            return;
-        }
-
         const NeighborSnapshot &snap = it.world().get<NeighborSnapshot>();
 
         while (it.next()) {
+            // Early return when the rule is turned off (Has to be done in iterator to prevent leak)
+            if (strength <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
+                continue;
+            }
+
             auto idx = it.field<const BoidIdx>(0);
             auto acc = it.field<SteeringAccumulate>(1);
 

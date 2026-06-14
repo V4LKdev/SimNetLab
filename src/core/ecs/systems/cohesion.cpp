@@ -15,14 +15,14 @@ namespace simnet::ecs {
         const float radius = cfg.cohesion_radius;
         const float fov_cos = cfg.cohesion_fov_cos;
 
-        // Early return when the rule is turned off or ineffective
-        if (weight <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
-            return;
-        }
-
         const NeighborSnapshot &snap = it.world().get<NeighborSnapshot>();
 
         while (it.next()) {
+            // Early return when the rule is turned off or ineffective
+            if (weight <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
+                continue;
+            }
+
             auto idx = it.field<const BoidIdx>(0);
             auto acc = it.field<SteeringAccumulate>(1);
 

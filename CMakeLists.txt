@@ -23,3 +23,6 @@ add_subdirectory(src/core)
 add_subdirectory(src/network)
 add_subdirectory(src/server)
 add_subdirectory(src/client)
+
+enable_testing()
+add_subdirectory(tests)

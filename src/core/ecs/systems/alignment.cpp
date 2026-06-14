@@ -15,13 +15,13 @@ namespace simnet::ecs {
         const float radius = cfg.alignment_radius;
         const float fov_cos = cfg.alignment_fov_cos;
 
-        if (weight <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
-            return;
-        }
-
         const NeighborSnapshot &snap = it.world().get<NeighborSnapshot>();
 
         while (it.next()) {
+            if (weight <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
+                continue;
+            }
+
             auto idx = it.field<const BoidIdx>(0);
             auto acc = it.field<SteeringAccumulate>(1);
 
