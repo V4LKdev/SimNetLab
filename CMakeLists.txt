@@ -10,14 +10,8 @@ option(TELEMETRY_ENABLED "Build with telemetry, diagnostics, and benchmarking li
 option(SIMD_ENABLED "Build with optional SIMD library" OFF)
 
 # Include targets
-
-if (TELEMETRY_ENABLED)
-    add_subdirectory(src/telemetry)
-endif ()
-
-if (SIMD_ENABLED)
-    add_subdirectory(src/simd)
-endif ()
+add_subdirectory(src/telemetry)
+add_subdirectory(src/simd)
 
 add_subdirectory(src/core)
 add_subdirectory(src/network)

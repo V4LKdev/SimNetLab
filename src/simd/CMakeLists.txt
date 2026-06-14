@@ -1,11 +1,12 @@
-add_library(simd STATIC
-
-)
-
-target_include_directories(simd PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-
-find_package(HWY CONFIG REQUIRED)
-
-target_link_libraries(simd
-        PUBLIC hwy
-)
+if (SIMD_ENABLED)
+    add_library(simd STATIC
+            # future sources…
+    )
+    find_package(hwy CONFIG REQUIRED)
+    target_link_libraries(simd PUBLIC hwy::hwy)
+    target_compile_definitions(simd PUBLIC SIMD_ENABLED=1)
+    target_include_directories(simd PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+else ()
+    add_library(simd INTERFACE)
+    target_include_directories(simd INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+endif ()
