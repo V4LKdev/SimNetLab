@@ -71,6 +71,8 @@ namespace simnet::ecs {
                            "minDist={:4.1f} polar={:.2f}",
                            count, stats.avg_speed, stats.avg_steer, stats.avg_neighbors,
                            stats.min_nbr_dist, stats.polarisation);
+
+            TELEM_TRACY_PLOT("EntityCount", static_cast<int64_t>(count));
         }
     }
 }

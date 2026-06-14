@@ -20,3 +20,8 @@ https://www.red3d.com/cwr/papers/1987/boids.html
 
 SIMD
 https://ieeexplore.ieee.org/document/8514394
+
+
+
+Random:
+https://en.cppreference.com/cpp/language/raii

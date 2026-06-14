@@ -110,7 +110,7 @@ namespace simnet::client {
     }
 
 
-    bool Renderer::is_running()
+    bool Renderer::is_running() const
     {
         return !WindowShouldClose();
     }

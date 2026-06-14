@@ -14,6 +14,14 @@ namespace simnet::sim {
 
         ~Simulation();
 
+        Simulation(const Simulation &) = delete;
+
+        Simulation &operator=(const Simulation &) = delete;
+
+        Simulation(Simulation &&) = delete;
+
+        Simulation &operator=(Simulation &&) = delete;
+
         /// Run one simulation tick.
         void step();
 

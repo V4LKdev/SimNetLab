@@ -7,12 +7,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(TELEMETRY_ENABLED "Build with telemetry, diagnostics, and benchmarking library" ON)
+option(SIMD_ENABLED "Build with optional SIMD library" OFF)
+
+# Include targets
 
 if (TELEMETRY_ENABLED)
     add_subdirectory(src/telemetry)
 endif ()
 
-# Include targets
+if (SIMD_ENABLED)
+    add_subdirectory(src/simd)
+endif ()
+
 add_subdirectory(src/core)
 add_subdirectory(src/server)
 add_subdirectory(src/client)

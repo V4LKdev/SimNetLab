@@ -1,8 +1,9 @@
 #include <atomic>
 #include <csignal>
 
-#include "../core/controller.hpp"
+#include "controller.hpp"
 #include "renderer.hpp"
+#include "simulation.hpp"
 #include "telemetry.hpp"
 
 

@@ -27,7 +27,7 @@ namespace simnet::client {
         void render();
 
         /// True while the raylib window is open.
-        bool is_running();
+        bool is_running() const;
 
     private:
         Camera3D init_camera();
