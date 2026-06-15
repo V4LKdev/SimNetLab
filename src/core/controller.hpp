@@ -1,7 +1,7 @@
 #pragma once
 #include <chrono>
 
-#include "SimConfig.hpp"
+#include "config/SimConfig.hpp"
 #include "simulation.hpp"
 #include "telemetry.hpp"
 

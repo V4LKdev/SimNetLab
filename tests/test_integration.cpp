@@ -5,7 +5,7 @@
 
 #include <flecs.h>
 
-#include "SimConfig.hpp"
+#include "../src/core/config/SimConfig.hpp"
 #include "ecs/components.hpp"
 #include "ecs/pipeline.hpp"
 #include "math/vec3.hpp"

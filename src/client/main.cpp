@@ -6,6 +6,7 @@
 #include "renderer.hpp"
 #include "simulation.hpp"
 #include "telemetry.hpp"
+#include "config/ConfigLoader.hpp"
 
 
 namespace {
@@ -26,13 +27,18 @@ int main()
 
     simnet::telemetry::init("SimNetLab_Client", "log/client_telemetry.log");
 
+    // --- configuration ---
+    simnet::SimConfig cfg = simnet::SimConfig::default_config();
+    if (!simnet::load_json("config/config.json", cfg)) {
+        TELEM_LOG_INFO("No config.json provided - using defaults");
+    }
+
+
     // --- network handshake ---
     simnet::client::network_client net;
-
     net.start_connect("127.0.0.1", 7777);
 
     // --- local simulation and rendering ---
-    simnet::SimConfig cfg = simnet::SimConfig::default_config();
     simnet::sim::Simulation sim(cfg);
     simnet::core::TimestepController controller(sim, cfg);
 

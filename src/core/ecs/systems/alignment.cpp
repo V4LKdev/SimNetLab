@@ -1,7 +1,7 @@
 
 #include <flecs.h>
 
-#include "SimConfig.hpp"
+#include "../../config/SimConfig.hpp"
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
 #include "math/rules_scalar.hpp"
@@ -19,7 +19,7 @@ namespace simnet::ecs {
         const NeighborSnapshot &snap = it.world().get<NeighborSnapshot>();
 
         while (it.next()) {
-            if (weight <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
+            if (!cfg.enable_alignment || weight <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
                 continue;
             }
 

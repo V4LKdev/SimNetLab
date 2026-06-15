@@ -1,7 +1,7 @@
 
 #include <flecs.h>
 
-#include "SimConfig.hpp"
+#include "../../config/SimConfig.hpp"
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
 #include "math/rules_scalar.hpp"
@@ -21,7 +21,7 @@ namespace simnet::ecs {
 
         while (it.next()) {
             // Early return when the rule is turned off (Has to be done in iterator to prevent leak)
-            if (strength <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
+            if (!cfg.enable_separation || strength <= 0.0f || radius <= 0.0f || fov_cos >= 1.0f) {
                 continue;
             }
 

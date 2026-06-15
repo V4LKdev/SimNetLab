@@ -1,7 +1,7 @@
 #include <flecs.h>
 #include <cassert>
 
-#include "SimConfig.hpp"
+#include "../../config/SimConfig.hpp"
 #include "ecs/components.hpp"
 #include "telemetry.hpp"
 

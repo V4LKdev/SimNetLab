@@ -1,7 +1,7 @@
 #pragma once
 #include <flecs.h>
 
-#include "SimConfig.hpp"
+#include "config/SimConfig.hpp"
 #include "ecs/components.hpp"
 
 namespace simnet::sim {

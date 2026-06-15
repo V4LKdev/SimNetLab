@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <string>
-#include <nlohmann/json.hpp>
 
 namespace simnet {
     /// Global simulation configuration
@@ -19,7 +18,7 @@ namespace simnet {
         double max_accum_sec = max_sim_steps / sim_hz;
 
         /// Returns the nominal tick duration in seconds
-        float dt_seconds() const { return 1.0 / static_cast<float>(sim_hz); }
+        float dt_seconds() const { return 1.0f / static_cast<float>(sim_hz); }
         /// Returns the nominal tick duration in nanoseconds (truncated)
         int64_t dt_ns() const { return 1'000'000'000 / sim_hz; }
         /// Maximum accumulated nanoseconds befor the accumulator is clamped

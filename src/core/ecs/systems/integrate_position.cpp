@@ -1,6 +1,6 @@
 #include <flecs.h>
 
-#include "SimConfig.hpp"
+#include "../../config/SimConfig.hpp"
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
 
