@@ -1,6 +1,6 @@
 #include <flecs.h>
 
-#include "config.hpp"
+#include "SimConfig.hpp"
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
 
@@ -21,13 +21,14 @@ namespace simnet::ecs {
         TELEM_TRACY_ZONE("Sim_IntegratePosition");
 
         const float dt = it.delta_time();
+        const SimConfig &cfg = it.world().get<SimConfig>();
 
         while (it.next()) {
             auto vel = it.field<const Velocity>(0);
             auto pos = it.field<Position>(1);
 
             for (size_t i: it) {
-                pos[i].value = integrate_position_scalar(pos[i].value, vel[i].value, dt).wrap(config::WORLD_HALF);
+                pos[i].value = integrate_position_scalar(pos[i].value, vel[i].value, dt).wrap(cfg.world_half);
             }
         }
     }

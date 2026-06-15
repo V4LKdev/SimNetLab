@@ -1,6 +1,7 @@
 
 #include <flecs.h>
 
+#include "SimConfig.hpp"
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
 #include "math/rules_scalar.hpp"
@@ -10,7 +11,7 @@ namespace simnet::ecs {
     {
         TELEM_TRACY_ZONE("Sim_Separation");
 
-        const BoidConfig &cfg = it.world().get<BoidConfig>();
+        const SimConfig &cfg = it.world().get<SimConfig>();
 
         const float strength = cfg.separation_strength;
         const float radius = cfg.separation_radius;
@@ -44,7 +45,8 @@ namespace simnet::ecs {
                     snap.positions.data(),
                     snap.headings.data(),
                     radius,
-                    fov_cos);
+                    fov_cos,
+                    cfg.world_half);
 
 
                 steering *= strength;

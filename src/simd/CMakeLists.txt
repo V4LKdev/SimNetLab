@@ -1,6 +1,5 @@
 if (SIMD_ENABLED)
     add_library(simd STATIC
-            # future sources…
     )
     find_package(hwy CONFIG REQUIRED)
     target_link_libraries(simd PUBLIC hwy::hwy)

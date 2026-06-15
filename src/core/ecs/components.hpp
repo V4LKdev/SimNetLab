@@ -36,26 +36,6 @@ namespace simnet::ecs {
     struct Boid {
     };
 
-    // --- Global Configuration ---
-    /// Singleton holding flock-level tuning parameters.
-    struct BoidConfig {
-        float max_speed = 10.0f;
-        // fraction of max speed
-        float max_accel_frac = 3.0f;
-
-        float separation_strength = 12.0f;
-        float alignment_strength = 8.0f;
-        float cohesion_strength = 8.0f;
-
-        float separation_radius = 5.0f;
-        float alignment_radius = 7.5f;
-        float cohesion_radius = 9.0f;
-
-        float separation_fov_cos = -0.707f; // ~135deg
-        float alignment_fov_cos = 0.7f; // ~45deg
-        float cohesion_fov_cos = 0.15f; // ~100deg
-    };
-
     // --- Telemetry Singletons ---
     /// Singleton updated each frame with aggregate flock statistics.
     struct FlockStats {
@@ -86,10 +66,8 @@ namespace simnet::ecs {
         world.component<Boid>();
 
         // Singletons
-        world.component<BoidConfig>().add(flecs::Singleton);
         world.component<FlockStats>().add(flecs::Singleton);
         world.component<NeighborSnapshot>().add(flecs::Singleton);
-        world.set<BoidConfig>({});
         world.set<FlockStats>({});
         world.set<NeighborSnapshot>({});
     }

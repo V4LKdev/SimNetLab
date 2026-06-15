@@ -1,6 +1,7 @@
 #pragma once
 #include <flecs.h>
 
+#include "SimConfig.hpp"
 #include "ecs/components.hpp"
 
 namespace simnet::sim {
@@ -10,7 +11,7 @@ namespace simnet::sim {
      */
     class Simulation {
     public:
-        Simulation();
+        Simulation(const SimConfig &cfg);
 
         ~Simulation();
 
@@ -39,5 +40,6 @@ namespace simnet::sim {
 
         flecs::world world_;
         uint64_t tick_ = 0;
+        const SimConfig *cfg_ = nullptr;
     };
 }

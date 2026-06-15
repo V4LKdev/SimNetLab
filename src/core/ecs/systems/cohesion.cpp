@@ -1,6 +1,7 @@
 
 #include <flecs.h>
 
+#include "SimConfig.hpp"
 #include "telemetry.hpp"
 #include "ecs/components.hpp"
 #include "math/rules_scalar.hpp"
@@ -10,7 +11,7 @@ namespace simnet::ecs {
     {
         TELEM_TRACY_ZONE("Sim_Cohesion");
 
-        const BoidConfig &cfg = it.world().get<BoidConfig>();
+        const SimConfig &cfg = it.world().get<SimConfig>();
         const float weight = cfg.cohesion_strength;
         const float radius = cfg.cohesion_radius;
         const float fov_cos = cfg.cohesion_fov_cos;
@@ -42,7 +43,8 @@ namespace simnet::ecs {
                     snap.positions.data(),
                     snap.headings.data(),
                     radius,
-                    fov_cos);
+                    fov_cos,
+                    cfg.world_half);
 
                 steering *= weight;
                 acc[i].value += steering;

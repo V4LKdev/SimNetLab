@@ -38,7 +38,8 @@ namespace {
 // compute_alignment
 TEST_CASE("Alignment: zero neighbours", "[alignment]")
 {
-    reset_data(); // <-- ADD THIS
+    reset_data();
+    const float world_half = 50.f;
     const Vec3 self_pos{0, 0, 0};
     const Vec3 self_heading{1, 0, 0};
 
@@ -47,7 +48,8 @@ TEST_CASE("Alignment: zero neighbours", "[alignment]")
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         10.0f,
-        -0.5f
+        -0.5f,
+        world_half
     );
 
     REQUIRE(vec3_approx(result, Vec3::zero()));
@@ -57,6 +59,7 @@ TEST_CASE("Alignment: zero neighbours", "[alignment]")
 TEST_CASE("Alignment: single neighbour with identical heading", "[alignment]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({2.0f, 0.0f, 0.0f}); // index 0
     headings.push_back({1.0f, 0.0f, 0.0f}); // same heading
     neighbor_indices = {0};
@@ -69,7 +72,7 @@ TEST_CASE("Alignment: single neighbour with identical heading", "[alignment]")
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         10.0f,
-        -0.5f
+        -0.5f, world_half
     );
 
     // Average heading = self heading => difference zero
@@ -79,6 +82,7 @@ TEST_CASE("Alignment: single neighbour with identical heading", "[alignment]")
 TEST_CASE("Alignment: single neighbour facing opposite", "[alignment]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({2.0f, 0.0f, 0.0f});
     headings.push_back({-1.0f, 0.0f, 0.0f});
     neighbor_indices = {0};
@@ -90,7 +94,7 @@ TEST_CASE("Alignment: single neighbour facing opposite", "[alignment]")
         self_pos, self_heading,
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
-        10.0f, -0.5f
+        10.0f, -0.5f, world_half
     );
 
     // Avg heading = (1 + -1)/2 = 0 => steering = -self_heading normalized = (-1,0,0)
@@ -101,6 +105,7 @@ TEST_CASE("Alignment: single neighbour facing opposite", "[alignment]")
 TEST_CASE("Alignment: two neighbours, one aligned, one orthogonal", "[alignment]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({1.0f, 0.0f, 0.0f}); // index 0
     headings.push_back({1.0f, 0.0f, 0.0f}); // aligned
     positions.push_back({0.0f, 1.0f, 0.0f}); // index 1
@@ -114,7 +119,7 @@ TEST_CASE("Alignment: two neighbours, one aligned, one orthogonal", "[alignment]
         self_pos, self_heading,
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
-        10.0f, -0.5f
+        10.0f, -0.5f, world_half
     );
 
     // Avg heading = (1+0, 0+1, 0) = (1,1,0) / 2 => (0.5,0.5,0)
@@ -127,6 +132,7 @@ TEST_CASE("Alignment: two neighbours, one aligned, one orthogonal", "[alignment]
 TEST_CASE("Alignment: neighbour outside radius is ignored", "[alignment]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({100.0f, 0.0f, 0.0f}); // far outside radius 5
     headings.push_back({0.0f, 1.0f, 0.0f}); // irrelevant
     neighbor_indices = {0};
@@ -139,7 +145,7 @@ TEST_CASE("Alignment: neighbour outside radius is ignored", "[alignment]")
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         5.0f,
-        -0.5f
+        -0.5f, world_half
     );
 
     // filtered => no neighbours => zero
@@ -149,6 +155,7 @@ TEST_CASE("Alignment: neighbour outside radius is ignored", "[alignment]")
 // compute_cohesion
 TEST_CASE("Cohesion: zero neighbours", "[cohesion]")
 {
+    const float world_half = 50.f;
     const Vec3 self_pos{0, 0, 0};
     const Vec3 self_heading{1, 0, 0};
 
@@ -157,7 +164,7 @@ TEST_CASE("Cohesion: zero neighbours", "[cohesion]")
         nullptr, 0,
         positions.data(), headings.data(),
         10.0f,
-        -0.5f
+        -0.5f, world_half
     );
 
     REQUIRE(vec3_approx(result, Vec3::zero()));
@@ -166,6 +173,7 @@ TEST_CASE("Cohesion: zero neighbours", "[cohesion]")
 TEST_CASE("Cohesion: one neighbour → steer towards it", "[cohesion]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({3.0f, 0.0f, 0.0f}); // neighbour to the right
     headings.push_back({0, 0, 0}); // unused
     neighbor_indices = {0};
@@ -178,7 +186,8 @@ TEST_CASE("Cohesion: one neighbour → steer towards it", "[cohesion]")
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         10.0f,
-        -0.5f
+        -0.5f,
+        world_half
     );
 
     // The function sums self_pos + delta for each neighbour, i.e., nb_pos
@@ -190,6 +199,7 @@ TEST_CASE("Cohesion: one neighbour → steer towards it", "[cohesion]")
 TEST_CASE("Cohesion: two symmetric neighbours → zero", "[cohesion]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({2.0f, 0.0f, 0.0f}); // +X
     positions.push_back({-2.0f, 0.0f, 0.0f}); // -X
     headings = {{0, 0, 0}, {0, 0, 0}};
@@ -202,7 +212,7 @@ TEST_CASE("Cohesion: two symmetric neighbours → zero", "[cohesion]")
         self_pos, self_heading,
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
-        10.0f, -0.5f
+        10.0f, -0.5f, world_half
     );
 
     REQUIRE(vec3_approx(result, Vec3::zero()));
@@ -211,6 +221,7 @@ TEST_CASE("Cohesion: two symmetric neighbours → zero", "[cohesion]")
 TEST_CASE("Cohesion: two neighbours on same side", "[cohesion]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({1.0f, 0.0f, 0.0f}); // near
     positions.push_back({3.0f, 0.0f, 0.0f}); // far
     headings = {{0, 0, 0}, {0, 0, 0}};
@@ -223,7 +234,7 @@ TEST_CASE("Cohesion: two neighbours on same side", "[cohesion]")
         self_pos, self_heading,
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
-        10.0f, -0.5f
+        10.0f, -0.5f, world_half
     );
 
     // Sum = self+(1,0,0) + self+(3,0,0) = (4,0,0) -> avg = (2,0,0)
@@ -235,6 +246,7 @@ TEST_CASE("Cohesion: two neighbours on same side", "[cohesion]")
 // compute_separation
 TEST_CASE("Separation: zero neighbours", "[separation]")
 {
+    const float world_half = 50.f;
     const Vec3 self_pos{0, 0, 0};
     const Vec3 self_heading{1, 0, 0};
 
@@ -242,7 +254,8 @@ TEST_CASE("Separation: zero neighbours", "[separation]")
         self_pos, self_heading,
         nullptr, 0,
         positions.data(), headings.data(),
-        10.0f, -0.5f
+        10.0f, -0.5f,
+        world_half
     );
 
     REQUIRE(vec3_approx(result, Vec3::zero()));
@@ -251,6 +264,7 @@ TEST_CASE("Separation: zero neighbours", "[separation]")
 TEST_CASE("Separation: very close neighbour → push away", "[separation]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({0.1f, 0.0f, 0.0f}); // very close
     headings.push_back({0, 0, 0}); // unused
     neighbor_indices = {0};
@@ -263,7 +277,8 @@ TEST_CASE("Separation: very close neighbour → push away", "[separation]")
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         10.0f,
-        -1.0f
+        -1.0f,
+        world_half
     );
 
     // to_neighbour = (0.1,0,0), d_sq = 0.01
@@ -276,6 +291,7 @@ TEST_CASE("Separation: very close neighbour → push away", "[separation]")
 TEST_CASE("Separation: neighbour beyond radius is ignored", "[separation]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({50.0f, 0.0f, 0.0f}); // far
     headings.push_back({0, 0, 0});
     neighbor_indices = {0};
@@ -288,7 +304,8 @@ TEST_CASE("Separation: neighbour beyond radius is ignored", "[separation]")
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         5.0f,
-        -1.0f
+        -1.0f,
+        world_half
     );
 
     // filtered => zero
@@ -298,6 +315,7 @@ TEST_CASE("Separation: neighbour beyond radius is ignored", "[separation]")
 TEST_CASE("Separation: two opposite neighbours cancel", "[separation]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({1.0f, 0.0f, 0.0f});
     positions.push_back({-1.0f, 0.0f, 0.0f});
     headings = {{0, 0, 0}, {0, 0, 0}};
@@ -310,7 +328,7 @@ TEST_CASE("Separation: two opposite neighbours cancel", "[separation]")
         self_pos, self_heading,
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
-        10.0f, -1.0f
+        10.0f, -1.0f, world_half
     );
 
     // contributions: right push left (-1,0,0), left push right (1,0,0) => sum zero
@@ -320,6 +338,7 @@ TEST_CASE("Separation: two opposite neighbours cancel", "[separation]")
 TEST_CASE("Separation: two neighbours, one closer → stronger push", "[separation]")
 {
     reset_data();
+    const float world_half = 50.f;
     // close neighbour at (0.2, 0, 0): d_sq = 0.04, contribution = (0.2 / -0.04) = (-5, 0, 0)
     // far neighbour at (1.0, 0, 0):   d_sq = 1.0, contribution = (1.0 / -1.0) = (-1, 0, 0)
     positions.push_back({0.2f, 0.0f, 0.0f});
@@ -334,7 +353,7 @@ TEST_CASE("Separation: two neighbours, one closer → stronger push", "[separati
         self_pos, self_heading,
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
-        10.0f, -1.0f
+        10.0f, -1.0f, world_half
     );
 
     // sum = (-5,0,0) + (-1,0,0) = (-6,0,0) -> normalized = (-1,0,0)
@@ -417,6 +436,7 @@ TEST_CASE("ApplySteering: both accel and speed clamped", "[steering]")
 TEST_CASE("Alignment: self heading zero → all neighbours filtered", "[alignment]")
 {
     reset_data();
+    const float world_half = 50.f;
     positions.push_back({2.0f, 0.0f, 0.0f});
     headings.push_back({1.0f, 0.0f, 0.0f});
     neighbor_indices = {0};
@@ -429,7 +449,8 @@ TEST_CASE("Alignment: self heading zero → all neighbours filtered", "[alignmen
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         10.0f,
-        0.5f
+        0.5f,
+        world_half
     );
 
     // No valid neighbours → zero
@@ -439,6 +460,7 @@ TEST_CASE("Alignment: self heading zero → all neighbours filtered", "[alignmen
 TEST_CASE("Separation: neighbour exactly at 0.001 distance is ignored", "[separation]")
 {
     reset_data();
+    const float world_half = 50.f;
     // Distance = 0.001, d_sq = 1e-6, which is NOT > 0.001^2 (1e-6) so skipped
     positions.push_back({0.001f, 0.0f, 0.0f});
     headings.push_back({0, 0, 0});
@@ -452,7 +474,8 @@ TEST_CASE("Separation: neighbour exactly at 0.001 distance is ignored", "[separa
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         10.0f,
-        -1.0f
+        -1.0f,
+        world_half
     );
 
     REQUIRE(vec3_approx(result, Vec3::zero()));
@@ -461,6 +484,7 @@ TEST_CASE("Separation: neighbour exactly at 0.001 distance is ignored", "[separa
 TEST_CASE("Cohesion: neighbour behind FOV is filtered", "[cohesion]")
 {
     reset_data();
+    const float world_half = 50.f;
     // Neighbour directly behind (-X), self heading +X => forwardness = -1
     positions.push_back({-2.0f, 0.0f, 0.0f});
     headings.push_back({0, 0, 0});
@@ -474,7 +498,8 @@ TEST_CASE("Cohesion: neighbour behind FOV is filtered", "[cohesion]")
         neighbor_indices.data(), neighbor_indices.size(),
         positions.data(), headings.data(),
         10.0f,
-        0.5f
+        0.5f,
+        world_half
     );
 
     REQUIRE(vec3_approx(result, Vec3::zero()));

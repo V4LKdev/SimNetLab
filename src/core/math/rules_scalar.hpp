@@ -1,7 +1,6 @@
 #pragma once
 #include <ranges>
 #include <span>
-#include "config.hpp"
 #include "vec3.hpp"
 
 namespace simnet::scalar {
@@ -12,7 +11,8 @@ namespace simnet::scalar {
         size_t neighbor_count,
         const Vec3 *all_positions,
         float radius,
-        float fov_cos)
+        float fov_cos,
+        float world_half)
     {
         const float r2 = radius * radius;
 
@@ -21,10 +21,11 @@ namespace simnet::scalar {
                     &self_heading,
                     &self_pos,
                     r2,
-                    fov_cos]
+                    fov_cos,
+                    world_half]
         (uint32_t nb) -> bool {
             const Vec3 &other = all_positions[nb];
-            const Vec3 to_other = Vec3::wrap_delta(self_pos, other, config::WORLD_HALF);
+            const Vec3 to_other = Vec3::wrap_delta(self_pos, other, world_half);
             const float d2 = to_other.length_sq();
 
             if (d2 < 1e-12f || d2 > r2) return false;
@@ -50,7 +51,8 @@ namespace simnet::scalar {
         const Vec3 *all_pos,
         const Vec3 *all_heading,
         const float radius,
-        const float fov_cos)
+        const float fov_cos,
+        const float world_half)
     {
         if (neighbor_count == 0) return Vec3::zero();
 
@@ -58,9 +60,9 @@ namespace simnet::scalar {
 
         for (uint32_t nb: relevant_neighbors(self_heading, self_pos,
                                              neighbor_indices, neighbor_count,
-                                             all_pos, radius, fov_cos)) {
+                                             all_pos, radius, fov_cos, world_half)) {
             Vec3 to_neighbor = Vec3::wrap_delta(self_pos, all_pos[nb],
-                                                config::WORLD_HALF);
+                                                world_half);
             float d_sq = to_neighbor.length_sq();
             if (d_sq < radius * radius && d_sq > 0.001f * 0.001f) {
                 sum += to_neighbor / -d_sq;
@@ -79,7 +81,8 @@ namespace simnet::scalar {
         const Vec3 *all_positions,
         const Vec3 * /*all_headings*/,
         float radius,
-        float fov_cos)
+        float fov_cos,
+        const float world_half)
     {
         if (neighbor_count == 0) return Vec3::zero();
 
@@ -88,9 +91,9 @@ namespace simnet::scalar {
 
         for (uint32_t nb: relevant_neighbors(self_heading, self_pos,
                                              neighbor_indices, neighbor_count,
-                                             all_positions, radius, fov_cos)) {
+                                             all_positions, radius, fov_cos, world_half)) {
             sum += self_pos + Vec3::wrap_delta(self_pos, all_positions[nb],
-                                               config::WORLD_HALF);
+                                               world_half);
             ++count;
         }
 
@@ -109,7 +112,8 @@ namespace simnet::scalar {
         const Vec3 *all_positions,
         const Vec3 *all_headings,
         float radius,
-        float fov_cos)
+        float fov_cos,
+        const float world_half)
     {
         if (neighbor_count == 0) return Vec3::zero();
 
@@ -118,7 +122,7 @@ namespace simnet::scalar {
 
         for (uint32_t nb: relevant_neighbors(self_heading, self_pos,
                                              neighbor_indices, neighbor_count,
-                                             all_positions, radius, fov_cos)) {
+                                             all_positions, radius, fov_cos, world_half)) {
             sum += all_headings[nb];
             ++count;
         }

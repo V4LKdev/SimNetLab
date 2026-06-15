@@ -1,7 +1,7 @@
 #pragma once
 #include <chrono>
 
-#include "config.hpp"
+#include "SimConfig.hpp"
 #include "simulation.hpp"
 #include "telemetry.hpp"
 
@@ -15,8 +15,8 @@ namespace simnet::core {
      */
     struct TimestepController {
         /// Constructs and captures current time as last_time_
-        explicit TimestepController(sim::Simulation &sim)
-            : sim_(sim), last_time_(Clock::now())
+        explicit TimestepController(sim::Simulation &sim, const SimConfig &cfg)
+            : sim_(sim), cfg_(cfg), last_time_(Clock::now())
         {
         }
 
@@ -32,16 +32,16 @@ namespace simnet::core {
 
             accumulator_ns_ += elapsed.count();
 
-            if (accumulator_ns_ >= config::MAX_ACCUM_NS) {
+            if (accumulator_ns_ >= cfg_.max_accum_ns()) {
                 TELEM_LOG_WARN("Accumulator clamped; simulation behind");
-                accumulator_ns_ = config::MAX_ACCUM_NS;
+                accumulator_ns_ = cfg_.max_accum_ns();
             }
 
             steps_this_frame_ = 0;
-            while (accumulator_ns_ >= config::SIM_DT.count() &&
-                   steps_this_frame_ < config::MAX_SIM_STEPS) {
-                sim_time_ns_ += config::SIM_DT.count();
-                accumulator_ns_ -= config::SIM_DT.count();
+            while (accumulator_ns_ >= cfg_.dt_ns() &&
+                   steps_this_frame_ < cfg_.max_sim_steps) {
+                sim_time_ns_ += cfg_.dt_ns();
+                accumulator_ns_ -= cfg_.dt_ns();
 
                 sim_.step();
 
@@ -55,7 +55,7 @@ namespace simnet::core {
         [[nodiscard]]
         double get_interpolation_alpha() const
         {
-            return static_cast<double>(accumulator_ns_) / static_cast<double>(config::SIM_DT.count());
+            return static_cast<double>(accumulator_ns_) / static_cast<double>(cfg_.dt_ns());
         }
 
         /// Total elapsed simulation time in nanoseconds
@@ -67,6 +67,7 @@ namespace simnet::core {
 
     private:
         sim::Simulation &sim_;
+        const SimConfig &cfg_;
         Clock::time_point last_time_;
         int64_t accumulator_ns_ = 0;
         int64_t sim_time_ns_ = 0;

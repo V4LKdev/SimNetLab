@@ -3,6 +3,7 @@
 #include <string_view>
 #include <flecs.h>
 
+#include "SimConfig.hpp"
 #include "ecs/components.hpp"
 
 namespace simnet::client {
@@ -30,7 +31,7 @@ namespace simnet::client {
         bool is_running() const;
 
     private:
-        Camera3D init_camera();
+        Camera3D init_camera(const SimConfig &cfg);
 
         void update_cam();
 

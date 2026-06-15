@@ -3,28 +3,30 @@
 #include <random>
 
 #include "ecs/components.hpp"
-#include "config.hpp"
 #include "telemetry.hpp"
 #include "ecs/pipeline.hpp"
 
 namespace {
     constexpr bool USE_DEBUG_BOIDS = false;
 
-    float random_float(const float min, const float max)
+    float random_float(const float min, const float max, std::mt19937 &gen)
     {
-        thread_local std::mt19937 gen(std::random_device{}());
         std::uniform_real_distribution<float> dis(min, max);
         return dis(gen);
     }
 }
 
 namespace simnet::sim {
-    Simulation::Simulation()
+    Simulation::Simulation(const SimConfig &cfg)
     {
         world_.set_threads(4);
 
         ecs::init_simulation(world_);
-        spawn_boids(config::MAX_BOIDS);
+        world_.set<SimConfig>(cfg);
+
+        cfg_ = &world_.get<SimConfig>();
+
+        spawn_boids(cfg_->max_boids);
     }
 
     Simulation::~Simulation()
@@ -36,7 +38,7 @@ namespace simnet::sim {
     void Simulation::step()
     {
         TELEM_TRACY_ZONE_C("SimulationFrame", TELEM_COLOR_SIM);
-        ecs::run_tick(world_, config::SIM_DT_SECONDS);
+        ecs::run_tick(world_, cfg_->dt_seconds());
         ++tick_;
 
         if (tick_ % 100 == 0) {
@@ -56,8 +58,8 @@ namespace simnet::sim {
     {
         if constexpr (USE_DEBUG_BOIDS) {
             constexpr uint32_t TEST_COUNT = 2;
-            constexpr float distance = config::WORLD_HALF / 2.f;
-            constexpr float max_speed = 10.f;
+            const float distance = cfg_->world_half / 2.f;
+            const float max_speed = cfg_->max_speed;
 
             Vec3 positions[TEST_COUNT] = {
                 Vec3(distance, 0.0f, 0.0f), // +X
@@ -77,21 +79,19 @@ namespace simnet::sim {
                 e.add<ecs::Boid>();
             }
         } else {
-            constexpr float half = config::WORLD_HALF;
-            constexpr float max_speed = 50.f;
+            const float half = cfg_->world_half;
+            const float max_speed = cfg_->max_speed;
+            std::mt19937 gen(cfg_->seed != 0 ? cfg_->seed : std::random_device{}());
 
             for (uint32_t i = 0; i < count; ++i) {
                 auto e = world_.entity();
-
-                const Vec3 pos(random_float(-half, half),
-                               random_float(-half, half),
-                               random_float(-half, half));
-
-                Vec3 dir(random_float(-1.f, 1.f),
-                         random_float(-1.f, 1.f),
-                         random_float(-1.f, 1.f));
+                const Vec3 pos(random_float(-half, half, gen),
+                               random_float(-half, half, gen),
+                               random_float(-half, half, gen));
+                Vec3 dir(random_float(-1.f, 1.f, gen),
+                         random_float(-1.f, 1.f, gen),
+                         random_float(-1.f, 1.f, gen));
                 Vec3 vel = dir.normalized() * max_speed;
-
                 e.set<ecs::Position>({pos});
                 e.set<ecs::Velocity>({vel});
                 e.set<ecs::SteeringAccumulate>({Vec3::zero()});

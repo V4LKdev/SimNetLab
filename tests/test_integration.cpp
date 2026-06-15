@@ -5,9 +5,9 @@
 
 #include <flecs.h>
 
+#include "SimConfig.hpp"
 #include "ecs/components.hpp"
 #include "ecs/pipeline.hpp"
-#include "config.hpp"
 #include "math/vec3.hpp"
 
 using simnet::Vec3;
@@ -27,7 +27,7 @@ TEST_CASE("Integration: two boids separate under strong repulsion", "[integratio
     flecs::world world;
     simnet::ecs::init_simulation(world);
 
-    simnet::ecs::BoidConfig cfg;
+    simnet::SimConfig cfg = simnet::SimConfig::default_config();
     cfg.max_speed = 10.0f;
     cfg.max_accel_frac = 3.0f;
     cfg.separation_strength = 100.0f;
@@ -35,9 +35,9 @@ TEST_CASE("Integration: two boids separate under strong repulsion", "[integratio
     cfg.cohesion_strength = 0.0f;
     cfg.separation_radius = 5.0f;
     cfg.separation_fov_cos = -1.0f;
-    world.set<simnet::ecs::BoidConfig>(cfg);
+    world.set<simnet::SimConfig>(cfg);
 
-    const float dt = simnet::config::SIM_DT_SECONDS;
+    const float dt = cfg.dt_seconds();
 
     auto e_a = world.entity()
             .set<simnet::ecs::Position>({Vec3{0.0f, 0.0f, 0.0f}})

@@ -1,14 +1,14 @@
 #include <flecs.h>
 #include <cassert>
 
-#include "config.hpp"
+#include "SimConfig.hpp"
 #include "ecs/components.hpp"
 #include "telemetry.hpp"
 
 namespace simnet::ecs {
     namespace {
         void brute_force_neighbors(const NeighborSnapshot &snap,
-                                   const BoidConfig &cfg,
+                                   const SimConfig &cfg,
                                    std::vector<size_t> &offsets,
                                    std::vector<uint32_t> &entries)
         {
@@ -32,7 +32,7 @@ namespace simnet::ecs {
                 for (size_t j = 0; j < count; ++j) {
                     if (i == j) continue;
                     const Vec3 delta = Vec3::wrap_delta(pos_i, snap.positions[j],
-                                                        config::WORLD_HALF);
+                                                        cfg.world_half);
                     if (delta.length_sq() < radius_sq) {
                         entries.push_back(static_cast<uint32_t>(j));
                     }
@@ -47,7 +47,7 @@ namespace simnet::ecs {
         TELEM_TRACY_ZONE("Sim_BuildNeighborSnapshot");
 
         flecs::world world = it.world();
-        const BoidConfig &cfg = world.get<BoidConfig>();
+        const SimConfig &cfg = it.world().get<SimConfig>();
 
         // gather all boid data, assign indices
         NeighborSnapshot snap;

@@ -4,7 +4,6 @@
 #include <raylib.h>
 
 #include "../core/ecs/components.hpp"
-#include "config.hpp"
 #include "telemetry.hpp"
 #include "assets/font_jetbrains.h"
 
@@ -18,7 +17,7 @@ namespace simnet::client {
           camera_distance_(0),
           camera_yaw_(0),
           camera_pitch_(0),
-          camera_(init_camera())
+          camera_(init_camera(world.get<SimConfig>()))
     {
         int flags = FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE;
 
@@ -55,23 +54,24 @@ namespace simnet::client {
 
         BeginMode3D(camera_);
 
-        boid_query_.each([](const ecs::Position &pos, const ecs::Heading &heading) {
+        boid_query_.each([this](const ecs::Position &pos, const ecs::Heading &heading) {
             // 1. Draw the actual boid body
             DrawSphere(
                 {pos.value.x(), pos.value.y(), pos.value.z()},
-                config::BOID_SCALE,
+                world_.get<SimConfig>().boid_scale,
                 BLUE
             );
 
             // TODO: Debug visualisation for boid heading and radius and vision.
         });
 
+        const float half = world_.get<SimConfig>().world_half;
 
         DrawCubeWires(
             {0.0f, 0.0f, 0.0f},
-            2.0f * config::WORLD_HALF,
-            2.0f * config::WORLD_HALF,
-            2.0f * config::WORLD_HALF,
+            2.0f * half,
+            2.0f * half,
+            2.0f * half,
             RAYWHITE
         );
 
@@ -118,11 +118,11 @@ namespace simnet::client {
 
 #pragma region Helpers
 
-    Camera3D Renderer::init_camera()
+    Camera3D Renderer::init_camera(const SimConfig &cfg)
     {
         Camera3D cam = {0};
 
-        constexpr float scaledCamDist = config::WORLD_HALF * 2.f + 20.f;
+        const float scaledCamDist = cfg.world_half * 2.f + 20.f;
 
         cam.position = (Vector3){scaledCamDist, scaledCamDist, scaledCamDist};
         cam.target = (Vector3){0.0f, 0.0f, 0.0f};

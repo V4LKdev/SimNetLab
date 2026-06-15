@@ -32,8 +32,9 @@ int main()
     net.start_connect("127.0.0.1", 7777);
 
     // --- local simulation and rendering ---
-    simnet::sim::Simulation sim;
-    simnet::core::TimestepController controller(sim);
+    simnet::SimConfig cfg = simnet::SimConfig::default_config();
+    simnet::sim::Simulation sim(cfg);
+    simnet::core::TimestepController controller(sim, cfg);
 
     simnet::client::Renderer renderer(1920, 1080, "SimNetLab_Client", sim.world());
 
