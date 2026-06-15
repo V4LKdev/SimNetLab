@@ -26,6 +26,11 @@ namespace simnet::ecs {
         Vec3 value{};
     };
 
+    /// Hue of an entity
+    struct Hue {
+        uint8_t value;
+    };
+
     /// Tick-local per-entity index assigned during snapshot construction.
     struct BoidIdx {
         uint32_t index = 0;
@@ -60,6 +65,7 @@ namespace simnet::ecs {
         world.component<Position>();
         world.component<Velocity>();
         world.component<Heading>();
+        world.component<Hue>();
         world.component<SteeringAccumulate>();
         world.component<BoidIdx>();
 

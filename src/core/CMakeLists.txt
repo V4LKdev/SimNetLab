@@ -18,12 +18,10 @@ target_include_directories(core
 
 find_package(flecs CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
-find_package(ftxui CONFIG REQUIRED)
 
 target_link_libraries(core
         PUBLIC flecs::flecs
         PUBLIC nlohmann_json::nlohmann_json
-        PUBLIC ftxui::screen ftxui::dom ftxui::component
 )
 
 # telemetry & simd are always available (interface or static)

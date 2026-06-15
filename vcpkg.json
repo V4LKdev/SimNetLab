@@ -12,7 +12,6 @@
     "spdlog",
     "nlohmann-json",
     "catch2",
-    "tracy",
-    "ftxui"
+    "tracy"
   ]
 }

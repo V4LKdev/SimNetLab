@@ -82,6 +82,7 @@ namespace simnet::sim {
             const float half = cfg_->world_half;
             const float max_speed = cfg_->max_speed;
             std::mt19937 gen(cfg_->seed != 0 ? cfg_->seed : std::random_device{}());
+            std::uniform_int_distribution<uint8_t> dist(0, 255);
 
             for (uint32_t i = 0; i < count; ++i) {
                 auto e = world_.entity();
@@ -94,11 +95,13 @@ namespace simnet::sim {
                 Vec3 vel = dir.normalized() * max_speed;
                 e.set<ecs::Position>({pos});
                 e.set<ecs::Velocity>({vel});
-                e.set<ecs::SteeringAccumulate>({Vec3::zero()});
-                e.set<ecs::Heading>({vel.normalized()});
-                e.set<ecs::BoidIdx>({});
-                e.add<ecs::Boid>();
+                e.set<ecs::Hue>({ dist(gen) });
+                    e.set<ecs::SteeringAccumulate>({Vec3::zero()});
+                    e.set<ecs::Heading>({vel.normalized()});
+                    e.set<ecs::BoidIdx>({});
+                    e.add<ecs::Boid>();
+
+                }
             }
         }
     }
-}

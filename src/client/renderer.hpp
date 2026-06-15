@@ -40,13 +40,18 @@ namespace simnet::client {
 
         void text(const char *text, Vector2 position, float size, Color tint) const;
 
+        void draw_boid(const Vector3 &pos, const Vector3 &heading, float scale, const uint8_t hue) const;
+
+        Color hue_to_color(uint8_t hue, uint8_t saturation = 255, uint8_t value = 255) const;
+
+        Model boid_model_ = {0};
 
         const flecs::world &world_;
         int width_;
         int height_;
         Font font_ = GetFontDefault();
 
-        flecs::query<const ecs::Position, const ecs::Heading> boid_query_;
+        flecs::query<const ecs::Position, const ecs::Heading, const ecs::Hue> boid_query_;
 
         float camera_distance_;
         float camera_yaw_, camera_pitch_;

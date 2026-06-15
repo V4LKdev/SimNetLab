@@ -2,10 +2,11 @@
 
 #include <cmath>
 #include <raylib.h>
+#include <raymath.h>
 
 #include "../core/ecs/components.hpp"
 #include "telemetry.hpp"
-#include "assets/font_jetbrains.h"
+#include "fonts/font_jetbrains.h"
 
 namespace simnet::client {
     Renderer::Renderer(const int width, const int height, const std::string_view title, const flecs::world &world)
@@ -13,7 +14,8 @@ namespace simnet::client {
           width_(width),
           height_(height),
           boid_query_(
-              world.query_builder<const ecs::Position, const ecs::Heading>().with<ecs::Boid>().cached().build()),
+              world.query_builder<const ecs::Position, const ecs::Heading, const ecs::Hue>().with<ecs::Boid>().cached().
+              build()),
           camera_distance_(0),
           camera_yaw_(0),
           camera_pitch_(0),
@@ -33,12 +35,29 @@ namespace simnet::client {
             std::abort();
         }
 
+        TELEM_LOG_INFO("{}", GetWorkingDirectory());
+
+        boid_model_ = LoadModel("assets/boid.obj");
+        if (boid_model_.meshCount == 0) {
+            TELEM_LOG_ERROR("Fatal: no boid model loaded");
+            std::abort();
+        } else {
+            // some mesh config
+            Matrix scaleMat = MatrixScale(0.05f, 0.05f, 0.05f);
+            boid_model_.transform = MatrixMultiply(boid_model_.transform, scaleMat);
+
+            // If model's forward is -Y (down) and you want +Z (world forward)
+            Matrix rot = MatrixRotateX(-90 * DEG2RAD);
+            boid_model_.transform = MatrixMultiply(rot, boid_model_.transform);
+        }
+
         font_ = load_jetbrains_font();
     }
 
     Renderer::~Renderer()
     {
         UnloadFont(font_);
+        UnloadModel(boid_model_);
         CloseWindow();
     }
 
@@ -54,13 +73,14 @@ namespace simnet::client {
 
         BeginMode3D(camera_);
 
-        boid_query_.each([this](const ecs::Position &pos, const ecs::Heading &heading) {
+        const float scale = world_.get<SimConfig>().boid_scale;
+
+        boid_query_.each([this, scale](const ecs::Position &pos, const ecs::Heading &heading, const ecs::Hue &hue) {
             // 1. Draw the actual boid body
-            DrawSphere(
-                {pos.value.x(), pos.value.y(), pos.value.z()},
-                world_.get<SimConfig>().boid_scale,
-                BLUE
-            );
+            Vector3 position = {pos.value.x(), pos.value.y(), pos.value.z()};
+            Vector3 forward = {heading.value.x(), heading.value.y(), heading.value.z()};
+            uint8_t tint = hue.value;
+            draw_boid(position, forward, scale, tint);
 
             // TODO: Debug visualisation for boid heading and radius and vision.
         });
@@ -164,6 +184,96 @@ namespace simnet::client {
             tint
         );
     }
+
+    void Renderer::draw_boid(const Vector3 &pos, const Vector3 &heading, float scale, const uint8_t hue) const
+    {
+        // Normalise heading for security
+        Vector3 forward = heading;
+        float len = sqrtf(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
+        if (len > 0.0001f) {
+            forward.x /= len;
+            forward.y /= len;
+            forward.z /= len;
+        } else {
+            forward = {0.0f, 0.0f, 1.0f};
+        }
+
+        // World up vector
+        Vector3 up = {0.0f, 1.0f, 0.0f};
+
+        // Compute rotation axis and angle to align model's forward (+Z) with heading
+        Vector3 axis;
+        float angle;
+
+        // Avoid gimbal lock when heading is almost vertical
+        float dot = forward.x * up.x + forward.y * up.y + forward.z * up.z;
+        if (fabsf(dot + 1.0f) < 0.0001f) {
+            // Heading points straight down
+            axis = {1.0f, 0.0f, 0.0f};
+            angle = PI;
+        } else if (fabsf(1.0f - dot) < 0.0001f) {
+            // Heading points straight up
+            axis = {1.0f, 0.0f, 0.0f};
+            angle = 0.0f;
+        } else {
+            axis = Vector3CrossProduct(up, forward);
+            axis = Vector3Normalize(axis);
+            angle = acosf(dot);
+        }
+
+        // Convert angle to degrees for raylib
+        float angleDeg = angle * RAD2DEG;
+
+        Color tint = hue_to_color(hue, 255, 180);
+        DrawModelEx(boid_model_, pos, axis, angleDeg, {scale, scale, scale}, tint);
+    }
+
+    Color Renderer::hue_to_color(uint8_t hue, uint8_t saturation, uint8_t value) const
+    {
+        float h = (hue / 255.0f) * 360.0f;
+        float s = saturation / 255.0f;
+        float v = value / 255.0f;
+
+        float c = v * s;
+        float x = c * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
+        float m = v - c;
+
+        float r, g, b;
+        if (h < 60) {
+            r = c;
+            g = x;
+            b = 0;
+        } else if (h < 120) {
+            r = x;
+            g = c;
+            b = 0;
+        } else if (h < 180) {
+            r = 0;
+            g = c;
+            b = x;
+        } else if (h < 240) {
+            r = 0;
+            g = x;
+            b = c;
+        } else if (h < 300) {
+            r = x;
+            g = 0;
+            b = c;
+        } else {
+            r = c;
+            g = 0;
+            b = x;
+        }
+
+        // Convert 0-1 range to 0-255 and add m
+        return {
+            static_cast<uint8_t>((r + m) * 255),
+            static_cast<uint8_t>((g + m) * 255),
+            static_cast<uint8_t>((b + m) * 255),
+            255
+        };
+    }
+
 
 #pragma endregion
 }
