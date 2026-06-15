@@ -32,6 +32,7 @@ int main()
     if (!simnet::load_json("config/config.json", cfg)) {
         TELEM_LOG_INFO("No config.json provided - using defaults");
     }
+    TELEM_LOG_INFO("Run fingerprint: 0x{:016x}", static_cast<unsigned long long>(cfg.fingerprint()));
 
 
     // --- network handshake ---

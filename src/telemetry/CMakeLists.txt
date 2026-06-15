@@ -1,4 +1,4 @@
-if (TELEMETRY_ENABLED)
+if (BUILD_TELEMETRY)
     add_library(telemetry STATIC
             telemetry.cpp
             logger.cpp
@@ -9,15 +9,12 @@ if (TELEMETRY_ENABLED)
     )
     find_package(fmt CONFIG REQUIRED)
     find_package(spdlog CONFIG REQUIRED)
-    find_package(nlohmann_json CONFIG REQUIRED)
     find_package(Tracy CONFIG REQUIRED)
     target_link_libraries(telemetry PUBLIC
             fmt::fmt
             spdlog::spdlog
-            nlohmann_json::nlohmann_json
             Tracy::TracyClient
     )
-    # include directory for public consumption
     target_include_directories(telemetry PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 else ()
     add_library(telemetry INTERFACE)

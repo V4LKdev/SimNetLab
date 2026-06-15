@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <string>
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 namespace simnet {
     /// Global simulation configuration
@@ -76,6 +78,59 @@ namespace simnet {
         // Deterministic Seed
         // ----------------------------------------------------
         uint64_t seed = 0;
+
+        // ------------------------------------------------------
+        // Serialization & Identity
+        // ------------------------------------------------------
+        /// Serialise to a JSON object (all fields)
+        [[nodiscard]]
+        nlohmann::json to_json() const
+        {
+            nlohmann::json j;
+            j["sim_hz"] = sim_hz;
+            j["max_sim_steps"] = max_sim_steps;
+            j["max_accum_sec"] = max_accum_sec;
+            j["world_half"] = world_half;
+            j["max_boids"] = max_boids;
+            j["boid_scale"] = boid_scale;
+            j["max_speed"] = max_speed;
+            j["max_accel_frac"] = max_accel_frac;
+            j["separation_strength"] = separation_strength;
+            j["alignment_strength"] = alignment_strength;
+            j["cohesion_strength"] = cohesion_strength;
+            j["separation_radius"] = separation_radius;
+            j["alignment_radius"] = alignment_radius;
+            j["cohesion_radius"] = cohesion_radius;
+            j["separation_fov_cos"] = separation_fov_cos;
+            j["alignment_fov_cos"] = alignment_fov_cos;
+            j["cohesion_fov_cos"] = cohesion_fov_cos;
+            j["enable_alignment"] = enable_alignment;
+            j["enable_cohesion"] = enable_cohesion;
+            j["enable_separation"] = enable_separation;
+            j["enable_wandering"] = enable_wandering;
+            j["enable_predator"] = enable_predator;
+            j["enable_lure"] = enable_lure;
+            j["simd_backend"] = simd_backend;
+            j["seed"] = seed;
+            return j;
+        }
+
+        /// Compute a stable 64-bit hash from the full JSON representation for comparison.
+        [[nodiscard]]
+        uint64_t fingerprint() const
+        {
+            const std::string json_str = to_json().dump();
+
+            // FNV-1a 64-bit hash
+            constexpr uint64_t fnv_prime = 1099511628211ULL;
+            constexpr uint64_t fnv_offset_basis = 14695981039346656037ULL;
+            uint64_t hash = fnv_offset_basis;
+            for (char c: json_str) {
+                hash ^= static_cast<uint64_t>(static_cast<unsigned char>(c));
+                hash *= fnv_prime;
+            }
+            return hash;
+        }
 
         // ------------------------------------------------------
         // Default Factory

@@ -35,6 +35,12 @@ namespace simnet::sim {
         [[nodiscard]]
         const flecs::world &world() const { return world_; }
 
+        void update_config(const SimConfig &new_cfg)
+        {
+            world_.set<SimConfig>(new_cfg);
+            cfg_ = &world_.get<SimConfig>();
+        }
+
     private:
         void spawn_boids(uint32_t count);
 

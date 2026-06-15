@@ -55,38 +55,9 @@ namespace simnet {
         }
     }
 
-
     inline void save_json(const std::string &path, const SimConfig &cfg)
     {
-        nlohmann::json j;
-
-
-        j["sim_hz"]               = cfg.sim_hz;
-        j["max_sim_steps"]        = cfg.max_sim_steps;
-        j["max_accum_sec"]        = cfg.max_accum_sec;
-        j["world_half"]           = cfg.world_half;
-        j["max_boids"]            = cfg.max_boids;
-        j["boid_scale"]           = cfg.boid_scale;
-        j["max_speed"]            = cfg.max_speed;
-        j["max_accel_frac"]       = cfg.max_accel_frac;
-        j["separation_strength"]  = cfg.separation_strength;
-        j["alignment_strength"]   = cfg.alignment_strength;
-        j["cohesion_strength"]    = cfg.cohesion_strength;
-        j["separation_radius"]    = cfg.separation_radius;
-        j["alignment_radius"]     = cfg.alignment_radius;
-        j["cohesion_radius"]      = cfg.cohesion_radius;
-        j["separation_fov_cos"]   = cfg.separation_fov_cos;
-        j["alignment_fov_cos"]    = cfg.alignment_fov_cos;
-        j["cohesion_fov_cos"]     = cfg.cohesion_fov_cos;
-        j["enable_alignment"]     = cfg.enable_alignment;
-        j["enable_cohesion"]      = cfg.enable_cohesion;
-        j["enable_separation"]    = cfg.enable_separation;
-        j["enable_wandering"]     = cfg.enable_wandering;
-        j["enable_predator"]      = cfg.enable_predator;
-        j["enable_lure"]          = cfg.enable_lure;
-        j["simd_backend"]         = cfg.simd_backend;
-        j["seed"]                 = cfg.seed;
-
+        nlohmann::json j = cfg.to_json();
         std::ofstream out(path);
         out << std::setw(2) << j << std::endl;
     }

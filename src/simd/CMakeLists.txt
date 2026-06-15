@@ -1,6 +1,5 @@
-if (SIMD_ENABLED)
-    add_library(simd STATIC
-    )
+if (BUILD_SIMD)
+    add_library(simd STATIC)
     find_package(hwy CONFIG REQUIRED)
     target_link_libraries(simd PUBLIC hwy::hwy)
     target_compile_definitions(simd PUBLIC SIMD_ENABLED=1)

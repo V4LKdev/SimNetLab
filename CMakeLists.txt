@@ -6,8 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(TELEMETRY_ENABLED "Build with telemetry, diagnostics, and benchmarking library" ON)
-option(SIMD_ENABLED "Build with optional SIMD library" OFF)
+# ---- Control what gets compiled and linked at build time -----------------------
+option(BUILD_TELEMETRY "Build with splog, Tracy, and benchmark support" ON)
+option(BUILD_SIMD "Build with Highway SIMD" OFF)
+option(BUILD_TESTS "Build Catch2 unit/integration tests" ON)
+# --------------------------------------------------------------------------------
 
 # Include targets
 add_subdirectory(src/telemetry)
@@ -18,5 +21,7 @@ add_subdirectory(src/network)
 add_subdirectory(src/server)
 add_subdirectory(src/client)
 
-enable_testing()
-add_subdirectory(tests)
+if (BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif ()
