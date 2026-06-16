@@ -7,6 +7,7 @@
 #include "simulation.hpp"
 #include "telemetry.hpp"
 #include "config/ConfigLoader.hpp"
+#include "ecs/world_client.hpp"
 
 
 namespace {
@@ -39,26 +40,20 @@ int main()
     simnet::client::network_client net;
     net.start_connect("127.0.0.1", 7777);
 
-    // --- local simulation and rendering ---
-    simnet::sim::Simulation sim(cfg);
-    simnet::core::TimestepController controller(sim, cfg);
+    // --- ecs world ---
+    simnet::client::ClientWorld client_world(cfg);
 
-    simnet::client::Renderer renderer(1920, 1080, "SimNetLab_Client", sim.world());
+    // --- rendering ---
+    simnet::client::Renderer renderer(1920, 1080, "SimNetLab_Client", client_world.world());
 
     // --- main loop ---
     while (g_running && renderer.is_running()) {
         TELEM_TRACY_ZONE("ClientFrame");
 
-        // 1. process network events (non-blocking)
+        // 1. process network events
         net.service();
 
-        // 2. fixed-step simulation update
-        // Currently unused, kept as documentation of the available sim to render API
-        const int steps = controller.update();
-        const double alpha = controller.get_interpolation_alpha();
-        const auto tick = sim.current_tick();
-
-        // 3. render
+        // 2. render
         renderer.render();
         TELEM_TRACY_FRAME("ClientFrame");
     }

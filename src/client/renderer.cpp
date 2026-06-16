@@ -24,7 +24,7 @@ namespace simnet::client {
         int flags = FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE;
 
         // SetConfigFlags(flags);
-        SetTargetFPS(0);
+        SetTargetFPS(120);
         SetExitKey(0);
         SetTraceLogLevel(LOG_WARNING);
 
