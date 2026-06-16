@@ -3,7 +3,11 @@
 
 #include "protocol.hpp"
 #include "serialization.hpp"
+#include "wire_types.hpp"
 
+/**
+ *  Functions to create and parse complete ENet packets.
+ */
 namespace simnet::net {
     // --- Builders ---
     /// Creates a Hello packet
@@ -82,5 +86,10 @@ namespace simnet::net {
         if (!pkt || pkt->dataLength < PACKET_HEADER_SIZE + REJECT_SIZE) { return RejectReason::Other; }
 
         return static_cast<RejectReason>(read_u8(pkt->data + PACKET_HEADER_SIZE));
+    }
+
+    inline ENetPacket *create_snapshot(const ReplicationSnapshot &snap,
+                                       enet_uint32 flags = ENET_PACKET_FLAG_UNSEQUENCED)
+    {
     }
 }
