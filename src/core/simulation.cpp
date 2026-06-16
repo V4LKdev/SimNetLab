@@ -95,13 +95,14 @@ namespace simnet::sim {
                 Vec3 vel = dir.normalized() * max_speed;
                 e.set<ecs::Position>({pos});
                 e.set<ecs::Velocity>({vel});
-                e.set<ecs::Hue>({ dist(gen) });
-                    e.set<ecs::SteeringAccumulate>({Vec3::zero()});
-                    e.set<ecs::Heading>({vel.normalized()});
-                    e.set<ecs::BoidIdx>({});
-                    e.add<ecs::Boid>();
+                e.set<ecs::Hue>({dist(gen)});
+                e.set<ecs::SteeringAccumulate>({Vec3::zero()});
+                e.set<ecs::Heading>({vel.normalized()});
+                e.set<ecs::BoidIdx>({});
 
-                }
+                e.add<ecs::NetworkId>(i); // For now, the id is just the initial spawn iter index.
+                e.add<ecs::Boid>();
             }
         }
     }
+}

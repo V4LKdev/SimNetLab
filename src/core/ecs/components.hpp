@@ -31,6 +31,11 @@ namespace simnet::ecs {
         uint8_t value;
     };
 
+    /// Frame persistent unique identifier of the entity.
+    struct NetworkId {
+        uint32_t value;
+    };
+
     /// Tick-local per-entity index assigned during snapshot construction.
     struct BoidIdx {
         uint32_t index = 0;
@@ -68,6 +73,7 @@ namespace simnet::ecs {
         world.component<Hue>();
         world.component<SteeringAccumulate>();
         world.component<BoidIdx>();
+        world.component<NetworkId>();
 
         world.component<Boid>();
 

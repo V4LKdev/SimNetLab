@@ -8,6 +8,7 @@ namespace simnet::ecs {
     static flecs::entity s_sim_prepare;
     static flecs::entity s_sim_compute;
     static flecs::entity s_sim_apply;
+    static flecs::entity s_net_send;
 
     void init_simulation(flecs::world &world)
     {
@@ -22,6 +23,9 @@ namespace simnet::ecs {
         s_sim_apply = world.entity("SimApply")
                 .add(flecs::Phase)
                 .depends_on(s_sim_compute);
+        s_net_send = world.entity("NetSend")
+                .add(flecs::Phase)
+                .depends_on(s_sim_apply);
 
         // --- Prep Phase ---
         auto clear_accumulator = world.system<SteeringAccumulate>("ClearAccumulate")
@@ -94,6 +98,8 @@ namespace simnet::ecs {
         flock_statistics.depends_on(integrate_position);
 
 #endif
+
+            // --- Net Phase ---
     }
 
     void run_tick(flecs::world &world, float dt)
