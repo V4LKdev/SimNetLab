@@ -65,6 +65,18 @@ namespace simnet::core {
             return sim_time_ns_;
         }
 
+        [[nodiscard]]
+        int ms_until_next_tick() const noexcept
+        {
+            const auto remaining = cfg_.dt_ns() - accumulator_ns_;
+            if (remaining <= 0) return 0;
+
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(remaining)).
+                    count();
+
+            return static_cast<int>(std::min<long long>(ms, std::numeric_limits<int>::max()));
+        }
+
     private:
         sim::Simulation &sim_;
         const SimConfig &cfg_;

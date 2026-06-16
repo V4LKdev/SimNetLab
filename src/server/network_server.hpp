@@ -46,8 +46,18 @@ namespace simnet::server {
         [[nodiscard]]
         int client_count() const noexcept;
 
+        /// Returns the underlying ENet host (for manual event pump)
+        [[nodiscard]]
+        ENetHost *get_host() const noexcept { return server_host_; }
+
+        /// Handle a single network event
+        void process_event(const ENetEvent &event);
+
+        /// Check and disconnect timed-out / handshake-expired clients
+        void check_timeouts();
+
     private:
-        void handle_packet(ENetPeer *peer, ENetPacket *packet);
+        void handle_packet(ENetPeer *peer, const ENetPacket *packet);
 
         void send_welcome(ENetPeer *peer);
 
@@ -59,8 +69,6 @@ namespace simnet::server {
 
 
         void reset_peer(ENetPeer *peer);
-
-        void check_timeouts();
 
         /// Disconnect all peers gracefully, then force if necessary
         void disconnect_all();

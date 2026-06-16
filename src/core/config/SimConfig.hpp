@@ -17,14 +17,14 @@ namespace simnet {
         /// Maximum steps per frame (spiral-of-death cap)
         int max_sim_steps = 5;
         /// Maximum accumulated time before clamping (Inferred)
-        double max_accum_sec = max_sim_steps / sim_hz;
+        double max_accum_sec = static_cast<double>(max_sim_steps) / sim_hz;
 
         /// Returns the nominal tick duration in seconds
-        float dt_seconds() const { return 1.0f / static_cast<float>(sim_hz); }
+        [[nodiscard]] float dt_seconds() const { return 1.0f / static_cast<float>(sim_hz); }
         /// Returns the nominal tick duration in nanoseconds (truncated)
-        int64_t dt_ns() const { return 1'000'000'000 / sim_hz; }
+        [[nodiscard]] int64_t dt_ns() const { return 1'000'000'000 / sim_hz; }
         /// Maximum accumulated nanoseconds befor the accumulator is clamped
-        int64_t max_accum_ns() const { return max_sim_steps * dt_ns(); }
+        [[nodiscard]] int64_t max_accum_ns() const { return max_sim_steps * dt_ns(); }
 
         // ----------------------------------------------------
         // World / Environment
@@ -44,7 +44,7 @@ namespace simnet {
         /// Fraction of max speed for steering
         float max_accel_frac = 3.0f;
         /// Maximum steering acceleration / velocity for boids
-        float max_accel() const { return max_speed * max_accel_frac; }
+        [[nodiscard]] float max_accel() const { return max_speed * max_accel_frac; }
 
         float separation_strength = 12.0f;
         float alignment_strength = 8.0f;

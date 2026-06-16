@@ -103,38 +103,7 @@ namespace simnet::server {
         ENetEvent event;
         // drain all pending events non‑blocking
         while (enet_host_service(server_host_, &event, 0) > 0) {
-            switch (event.type) {
-                case ENET_EVENT_TYPE_CONNECT: {
-                    TELEM_LOG_INFO("Client connected from {}:{} (handshaking)",
-                                   event.peer->address.host, event.peer->address.port);
-
-                    auto now = std::chrono::steady_clock::now();
-                    clients_.emplace(event.peer, ClientInfo{event.peer, ClientState::Handshaking, now, now});
-                    break;
-                }
-                case ENET_EVENT_TYPE_DISCONNECT: {
-                    auto reason = static_cast<net::DisconnectReason>(event.data);
-                    TELEM_LOG_INFO("Client disconnected (reason={})", static_cast<int>(reason));
-
-                    clients_.erase(event.peer);
-                    break;
-                }
-                case ENET_EVENT_TYPE_RECEIVE: {
-                    TELEM_LOG_TRACE("Received packet ({} bytes)", event.packet->dataLength);
-
-                    auto it = clients_.find(event.peer);
-                    if (it != clients_.end()) {
-                        handle_packet(event.peer, event.packet);
-                        enet_packet_destroy(event.packet);
-                    } else {
-                        TELEM_LOG_WARN("Received packet from unknown peer - dropping");
-                        enet_packet_destroy(event.packet);
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
+            process_event(event);
         }
 
         // run timeout checks after event processing
@@ -151,10 +120,46 @@ namespace simnet::server {
         return static_cast<int>(clients_.size());
     }
 
-    void network_server::handle_packet(ENetPeer *peer, ENetPacket *packet)
+    void network_server::process_event(const ENetEvent &event)
+    {
+        switch (event.type) {
+            case ENET_EVENT_TYPE_CONNECT: {
+                TELEM_LOG_INFO("Client connected from {}:{} (handshaking)",
+                               event.peer->address.host, event.peer->address.port);
+
+                const auto now = std::chrono::steady_clock::now();
+                clients_.emplace(event.peer, ClientInfo{event.peer, ClientState::Handshaking, now, now});
+                break;
+            }
+            case ENET_EVENT_TYPE_DISCONNECT: {
+                auto reason = static_cast<net::DisconnectReason>(event.data);
+                TELEM_LOG_INFO("Client disconnected (reason={})", static_cast<int>(reason));
+
+                clients_.erase(event.peer);
+                break;
+            }
+            case ENET_EVENT_TYPE_RECEIVE: {
+                TELEM_LOG_TRACE("Received packet ({} bytes)", event.packet->dataLength);
+
+                const auto it = clients_.find(event.peer);
+                if (it != clients_.end()) {
+                    handle_packet(event.peer, event.packet);
+                    enet_packet_destroy(event.packet);
+                } else {
+                    TELEM_LOG_WARN("Received packet from unknown peer - dropping");
+                    enet_packet_destroy(event.packet);
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    void network_server::handle_packet(ENetPeer *peer, const ENetPacket *packet)
     {
         const net::MessageType msg = net::read_message_type(packet);
-        auto it = clients_.find(peer);
+        const auto it = clients_.find(peer);
         if (it == clients_.end()) { return; } // safety
 
         ClientInfo &info = it->second;
