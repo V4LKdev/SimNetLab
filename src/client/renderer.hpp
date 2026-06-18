@@ -3,8 +3,8 @@
 #include <string_view>
 #include <flecs.h>
 
-#include "../core/config/SimConfig.hpp"
-#include "ecs/components.hpp"
+#include "../core/config/sim_config.hpp"
+#include "../game/shared/components.hpp"
 
 namespace simnet::client {
     /*

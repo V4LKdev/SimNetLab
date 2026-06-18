@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace simnet {
+namespace simnet::core::math {
     /// 3-Component float vector.
     struct Vec3 {
         float data[3] = {0.0f, 0.0f, 0.0f};

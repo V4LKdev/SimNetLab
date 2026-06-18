@@ -1,7 +1,7 @@
 #include "network_client.hpp"
 
 #include "telemetry.hpp"
-#include "packet_utils.hpp"
+#include "../core/net/packet_utils.hpp"
 
 namespace simnet::client {
     network_client::network_client()

@@ -1,10 +1,11 @@
 #pragma once
 #include <chrono>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 #include <enet/enet.h>
 
-#include "protocol.hpp"
+#include "../core/net/protocol.hpp"
 
 namespace simnet::server {
     enum class ClientState : uint8_t {
@@ -37,6 +38,9 @@ namespace simnet::server {
 
         /// Non-blocking event pump.
         void service();
+
+        /// Call func for every peer that is fully connected.
+        void for_each_connected_peer(const std::function<void(ENetPeer *)> &f) const;
 
         /// Returns true while the host is alive
         [[nodiscard]]

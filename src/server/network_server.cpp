@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <chrono>
 
-#include "packet_utils.hpp"
+#include "../core/net/packet_utils.hpp"
 #include "telemetry.hpp"
 
 namespace simnet::server {
@@ -108,6 +108,15 @@ namespace simnet::server {
 
         // run timeout checks after event processing
         check_timeouts();
+    }
+
+    void network_server::for_each_connected_peer(const std::function<void(ENetPeer *)> &f) const
+    {
+        for (const auto &[peer, info]: clients_) {
+            if (info.state == ClientState::Connected) {
+                f(peer);
+            }
+        }
     }
 
     bool network_server::is_running() const noexcept

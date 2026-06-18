@@ -1,3 +1,4 @@
+# root lists
 cmake_minimum_required(VERSION 3.25)
 project(SimNetLab LANGUAGES C CXX)
 
@@ -13,13 +14,12 @@ option(BUILD_TESTS "Build Catch2 unit/integration tests" ON)
 # --------------------------------------------------------------------------------
 
 # Include targets
+# these are conditionally included (logic inside their cmake lists files)
 add_subdirectory(src/telemetry)
 add_subdirectory(src/simd)
 
 add_subdirectory(src/core)
-add_subdirectory(src/network)
-add_subdirectory(src/server)
-add_subdirectory(src/client)
+add_subdirectory(src/game/shared)
 
 if (BUILD_TESTS)
     enable_testing()

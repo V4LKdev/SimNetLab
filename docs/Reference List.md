@@ -25,3 +25,13 @@ https://ieeexplore.ieee.org/document/8514394
 
 Random:
 https://en.cppreference.com/cpp/language/raii
+
+
+Project Architecture:
+https://dev.epicgames.com/documentation/unreal-engine/unreal-engine-modules?application_version=5.7
+
+https://dev.to/pigeoncodeur/cmake-for-complex-projects-part-1-building-a-c-game-engine-from-scratch-for-desktop-and-ied
+
+https://medium.com/respawn-point/cmake-for-complex-projects-part-1-building-a-c-game-engine-from-scratch-for-desktop-and-774426c5f1f7
+
+https://mcvuk.com/business-news/guest-post-integrating-ecs-into-existing-mass-market-games-a-practical-engineering-guide/

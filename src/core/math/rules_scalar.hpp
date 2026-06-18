@@ -3,7 +3,7 @@
 #include <span>
 #include "vec3.hpp"
 
-namespace simnet::scalar {
+namespace simnet::core::math {
     inline auto relevant_neighbors(
         const Vec3 &self_heading,
         const Vec3 &self_pos,

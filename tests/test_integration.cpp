@@ -5,8 +5,8 @@
 
 #include <flecs.h>
 
-#include "../src/core/config/SimConfig.hpp"
-#include "ecs/components.hpp"
+#include "../src/core/config/sim_config.hpp"
+#include "../src/game/shared/components.hpp"
 #include "ecs/pipeline.hpp"
 #include "math/vec3.hpp"
 

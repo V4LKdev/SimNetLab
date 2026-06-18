@@ -4,7 +4,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#include "../core/ecs/components.hpp"
+#include "../game/shared/components.hpp"
 #include "telemetry.hpp"
 #include "fonts/font_jetbrains.h"
 
