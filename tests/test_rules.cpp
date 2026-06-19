@@ -170,7 +170,7 @@
 //     REQUIRE(vec3_approx(result, Vec3::zero()));
 // }
 //
-// TEST_CASE("Cohesion: one neighbour → steer towards it", "[cohesion]")
+// TEST_CASE("Cohesion: one neighbour -> steer towards it", "[cohesion]")
 // {
 //     reset_data();
 //     const float world_half = 50.f;
@@ -196,7 +196,7 @@
 //     REQUIRE(vec3_approx(result, expected));
 // }
 //
-// TEST_CASE("Cohesion: two symmetric neighbours → zero", "[cohesion]")
+// TEST_CASE("Cohesion: two symmetric neighbours -> zero", "[cohesion]")
 // {
 //     reset_data();
 //     const float world_half = 50.f;
@@ -261,7 +261,7 @@
 //     REQUIRE(vec3_approx(result, Vec3::zero()));
 // }
 //
-// TEST_CASE("Separation: very close neighbour → push away", "[separation]")
+// TEST_CASE("Separation: very close neighbour -> push away", "[separation]")
 // {
 //     reset_data();
 //     const float world_half = 50.f;
@@ -335,7 +335,7 @@
 //     REQUIRE(vec3_approx(result, Vec3::zero()));
 // }
 //
-// TEST_CASE("Separation: two neighbours, one closer → stronger push", "[separation]")
+// TEST_CASE("Separation: two neighbours, one closer -> stronger push", "[separation]")
 // {
 //     reset_data();
 //     const float world_half = 50.f;
@@ -433,7 +433,7 @@
 // }
 //
 // // Edge cases
-// TEST_CASE("Alignment: self heading zero → all neighbours filtered", "[alignment]")
+// TEST_CASE("Alignment: self heading zero -> all neighbours filtered", "[alignment]")
 // {
 //     reset_data();
 //     const float world_half = 50.f;
@@ -453,7 +453,7 @@
 //         world_half
 //     );
 //
-//     // No valid neighbours → zero
+//     // No valid neighbours -> zero
 //     REQUIRE(vec3_approx(result, Vec3::zero()));
 // }
 //
@@ -514,7 +514,7 @@
 //     const float max_speed = 0.0f;
 //
 //     vel = simnet::scalar::apply_steering(steer, vel, max_accel, max_speed, dt);
-//     // speed clamped to 0 → zero vector
+//     // speed clamped to 0 -> zero vector
 //     REQUIRE(vec3_approx(vel, Vec3::zero()));
 // }
 //

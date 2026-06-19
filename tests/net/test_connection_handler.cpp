@@ -70,7 +70,7 @@ TEST_CASE("ConnectionHandler: valid hello as server", "[connection_handler]")
     handler.on_transport_data(1, hello_buf);
 
     // Verify Welcome sent
-    REQUIRE(transport.send_calls.size() >= 1);
+    REQUIRE(!transport.send_calls.empty());
     // First byte of buffer should be Welcome type
     REQUIRE(transport.send_calls[0].data[0] == static_cast<uint8_t>(MessageType::Welcome));
     REQUIRE(connected_called);
@@ -184,15 +184,19 @@ TEST_CASE("ConnectionHandler: pings sent periodically", "[connection_handler]")
     now = make_time(PING_INTERVAL.count() + 5);
     handler.update(now);
     // Should have sent a ping
-    auto ping_itr = std::find_if(transport.send_calls.begin(), transport.send_calls.end(),
-                                 [](const auto &sc) { return sc.data[0] == static_cast<uint8_t>(MessageType::Ping); });
+    auto ping_itr = std::ranges::find_if(transport.send_calls,
+                                         [](const auto &sc) {
+                                             return sc.data[0] == static_cast<uint8_t>(MessageType::Ping);
+                                         });
     REQUIRE(ping_itr != transport.send_calls.end());
 
     // Second update soon after should not send another
     transport.send_calls.clear();
     handler.update(now + Milliseconds(1));
-    ping_itr = std::find_if(transport.send_calls.begin(), transport.send_calls.end(),
-                            [](const auto &sc) { return sc.data[0] == static_cast<uint8_t>(MessageType::Ping); });
+    ping_itr = std::ranges::find_if(transport.send_calls,
+                                    [](const auto &sc) {
+                                        return sc.data[0] == static_cast<uint8_t>(MessageType::Ping);
+                                    });
     REQUIRE(ping_itr == transport.send_calls.end());
 }
 
@@ -202,7 +206,7 @@ TEST_CASE("ConnectionHandler: connecting peer timeout", "[connection_handler]")
     ConnectionHandler handler(transport, PING_INTERVAL, SHORT_TIMEOUT);
     handler.register_outgoing_peer(1);
 
-    // Force ancient activity time – peer added but activity time is epoch
+    // Force ancient activity time - peer added but activity time is epoch
     // update just to set current_time_
     handler.update(make_time(0));
     // Explicitly set activity to ancient
@@ -285,7 +289,7 @@ TEST_CASE("ConnectionHandler: duplicate disconnect callback suppression", "[conn
     handler.on_transport_disconnect(1, DisconnectReason::ClientQuit);
     REQUIRE(disconnect_count == 1);
 
-    // Fresh connection – build a new hello buffer
+    // Fresh connection - build a new hello buffer
     handler.on_transport_connect(1);
     auto hello2 = build_hello();
     handler.on_transport_data(1, hello2);

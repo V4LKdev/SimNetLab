@@ -78,14 +78,14 @@ TEST_CASE("NetMessage: Pong roundtrip", "[net_message]")
 TEST_CASE("NetMessage: deserialize truncated Hello", "[net_message]")
 {
     NetBuffer buf;
-    buf.write(static_cast<uint8_t>(MessageType::Hello)); // missing version
+    buf.write(static_cast<uint8_t>(MessageType::Hello));
     REQUIRE(NetMessage::deserialize(buf) == nullptr);
 }
 
 TEST_CASE("NetMessage: deserialize truncated Reject", "[net_message]")
 {
     NetBuffer buf;
-    buf.write(static_cast<uint8_t>(MessageType::Reject)); // missing reason
+    buf.write(static_cast<uint8_t>(MessageType::Reject));
     REQUIRE(NetMessage::deserialize(buf) == nullptr);
 }
 

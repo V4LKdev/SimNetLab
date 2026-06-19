@@ -11,64 +11,65 @@ using simnet::core::net::internal::PeerState;
 using simnet::core::net::internal::NetBuffer;
 using simnet::core::net::internal::SnapshotFlags;
 
-// ------------------------------------------------------------------
-// Processor that appends a single byte on outgoing,
-// and on incoming reads the next byte (expected to match the appended byte).
-// Used for the round‑trip test.
-// ------------------------------------------------------------------
-class AppendByteProcessor final : public NetProcessor {
-public:
-    explicit AppendByteProcessor(uint8_t byte) : m_byte(byte)
-    {
-    }
+namespace {
+    // Processor that appends a single byte on outgoing,
+    // and on incoming reads the next byte (expected to match the appended byte).
+    // Used for the round‑trip test.
+    class AppendByteProcessor final : public NetProcessor {
+    public:
+        explicit AppendByteProcessor(uint8_t byte) : m_byte(byte)
+        {
+        }
 
-    void process_outgoing(PeerState &, NetBuffer &buf, SnapshotFlags) override
-    {
-        buf.write(m_byte);
-    }
+        void process_outgoing(PeerState &, NetBuffer &buf, SnapshotFlags) override
+        {
+            buf.write(m_byte);
+        }
 
-    void process_incoming(PeerState &, NetBuffer &buf, SnapshotFlags) override
-    {
-        REQUIRE(buf.remaining() >= 1);
-        auto val = buf.read<uint8_t>();
-        REQUIRE(val == m_byte);
-    }
+        void process_incoming(PeerState &, NetBuffer &buf, SnapshotFlags) override
+        {
+            REQUIRE(buf.remaining() >= 1);
+            auto val = buf.read<uint8_t>();
+            REQUIRE(val == m_byte);
+        }
 
-private:
-    uint8_t m_byte;
-};
+        const char* name() const override { return "AppendByteProcessor"; }
 
-// ------------------------------------------------------------------
-// Spy processor that only records call order.
-// Used for the multiple‑processor ordering test.
-// ------------------------------------------------------------------
-class CallOrderProcessor final : public NetProcessor {
-public:
-    CallOrderProcessor(int id, std::vector<int> &out, std::vector<int> &in)
-        : m_id(id), m_out(out), m_in(in)
-    {
-    }
+    private:
+        uint8_t m_byte;
+    };
+}
 
-    void process_outgoing(PeerState &, NetBuffer &, SnapshotFlags) override
-    {
-        m_out.push_back(m_id);
-    }
+namespace {
+    // Spy processor that only records call order.
+    // Used for the multiple‑processor ordering test.
+    class CallOrderProcessor final : public NetProcessor {
+    public:
+        CallOrderProcessor(int id, std::vector<int> &out, std::vector<int> &in)
+            : m_id(id), m_out(out), m_in(in)
+        {
+        }
 
-    void process_incoming(PeerState &, NetBuffer &, SnapshotFlags) override
-    {
-        m_in.push_back(m_id);
-    }
+        void process_outgoing(PeerState &, NetBuffer &, SnapshotFlags) override
+        {
+            m_out.push_back(m_id);
+        }
 
-private:
-    int m_id;
-    std::vector<int> &m_out;
-    std::vector<int> &m_in;
-};
+        void process_incoming(PeerState &, NetBuffer &, SnapshotFlags) override
+        {
+            m_in.push_back(m_id);
+        }
 
-// ==================================================================
+        const char* name() const override { return "CallOrderProcessor"; }
+
+    private:
+        int m_id;
+        std::vector<int> &m_out;
+        std::vector<int> &m_in;
+    };
+}
+
 // Test cases
-// ==================================================================
-
 TEST_CASE("NetPipeline: empty pipeline leaves buffer unchanged", "[pipeline]")
 {
     NetPipeline pipeline;

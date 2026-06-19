@@ -2,9 +2,6 @@
 #include <catch2/catch_approx.hpp>
 
 #include <cstdint>
-#include <cstring>
-#include <vector>
-
 #include "net/net_buffer.hpp"
 #include "net/net_types.hpp"
 
@@ -151,10 +148,10 @@ TEST_CASE("NetBuffer: Clear resets entirely", "[net_buffer]")
 }
 
 // Error handling: reading past end
-TEST_CASE("NetBuffer: read past end throws/asserts", "[net_buffer][!mayfail]")
+TEST_CASE("NetBuffer: read past end throws", "[net_buffer]")
 {
     NetBuffer buf;
-    buf.write(static_cast<uint8_t>(0x01));
+    buf.write<uint8_t>(0x01);
     buf.read<uint8_t>(); // consume the only byte
-    SUCCEED("Behaviour not enforced yet - adjust when error strategy is decided.");
+    REQUIRE_THROWS_AS(buf.read<uint8_t>(), std::out_of_range);
 }

@@ -21,7 +21,7 @@ using simnet::core::net::internal::ReplicationSnapshot;
 using simnet::core::net::internal::ReplicatedEntity;
 using simnet::core::net::internal::CURRENT_PROTOCOL_VERSION;
 
-// ---------- Helper to build a snapshot buffer for simulation ----------
+// Helper to build a snapshot buffer for simulation
 static NetBuffer build_snapshot_buffer(ReplicationSnapshot &snap)
 {
     NetBuffer buf;
@@ -29,23 +29,21 @@ static NetBuffer build_snapshot_buffer(ReplicationSnapshot &snap)
     return buf;
 }
 
-// ---------- Fixture that injects a mock transport ----------
-class NetManagerTestFixture {
-public:
-    NetManager net;
-    MockTransport *mockTransport = nullptr;
+namespace {
+    // Fixture that injects a mock transport
+    class NetManagerTestFixture {
+    public:
+        NetManager net;
+        MockTransport *mockTransport = nullptr;
 
-    NetManagerTestFixture()
-    {
-        auto mock = std::make_unique<MockTransport>();
-        mockTransport = mock.get();
-        net.set_transport_for_testing(std::move(mock));
-    }
-};
-
-
-// Ensure set_transport_for_testing exists in NetManager; otherwise add it.
-// If not added, tests below will not compile.
+        NetManagerTestFixture()
+        {
+            auto mock = std::make_unique<MockTransport>();
+            mockTransport = mock.get();
+            net.set_transport_for_testing(std::move(mock));
+        }
+    };
+}
 
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: initialization as server", "[net_manager]")
 {
@@ -57,7 +55,6 @@ TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: initialization as server", 
 }
 
 
-// The following tests rely on the fixture pattern.
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: update calls service and connection handler update",
                  "[net_manager]")
 {
@@ -66,7 +63,6 @@ TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: update calls service and co
     net.update(now);
     // Service should have been called at least once
     REQUIRE(mockTransport->service_count > 0);
-    // We could also verify that conn_handler->update processed, but indirectly via pings later.
 }
 
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: client connect registers outgoing peer", "[net_manager]")
@@ -74,9 +70,6 @@ TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: client connect registers ou
     net.initialize(NetRole::client, NetConfig{0, 0, 2});
     auto id = net.connect("127.0.0.1", 7777);
     REQUIRE(id != 0);
-    // We can't access conn_handler directly from outside, but mock's connect was called.
-    // To test that register_outgoing_peer happened, we'd need to inspect internal state.
-    // Instead, we verify that a subsequent transport connect event doesn't crash.
     REQUIRE_NOTHROW(mockTransport->simulate_connect(id));
 }
 
