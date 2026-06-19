@@ -47,17 +47,15 @@ public:
 // Ensure set_transport_for_testing exists in NetManager; otherwise add it.
 // If not added, tests below will not compile.
 
-TEST_CASE("NetManager: initialization as server", "[net_manager]")
+TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: initialization as server", "[net_manager]")
 {
-    NetManager manager;
     NetConfig cfg;
     cfg.port = 7777;
     cfg.max_peers = 10;
-    // We cannot inject mock before initialize without the hook,
-    // but we can test that initialize succeeds with real transport? That won't work.
-    // Instead we'll skip initialization test if no mock injection.
-    // For brevity, we'll assume the fixture approach.
+    REQUIRE(net.initialize(NetRole::server, cfg));
+    REQUIRE(mockTransport->server_initialized);
 }
+
 
 // The following tests rely on the fixture pattern.
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: update calls service and connection handler update",

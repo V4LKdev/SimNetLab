@@ -4,6 +4,12 @@
 #include <unordered_map>
 
 namespace simnet::core::net::internal {
+    /**
+    * @brief Concrete transport implementation using ENet.
+    *
+    * All ENet calls are confined to this class.  External code talks to
+    * INetTransport only, making it possible to swap in a mock for testing.
+    */
     class RealNetTransport final : public INetTransport {
     public:
         RealNetTransport() = default;

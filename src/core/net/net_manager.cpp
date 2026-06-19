@@ -24,7 +24,7 @@ namespace simnet::core::net {
         bool initialized = false;
 
 
-        void dispatch_incoming(PeerID id, NetBuffer &buffer)
+        void dispatch_incoming(PeerID id, NetBuffer &buffer) const
         {
             TELEM_TRACY_ZONE_C("NetManager_dispatch_incoming", TELEM_COLOR_NET_RECV);
 
@@ -70,7 +70,7 @@ namespace simnet::core::net {
 
     NetManager::~NetManager() { shutdown(); }
 
-    bool NetManager::initialize(NetRole role, const NetConfig &config)
+    bool NetManager::initialize(NetRole role, const NetConfig &config) const
     {
         if (impl_->initialized) return false;
 
@@ -136,7 +136,7 @@ namespace simnet::core::net {
         return true;
     }
 
-    void NetManager::shutdown()
+    void NetManager::shutdown() const
     {
         if (!impl_->initialized) return;
 
@@ -150,7 +150,7 @@ namespace simnet::core::net {
         impl_->initialized = false;
     }
 
-    void NetManager::update(utils::TimePoint now)
+    void NetManager::update(utils::TimePoint now) const
     {
         if (!impl_->initialized) return;
         impl_->current_time = now;
@@ -159,7 +159,7 @@ namespace simnet::core::net {
     }
 
 
-    PeerID NetManager::connect(const std::string &address, uint16_t port)
+    PeerID NetManager::connect(const std::string &address, uint16_t port) const
     {
         if (!impl_->initialized || impl_->role != NetRole::client) return 0;
 
@@ -172,7 +172,7 @@ namespace simnet::core::net {
     }
 
 
-    void NetManager::broadcast_snapshot(const ReplicationSnapshot &snapshot)
+    void NetManager::broadcast_snapshot(const ReplicationSnapshot &snapshot) const
     {
         TELEM_TRACY_ZONE_C("NetManager_broadcast_snapshot", TELEM_COLOR_NET_SEND);
 
@@ -197,32 +197,32 @@ namespace simnet::core::net {
         }
     }
 
-    void NetManager::add_processor(std::unique_ptr<NetProcessor> processor)
+    void NetManager::add_processor(std::unique_ptr<NetProcessor> processor) const
     {
         impl_->pipeline->add_processor(std::move(processor));
     }
 
-    void NetManager::set_on_connected(std::function<void(PeerID)> callback)
+    void NetManager::set_on_connected(std::function<void(PeerID)> callback) const
     {
         impl_->game_on_connected = std::move(callback);
     }
 
-    void NetManager::set_on_disconnected(std::function<void(PeerID, DisconnectReason)> callback)
+    void NetManager::set_on_disconnected(std::function<void(PeerID, DisconnectReason)> callback) const
     {
         impl_->game_on_disconnected = std::move(callback);
     }
 
-    void NetManager::set_on_rejected(std::function<void(PeerID, RejectReason)> callback)
+    void NetManager::set_on_rejected(std::function<void(PeerID, RejectReason)> callback) const
     {
         impl_->game_on_rejected = std::move(callback);
     }
 
-    void NetManager::set_snapshot_callback(SnapshotCallback callback)
+    void NetManager::set_snapshot_callback(SnapshotCallback callback) const
     {
         impl_->snapshot_callback = std::move(callback);
     }
 
-    void NetManager::set_transport_for_testing(std::unique_ptr<internal::INetTransport> transport)
+    void NetManager::set_transport_for_testing(std::unique_ptr<internal::INetTransport> transport) const
     {
         impl_->transport = std::move(transport);
     }

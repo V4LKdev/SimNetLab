@@ -56,3 +56,13 @@ TEST_CASE("PeerState: connect time", "[peer_state]")
     auto later = start + std::chrono::seconds(5);
     REQUIRE(ps.connect_time_seconds(later) == Catch::Approx(5.0f));
 }
+
+TEST_CASE("PeerState: disconnect reason setters", "[peer_state]")
+{
+    PeerState ps(6);
+    ps.set_pending_disconnect_reason(DisconnectReason::Timeout);
+    REQUIRE(ps.get_pending_disconnect_reason() == DisconnectReason::Timeout);
+    ps.set_pending_disconnect_reason(DisconnectReason::Rejected);
+    REQUIRE(ps.get_pending_disconnect_reason() == DisconnectReason::Rejected);
+}
+

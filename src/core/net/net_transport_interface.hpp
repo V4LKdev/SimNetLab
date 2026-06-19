@@ -16,7 +16,7 @@ namespace simnet::core::net::internal {
     struct TransportCallbacks {
         std::function<void(PeerID)> on_new_connection;
         std::function<void(PeerID, DisconnectReason)> on_disconnection;
-        std::function<void(PeerID, NetBuffer &)> on_data; // non‑const – consumer may read from it
+        std::function<void(PeerID, NetBuffer &)> on_data;
     };
 
     class INetTransport {

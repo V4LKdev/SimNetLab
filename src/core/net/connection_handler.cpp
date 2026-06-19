@@ -272,6 +272,14 @@ namespace simnet::core::net::internal {
         return peers_.at(id);
     }
 
+    void ConnectionHandler::record_peer_activity(PeerID id, utils::TimePoint now)
+    {
+        auto it = peers_.find(id);
+        if (it != peers_.end()) {
+            it->second.record_activity(now);
+        }
+    }
+
     PeerState *ConnectionHandler::find_peer(PeerID id)
     {
         const auto it = peers_.find(id);

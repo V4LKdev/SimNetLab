@@ -12,6 +12,15 @@ namespace simnet::core::net::internal {
         disconnecting,
     };
 
+    /**
+    * @brief Per‑peer connection state and timing data.
+    *
+    * Tracks the connection lifecycle, activity timestamps for timeout
+    * calculations, and the reason for any pending disconnection.
+    *
+    * @note This class may be extended with processor‑specific caches
+    *       (delta baseline, AoI visibility set) in the future.
+     */
     class PeerState {
     public:
         explicit PeerState(PeerID id) : peer_id_(id)
@@ -22,7 +31,7 @@ namespace simnet::core::net::internal {
 
         PeerState &operator=(const PeerState &) = default;
 
-        // Allow move – enables proper container handling.
+        // Allow move - enables proper container handling.
         PeerState(PeerState &&) = default;
 
         PeerState &operator=(PeerState &&) = default;

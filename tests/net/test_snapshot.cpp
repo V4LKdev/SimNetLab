@@ -3,6 +3,7 @@
 #include "net/net_buffer.hpp"
 #include "net/net_types.hpp"
 #include <stdexcept>
+#include <catch2/catch_approx.hpp>
 
 using simnet::core::net::internal::ReplicationSnapshot;
 using simnet::core::net::internal::ReplicatedEntity;
@@ -31,7 +32,12 @@ TEST_CASE("ReplicationSnapshot: roundtrip with entities", "[snapshot]")
     REQUIRE(restored.entities.size() == 1);
     REQUIRE(restored.entities[0].network_id == 1);
     REQUIRE(restored.entities[0].hue == 128);
-    // Vec3 equality – assumes operator== exists; if not, we can check components.
+    REQUIRE(restored.entities[0].position.x() == Catch::Approx(1.0f));
+    REQUIRE(restored.entities[0].position.y() == Catch::Approx(2.0f));
+    REQUIRE(restored.entities[0].position.z() == Catch::Approx(3.0f));
+    REQUIRE(restored.entities[0].heading.x() == Catch::Approx(0.1f));
+    REQUIRE(restored.entities[0].heading.y() == Catch::Approx(0.2f));
+    REQUIRE(restored.entities[0].heading.z() == Catch::Approx(0.3f));
 }
 
 TEST_CASE("ReplicationSnapshot: empty snapshot roundtrip", "[snapshot]")

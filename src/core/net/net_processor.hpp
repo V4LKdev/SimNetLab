@@ -13,5 +13,9 @@ namespace simnet::core::net::internal {
 
         /// Process a buffer after receiving (reverse pass)
         virtual void process_incoming(PeerState &peer, NetBuffer &buffer, SnapshotFlags flags) = 0;
+
+        /// Name of the processor for debugging
+        [[nodiscard]]
+        virtual const char *name() const = 0;
     };
 }

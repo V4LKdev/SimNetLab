@@ -9,7 +9,6 @@
 #include "utils/time_keeper.hpp"
 
 namespace simnet::core::net {
-    // Forward declarations
     namespace internal {
         class NetProcessor;
     }
@@ -31,6 +30,15 @@ namespace simnet::core::net {
 
     using SnapshotCallback = std::function<void(const internal::ReplicationSnapshot &)>;
 
+    /**
+    * @brief Central network facade for client and server game instances.
+    *
+    * Hides transport, connection management, and packet processing pipelines
+    * behind a minimal public API. Game code only includes this header and
+    * uses callbacks to react to network events.
+    *
+    * @ingroup network
+    */
     class NetManager {
     public:
         NetManager();
@@ -45,31 +53,64 @@ namespace simnet::core::net {
 
         NetManager &operator=(NetManager &&) = delete;
 
-        bool initialize(NetRole role, const NetConfig &config);
+        /**
+        * @brief Initialize the network stack for a given role.
+        * @param role Server or client.
+        * @param config Port, max peers/channels, and timing settings.
+        * @return true if ENet and transport started successfully.
+        */
+        [[nodiscard]]
+        bool initialize(NetRole role, const NetConfig &config) const;
 
-        void shutdown();
+        /**
+         * @brief Tear down the entire network stack and release resources.
+         */
+        void shutdown() const;
 
-        void update(utils::TimePoint now);
+        /**
+        * @brief Process incoming events and maintain connections.
+        * @param now Monotonic timestamp for timeout/keep‑alive logic.
+        */
+        void update(utils::TimePoint now) const;
 
-        // Client only
-        PeerID connect(const std::string &address, uint16_t port);
+        /**
+        * @brief (Client only) Initiate a connection to the remote host.
+        * @param address Remote IP or hostname.
+        * @param port Remote port.
+        * @return PeerID of the new connection, or 0 on failure.
+        */
+        [[nodiscard]]
+        PeerID connect(const std::string &address, uint16_t port) const;
 
-        // Server only
-        void broadcast_snapshot(const internal::ReplicationSnapshot &snapshot);
+        /**
+        * @brief (Server only) Broadcast a full replicated snapshot to all handshaked clients.
+        * @param snapshot Flat container with entity data and tick info.
+        */
+        void broadcast_snapshot(const internal::ReplicationSnapshot &snapshot) const;
 
-        // Pipeline extension
-        void add_processor(std::unique_ptr<internal::NetProcessor> processor);
+        /**
+        * @brief Register a network processing stage (delta, quantization, AoI, …).
+        * @param processor Unique pointer; ownership transfers.
+        */
+        void add_processor(std::unique_ptr<internal::NetProcessor> processor) const;
 
-        // Callbacks (types now directly usable without internal::)
-        void set_on_connected(std::function<void(PeerID)> callback);
+        // Callbacks
+        /// Called when a peer completes the handshake and is ready for gameplay.
+        void set_on_connected(std::function<void(PeerID)> callback) const;
 
-        void set_on_disconnected(std::function<void(PeerID, DisconnectReason)> callback);
+        /// Called when a peer disconnects, with reason.
+        void set_on_disconnected(std::function<void(PeerID, DisconnectReason)> callback) const;
 
-        void set_on_rejected(std::function<void(PeerID, RejectReason)> callback);
+        /// Called when a connection attempt is rejected (e.g., full server, bad version).
+        void set_on_rejected(std::function<void(PeerID, RejectReason)> callback) const;
 
-        void set_snapshot_callback(SnapshotCallback callback);
+        /// Called on each received full‑state snapshot.
+        void set_snapshot_callback(SnapshotCallback callback) const;
 
-        void set_transport_for_testing(std::unique_ptr<internal::INetTransport> transport);
+        /**
+         * @brief Inject a mock transport (for unit testing only).
+         */
+        void set_transport_for_testing(std::unique_ptr<internal::INetTransport> transport) const;
 
     private:
         struct Impl;

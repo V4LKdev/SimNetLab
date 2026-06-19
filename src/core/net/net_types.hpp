@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
-#include <enet/enet.h>
 
 /**
  *  Central definition of the network protocol's unchanging elements.
@@ -16,10 +15,12 @@ namespace simnet::core::net::internal {
     constexpr ProtocolVersion CURRENT_PROTOCOL_VERSION = 1;
     // ----------------------------------------------------
 
-    enum class NetChannel : enet_uint8 {
+    enum class NetChannel : uint8_t {
         SystemReliable = 0,
         GameplayUnreliable = 1
     };
+
+    static_assert(sizeof(NetChannel) == 1);
 
     /// Message type identifiers used in packet headers
     enum class MessageType : uint8_t {

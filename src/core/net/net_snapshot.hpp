@@ -18,7 +18,13 @@ namespace simnet::core::net::internal {
         uint8_t hue = 0;
     };
 
-    /// Full snapshot payload
+    /**
+    * @brief Flat wire‑format container for a full world‑state snapshot.
+    *
+    * Holds a tick number, a sequence counter, and a list of replicated entities.
+    * Serializes directly into a NetBuffer; used by the network pipeline and
+    * the game's translation layer.
+    */
     struct ReplicationSnapshot {
         uint32_t tick = 0;
         uint32_t sequence = 0;

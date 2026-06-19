@@ -107,6 +107,11 @@ TEST_CASE("ConnectionHandler: client receives welcome", "[connection_handler]")
     handler.register_outgoing_peer(1);
     handler.on_transport_connect(1);
 
+    // Client must initiate handshake by sending Hello
+    REQUIRE(transport.send_calls.size() == 1);
+    REQUIRE(transport.send_calls[0].data[0] == static_cast<uint8_t>(MessageType::Hello));
+    transport.send_calls.clear();
+
     bool connected = false;
     handler.on_connected = [&](PeerID) { connected = true; };
 
@@ -124,6 +129,12 @@ TEST_CASE("ConnectionHandler: client receives reject", "[connection_handler]")
 
     handler.register_outgoing_peer(1);
     handler.on_transport_connect(1);
+
+    // Client must initiate handshake by sending Hello
+    REQUIRE(transport.send_calls.size() == 1);
+    REQUIRE(transport.send_calls[0].data[0] == static_cast<uint8_t>(MessageType::Hello));
+    transport.send_calls.clear();
+
 
     bool rejected = false;
     RejectReason reason = RejectReason::Other;

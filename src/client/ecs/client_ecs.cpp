@@ -23,7 +23,7 @@ namespace simnet::client::ecs {
                     auto *snap = it.world().try_get_mut<PendingSnapshot>();
                     if (!snap || !snap->new_data) return;
 
-                    // Build map of existing NetworkId → entity
+                    // Build map of existing NetworkId -> entity
                     std::unordered_map<uint32_t, flecs::entity> existing;
                     lookup_query.run([&](flecs::iter &qit) {
                         while (qit.next()) {

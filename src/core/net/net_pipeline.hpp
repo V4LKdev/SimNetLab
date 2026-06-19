@@ -5,6 +5,14 @@
 #include "net_processor.hpp"
 
 namespace simnet::core::net::internal {
+    /**
+    * @brief Ordered list of network processing stages.
+    *
+    * On send, processors are applied in insertion order (e.g., AoI -> Quantize -> Delta).
+    * On receive, processors are applied in reverse order, restoring the original data.
+    *
+    * Each processor may inspect SnapshotFlags to skip or adapt its behaviour.
+    */
     class NetPipeline {
     public:
         void add_processor(std::unique_ptr<NetProcessor> processor);

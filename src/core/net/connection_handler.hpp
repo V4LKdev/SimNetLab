@@ -9,6 +9,13 @@
 #include "utils/time_keeper.hpp"
 
 namespace simnet::core::net::internal {
+    /**
+    * @brief Manages peer connection lifecycle, handshake protocol, and keep‑alive pings.
+    *
+    * Owns the per‑peer state map and routes incoming control messages
+    * (Hello/Welcome/Reject/Ping) to the appropriate handler.  Snapshot
+    * packets are ignored - they are dispatched directly by NetManager.
+    */
     class ConnectionHandler {
     public:
         using on_connected_t = std::function<void(PeerID)>;
@@ -25,29 +32,31 @@ namespace simnet::core::net::internal {
 
         void set_role(bool is_server) { is_server_ = is_server; }
 
+        /** Called each tick by NetManager. Sends pings and checks for timeouts. */
         void update(utils::TimePoint now);
 
+        /** Called by transport when a new raw connection arrives. */
         void on_transport_connect(PeerID id);
 
+        /** Called by transport when a disconnection event occurs. */
         void on_transport_disconnect(PeerID id, DisconnectReason reason);
 
+        /** Called by transport when application data is received. */
         void on_transport_data(PeerID id, NetBuffer &buffer);
 
-        // Register a peer before it is connected (outgoing attempt)
+        /** Pre‑register a peer ID that will connect soon (client outgoing). */
         void register_outgoing_peer(PeerID id);
 
+        /** @return IDs of all peers that have completed the handshake. */
         std::vector<PeerID> get_connected_peer_ids() const;
 
+        /** @return mutable reference to a peer's state (precondition: peer exists). */
         PeerState &get_peer_state(PeerID id);
 
-        void record_peer_activity(PeerID id, utils::TimePoint now)
-        {
-            auto it = peers_.find(id);
-            if (it != peers_.end()) {
-                it->second.record_activity(now);
-            }
-        }
+        /** Record a peer activity timestamp (for timeout prevention). */
+        void record_peer_activity(PeerID id, utils::TimePoint now);
 
+        /** @return pointer to peer state, or nullptr if not found. */
         PeerState *find_peer(PeerID id);
 
     private:

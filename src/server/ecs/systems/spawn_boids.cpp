@@ -35,7 +35,7 @@ namespace simnet::server::ecs {
                                random_float(-half, half, gen),
                                random_float(-half, half, gen));
 
-                // Random direction → velocity
+                // Random direction -> velocity
                 Vec3 dir(random_float(-1.f, 1.f, gen),
                          random_float(-1.f, 1.f, gen),
                          random_float(-1.f, 1.f, gen));

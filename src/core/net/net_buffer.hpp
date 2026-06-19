@@ -28,6 +28,10 @@ namespace simnet::core::net::internal {
         NetBuffer &operator=(NetBuffer &&) = default;
 
         // --- Write API ---
+        /**
+        * @brief Write a value in network byte order.
+        * @tparam T Primitive type (uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, float, bool).
+        */
         template<typename T>
         void write(const T &value);
 
@@ -40,11 +44,21 @@ namespace simnet::core::net::internal {
         }
 
         // --- Read API ---
+        /**
+        * @brief Read a value previously written with write().
+        * @tparam T Primitive type.
+        * @return The read value.
+        * @throws std::out_of_range if less than sizeof(T) bytes remain.
+        */
         template<typename T>
         T read();
 
         // --- Convenience ---
+        /** @brief Current size of the underlying data. */
+        [[nodiscard]]
         size_t size() const { return buffer_.size(); }
+
+        [[nodiscard]]
         const uint8_t *data() const { return buffer_.data(); }
 
         void clear()
@@ -53,7 +67,11 @@ namespace simnet::core::net::internal {
             read_pos_ = 0;
         }
 
+        /** @brief Reset read position to the beginning (but keep written data). */
         void reset_data() { read_pos_ = 0; }
+
+        /** @brief Number of unread bytes remaining. */
+        [[nodiscard]]
         size_t remaining() const { return buffer_.size() - read_pos_; }
 
     private:
