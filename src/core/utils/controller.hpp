@@ -6,13 +6,18 @@
 
 #include "config/sim_config.hpp"
 #include "telemetry.hpp"
+#include "time_keeper.hpp"
 
 namespace simnet::core::utils {
     /**
      *  Fixed-step simulation timer / accumulator gate.
      */
     struct TimestepController {
-        explicit TimestepController(const config::SimConfig &cfg) : cfg_(cfg)
+        explicit TimestepController(const config::SimConfig &cfg)
+            : cfg_(cfg)
+              , dt_(Nanoseconds(cfg.dt_ns()))
+              , max_accum_(Nanoseconds(cfg.max_accum_ns()))
+              , max_steps_(cfg.max_sim_steps)
         {
         }
 
@@ -23,11 +28,16 @@ namespace simnet::core::utils {
          */
         void advance(int64_t elapsed_ns)
         {
-            accumulator_ns_ += elapsed_ns;
+            advance(Nanoseconds(elapsed_ns));
+        }
 
-            if (accumulator_ns_ > cfg_.max_accum_ns()) {
+        void advance(Nanoseconds elapsed)
+        {
+            accumulator_ += elapsed;
+
+            if (accumulator_ > max_accum_) {
                 TELEM_LOG_WARN("Accumulator clamped; simulation behind");
-                accumulator_ns_ = cfg_.max_accum_ns();
+                accumulator_ = max_accum_;
             }
 
             steps_this_frame_ = 0;
@@ -39,11 +49,10 @@ namespace simnet::core::utils {
          */
         bool try_step()
         {
-            if (accumulator_ns_ >= cfg_.dt_ns() && steps_this_frame_ < cfg_.max_sim_steps) {
-                accumulator_ns_ -= cfg_.dt_ns();
-                sim_time_ns_ += cfg_.dt_ns();
+            if (accumulator_ >= dt_ && steps_this_frame_ < max_steps_) {
+                accumulator_ -= dt_;
+                sim_time_ += dt_;
                 ++steps_this_frame_;
-
                 return true;
             }
             return false;
@@ -52,32 +61,43 @@ namespace simnet::core::utils {
         /** Milliseconds until the next tick is due (0 if already due). */
         [[nodiscard]] int ms_until_next_tick() const noexcept
         {
-            const int64_t remaining = cfg_.dt_ns() - accumulator_ns_;
-            if (remaining <= 0) return 0;
-
-            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::nanoseconds(remaining))
-                    .count();
-            return static_cast<int>(std::min<int64_t>(ms, std::numeric_limits<int>::max()));
+            if (accumulator_ >= dt_) return 0;
+            const auto remaining = dt_ - accumulator_;
+            return to_milliseconds_saturating(remaining);
         }
 
-        /** Alpha in [0,1) for interpolation between previous and current sim state. */
+        /** Alpha in [0,1) for interpolation between previous and current state. */
         [[nodiscard]] double interpolation_alpha() const noexcept
         {
-            return static_cast<double>(accumulator_ns_) / static_cast<double>(cfg_.dt_ns());
+            // Safe because dt_ > 0
+            return static_cast<double>(accumulator_.count()) /
+                   static_cast<double>(dt_.count());
         }
 
-        /** Total simulated time elapsed (in nanoseconds). */
-        [[nodiscard]] int64_t sim_time_ns() const noexcept { return sim_time_ns_; }
+        /** Total simulated time elapsed. */
+        [[nodiscard]] Nanoseconds sim_time() const noexcept { return sim_time_; }
 
-        /** Number of ticks taken this frame (since last update). */
-        [[nodiscard]] int steps_this_frame() const noexcept { return steps_this_frame_; }
+        /** Total simulated time in nanoseconds (int64_t for compatibility). */
+        [[nodiscard]] int64_t sim_time_ns() const noexcept
+        {
+            return sim_time_.count();
+        }
+
+        /** Number of ticks taken this frame. */
+        [[nodiscard]] int steps_this_frame() const noexcept
+        {
+            return steps_this_frame_;
+        }
 
     private:
         const config::SimConfig &cfg_;
-        int64_t accumulator_ns_ = 0;
-        int64_t sim_time_ns_ = 0;
+        Nanoseconds dt_;
+        Nanoseconds max_accum_;
+        int max_steps_;
+
+        Nanoseconds accumulator_{};
+        Nanoseconds sim_time_{};
         int steps_this_frame_ = 0;
     };
-} // namespace simnet::core
+}
 

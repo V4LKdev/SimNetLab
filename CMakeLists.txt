@@ -21,6 +21,8 @@ add_subdirectory(src/simd)
 add_subdirectory(src/core)
 add_subdirectory(src/game/shared)
 
+add_subdirectory(src/app)
+
 if (BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

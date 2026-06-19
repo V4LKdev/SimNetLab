@@ -1,7 +1,7 @@
 #include <flecs.h>
 
 #include "network_server.hpp"
-#include "../../../core/net/snapshot_utils.hpp"
+#include "../../../core/net/old/snapshot_utils.hpp"
 #include "telemetry.hpp"
 #include "../../../core/net/wire_types.hpp"
 #include "../../../game/shared/components.hpp"

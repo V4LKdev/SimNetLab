@@ -1,6 +1,5 @@
 add_executable(server
         ../app/server_main.cpp
-        network_server.cpp
         ecs/server_ecs.cpp
         ecs/systems/spawn_boids.cpp
         ecs/systems/send_snapshot.cpp

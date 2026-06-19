@@ -1,0 +1,223 @@
+#include "real_net_transport.hpp"
+#include "telemetry.hpp"
+
+namespace simnet::core::net::internal {
+    RealNetTransport::~RealNetTransport()
+    {
+        shutdown();
+    }
+
+    bool RealNetTransport::initialize_server(uint16_t port, size_t max_peers)
+    {
+        if (host_) shutdown();
+
+        TELEM_LOG_INFO("RealNetTransport: Starting server on port {}, max peers {}", port, max_peers);
+
+        ENetAddress address;
+        address.host = ENET_HOST_ANY;
+        address.port = port;
+        host_ = enet_host_create(&address, max_peers, 2, 0, 0);
+        if (!host_) {
+            TELEM_LOG_ERROR("RealNetTransport: Failed to create server host");
+            return false;
+        }
+        is_server_ = true;
+        return true;
+    }
+
+    bool RealNetTransport::initialize_client(uint16_t max_channels)
+    {
+        if (host_) shutdown();
+
+        TELEM_LOG_INFO("RealNetTransport: Starting client, max channels {}", max_channels);
+
+        host_ = enet_host_create(nullptr, 1, max_channels, 0, 0);
+        if (!host_) {
+            TELEM_LOG_ERROR("RealNetTransport: Failed to create client host");
+            return false;
+        }
+        is_server_ = false;
+        return true;
+    }
+
+    void RealNetTransport::shutdown()
+    {
+        if (!host_) return;
+
+        TELEM_LOG_INFO("RealNetTransport: Shutting down...");
+
+        auto reason = is_server_
+                          ? static_cast<enet_uint32>(DisconnectReason::ServerClosed)
+                          : static_cast<enet_uint32>(DisconnectReason::ClientQuit);
+
+        for (auto &[id, peer]: id_to_peer_) {
+            enet_peer_disconnect(peer, reason);
+        }
+        // Drain pending events
+        for (int i = 0; i < 10; ++i) {
+            ENetEvent event;
+            while (enet_host_service(host_, &event, 0) > 0) {
+                // Discard
+            }
+        }
+
+        enet_host_destroy(host_);
+        host_ = nullptr;
+        id_to_peer_.clear();
+    }
+
+    PeerID RealNetTransport::connect(const std::string &address, uint16_t port)
+    {
+        if (!host_) return 0;
+
+        TELEM_LOG_INFO("RealNetTransport: Connecting to {}:{}", address, port);
+
+        ENetAddress addr;
+        if (enet_address_set_host(&addr, address.c_str()) != 0) {
+            TELEM_LOG_ERROR("RealNetTransport: Could not resolve address '{}'", address);
+            return 0;
+        }
+        addr.port = port;
+        ENetPeer *peer = enet_host_connect(host_, &addr, 2, 0);
+        if (!peer) {
+            TELEM_LOG_ERROR("RealNetTransport: Failed to initiate connection to {}:{}", address, port);
+            return 0;
+        }
+        PeerID id = peer->connectID;
+        id_to_peer_[id] = peer;
+        peer_ptr_to_id_[peer] = id;
+        TELEM_LOG_TRACE("RealNetTransport: Outgoing connection, peer {}", id);
+        return id;
+    }
+
+    void RealNetTransport::disconnect(PeerID peer, DisconnectReason reason)
+    {
+        auto it = id_to_peer_.find(peer);
+        if (it == id_to_peer_.end()) {
+            TELEM_LOG_WARN("RealNetTransport: disconnect called for unknown peer {}", peer);
+            return;
+        }
+
+        TELEM_LOG_INFO("RealNetTransport: Disconnecting peer {}, reason {}", peer, static_cast<uint8_t>(reason));
+
+        enet_peer_disconnect(it->second, static_cast<enet_uint32>(reason));
+    }
+
+
+    void RealNetTransport::send(PeerID peer, const NetBuffer &buffer, uint8_t channel, TransportReliability reliability)
+    {
+        auto it = id_to_peer_.find(peer);
+        if (it == id_to_peer_.end()) {
+            TELEM_LOG_WARN("RealNetTransport: send to unknown peer {}", peer);
+            return;
+        }
+        if (buffer.size() == 0) return;
+
+        enet_uint32 flags = 0;
+        switch (reliability) {
+            case TransportReliability::reliable:
+                flags = ENET_PACKET_FLAG_RELIABLE;
+                break;
+            case TransportReliability::unreliable_sequenced:
+                flags = ENET_PACKET_FLAG_UNSEQUENCED;
+                break;
+            case TransportReliability::unreliable_fragmented:
+                flags = ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT;
+                break;
+        }
+
+        ENetPacket *packet = enet_packet_create(buffer.data(), buffer.size(), flags);
+        if (!packet) {
+            TELEM_LOG_WARN("RealNetTransport: Failed to create packet for peer {}, size {}", peer, buffer.size());
+            return;
+        }
+        enet_peer_send(it->second, channel, packet);
+    }
+
+    void RealNetTransport::set_callbacks(TransportCallbacks callbacks)
+    {
+        callbacks_ = std::move(callbacks);
+    }
+
+    void RealNetTransport::service(utils::TimePoint /*now*/)
+    {
+        if (!host_) return;
+
+        ENetEvent event;
+        while (enet_host_service(host_, &event, 0) > 0) {
+            switch (event.type) {
+                case ENET_EVENT_TYPE_CONNECT:
+                    on_enet_connect(event);
+                    break;
+                case ENET_EVENT_TYPE_DISCONNECT:
+                    on_enet_disconnect(event);
+                    break;
+                case ENET_EVENT_TYPE_RECEIVE:
+                    on_enet_receive(event);
+                    break;
+                default: break;
+            }
+        }
+    }
+
+    void RealNetTransport::on_enet_connect(const ENetEvent &event)
+    {
+        PeerID id = event.peer->connectID;
+        TELEM_LOG_INFO("RealNetTransport: New connection, peer {}", id);
+
+        id_to_peer_[id] = event.peer;
+        peer_ptr_to_id_[event.peer] = id;
+
+        if (callbacks_.on_new_connection) {
+            callbacks_.on_new_connection(id);
+        }
+    }
+
+    void RealNetTransport::on_enet_disconnect(const ENetEvent &event)
+    {
+        ENetPeer *ptr = event.peer;
+        enet_uint32 raw_data = event.data;
+
+        // ENet uses 0 as internal timeout/reject
+        DisconnectReason reason;
+        if (raw_data == 0) {
+            reason = DisconnectReason::Timeout;
+        } else {
+            reason = static_cast<DisconnectReason>(raw_data);
+        }
+
+        // Retrieve PeerID from reverse map
+        PeerID id = 0;
+        auto it = peer_ptr_to_id_.find(ptr);
+        if (it != peer_ptr_to_id_.end()) {
+            id = it->second;
+        } else {
+            id = ptr->connectID;
+            TELEM_LOG_WARN("RealNetTransport: disconnect for peer not in reverse map, using connectID {}", id);
+        }
+
+        TELEM_LOG_INFO("RealNetTransport: Peer {} disconnected, reason {}", id, static_cast<uint8_t>(reason));
+
+        if (callbacks_.on_disconnection) {
+            callbacks_.on_disconnection(id, reason);
+        }
+
+        // Cleanup both maps
+        id_to_peer_.erase(id);
+        peer_ptr_to_id_.erase(ptr);
+    }
+
+
+    void RealNetTransport::on_enet_receive(const ENetEvent &event)
+    {
+        PeerID id = event.peer->connectID;
+
+        NetBuffer buffer;
+        buffer.write_raw(event.packet->data, event.packet->dataLength);
+        enet_packet_destroy(event.packet);
+
+        if (callbacks_.on_data) {
+            callbacks_.on_data(id, buffer);
+        }
+    }
+}

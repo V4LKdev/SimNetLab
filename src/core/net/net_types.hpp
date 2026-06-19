@@ -1,17 +1,25 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
+#include <enet/enet.h>
 
 /**
  *  Central definition of the network protocol's unchanging elements.
  *
  *  Everything defined is part of the wire format and changes must be accompanied with a protocol version bump.
  */
-namespace simnet::net {
+namespace simnet::core::net::internal {
     using ProtocolVersion = std::uint16_t;
+    using PeerID = uint32_t;
 
-    /// Protocol version
+    // --- Protocol version -------------------------------
     constexpr ProtocolVersion CURRENT_PROTOCOL_VERSION = 1;
+    // ----------------------------------------------------
+
+    enum class NetChannel : enet_uint8 {
+        SystemReliable = 0,
+        GameplayUnreliable = 1
+    };
 
     /// Message type identifiers used in packet headers
     enum class MessageType : uint8_t {
@@ -26,13 +34,14 @@ namespace simnet::net {
 
         // Input = 20, /// Client side input commands
         // InputAck = 21, /// Server acknolwledgement of least received input command
-        //
+
         Snapshot = 30, /// Server to client authoritative world state update
         // StateSync
         // ResyncRequest
         // Debug
     };
 
+    /// Handshake / Request rejection reason type
     enum class RejectReason : uint8_t {
         VersionMismatch = 1,
         ServerFull = 10,
@@ -43,20 +52,20 @@ namespace simnet::net {
         Other = 99
     };
 
+    /// Disconnect reason type
     enum class DisconnectReason : uint8_t {
         ServerClosed = 1,
         ClientQuit = 2,
 
         Timeout = 10,
 
+        Rejected = 22,
         Other = 99
     };
 
+    /// Snapshot network technique feature flags
     enum class SnapshotFlags : uint16_t {
-        FullSnapshot = 1 << 0,
-        Deltas = 1 << 1,
-        Quantized = 1 << 2,
-        // etc...
+        FullSnapshot = 1 << 0
     };
 
     constexpr SnapshotFlags operator|(SnapshotFlags lhs, SnapshotFlags rhs) noexcept
@@ -69,13 +78,12 @@ namespace simnet::net {
         return (static_cast<std::uint16_t>(lhs) & static_cast<std::uint16_t>(rhs)) != 0;
     }
 
-
     /// Fixed-size message header
     struct MessageHeader {
         MessageType type;
     };
 
-    /// Fixed-size header that precedes every snapshot payload
+    /// Fixed-size snapshot header (comes after message header, and before snapshot payload)
     struct SnapshotHeader {
         uint32_t tick; // sim tick this snapshot represents
         uint32_t sequence; // monotonically increasing snapshot sequence number
@@ -95,6 +103,7 @@ namespace simnet::net {
     struct DisconnectPayload {
         DisconnectReason reason;
     };
+
 
     constexpr std::size_t PACKET_HEADER_SIZE =
             sizeof(MessageType);

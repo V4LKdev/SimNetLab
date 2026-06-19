@@ -19,9 +19,10 @@
 // --- Utilities ---------------------------------------------------------------
 #include "utils/controller.hpp"
 #include "utils/id_generator.hpp"
+#include "utils/time_keeper.hpp"
 
 // --- Network Facade (only the public interface) ------------------------------
-#include "net/net_interface.hpp"
+#include "net/net_manager.hpp"
 
 // =============================================================================
 // Namespace Aliases

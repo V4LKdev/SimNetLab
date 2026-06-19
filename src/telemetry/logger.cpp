@@ -17,9 +17,9 @@ namespace simnet::telemetry {
 
         spdlog::sinks_init_list sinks = {console_sink, file_sink};
         g_logger = std::make_shared<spdlog::logger>(app_name.data(), sinks.begin(), sinks.end());
-        g_logger->set_level(spdlog::level::debug);
+        g_logger->set_level(spdlog::level::trace);
         spdlog::register_logger(g_logger);
-        g_logger->flush_on(spdlog::level::debug);
+        g_logger->flush_on(spdlog::level::trace);
     }
 
     std::shared_ptr<spdlog::logger> get_logger()

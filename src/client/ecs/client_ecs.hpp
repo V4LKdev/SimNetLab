@@ -1,7 +1,7 @@
 #pragma once
 #include <flecs.h>
 
-#include "../../core/net/wire_types.hpp"
+#include "../../core/net/old/wire_types.hpp"
 
 namespace simnet::client::ecs {
     struct PendingSnapshot {
