@@ -48,7 +48,6 @@ namespace simnet::core::net {
                 }
                 auto &peer_state = *peer;
 
-                conn_handler->record_peer_activity(id, current_time);
                 pipeline->apply_incoming(peer_state, buffer, SnapshotFlags(0));
                 buffer.reset_data();
 
@@ -90,7 +89,6 @@ namespace simnet::core::net {
         }
 
         impl_->role = role;
-        // if a mock is set for testing, preserve
         if (!impl_->transport) {
             impl_->transport = std::make_unique<RealNetTransport>();
         }
@@ -100,7 +98,7 @@ namespace simnet::core::net {
         if (role == NetRole::server) {
             ok = impl_->transport->initialize_server(config.port, config.max_peers);
         } else {
-            ok = impl_->transport->initialize_client(config.max_channels);
+            ok = impl_->transport->initialize_client();
         }
 
         if (!ok) {
@@ -111,9 +109,7 @@ namespace simnet::core::net {
             return false;
         }
 
-        utils::Milliseconds ping_interval(config.ping_interval_ms);
-        utils::Milliseconds timeout(config.timeout_ms);
-        impl_->conn_handler = std::make_unique<ConnectionHandler>(*impl_->transport, ping_interval, timeout);
+        impl_->conn_handler = std::make_unique<ConnectionHandler>(*impl_->transport);
         impl_->conn_handler->set_role(role == NetRole::server);
 
         // Wire ConnectionHandler callbacks
@@ -213,7 +209,7 @@ namespace simnet::core::net {
             TELEM_HISTOGRAM_ADD("net.snapshot_out_size", static_cast<double>(buffer.size()));
 
             impl_->transport->send(id, buffer,
-                                   static_cast<uint8_t>(NetChannel::GameplayUnreliable),
+                                   static_cast<uint8_t>(NetChannel::Snapshot),
                                    TransportReliability::unreliable_fragmented);
         }
 

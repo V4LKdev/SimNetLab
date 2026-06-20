@@ -38,7 +38,7 @@ namespace simnet::core::net::internal {
             return true;
         }
 
-        bool initialize_client(uint16_t /*max_channels*/) override
+        bool initialize_client() override
         {
             client_initialized = true;
             return true;

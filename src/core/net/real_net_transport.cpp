@@ -16,7 +16,7 @@ namespace simnet::core::net::internal {
         ENetAddress address;
         address.host = ENET_HOST_ANY;
         address.port = port;
-        host_ = enet_host_create(&address, max_peers, 2, 0, 0);
+        host_ = enet_host_create(&address, max_peers, NUM_NET_CHANNELS, 0, 0);
         if (!host_) {
             TELEM_LOG_ERROR("RealNetTransport: Failed to create server host");
             return false;
@@ -25,13 +25,13 @@ namespace simnet::core::net::internal {
         return true;
     }
 
-    bool RealNetTransport::initialize_client(uint16_t max_channels)
+    bool RealNetTransport::initialize_client()
     {
         if (host_) shutdown();
 
-        TELEM_LOG_INFO("RealNetTransport: Starting client, max channels {}", max_channels);
+        TELEM_LOG_INFO("RealNetTransport: Starting client, max channels {}", NUM_NET_CHANNELS);
 
-        host_ = enet_host_create(nullptr, 1, max_channels, 0, 0);
+        host_ = enet_host_create(nullptr, 1, NUM_NET_CHANNELS, 0, 0);
         if (!host_) {
             TELEM_LOG_ERROR("RealNetTransport: Failed to create client host");
             return false;
@@ -78,7 +78,7 @@ namespace simnet::core::net::internal {
             return 0;
         }
         addr.port = port;
-        ENetPeer *peer = enet_host_connect(host_, &addr, 2, 0);
+        ENetPeer *peer = enet_host_connect(host_, &addr, NUM_NET_CHANNELS, 0);
         if (!peer) {
             TELEM_LOG_ERROR("RealNetTransport: Failed to initiate connection to {}:{}", address, port);
             return 0;
@@ -163,6 +163,8 @@ namespace simnet::core::net::internal {
                 default: break;
             }
         }
+
+        poll_peer_statistics();
     }
 
     void RealNetTransport::on_enet_connect(const ENetEvent &event)
@@ -220,18 +222,45 @@ namespace simnet::core::net::internal {
     void RealNetTransport::on_enet_receive(const ENetEvent &event)
     {
         PeerID id = event.peer->connectID;
+        size_t length = event.packet->dataLength;
 
         NetBuffer buffer;
-        TELEM_LOG_TRACE("RealNetTransport: received packet, peer={}, size={}", id, event.packet->dataLength);
-        buffer.write_raw(event.packet->data, event.packet->dataLength);
+        TELEM_LOG_TRACE("RealNetTransport: received packet, peer={}, size={}", id, length);
+        buffer.write_raw(event.packet->data, length);
         enet_packet_destroy(event.packet);
 
         TELEM_COUNTER_INC("net.pkt_recv_total", 1);
-        TELEM_COUNTER_INC("net.bytes_recv_total", event.packet->dataLength);
-        TELEM_HISTOGRAM_ADD("net.pkt_size_recv", event.packet->dataLength);
+        TELEM_COUNTER_INC("net.bytes_recv_total", static_cast<int64_t>(length));
+        TELEM_HISTOGRAM_ADD("net.pkt_size_recv", static_cast<double>(length));
 
-        if (callbacks_.on_data) {
+        if (callbacks_.on_data)
             callbacks_.on_data(id, buffer);
+    }
+
+
+    void RealNetTransport::poll_peer_statistics()
+    {
+        if (!host_) return;
+
+        for (size_t i = 0; i < host_->peerCount; ++i) {
+            const ENetPeer *peer = &host_->peers[i];
+            if (peer->state != ENET_PEER_STATE_CONNECTED)
+                continue;
+
+            // Round-trip time in milliseconds
+            TELEM_HISTOGRAM_ADD("net.enet_rtt_ms", static_cast<double>(peer->roundTripTime));
+
+            // Packet loss percentage
+            constexpr double scale = static_cast<double>(ENET_PEER_PACKET_LOSS_SCALE);
+            double loss_pct = (peer->packetLoss / scale) * 100.0;
+            TELEM_HISTOGRAM_ADD("net.enet_packet_loss_pct", loss_pct);
+
+            // Total packets sent/lost reported as gauges (reset to latest value each poll)
+            // TELEM_COUNTER_SET("net.enet_packets_sent", static_cast<int64_t>(peer->packetsSent));
+            // TELEM_COUNTER_SET("net.enet_packets_lost", static_cast<int64_t>(peer->packetsLost));
+
+            // Log individual peer stats at trace level (very verbose)
+            // TELEM_LOG_TRACE("RealNetTransport: stats peer {} rtt={} loss={:.2f}%", peer->connectID, peer->roundTripTime, loss_pct);
         }
     }
 }

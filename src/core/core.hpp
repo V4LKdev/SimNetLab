@@ -1,9 +1,7 @@
-// src/core/prelude.hpp
+// =============================================================================
+// Core Module Aggregate Header - Public API Only
+// =============================================================================
 #pragma once
-
-// =============================================================================
-// Core Module Prelude – Public API Only
-// =============================================================================
 
 // --- Config ------------------------------------------------------------------
 #include "config/config_loader.hpp"
@@ -21,11 +19,11 @@
 #include "utils/id_generator.hpp"
 #include "utils/time_keeper.hpp"
 
-// --- Network Facade (only the public interface) ------------------------------
+// --- Network Facade ----------------------------------------------------------
 #include "net/net_manager.hpp"
 
 // =============================================================================
-// Namespace Aliases
+// Namespace Aliases (convenience for downstream consumers)
 // =============================================================================
 namespace simnet {
     namespace net = core::net;

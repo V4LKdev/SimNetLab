@@ -11,7 +11,7 @@ if (BUILD_TELEMETRY)
     find_package(fmt CONFIG REQUIRED)
     find_package(spdlog CONFIG REQUIRED)
     find_package(Tracy CONFIG REQUIRED)
-    target_link_libraries(telemetry PUBLIC
+    target_link_libraries(telemetry PRIVATE
             fmt::fmt
             spdlog::spdlog
             Tracy::TracyClient

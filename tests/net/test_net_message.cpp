@@ -8,8 +8,6 @@ using simnet::core::net::internal::NetMessage;
 using simnet::core::net::internal::HelloMessage;
 using simnet::core::net::internal::WelcomeMessage;
 using simnet::core::net::internal::RejectMessage;
-using simnet::core::net::internal::PingMessage;
-using simnet::core::net::internal::PongMessage;
 using simnet::core::net::internal::MessageType;
 using simnet::core::net::internal::RejectReason;
 using simnet::core::net::internal::ProtocolVersion;
@@ -51,28 +49,6 @@ TEST_CASE("NetMessage: Reject roundtrip", "[net_message]")
     auto *reject2 = dynamic_cast<RejectMessage *>(msg.get());
     REQUIRE(reject2 != nullptr);
     REQUIRE(reject2->get_reason() == RejectReason::ServerFull);
-}
-
-TEST_CASE("NetMessage: Ping roundtrip", "[net_message]")
-{
-    NetBuffer buf;
-    PingMessage ping;
-    ping.serialize(buf);
-
-    auto msg = NetMessage::deserialize(buf);
-    REQUIRE(msg != nullptr);
-    REQUIRE(dynamic_cast<PingMessage*>(msg.get()) != nullptr);
-}
-
-TEST_CASE("NetMessage: Pong roundtrip", "[net_message]")
-{
-    NetBuffer buf;
-    PongMessage pong;
-    pong.serialize(buf);
-
-    auto msg = NetMessage::deserialize(buf);
-    REQUIRE(msg != nullptr);
-    REQUIRE(dynamic_cast<PongMessage*>(msg.get()) != nullptr);
 }
 
 TEST_CASE("NetMessage: deserialize truncated Hello", "[net_message]")

@@ -23,9 +23,6 @@ namespace simnet::core::net {
     struct NetConfig {
         uint16_t port = 0;
         std::size_t max_peers = 0; // server only
-        uint16_t max_channels = 0; // client only
-        int ping_interval_ms = 2000;
-        int timeout_ms = 5000;
     };
 
     using SnapshotCallback = std::function<void(const internal::ReplicationSnapshot &)>;

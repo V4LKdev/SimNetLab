@@ -58,6 +58,11 @@ namespace simnet::telemetry {
         // Increment a named counter by delta (signed)
         void add_counter(const std::string &name, int64_t delta);
 
+        void set_counter(const std::string& name, int64_t value) {
+            std::lock_guard lock(mutex_);
+            counters_[name] = value;
+        }
+
         // Add a sample to a named histogram
         void add_histogram(const std::string &name, double value);
 

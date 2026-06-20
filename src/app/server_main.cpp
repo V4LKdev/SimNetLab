@@ -3,7 +3,7 @@
 #include <thread>
 #include <flecs.h>
 
-#include "prelude.hpp"
+#include "core.hpp"
 #include "telemetry.hpp"
 
 using Clock = std::chrono::steady_clock;

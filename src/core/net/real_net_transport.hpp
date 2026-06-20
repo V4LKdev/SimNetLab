@@ -18,7 +18,7 @@ namespace simnet::core::net::internal {
 
         bool initialize_server(uint16_t port, size_t max_peers) override;
 
-        bool initialize_client(uint16_t max_channels) override;
+        bool initialize_client() override;
 
         void shutdown() override;
 
@@ -44,5 +44,7 @@ namespace simnet::core::net::internal {
         void on_enet_disconnect(const ENetEvent &event);
 
         void on_enet_receive(const ENetEvent &event);
+
+        void poll_peer_statistics();
     };
 }

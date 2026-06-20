@@ -75,25 +75,6 @@ namespace simnet::core::net::internal {
         RejectReason reason_;
     };
 
-    // --- Ping Message ---
-    class PingMessage final : public NetMessage {
-    public:
-        void serialize(NetBuffer &buffer) const override
-        {
-            buffer.write(static_cast<uint8_t>(MessageType::Ping));
-        }
-    };
-
-    // --- Pong Message ---
-    class PongMessage final : public NetMessage {
-    public:
-        void serialize(NetBuffer &buffer) const override
-        {
-            buffer.write(static_cast<uint8_t>(MessageType::Pong));
-        }
-    };
-
-
     // --- Factory ---
     inline std::unique_ptr<NetMessage> NetMessage::deserialize(NetBuffer &buffer)
     {
@@ -125,13 +106,6 @@ namespace simnet::core::net::internal {
                 result = std::make_unique<RejectMessage>(reason);
                 break;
             }
-            case MessageType::Ping:
-                result = std::make_unique<PingMessage>();
-                break;
-
-            case MessageType::Pong:
-                result = std::make_unique<PongMessage>();
-                break;
 
             default:
                 TELEM_LOG_WARN("NetMessage::deserialize unknown type {}", static_cast<int>(type));

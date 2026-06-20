@@ -13,14 +13,19 @@ option(BUILD_SIMD "Build with Highway SIMD" OFF)
 option(BUILD_TESTS "Build Catch2 unit/integration tests" ON)
 # --------------------------------------------------------------------------------
 
-# Include targets
-# these are conditionally included (logic inside their cmake lists files)
+# Include optional targets first (they are used by core)
 add_subdirectory(src/telemetry)
 add_subdirectory(src/simd)
 
+# Core engine (no game logic)
 add_subdirectory(src/core)
-add_subdirectory(src/game/shared)
 
+# Game libraries - define them before the executables
+add_subdirectory(src/game/shared)
+add_subdirectory(src/game/client)
+add_subdirectory(src/game/server)
+
+# Executables
 add_subdirectory(src/app)
 
 if (BUILD_TESTS)

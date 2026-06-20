@@ -21,7 +21,6 @@ using simnet::core::net::internal::ReplicationSnapshot;
 using simnet::core::net::internal::ReplicatedEntity;
 using simnet::core::net::internal::CURRENT_PROTOCOL_VERSION;
 
-// Helper to build a snapshot buffer for simulation
 static NetBuffer build_snapshot_buffer(ReplicationSnapshot &snap)
 {
     NetBuffer buf;
@@ -30,7 +29,6 @@ static NetBuffer build_snapshot_buffer(ReplicationSnapshot &snap)
 }
 
 namespace {
-    // Fixture that injects a mock transport
     class NetManagerTestFixture {
     public:
         NetManager net;
@@ -54,62 +52,26 @@ TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: initialization as server", 
     REQUIRE(mockTransport->server_initialized);
 }
 
-
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: update calls service and connection handler update",
                  "[net_manager]")
 {
-    net.initialize(NetRole::server, NetConfig{0, 10, 0});
+    net.initialize(NetRole::server, NetConfig{0, 10});
     auto now = make_time(0);
     net.update(now);
-    // Service should have been called at least once
     REQUIRE(mockTransport->service_count > 0);
 }
 
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: client connect registers outgoing peer", "[net_manager]")
 {
-    net.initialize(NetRole::client, NetConfig{0, 0, 2});
+    net.initialize(NetRole::client, NetConfig{}); // client only needs empty config
     auto id = net.connect("127.0.0.1", 7777);
     REQUIRE(id != 0);
     REQUIRE_NOTHROW(mockTransport->simulate_connect(id));
 }
 
-TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: snapshot dispatch marks peer activity", "[net_manager]")
-{
-    NetConfig cfg;
-    cfg.max_peers = 10;
-    cfg.timeout_ms = 100; // short timeout for test
-    net.initialize(NetRole::server, cfg);
-
-    const PeerID peerId = 1;
-    mockTransport->simulate_connect(peerId);
-    // Send Hello to complete handshake
-    NetBuffer helloBuf;
-    helloBuf.write(static_cast<uint8_t>(MessageType::Hello));
-    helloBuf.write(CURRENT_PROTOCOL_VERSION);
-    mockTransport->simulate_data(peerId, helloBuf);
-
-    // Prepare a snapshot buffer
-    ReplicationSnapshot snap;
-    snap.tick = 100;
-    auto snapBuf = build_snapshot_buffer(snap);
-
-    // Advance time near the timeout
-    auto now = make_time(0);
-    net.update(now); // set current_time in conn_handler
-    now = make_time(80); // still within 100 ms timeout
-    net.update(now);
-    mockTransport->simulate_data(peerId, snapBuf); // snapshot should record activity at time ~80
-
-    // Now advance past the timeout from start, but not from the snapshot's activity
-    now = make_time(150); // 150 ms since epoch, peer activity recorded at ~80, diff 70 ms < 100 ms timeout
-    net.update(now);
-    // No disconnect should have happened because snapshot kept the peer alive
-    REQUIRE(mockTransport->disconnect_calls.empty());
-}
-
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: snapshot dispatch fires callback", "[net_manager]")
 {
-    net.initialize(NetRole::server, NetConfig{0, 10, 0});
+    net.initialize(NetRole::server, NetConfig{0, 10});
     const PeerID peerId = 1;
     mockTransport->simulate_connect(peerId);
     NetBuffer helloBuf;
@@ -132,10 +94,9 @@ TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: snapshot dispatch fires cal
     REQUIRE(snapshot_received);
 }
 
-
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: snapshot from missing peer does not crash", "[net_manager]")
 {
-    net.initialize(NetRole::server, NetConfig{0, 10, 0});
+    net.initialize(NetRole::server, NetConfig{0, 10});
     ReplicationSnapshot snap;
     auto buf = build_snapshot_buffer(snap);
     REQUIRE_NOTHROW(mockTransport->simulate_data(999, buf));
@@ -143,15 +104,13 @@ TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: snapshot from missing peer 
 
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: broadcast snapshot sends to connected peers", "[net_manager]")
 {
-    net.initialize(NetRole::server, NetConfig{0, 10, 0});
-    // create connected peer 1
+    net.initialize(NetRole::server, NetConfig{0, 10});
     mockTransport->simulate_connect(1);
     NetBuffer helloBuf;
     helloBuf.write(static_cast<uint8_t>(MessageType::Hello));
     helloBuf.write(CURRENT_PROTOCOL_VERSION);
     mockTransport->simulate_data(1, helloBuf);
 
-    // Clear handshake send calls (Welcome)
     mockTransport->send_calls.clear();
 
     ReplicationSnapshot snap;
@@ -159,17 +118,15 @@ TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: broadcast snapshot sends to
     net.broadcast_snapshot(snap);
     REQUIRE(mockTransport->send_calls.size() == 1);
     REQUIRE(mockTransport->send_calls[0].channel == static_cast<uint8_t>(
-        simnet::core::net::internal::NetChannel::GameplayUnreliable));
-    // Verify snapshot header in payload
+        simnet::core::net::internal::NetChannel::Snapshot));
     REQUIRE(mockTransport->send_calls[0].data[0] == static_cast<uint8_t>(MessageType::Snapshot));
 }
 
 TEST_CASE_METHOD(NetManagerTestFixture, "NetManager: callbacks propagate from connection handler", "[net_manager]")
 {
-    net.initialize(NetRole::server, NetConfig{0, 10, 0});
+    net.initialize(NetRole::server, NetConfig{0, 10});
     bool connected = false;
     net.set_on_connected([&](PeerID) { connected = true; });
-    // simulate handshake that leads to on_connected inside ConnectionHandler
     mockTransport->simulate_connect(1);
     NetBuffer helloBuf;
     helloBuf.write(static_cast<uint8_t>(MessageType::Hello));

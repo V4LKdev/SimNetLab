@@ -2,7 +2,7 @@
 #include <csignal>
 #include <flecs.h>
 
-#include "prelude.hpp"
+#include "core.hpp"
 
 #include "telemetry.hpp"
 
@@ -50,7 +50,6 @@ int main()
     // --- network init ---
     simnet::net::NetManager net;
     simnet::net::NetConfig net_cfg;
-    net_cfg.max_channels = 2;
 
     if (!net.initialize(simnet::net::NetRole::client, net_cfg)) {
         TELEM_LOG_ERROR("Failed to initialize the client network");

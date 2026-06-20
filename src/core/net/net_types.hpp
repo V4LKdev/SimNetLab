@@ -16,12 +16,15 @@ namespace simnet::core::net::internal {
     // ----------------------------------------------------
 
     enum class NetChannel : uint8_t {
-        SystemReliable = 0,
-        GameplayUnreliable = 1
+        System = 0, // handshake and system messages (reliable)
+        GameEvent = 1, // gameplay events (reliable)
+        Snapshot = 2, // game state snapshots (unreliable)
+        Input = 3 // client inputs (unreliable)
     };
 
-    static_assert(sizeof(NetChannel) == 1);
+    constexpr uint8_t NUM_NET_CHANNELS = 4;
 
+    
     /// Message type identifiers used in packet headers
     enum class MessageType : uint8_t {
         Invalid = 0, /// Invalid or uninitialized message type
@@ -30,13 +33,12 @@ namespace simnet::core::net::internal {
         Welcome = 2, /// Server handshake acceptance message
         Reject = 3, /// Server handshake rejection message
 
-        Ping = 10, /// Used for latency measurement and connection health
-        Pong = 11, /// Response to ping, to measure rtt
 
         // Input = 20, /// Client side input commands
         // InputAck = 21, /// Server acknolwledgement of least received input command
 
         Snapshot = 30, /// Server to client authoritative world state update
+        ConfigUpdate = 40, /// Server to client on config hotreload
         // StateSync
         // ResyncRequest
         // Debug

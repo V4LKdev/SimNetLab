@@ -25,7 +25,7 @@ namespace simnet::core::net::internal {
 
         virtual bool initialize_server(uint16_t port, size_t max_peers) = 0;
 
-        virtual bool initialize_client(uint16_t max_channels) = 0;
+        virtual bool initialize_client() = 0;
 
         virtual void shutdown() = 0;
 

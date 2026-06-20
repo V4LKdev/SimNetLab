@@ -44,7 +44,7 @@ namespace simnet::core::net::internal {
             }
             buffer_.insert(buffer_.end(), data, data + length);
 
-            TELEM_COUNTER_INC("net.buffer_bytes_written", static_cast<int64_t>(length));
+            TELEM_COUNTER_INC("net.bytes_recv_raw", static_cast<int64_t>(length));
         }
 
         // --- Read API ---

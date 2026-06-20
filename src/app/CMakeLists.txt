@@ -1,24 +1,14 @@
 # app/CMakeLists.txt
 # Executable entry points
 
-# ---- Client executable ----
 add_executable(sim_client
         client_main.cpp
 )
+target_link_libraries(sim_client PRIVATE game_client)
+# game_client transitively pulls in game_shared -> core
 
-target_link_libraries(sim_client
-        PRIVATE core
-        # PRIVATE game_shared
-        # PRIVATE game_client
-)
-
-# ---- Server executable ----
 add_executable(sim_server
         server_main.cpp
 )
-
-target_link_libraries(sim_server
-        PRIVATE core
-        # PRIVATE game_shared
-        # PRIVATE game_server
-)
+target_link_libraries(sim_server PRIVATE game_server)
+# game_server transitively pulls in game_shared -> core
