@@ -33,6 +33,8 @@ namespace simnet::core::net {
                 return;
             }
 
+            size_t const incoming_size = buffer.size();
+
             // Peek message type
             auto msg_type = static_cast<MessageType>(buffer.read<uint8_t>());
             buffer.reset_data();
@@ -41,6 +43,7 @@ namespace simnet::core::net {
                 auto *peer = conn_handler->find_peer(id);
                 if (!peer || !peer->is_handshake_complete()) {
                     TELEM_LOG_WARN("NetManager: Snapshot from non-handshaked or missing peer {}", id);
+                    TELEM_COUNTER_INC("net.snapshot_rejected_no_handshake", 1);
                     return;
                 }
                 auto &peer_state = *peer;
@@ -55,8 +58,13 @@ namespace simnet::core::net {
                     if (snapshot_callback) {
                         snapshot_callback(snap);
                     }
+
+                    // Telemetry
+                    TELEM_COUNTER_INC("net.snapshot_recv", 1);
+                    TELEM_HISTOGRAM_ADD("net.snapshot_in_size", static_cast<double>(incoming_size));
                 } catch (const std::exception &e) {
                     TELEM_LOG_WARN("NetManager: Failed to parse snapshot from peer {}: {}", id, e.what());
+                    TELEM_COUNTER_INC("net.snapshot_parse_error", 1);
                 }
             } else {
                 conn_handler->on_transport_data(id, buffer);
@@ -167,6 +175,7 @@ namespace simnet::core::net {
         PeerID id = impl_->transport->connect(address, port);
         if (id != 0) {
             impl_->conn_handler->register_outgoing_peer(id);
+            TELEM_COUNTER_INC("net.connection_attempts", 1);
         }
         return id;
     }
@@ -182,6 +191,9 @@ namespace simnet::core::net {
                         snapshot.tick, snapshot.entities.size());
 
         auto peer_ids = impl_->conn_handler->get_connected_peer_ids();
+
+        TELEM_TRACY_PLOT("net.broadcast_peer_count", static_cast<int64_t>(peer_ids.size()));
+
         for (PeerID id: peer_ids) {
             auto &peer_state = impl_->conn_handler->get_peer_state(id);
             if (!peer_state.is_handshake_complete()) {
@@ -189,13 +201,25 @@ namespace simnet::core::net {
             }
             NetBuffer buffer;
             snapshot.write(buffer);
+
+            // Useful for later
+            size_t const size_before_pipeline = buffer.size();
+
             impl_->pipeline->apply_outgoing(impl_->conn_handler->get_peer_state(id), buffer,
                                             SnapshotFlags::FullSnapshot);
+
+            // --- Telemetry ---
+            TELEM_COUNTER_INC("net.snapshot_sent_per_peer", 1);
+            TELEM_HISTOGRAM_ADD("net.snapshot_out_size", static_cast<double>(buffer.size()));
+
             impl_->transport->send(id, buffer,
                                    static_cast<uint8_t>(NetChannel::GameplayUnreliable),
                                    TransportReliability::unreliable_fragmented);
         }
+
+        TELEM_COUNTER_INC("net.snapshot_sent_total", static_cast<int64_t>(peer_ids.size()));
     }
+
 
     void NetManager::add_processor(std::unique_ptr<NetProcessor> processor) const
     {

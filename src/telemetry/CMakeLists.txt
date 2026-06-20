@@ -2,6 +2,7 @@ if (BUILD_TELEMETRY)
     add_library(telemetry STATIC
             telemetry.cpp
             logger.cpp
+            metrics_collector.cpp
     )
     target_compile_definitions(telemetry PUBLIC
             TELEMETRY_ENABLED=1

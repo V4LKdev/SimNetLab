@@ -3,6 +3,7 @@
 
 #include "net_buffer.hpp"
 #include "net_types.hpp"
+#include "telemetry.hpp"
 
 namespace simnet::core::net::internal {
     // --- Base class for all control messages ---
@@ -102,31 +103,49 @@ namespace simnet::core::net::internal {
 
         auto type = static_cast<MessageType>(buffer.read<uint8_t>());
 
+        std::unique_ptr<NetMessage> result = nullptr;
+
         switch (type) {
             case MessageType::Hello: {
                 if (buffer.remaining() < HELLO_SIZE) {
                     return nullptr;
                 }
                 ProtocolVersion version = buffer.read<uint16_t>();
-                return std::make_unique<HelloMessage>(version);
+                result = std::make_unique<HelloMessage>(version);
+                break;
             }
             case MessageType::Welcome:
-                return std::make_unique<WelcomeMessage>();
+                result = std::make_unique<WelcomeMessage>();
+                break;
             case MessageType::Reject: {
                 if (buffer.remaining() < REJECT_SIZE) {
                     return nullptr;
                 }
                 auto reason = static_cast<RejectReason>(buffer.read<uint8_t>());
-                return std::make_unique<RejectMessage>(reason);
+                result = std::make_unique<RejectMessage>(reason);
+                break;
             }
             case MessageType::Ping:
-                return std::make_unique<PingMessage>();
+                result = std::make_unique<PingMessage>();
+                break;
 
             case MessageType::Pong:
-                return std::make_unique<PongMessage>();
+                result = std::make_unique<PongMessage>();
+                break;
 
             default:
+                TELEM_LOG_WARN("NetMessage::deserialize unknown type {}", static_cast<int>(type));
+                TELEM_COUNTER_INC("net.control_unknown_type", 1);
                 return nullptr;
         }
+
+        if (result) {
+            std::string counter_name = fmt::format("net.control_in_{}", static_cast<int>(type));
+            telemetry::MetricsCollector::instance().add_counter(counter_name, 1);
+            TELEM_COUNTER_INC("net.control_total", 1);
+        } else {
+            TELEM_COUNTER_INC("net.control_parse_error", 1);
+        }
+        return result;
     }
 }

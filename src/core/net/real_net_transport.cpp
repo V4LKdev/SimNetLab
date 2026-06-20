@@ -126,6 +126,11 @@ namespace simnet::core::net::internal {
                 break;
         }
 
+
+        TELEM_COUNTER_INC("net.pkt_sent_total", 1);
+        TELEM_COUNTER_INC("net.bytes_sent_total", buffer.size());
+        TELEM_HISTOGRAM_ADD("net.pkt_size_sent", buffer.size());
+
         ENetPacket *packet = enet_packet_create(buffer.data(), buffer.size(), flags);
         if (!packet) {
             TELEM_LOG_WARN("RealNetTransport: Failed to create packet for peer {}, size {}", peer, buffer.size());
@@ -168,6 +173,8 @@ namespace simnet::core::net::internal {
         id_to_peer_[id] = event.peer;
         peer_ptr_to_id_[event.peer] = id;
 
+        TELEM_COUNTER_INC("net.raw_connections_accepted", 1);
+
         if (callbacks_.on_new_connection) {
             callbacks_.on_new_connection(id);
         }
@@ -198,6 +205,8 @@ namespace simnet::core::net::internal {
 
         TELEM_LOG_INFO("RealNetTransport: Peer {} disconnected, reason {}", id, static_cast<uint8_t>(reason));
 
+        TELEM_COUNTER_INC("net.disconnections_total", 1);
+
         if (callbacks_.on_disconnection) {
             callbacks_.on_disconnection(id, reason);
         }
@@ -213,8 +222,13 @@ namespace simnet::core::net::internal {
         PeerID id = event.peer->connectID;
 
         NetBuffer buffer;
+        TELEM_LOG_TRACE("RealNetTransport: received packet, peer={}, size={}", id, event.packet->dataLength);
         buffer.write_raw(event.packet->data, event.packet->dataLength);
         enet_packet_destroy(event.packet);
+
+        TELEM_COUNTER_INC("net.pkt_recv_total", 1);
+        TELEM_COUNTER_INC("net.bytes_recv_total", event.packet->dataLength);
+        TELEM_HISTOGRAM_ADD("net.pkt_size_recv", event.packet->dataLength);
 
         if (callbacks_.on_data) {
             callbacks_.on_data(id, buffer);

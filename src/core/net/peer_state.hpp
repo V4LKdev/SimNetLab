@@ -40,6 +40,7 @@ namespace simnet::core::net::internal {
         [[nodiscard]] ConnectionState get_state() const { return state_; }
         [[nodiscard]] bool is_connected() const { return state_ == ConnectionState::connected; }
         [[nodiscard]] utils::TimePoint last_activity_time() const { return last_activity_time_; }
+        [[nodiscard]] utils::TimePoint connect_time() const { return connect_time_; }
 
         void record_activity(const utils::TimePoint &now) { last_activity_time_ = now; }
 
@@ -60,6 +61,7 @@ namespace simnet::core::net::internal {
         {
             state_ = ConnectionState::connected;
             TELEM_LOG_TRACE("PeerState {}: -> connected", peer_id_);
+            TELEM_COUNTER_INC("net.peer_state_connected", 1);
         }
 
         void mark_disconnecting()
@@ -72,6 +74,7 @@ namespace simnet::core::net::internal {
         {
             state_ = ConnectionState::disconnected;
             TELEM_LOG_TRACE("PeerState {}: -> disconnected", peer_id_);
+            TELEM_COUNTER_INC("net.peer_state_disconnected", 1);
         }
 
         [[nodiscard]] bool is_handshake_complete() const { return state_ == ConnectionState::connected; }

@@ -59,7 +59,6 @@ namespace simnet::core::net {
         * @param config Port, max peers/channels, and timing settings.
         * @return true if ENet and transport started successfully.
         */
-        [[nodiscard]]
         bool initialize(NetRole role, const NetConfig &config) const;
 
         /**

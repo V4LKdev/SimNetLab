@@ -4,6 +4,8 @@
 #include <bit>
 #include <stdexcept>
 
+#include "telemetry.hpp"
+
 /**
  * Dynamic, endian‑aware byte stream for network serialization.
  *
@@ -41,6 +43,8 @@ namespace simnet::core::net::internal {
                 throw std::length_error("NetBuffer exceeded max size");
             }
             buffer_.insert(buffer_.end(), data, data + length);
+
+            TELEM_COUNTER_INC("net.buffer_bytes_written", static_cast<int64_t>(length));
         }
 
         // --- Read API ---

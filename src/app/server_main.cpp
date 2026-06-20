@@ -99,6 +99,7 @@ int main()
     //     TELEM_TRACY_FRAME("ServerFrame");
     // }
 
+    TELEM_FLUSH_METRICS();
     TELEM_LOG_INFO("Server shutting down");
     simnet::telemetry::shutdown();
     return 0;

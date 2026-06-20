@@ -149,6 +149,12 @@ namespace simnet::core::net::internal {
             send_control(id, buf);
 
             it->second.mark_connected();
+
+            double dur_ms = std::chrono::duration<double, std::milli>(
+                current_time_ - it->second.connect_time()).count();
+            TELEM_HISTOGRAM_ADD("net.handshake_duration_ms", dur_ms);
+            TELEM_COUNTER_INC("net.handshakes_completed", 1);
+
             it->second.record_activity(current_time_);
             TELEM_LOG_DEBUG("ConnectionHandler: Sent Welcome to peer {}", id);
             if (on_connected) on_connected(id);
@@ -171,6 +177,12 @@ namespace simnet::core::net::internal {
         if (it == peers_.end()) return;
 
         it->second.mark_connected();
+
+        double dur_ms = std::chrono::duration<double, std::milli>(
+            current_time_ - it->second.connect_time()).count();
+        TELEM_HISTOGRAM_ADD("net.handshake_duration_ms", dur_ms);
+        TELEM_COUNTER_INC("net.handshakes_completed", 1);
+
         it->second.record_activity(current_time_);
         if (on_connected) on_connected(id);
     }
@@ -186,6 +198,7 @@ namespace simnet::core::net::internal {
     void ConnectionHandler::handle_ping(PeerID id)
     {
         TELEM_LOG_TRACE("ConnectionHandler: Received Ping from peer {}", id);
+        TELEM_COUNTER_INC("net.ping_received", 1);
 
         PongMessage pong;
         NetBuffer buf;
@@ -207,6 +220,7 @@ namespace simnet::core::net::internal {
                 if (now - peer.last_activity_time() > timeout_) {
                     TELEM_LOG_WARN("ConnectionHandler: Peer {} timed out after {} ms",
                                    id, utils::to_milliseconds_saturating(now - peer.last_activity_time()));
+                    TELEM_COUNTER_INC("net.timeout_detected", 1);
                     timed_out.push_back(id);
                 }
             }
@@ -245,6 +259,7 @@ namespace simnet::core::net::internal {
                     send_control(id, buf);
                     peer.record_ping_sent(now);
                     TELEM_LOG_TRACE("ConnectionHandler: Sending ping to peer {}", id);
+                    TELEM_COUNTER_INC("net.ping_sent", 1);
                 }
             }
         }

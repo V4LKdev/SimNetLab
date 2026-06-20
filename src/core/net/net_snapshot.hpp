@@ -77,6 +77,10 @@ namespace simnet::core::net::internal {
             buffer.write(e.heading.z());
             buffer.write(e.hue);
         }
+
+        // Telemetry
+        TELEM_COUNTER_INC("net.snapshot_serialized", 1);
+        TELEM_TRACY_PLOT("net.snapshot_entity_count_write", static_cast<int64_t>(entities.size()));
     }
 
     inline ReplicationSnapshot ReplicationSnapshot::read(NetBuffer &buffer)
@@ -114,6 +118,11 @@ namespace simnet::core::net::internal {
             e.hue = buffer.read<uint8_t>();
             snapshot.entities.push_back(std::move(e));
         }
+
+        // Telemetry
+        TELEM_COUNTER_INC("net.snapshot_deserialized", 1);
+        TELEM_TRACY_PLOT("net.snapshot_entity_count_read", static_cast<int64_t>(snapshot.entities.size()));
+
         return snapshot;
     }
 }

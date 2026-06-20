@@ -65,8 +65,8 @@ int main()
     }
 
     net.set_on_connected([](simnet::net::PeerID /*id*/) {
-    TELEM_LOG_INFO("Connected to server!");
-});
+        TELEM_LOG_INFO("Connected to server!");
+    });
     net.set_on_disconnected([](simnet::net::PeerID /*id*/, simnet::net::internal::DisconnectReason reason) {
         TELEM_LOG_INFO("Disconnected (reason={})", static_cast<uint8_t>(reason));
     });
@@ -119,6 +119,7 @@ int main()
     // }
     //
     // --- shutdown ---
+    TELEM_FLUSH_METRICS();
     simnet::telemetry::shutdown();
     return 0;
 }
