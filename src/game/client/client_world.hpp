@@ -3,9 +3,7 @@
 #include <memory>
 #include <atomic>
 
-namespace simnet {
-    struct SimConfig;
-}
+
 
 namespace simnet::client {
     class RenderSystem;

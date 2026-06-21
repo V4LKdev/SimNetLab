@@ -5,7 +5,7 @@
 
 #include "net_buffer.hpp"
 #include "net_types.hpp"
-#include "math/vec3.hpp"
+#include "core/math/vec3.hpp"
 
 namespace simnet::core::net::internal {
     // --- DTOs ---

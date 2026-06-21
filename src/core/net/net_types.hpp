@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
+#include "core/config/sim_config.hpp"
 
 /**
  *  Central definition of the network protocol's unchanging elements.
@@ -24,7 +25,7 @@ namespace simnet::core::net::internal {
 
     constexpr uint8_t NUM_NET_CHANNELS = 4;
 
-    
+
     /// Message type identifiers used in packet headers
     enum class MessageType : uint8_t {
         Invalid = 0, /// Invalid or uninitialized message type
@@ -107,6 +108,10 @@ namespace simnet::core::net::internal {
         DisconnectReason reason;
     };
 
+    struct ConfigUpdatePayload {
+        config::SimConfig new_cfg;
+    };
+
 
     constexpr std::size_t PACKET_HEADER_SIZE =
             sizeof(MessageType);
@@ -119,6 +124,10 @@ namespace simnet::core::net::internal {
     constexpr std::size_t REJECT_SIZE =
             sizeof(RejectReason);
     static_assert(sizeof(RejectPayload) == REJECT_SIZE);
+
+    constexpr std::size_t CONFIG_UPDATE_SIZE =
+            sizeof(config::SimConfig);
+    static_assert(sizeof(ConfigUpdatePayload) == CONFIG_UPDATE_SIZE);
 
     constexpr std::size_t SNAPSHOT_HEADER_SIZE =
             sizeof(uint32_t) + // tick

@@ -1,167 +1,117 @@
 #include "server_world.hpp"
 
-#include "core.hpp"
+#include <utility>
+#include <thread>
 
-#include "components.hpp"
-#include "game/shared/flocking_systems.hpp"
-#include "game/shared/telemetry_systems.hpp"
-#include "game/server/spawn_system.hpp"
-
-#include "telemetry.hpp"
+#include "game/shared/game_shared.hpp"
+#include "../shared/systems/system_functions.hpp"
 
 namespace simnet::game::server {
-    using namespace simnet::core;
-    using namespace simnet::game::shared;
-
-    // ────────────────────────────────────────────────────────────────
-    // PIMPL Definition
-    // ────────────────────────────────────────────────────────────────
-    struct ServerWorld::Impl {
-        net::NetManager net_manager;
-        flecs::world ecs;
-        utils::TimeKeeper timer; // fixed‑step accumulator
-        config::SimConfig sim_config; // cached for convenience
-        net::NetConfig net_config;
-        bool initialized = false;
-
-        Impl() : ecs()
-        {
-        }
-    };
-
-    // ────────────────────────────────────────────────────────────────
-    // Construction / Destruction
-    // ────────────────────────────────────────────────────────────────
-    ServerWorld::ServerWorld()
-        : impl_(std::make_unique<Impl>())
+    ServerWorld::ServerWorld(config::SimConfig config, net::NetManager *net)
+        : net_(net),
+          config_(std::move(config))
     {
+        // 1. Set Threads
+        configure_threads();
+
+        // 2. Register all resources
+        register_components();
+        register_server_systems();
+
+        auto e = world_.entity();
+
+        e.set<shared::Position>({math::Vec3::zero()});
+        e.set<shared::Velocity>({math::Vec3::zero()});
+        e.set<shared::Heading>({math::Vec3::forward()});
+        e.set<shared::Hue>({1});
+        e.set<shared::SteeringAccumulate>({math::Vec3::zero()});
+        e.set<shared::BoidIdx>({});
+        e.set<shared::NetworkId>({1});
+        e.add<shared::Boid>();
     }
 
     ServerWorld::~ServerWorld()
     {
-        shutdown();
+        world_.quit();
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Initialization
-    // ────────────────────────────────────────────────────────────────
-    bool ServerWorld::initialize(const net::NetConfig &net_cfg,
-                                 const config::SimConfig &sim_cfg)
+    void ServerWorld::run_tick(float dt)
     {
-        impl_->net_config = net_cfg;
-        impl_->sim_config = sim_cfg;
-
-        // 1. Start the network layer
-        if (!impl_->net_manager.initialize(net::NetRole::server, net_cfg)) {
-            TELEM_LOG_ERROR("Failed to initialize network");
-            return false;
-        }
-
-        // 2. Set up the ECS world
-        init_ecs(sim_cfg);
-
-        impl_->timer.reset(sim_cfg.dt); // dt is a std::chrono::duration?
-        impl_->initialized = true;
-        TELEM_LOG_INFO("ServerWorld initialized");
-        return true;
+        world_.progress(dt);
     }
 
-    void ServerWorld::init_ecs(const config::SimConfig &cfg)
+    void ServerWorld::register_components()
     {
-        auto &world = impl_->ecs;
+        using namespace shared;
 
-        // Register components and singletons (from components.hpp)
-        register_server_components(world);
+        world_.component<Position>();
+        world_.component<Heading>();
+        world_.component<Velocity>();
+        world_.component<SteeringAccumulate>();
+        world_.component<NetworkId>();
+        world_.component<Hue>();
+        world_.component<BoidIdx>();
+        // Tags
+        world_.component<Boid>();
+        // Singletons
+        world_.component<NeighborCache>().add(flecs::Singleton);
+        world_.component<config::SimConfig>().add(flecs::Singleton);
+        world_.set<config::SimConfig>(config_);
 
-        // Set singletons
-        world.set<config::SimConfig>(cfg);
+        TELEM_LOG_DEBUG("ServerWorld: Components registered");
+    }
 
-        // ── Create simulation phases ──
-        auto prepare = world.entity("SimPrepare").add(flecs::Phase);
-        auto compute = world.entity("SimCompute").add(flecs::Phase).depends_on(prepare);
-        auto apply = world.entity("SimApply").add(flecs::Phase).depends_on(compute);
-        auto simpost = world.entity("SimPost").add(flecs::Phase).depends_on(apply);
-        auto netsend = world.entity("NetSend").add(flecs::Phase).depends_on(simpost);
+    void ServerWorld::register_server_systems()
+    {
+        using namespace shared;
 
-        // ── Spawn initial entities (once, on start) ──
-        world.system("SpawnBoids")
-                .kind(flecs::OnStart)
-                .multi_threaded(false)
-                .run(spawn_boids_system);
+        const auto prepare = world_.entity("SimPrepare").add(flecs::Phase);
+        const auto compute = world_.entity("SimCompute").add(flecs::Phase).depends_on(prepare);
+        const auto apply = world_.entity("SimApply").add(flecs::Phase).depends_on(compute);
+        const auto simpost = world_.entity("SimPost").add(flecs::Phase).depends_on(apply);
+        auto netsend = world_.entity("NetSend").add(flecs::Phase).depends_on(simpost);
 
-        // ── Shared flocking systems ──
-        register_flocking_systems(world, prepare, compute, apply);
+        // --- Init ---
 
-        // ── Optional telemetry ──
+
+        // --- Simulation ---
+        register_flocking_systems(world_, prepare, compute, apply);
+
 #ifdef TELEMETRY_ENABLED
-        register_telemetry_systems(world, simpost);
+        register_telemetry_systems(world_, simpost);
 #endif
 
-        // ── Snapshot system – captures NetManager via lambda ──
-        // The lambda is called each tick during phase "NetSend".
-        world.system<const Position, const Heading, const Hue, const NetworkId>("SendSnapshot")
-                .with<Boid>()
-                .kind(netsend)
-                .multi_threaded(false)
-                .run([this](flecs::iter &it) {
-                    net::ReplicationSnapshot snapshot;
-                    snapshot.tick = ++this->impl_->tick_counter; // or use a time source
-                    snapshot.sequence = ++this->impl_->seq_counter;
+        // --- Netsend ---
 
-                    while (it.next()) {
-                        auto pos = it.field<const Position>(0);
-                        auto hdg = it.field<const Heading>(1);
-                        auto hue = it.field<const Hue>(2);
-                        auto nid = it.field<const NetworkId>(3);
-
-                        for (int i = 0; i < it.count(); ++i) {
-                            net::ReplicatedEntity re;
-                            re.network_id = nid[i].value;
-                            re.position = pos[i].value;
-                            re.heading = hdg[i].value;
-                            re.hue = hue[i].value;
-                            snapshot.entities.push_back(re);
-                        }
-                    }
-
-                    this->impl_->net_manager.broadcast_snapshot(snapshot);
-
-                    TELEM_LOG_TRACE("Snapshot sent: tick {}, entities {}",
-                                    snapshot.tick, snapshot.entities.size());
-                });
+        TELEM_LOG_DEBUG("ServerWorld: Systems registered");
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Update
-    // ────────────────────────────────────────────────────────────────
-    void ServerWorld::update(utils::TimePoint now)
+    void ServerWorld::configure_threads()
     {
-        if (!impl_->initialized) return;
-
-        // 1. Service network (process events, timeouts, handshakes)
-        impl_->net_manager.update(now);
-
-        // 2. Feed elapsed time to the timer, step the world for each full dt
-        impl_->timer.advance(now);
-        while (impl_->timer.pop_step()) {
-            impl_->ecs.progress(impl_->sim_config.dt_seconds()); // dt as float seconds
+        if (!config_.multithreaded_ecs) {
+            world_.set_threads(0);
+            TELEM_LOG_DEBUG("ServerWorld: Threads configured: {}", 0);
+            return;
         }
-    }
 
-    // ────────────────────────────────────────────────────────────────
-    // Shutdown
-    // ────────────────────────────────────────────────────────────────
-    void ServerWorld::shutdown()
-    {
-        if (!impl_->initialized) return;
+        if (config_.ecs_thread_count > 0) {
+            world_.set_threads(config_.ecs_thread_count);
+            TELEM_LOG_DEBUG("ServerWorld: Threads configured: {}", config_.ecs_thread_count);
+            return;
+        }
 
-        impl_->net_manager.shutdown();
-        impl_->initialized = false;
-        TELEM_LOG_INFO("ServerWorld shut down");
-    }
+        unsigned int num_threads = std::thread::hardware_concurrency();
+        if (num_threads == 0) {
+            num_threads = 4;
+            TELEM_LOG_WARN("Could not determine hardware concurrency; defaulting to 4 threads");
+        }
 
-    const flecs::world &ServerWorld::world() const noexcept
-    {
-        return impl_->ecs;
+        // Leave one core free for better game‑loop latency
+        if (num_threads > 4) {
+            num_threads -= 1;
+        }
+
+        world_.set_threads(static_cast<int32_t>(num_threads));
+        TELEM_LOG_DEBUG("ServerWorld: Threads configured: {}", num_threads);
     }
 }

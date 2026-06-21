@@ -2,38 +2,38 @@
 
 #include <flecs.h>
 #include <vector>
-#include "../../core/math/vec3.hpp"
+#include "core/core.hpp"
 
 namespace simnet::game::shared {
     // --- Boid Components ---
     /// 3D position of a entity.
     struct Position {
-        Vec3 value;
+        math::Vec3 value = math::Vec3::zero();
     };
 
     /// 3D velocity vector of an entity.
     struct Velocity {
-        Vec3 value;
+        math::Vec3 value = math::Vec3::zero();
     };
 
     /// Normalized forward direction. Defaults to +X or the last non-zero velocity.
     struct Heading {
-        Vec3 value = {1.0f, 0.0f, 0.0f};
+        math::Vec3 value = {1.0f, 0.0f, 0.0f};
     };
 
     /// Accumulated steering force for this tick.
     struct SteeringAccumulate {
-        Vec3 value{};
+        math::Vec3 value = math::Vec3::zero();
     };
 
     /// Hue of an entity
     struct Hue {
-        uint8_t value;
+        uint8_t value = 0;
     };
 
     /// Frame persistent unique identifier of the entity.
     struct NetworkId {
-        uint32_t value;
+        uint32_t value = 0;
     };
 
     /// Tick-local per-entity index assigned during snapshot construction.
@@ -59,49 +59,9 @@ namespace simnet::game::shared {
 
     /// Singleton read-only neighbor cache for current tick.
     struct NeighborCache {
-        std::vector<Vec3> positions;
-        std::vector<Vec3> headings;
+        std::vector<math::Vec3> positions;
+        std::vector<math::Vec3> headings;
         std::vector<size_t> offsets;
         std::vector<uint32_t> entries;
     };
-
-    /// Singleton for the ServerContext, not registered on clients
-    struct ServerContext {
-        server::network_server *server = nullptr;
-    };
-
-    inline void register_server_components(flecs::world &world)
-    {
-        world.component<Position>();
-        world.component<Velocity>();
-        world.component<Heading>();
-        world.component<Hue>();
-        world.component<SteeringAccumulate>();
-        world.component<BoidIdx>();
-        world.component<NetworkId>();
-
-        world.component<Boid>();
-
-        // Singletons
-        world.component<FlockStats>().add(flecs::Singleton);
-        world.component<NeighborCache>().add(flecs::Singleton);
-        world.component<ServerContext>().add(flecs::Singleton);
-    }
-
-    inline void register_client_components(flecs::world &world)
-    {
-        world.component<Position>();
-        world.component<Velocity>();
-        world.component<Heading>();
-        world.component<Hue>();
-        world.component<SteeringAccumulate>();
-        world.component<BoidIdx>();
-        world.component<NetworkId>();
-
-        world.component<Boid>();
-
-        // Singletons
-        world.component<FlockStats>().add(flecs::Singleton);
-        world.component<FlockStats>().add(flecs::Singleton);
-    }
 }

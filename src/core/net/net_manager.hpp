@@ -6,7 +6,7 @@
 #include "net_snapshot.hpp"
 #include "net_transport_interface.hpp"
 #include "net_types.hpp"
-#include "utils/time_keeper.hpp"
+#include "core/utils/time_keeper.hpp"
 
 namespace simnet::core::net {
     namespace internal {

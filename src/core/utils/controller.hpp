@@ -5,7 +5,7 @@
 #include <limits>
 
 #include "core/config/sim_config.hpp"
-#include "telemetry.hpp"
+#include "telemetry/telemetry.hpp"
 #include "time_keeper.hpp"
 
 namespace simnet::core::utils {

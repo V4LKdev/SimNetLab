@@ -1,8 +1,8 @@
-#include "telemetry.hpp"
 #include <flecs.h>
-#include "../components.hpp"
+#include "telemetry/telemetry.hpp"
+#include "game/shared/game_shared.hpp"
 
-namespace simnet::ecs {
+namespace simnet::game::shared {
     void flock_statistics_system(flecs::iter &it)
     {
         TELEM_TRACY_ZONE("Sim_FlockStats");

@@ -1,35 +1,19 @@
 #pragma once
-
-#include <chrono>
 #include <memory>
 #include <flecs.h>
-
-namespace simnet::core::net {
-    class NetManager;
-    struct NetConfig;
-}
-
-namespace simnet::core::config {
-    struct SimConfig;
-}
-
-namespace simnet::core::utils {
-    using TimePoint = std::chrono::steady_clock::time_point;
-}
+#include "core/core.hpp"
 
 namespace simnet::game::server {
     /**
-     * @brief Owns the server‑side ECS world and the network manager.
-     *
-     * The main loop drives this class via update(), which processes
-     * network events and advances the simulation with a fixed timestep.
-     */
+    * @brief Owns the server‑side ECS world, its systems, and the simulation state.
+    */
     class ServerWorld {
     public:
-        ServerWorld();
+        ServerWorld(config::SimConfig config, net::NetManager *net = nullptr);
 
         ~ServerWorld();
 
+        // ------------------ ownership rules ------------------
         ServerWorld(const ServerWorld &) = delete;
 
         ServerWorld &operator=(const ServerWorld &) = delete;
@@ -38,29 +22,29 @@ namespace simnet::game::server {
 
         ServerWorld &operator=(ServerWorld &&) = delete;
 
-        /**
-         * @brief Initialise network and ECS world.
-         * @return true on success.
-         */
-        bool initialize(const core::net::NetConfig &net_cfg,
-                        const core::config::SimConfig &sim_cfg);
 
         /**
-         * @brief Process incoming network events and advance simulation.
-         * @param now Monotonic timestamp for this iteration.
+         * @brief Advance the simulation by one fixed timestep.
          */
-        void update(core::utils::TimePoint now);
+        void run_tick(float dt);
 
-        /** @brief Cleanly shut down network and ECS. */
-        void shutdown();
+        /**
+         * @brief Return a reference to the underlying flecs world.
+         */
+        flecs::world &world() noexcept { return world_; }
 
-        /** @brief Expose the underlying flecs world (read‑only view). */
-        [[nodiscard]] const flecs::world &world() const noexcept;
+        [[nodiscard]]
+        const flecs::world &world() const noexcept { return world_; }
 
     private:
-        void init_ecs(const core::config::SimConfig &cfg);
+        void register_components();
 
-        struct Impl;
-        std::unique_ptr<Impl> impl_;
+        void register_server_systems();
+
+        void configure_threads();
+
+        flecs::world world_;
+        net::NetManager *net_ = nullptr;
+        config::SimConfig config_;
     };
 }

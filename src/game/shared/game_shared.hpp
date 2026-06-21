@@ -3,11 +3,11 @@
 // =============================================================================
 #pragma once
 
-// Bring in the core engine API
-#include "core/core.hpp"
-
 // --- ECS Data ----------------------------------------------------------------
 #include "game/shared/components.hpp"
+
+// --- Boid Rules --------------------------------------------------------------
+#include "game/shared/rules/rules_scalar.hpp"
 
 // --- Shared Game Systems -----------------------------------------------------
 #include "game/shared/flocking_systems.hpp"
@@ -20,5 +20,4 @@
 // =============================================================================
 namespace simnet {
     namespace shared = game::shared;
-    // 'net', 'math', etc. are already aliased via core/core.hpp
 }

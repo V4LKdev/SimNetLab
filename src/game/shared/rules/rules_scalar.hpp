@@ -1,9 +1,11 @@
 #pragma once
 #include <ranges>
 #include <span>
-#include "vec3.hpp"
+#include "core/core.hpp"
 
-namespace simnet::core::math {
+namespace simnet::game::shared {
+    using namespace math; // For Vec3
+
     inline auto relevant_neighbors(
         const Vec3 &self_heading,
         const Vec3 &self_pos,
@@ -64,14 +66,13 @@ namespace simnet::core::math {
             Vec3 to_neighbor = Vec3::wrap_delta(self_pos, all_pos[nb],
                                                 world_half);
             float d_sq = to_neighbor.length_sq();
-            if (d_sq < radius * radius && d_sq > 0.001f * 0.001f) {
+            if (d_sq > 0.001f * 0.001f) {
                 sum += to_neighbor / -d_sq;
             }
         }
 
         return (sum == Vec3::zero()) ? Vec3::zero() : sum.normalized();
     }
-
 
     inline Vec3 compute_cohesion(
         const Vec3 &self_pos,
@@ -92,17 +93,15 @@ namespace simnet::core::math {
         for (uint32_t nb: relevant_neighbors(self_heading, self_pos,
                                              neighbor_indices, neighbor_count,
                                              all_positions, radius, fov_cos, world_half)) {
-            sum += self_pos + Vec3::wrap_delta(self_pos, all_positions[nb],
-                                               world_half);
+            Vec3 delta = Vec3::wrap_delta(self_pos, all_positions[nb], world_half);
+            sum += delta;
             ++count;
         }
 
-        if (count == 0) return Vec3::zero();
+        if (count == 0 || sum == Vec3::zero()) return Vec3::zero();
 
-        const Vec3 avg_pos = sum / static_cast<float>(count);
-        return (avg_pos - self_pos).normalized();
+        return sum.normalized();
     }
-
 
     inline Vec3 compute_alignment(
         const Vec3 &self_pos,
