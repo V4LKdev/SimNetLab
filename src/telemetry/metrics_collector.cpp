@@ -160,6 +160,13 @@ namespace simnet::telemetry {
         return result;
     }
 
+    int64_t MetricsCollector::get_counter(const std::string &name) const
+    {
+        std::lock_guard lock(mutex_);
+        auto it = counters_.find(name);
+        return (it != counters_.end()) ? it->second : 0;
+    }
+
     std::string MetricsCollector::histogram_to_json(const std::string &name,
                                                     const SimpleHistogram &hist)
     {
@@ -186,7 +193,25 @@ namespace simnet::telemetry {
                     break;
                 case '"': out += "\\\"";
                     break;
-                default: out += c;
+                case '\b': out += "\\b";
+                    break;
+                case '\f': out += "\\f";
+                    break;
+                case '\n': out += "\\n";
+                    break;
+                case '\r': out += "\\r";
+                    break;
+                case '\t': out += "\\t";
+                    break;
+                default:
+                    if (static_cast<unsigned char>(c) < 0x20) {
+                        // Print control chars as \uXXXX
+                        char buf[7];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+                        out += buf;
+                    } else {
+                        out += c;
+                    }
                     break;
             }
         }

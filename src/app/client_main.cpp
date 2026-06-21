@@ -2,8 +2,7 @@
 #include <csignal>
 #include <flecs.h>
 
-#include "core.hpp"
-
+#include "core/core.hpp"
 #include "telemetry.hpp"
 
 using Clock = std::chrono::steady_clock;

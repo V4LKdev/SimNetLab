@@ -1,6 +1,6 @@
 #pragma once
 #include "net_types.hpp"
-#include "telemetry.hpp"
+#include "telemetry/telemetry.hpp"
 #include "utils/time_keeper.hpp"
 
 namespace simnet::core::net::internal {

@@ -82,6 +82,8 @@ namespace simnet::telemetry {
 
         [[nodiscard]] std::unordered_map<std::string, HistogramStats> get_histogram_stats() const;
 
+        [[nodiscard]] int64_t get_counter(const std::string &name) const;
+
     private:
         MetricsCollector() = default;
 

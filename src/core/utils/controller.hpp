@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <limits>
 
-#include "config/sim_config.hpp"
+#include "core/config/sim_config.hpp"
 #include "telemetry.hpp"
 #include "time_keeper.hpp"
 

@@ -1,6 +1,6 @@
 #include "connection_handler.hpp"
 #include "net_message.hpp"
-#include "telemetry.hpp"
+#include "telemetry/telemetry.hpp"
 
 namespace simnet::core::net::internal {
     ConnectionHandler::ConnectionHandler(INetTransport &transport)

@@ -25,7 +25,9 @@ target_link_libraries(core
 )
 
 # Optional libraries
-target_link_libraries(core PUBLIC telemetry)
+if (BUILD_TELEMETRY)
+    target_link_libraries(core PRIVATE telemetry)
+endif ()
 
 if (BUILD_SIMD)
     target_link_libraries(core PRIVATE simd)

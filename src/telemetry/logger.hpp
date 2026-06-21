@@ -1,5 +1,6 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
 #include <memory>
 #include <string_view>
 
@@ -18,5 +19,5 @@ namespace simnet::telemetry {
     std::shared_ptr<spdlog::logger> get_logger();
 
     // Change log level at runtime
-    void set_log_level(int level);
+    void set_log_level(spdlog::level::level_enum level);
 }

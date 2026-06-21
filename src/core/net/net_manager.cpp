@@ -2,7 +2,7 @@
 #include "connection_handler.hpp"
 #include "net_pipeline.hpp"
 #include "real_net_transport.hpp"
-#include "telemetry.hpp"
+#include "telemetry/telemetry.hpp"
 
 namespace simnet::core::net {
     using namespace internal;

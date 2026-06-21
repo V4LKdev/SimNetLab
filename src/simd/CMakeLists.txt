@@ -1,10 +1,15 @@
+# simd
 if (BUILD_SIMD)
     add_library(simd STATIC)
     find_package(hwy CONFIG REQUIRED)
     target_link_libraries(simd PUBLIC hwy::hwy)
     target_compile_definitions(simd PUBLIC SIMD_ENABLED=1)
-    target_include_directories(simd PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    target_include_directories(simd PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+    )
 else ()
     add_library(simd INTERFACE)
-    target_include_directories(simd INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_include_directories(simd INTERFACE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+    )
 endif ()

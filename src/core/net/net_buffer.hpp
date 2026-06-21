@@ -4,7 +4,7 @@
 #include <bit>
 #include <stdexcept>
 
-#include "telemetry.hpp"
+#include "telemetry/telemetry.hpp"
 
 /**
  * Dynamic, endian‑aware byte stream for network serialization.

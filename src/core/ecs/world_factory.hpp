@@ -3,7 +3,7 @@
 #include <flecs.h>
 #include <thread>
 
-#include "config/sim_config.hpp"
+#include "core/config/sim_config.hpp"
 #include "telemetry.hpp"
 
 namespace simnet::core::ecs {

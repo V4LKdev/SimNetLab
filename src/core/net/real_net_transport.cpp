@@ -1,5 +1,5 @@
 #include "real_net_transport.hpp"
-#include "telemetry.hpp"
+#include "telemetry/telemetry.hpp"
 
 namespace simnet::core::net::internal {
     RealNetTransport::~RealNetTransport()

@@ -3,7 +3,7 @@
 
 #include "net_buffer.hpp"
 #include "net_types.hpp"
-#include "telemetry.hpp"
+#include "telemetry/telemetry.hpp"
 
 namespace simnet::core::net::internal {
     // --- Base class for all control messages ---

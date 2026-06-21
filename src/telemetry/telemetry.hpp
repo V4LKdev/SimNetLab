@@ -13,7 +13,8 @@
 // ------------------------------------------------------
 
 #include <spdlog/spdlog.h>          // actual logger
-#include <tracy/Tracy.hpp>           // zone macros, plots, etc.
+#include <tracy/Tracy.hpp>          // zone macros, plots, etc.
+#include <cstring>
 
 #include "logger.hpp"                // get_logger() declaration
 #include "colors.hpp"                // TELEM_COLOR_* constants
@@ -36,17 +37,9 @@ namespace simnet::telemetry {
 #define TELEM_TRACY_ZONE(name)           ZoneScopedN(name)
 #define TELEM_TRACY_ZONE_C(name, color)  ZoneScopedNC(name, color)
 
-// Runtime string zone (the string must remain alive for the zone's lifetime)
-#define TELEM_TRACY_ZONE_DYN(name, color)                                    \
-    const tracy::SourceLocationData TELEM_CONCAT(__tracy_srcloc_, __LINE__){ \
-        name, nullptr, nullptr, 0, color                                     \
-    };                                                                       \
-    tracy::ScopedZone TELEM_CONCAT(__tracy_zone_, __LINE__)(                 \
-        &TELEM_CONCAT(__tracy_srcloc_, __LINE__))
-
+// Helper to concatenate tokens for unique variable names
 #define TELEM_CONCAT_IMPL(x, y) x##y
 #define TELEM_CONCAT(x, y)      TELEM_CONCAT_IMPL(x, y)
-
 #define TELEM_TRACY_PLOT(name, val)   TracyPlot(name, val)
 #define TELEM_TRACY_FRAME(name)       FrameMarkNamed(name)
 #define TELEM_TRACY_MESSAGE(txt, sz)  TracyMessage(txt, sz)
@@ -83,11 +76,11 @@ namespace simnet::telemetry {
 // Metrics (optional counter / histogram collection)
 // =============================================================================
 
-#define TELEM_COUNTER_INC(name, delta)                                   \
-    do {                                                                 \
-        ::simnet::telemetry::MetricsCollector::instance().add_counter(   \
-            name, static_cast<int64_t>(delta));                          \
-        TELEM_TRACY_PLOT(name, static_cast<int64_t>(delta));            \
+#define TELEM_COUNTER_INC(name, delta)                                                    \
+    do {                                                                                  \
+        ::simnet::telemetry::MetricsCollector::instance().add_counter(name, delta);       \
+        TELEM_TRACY_PLOT(name,                                                            \
+            ::simnet::telemetry::MetricsCollector::instance().get_counter(name));         \
     } while(0)
 
 #define TELEM_COUNTER_ADD(name, value)                                   \
@@ -113,7 +106,6 @@ namespace simnet::telemetry {
 
 #define TELEM_TRACY_ZONE(name)
 #define TELEM_TRACY_ZONE_C(name, color)
-#define TELEM_TRACY_ZONE_DYN(name, color)
 #define TELEM_TRACY_PLOT(name, val)
 #define TELEM_TRACY_FRAME(name)
 #define TELEM_TRACY_MESSAGE(txt, sz)
