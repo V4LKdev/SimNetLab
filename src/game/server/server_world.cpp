@@ -5,6 +5,7 @@
 
 #include "game/shared/game_shared.hpp"
 #include "../shared/systems/system_functions.hpp"
+#include "systems/system_functions.hpp"
 
 namespace simnet::game::server {
     ServerWorld::ServerWorld(config::SimConfig config, net::NetManager *net)
@@ -17,17 +18,6 @@ namespace simnet::game::server {
         // 2. Register all resources
         register_components();
         register_server_systems();
-
-        auto e = world_.entity();
-
-        e.set<shared::Position>({math::Vec3::zero()});
-        e.set<shared::Velocity>({math::Vec3::zero()});
-        e.set<shared::Heading>({math::Vec3::forward()});
-        e.set<shared::Hue>({1});
-        e.set<shared::SteeringAccumulate>({math::Vec3::zero()});
-        e.set<shared::BoidIdx>({});
-        e.set<shared::NetworkId>({1});
-        e.add<shared::Boid>();
     }
 
     ServerWorld::~ServerWorld()
@@ -65,14 +55,19 @@ namespace simnet::game::server {
     {
         using namespace shared;
 
-        const auto prepare = world_.entity("SimPrepare").add(flecs::Phase);
+        // --- Phases ---
+        const auto preload = world_.entity("Preload").add(flecs::Phase);
+        const auto prepare = world_.entity("SimPrepare").add(flecs::Phase).depends_on(preload);
         const auto compute = world_.entity("SimCompute").add(flecs::Phase).depends_on(prepare);
         const auto apply = world_.entity("SimApply").add(flecs::Phase).depends_on(compute);
         const auto simpost = world_.entity("SimPost").add(flecs::Phase).depends_on(apply);
         auto netsend = world_.entity("NetSend").add(flecs::Phase).depends_on(simpost);
 
-        // --- Init ---
-
+        // --- Preload ---
+        world_.system("BoidPopulationManager")
+                .kind(preload)
+                .multi_threaded(false) // structural changes
+                .run(boid_population_manager_system);
 
         // --- Simulation ---
         register_flocking_systems(world_, prepare, compute, apply);

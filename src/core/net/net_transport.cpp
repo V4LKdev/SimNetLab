@@ -1,13 +1,13 @@
-#include "real_net_transport.hpp"
+#include "net_transport.hpp"
 #include "telemetry/telemetry.hpp"
 
 namespace simnet::core::net::internal {
-    RealNetTransport::~RealNetTransport()
+    NetTransport::~NetTransport()
     {
         shutdown();
     }
 
-    bool RealNetTransport::initialize_server(uint16_t port, size_t max_peers)
+    bool NetTransport::initialize_server(uint16_t port, size_t max_peers)
     {
         if (host_) shutdown();
 
@@ -25,7 +25,7 @@ namespace simnet::core::net::internal {
         return true;
     }
 
-    bool RealNetTransport::initialize_client()
+    bool NetTransport::initialize_client()
     {
         if (host_) shutdown();
 
@@ -40,7 +40,7 @@ namespace simnet::core::net::internal {
         return true;
     }
 
-    void RealNetTransport::shutdown()
+    void NetTransport::shutdown()
     {
         if (!host_) return;
 
@@ -66,7 +66,7 @@ namespace simnet::core::net::internal {
         id_to_peer_.clear();
     }
 
-    PeerID RealNetTransport::connect(const std::string &address, uint16_t port)
+    PeerID NetTransport::connect(const std::string &address, uint16_t port)
     {
         if (!host_) return 0;
 
@@ -90,7 +90,7 @@ namespace simnet::core::net::internal {
         return id;
     }
 
-    void RealNetTransport::disconnect(PeerID peer, DisconnectReason reason)
+    void NetTransport::disconnect(PeerID peer, DisconnectReason reason)
     {
         auto it = id_to_peer_.find(peer);
         if (it == id_to_peer_.end()) {
@@ -104,7 +104,7 @@ namespace simnet::core::net::internal {
     }
 
 
-    void RealNetTransport::send(PeerID peer, const NetBuffer &buffer, uint8_t channel, TransportReliability reliability)
+    void NetTransport::send(PeerID peer, const NetBuffer &buffer, uint8_t channel, TransportReliability reliability)
     {
         auto it = id_to_peer_.find(peer);
         if (it == id_to_peer_.end()) {
@@ -118,14 +118,13 @@ namespace simnet::core::net::internal {
             case TransportReliability::reliable:
                 flags = ENET_PACKET_FLAG_RELIABLE;
                 break;
-            case TransportReliability::unreliable_sequenced:
+            case TransportReliability::unreliable:
                 flags = ENET_PACKET_FLAG_UNSEQUENCED;
                 break;
             case TransportReliability::unreliable_fragmented:
                 flags = ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT;
                 break;
         }
-
 
         TELEM_COUNTER_INC("net.pkt_sent_total", 1);
         TELEM_COUNTER_INC("net.bytes_sent_total", buffer.size());
@@ -139,16 +138,32 @@ namespace simnet::core::net::internal {
         enet_peer_send(it->second, channel, packet);
     }
 
-    void RealNetTransport::set_callbacks(TransportCallbacks callbacks)
+    void NetTransport::set_callbacks(TransportCallbacks callbacks)
     {
         callbacks_ = std::move(callbacks);
     }
 
-    void RealNetTransport::service(utils::TimePoint /*now*/)
+    void NetTransport::service(utils::TimePoint /*now*/, int timeout_ms)
     {
         if (!host_) return;
 
         ENetEvent event;
+
+        // Wait for at most timeout_ms for a single event
+        if (enet_host_service(host_, &event, timeout_ms) > 0) {
+            dispatch_event(event);
+        }
+
+        // Drain any remaining events without further blocking
+        while (enet_host_service(host_, &event, 0) > 0) {
+            dispatch_event(event);
+        }
+
+        poll_peer_statistics();
+    }
+
+    void NetTransport::dispatch_event(ENetEvent &event)
+    {
         while (enet_host_service(host_, &event, 0) > 0) {
             switch (event.type) {
                 case ENET_EVENT_TYPE_CONNECT:
@@ -163,11 +178,9 @@ namespace simnet::core::net::internal {
                 default: break;
             }
         }
-
-        poll_peer_statistics();
     }
 
-    void RealNetTransport::on_enet_connect(const ENetEvent &event)
+    void NetTransport::on_enet_connect(const ENetEvent &event)
     {
         PeerID id = event.peer->connectID;
         TELEM_LOG_INFO("RealNetTransport: New connection, peer {}", id);
@@ -182,7 +195,7 @@ namespace simnet::core::net::internal {
         }
     }
 
-    void RealNetTransport::on_enet_disconnect(const ENetEvent &event)
+    void NetTransport::on_enet_disconnect(const ENetEvent &event)
     {
         ENetPeer *ptr = event.peer;
         enet_uint32 raw_data = event.data;
@@ -219,7 +232,7 @@ namespace simnet::core::net::internal {
     }
 
 
-    void RealNetTransport::on_enet_receive(const ENetEvent &event)
+    void NetTransport::on_enet_receive(const ENetEvent &event)
     {
         PeerID id = event.peer->connectID;
         size_t length = event.packet->dataLength;
@@ -238,7 +251,7 @@ namespace simnet::core::net::internal {
     }
 
 
-    void RealNetTransport::poll_peer_statistics()
+    void NetTransport::poll_peer_statistics()
     {
         if (!host_) return;
 

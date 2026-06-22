@@ -24,11 +24,15 @@ int main()
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    simnet::telemetry::init("SimNetLab_Server", "log/server_telemetry.log");
+    // Dynamic path resolution
+    std::string log_path = simnet::core::utils::resolve_runtime_path("log/server_telemetry.log");
+    std::string config_path = simnet::core::utils::resolve_runtime_path("config/config.json");
+
+    TELEM_INIT("SimNetLab_Server", log_path);
 
     // --- configuration ---
     simnet::config::SimConfig sim_cfg = simnet::config::SimConfig::default_config();
-    if (!simnet::config::load_json("config/config.json", sim_cfg)) {
+    if (!simnet::config::load_json(config_path, sim_cfg)) {
         TELEM_LOG_INFO("No config.json provided - using defaults");
     }
     TELEM_LOG_INFO("Run fingerprint: 0x{:016x}", static_cast<unsigned long long>(sim_cfg.fingerprint()));
@@ -55,34 +59,32 @@ int main()
     while (g_running) {
         TELEM_TRACY_ZONE("ServerFrame");
 
-        // 1. Wait until next network event or next sim tick (large packet bursts could potentially starve the sim advancement)
-        // int timeout_ms = controller.ms_until_next_tick();
-        // ENetEvent ev;
-        // if (enet_host_service(server.get_host(), &ev, static_cast<enet_uint32>(timeout_ms)) > 0) {
-        //     do {
-        //         server.process_event(ev);
-        //     } while (enet_host_service(server.get_host(), &ev, 0) > 0);
-        // }
+        // 1. Wait until a network event arrives OR the next simulation tick is due (whichever comes first)
+        int timeout_ms = controller.ms_until_next_tick();
+        timeout_ms = std::min(timeout_ms, 100);
+        // just clamp to wait atmost 100ms (should be catched by the controller anyways)
+        net.update(Clock::now(), timeout_ms);
 
-        // 2. feed elapsed time
-        const auto now = Clock::now();
-        const int64_t elapsed_ns = (now - last_time).count();
+        // 2. Measure how much real time has actually passed
+        auto now = Clock::now();
+        int64_t elapsed_ns = (now - last_time).count();
         last_time = now;
 
+        // 3. Advance the fixed‑step accumulator
         controller.advance(elapsed_ns);
 
-        // 3. run authoritative simulation ticks
+        // 4. Run as many simulation ticks as the accumulator permits
         while (controller.try_step()) {
             world.run_tick(sim_cfg.dt_seconds());
         }
 
-        // 4. periodically query for hotreloading config file.
+        // 4. Periodically query for hotreloading config file.
 
         TELEM_TRACY_FRAME("ServerFrame");
     }
 
     TELEM_FLUSH_METRICS();
     TELEM_LOG_INFO("Server shutting down");
-    simnet::telemetry::shutdown();
+    TELEM_SHUTDOWN();
     return 0;
 }

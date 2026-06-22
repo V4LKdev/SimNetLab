@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include "net/net_pipeline.hpp"
-#include "net/net_processor.hpp"
-#include "net/net_buffer.hpp"
+#include "core/net/net_pipeline.hpp"
+#include "core/net/net_processor.hpp"
+#include "core/net/net_buffer.hpp"
 #include <memory>
 #include <vector>
 
@@ -33,7 +33,7 @@ namespace {
             REQUIRE(val == m_byte);
         }
 
-        const char* name() const override { return "AppendByteProcessor"; }
+        const char *name() const override { return "AppendByteProcessor"; }
 
     private:
         uint8_t m_byte;
@@ -60,7 +60,7 @@ namespace {
             m_in.push_back(m_id);
         }
 
-        const char* name() const override { return "CallOrderProcessor"; }
+        const char *name() const override { return "CallOrderProcessor"; }
 
     private:
         int m_id;

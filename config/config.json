@@ -1,6 +1,6 @@
 {
   "sim_hz": 30,
-  "max_boids": 5,
+  "max_boids": 200,
   "max_speed": 10.0,
   "separation_strength": 12.0,
   "simd_backend": "scalar",

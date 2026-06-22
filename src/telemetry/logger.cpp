@@ -26,7 +26,7 @@ namespace simnet::telemetry {
             spdlog::async_overflow_policy::block // Block if queue fills
         );
 
-        g_logger->set_level(spdlog::level::trace);
+        g_logger->set_level(spdlog::level::debug);
         spdlog::register_logger(g_logger);
         g_logger->flush_on(spdlog::level::warn);
     }

@@ -13,8 +13,6 @@
  * The buffer grows automatically on write; reading advances an internal offset.
  */
 namespace simnet::core::net::internal {
-    static constexpr size_t MAX_BUFFER_SIZE = 64 * 1024; // 64 KB
-
     class NetBuffer {
     public:
         NetBuffer() = default;
@@ -39,9 +37,6 @@ namespace simnet::core::net::internal {
 
         void write_raw(const uint8_t *data, size_t length)
         {
-            if (buffer_.size() + length > MAX_BUFFER_SIZE) {
-                throw std::length_error("NetBuffer exceeded max size");
-            }
             buffer_.insert(buffer_.end(), data, data + length);
 
             TELEM_COUNTER_INC("net.bytes_recv_raw", static_cast<int64_t>(length));

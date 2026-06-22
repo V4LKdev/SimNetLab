@@ -16,7 +16,7 @@ namespace simnet::game::shared {
             auto acc = it.field<const SteeringAccumulate>(3);
             auto idx = it.field<const BoidIdx>(4);
 
-            const int count = it.count();
+            const size_t count = it.count();
             if (count == 0) continue;
 
             float sum_speed = 0.0f;
@@ -60,12 +60,12 @@ namespace simnet::game::shared {
             const float polarisation = avg_heading.length(); // 1 = perfectly aligned
 
             FlockStats &stats = it.world().ensure<FlockStats>();
-            stats.avg_speed = sum_speed / count;
-            stats.avg_steer = sum_steer / count;
-            stats.avg_neighbors = sum_neighbors / count;
-            stats.min_nbr_dist = (count > 0) ? (sum_min_dist / count) : 0.0f;
+            stats.avg_speed = sum_speed / static_cast<float>(count);
+            stats.avg_steer = sum_steer / static_cast<float>(count);
+            stats.avg_neighbors = sum_neighbors / static_cast<float>(count);
+            stats.min_nbr_dist = (count > 0) ? (sum_min_dist / static_cast<float>(count)) : 0.0f;
             stats.polarisation = polarisation;
-            stats.boid_count = count;
+            stats.boid_count = static_cast<float>(count);
 
             TELEM_LOG_INFO("FLOCK | n={:3d} | speed={:5.1f} steer={:5.1f} nbr={:4.1f} "
                            "minDist={:4.1f} polar={:.2f}",

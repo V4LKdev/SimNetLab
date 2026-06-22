@@ -1,6 +1,5 @@
 # game/shared
 add_library(game_shared STATIC
-        components.hpp
         flocking_systems.cpp
         telemetry_systems.cpp
         systems/boid/align_heading.cpp
@@ -13,6 +12,7 @@ add_library(game_shared STATIC
         systems/boid/separation.cpp
 )
 
+# Public includes
 target_include_directories(game_shared PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
 )
@@ -20,7 +20,10 @@ target_include_directories(game_shared PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(game_shared PUBLIC core)
 
-# Make telemetry available to all downstream game code
+# Telemetry is needed by consumers
 if (BUILD_TELEMETRY)
     target_link_libraries(game_shared PUBLIC telemetry)
 endif ()
+
+# -------- Precompiled Header ----------
+target_precompile_headers(game_shared PRIVATE game_shared.hpp)

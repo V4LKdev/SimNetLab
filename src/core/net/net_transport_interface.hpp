@@ -9,7 +9,7 @@
 namespace simnet::core::net::internal {
     enum class TransportReliability {
         reliable,
-        unreliable_sequenced,
+        unreliable,
         unreliable_fragmented
     };
 
@@ -37,6 +37,6 @@ namespace simnet::core::net::internal {
 
         virtual void set_callbacks(TransportCallbacks callbacks) = 0;
 
-        virtual void service(utils::TimePoint now) = 0;
+        virtual void service(utils::TimePoint now, int timeout_ms = 0) = 0;
     };
 }

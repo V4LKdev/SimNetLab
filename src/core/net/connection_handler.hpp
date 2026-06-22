@@ -6,7 +6,7 @@
 #include <vector>
 #include "net_transport_interface.hpp"
 #include "peer_state.hpp"
-#include "utils/time_keeper.hpp"
+#include "core/utils/time_keeper.hpp"
 
 namespace simnet::core::net::internal {
     /**

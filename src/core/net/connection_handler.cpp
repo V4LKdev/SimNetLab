@@ -18,35 +18,23 @@ namespace simnet::core::net::internal {
         TELEM_LOG_INFO("ConnectionHandler: Peer {} connected", id);
 
         auto it = peers_.find(id);
-        if (it != peers_.end()) {
-            // Peer previously registered (e.g., outgoing connection)
-            auto &peer = it->second;
-            peer.record_connect_time(current_time_);
-            peer.mark_handshaking();
-            reported_disconnects_.erase(id);
+        if (it == peers_.end()) {
+            auto [new_it, _] = peers_.emplace(id, PeerState(id));
+            it = new_it;
+        }
 
-            if (!is_server_) {
-                HelloMessage hello(CURRENT_PROTOCOL_VERSION);
-                NetBuffer buf;
-                hello.serialize(buf);
-                send_control(id, buf);
-                TELEM_LOG_DEBUG("ConnectionHandler: Sent Hello to peer {}", id);
-            }
-        } else {
-            // New incoming connection
-            auto [new_it, inserted] = peers_.emplace(id, PeerState(id));
-            auto &peer = new_it->second;
-            peer.record_connect_time(current_time_);
-            peer.mark_handshaking();
-            reported_disconnects_.erase(id);
+        auto &peer = it->second;
+        peer.record_connect_time(current_time_);
+        peer.mark_handshaking();
+        reported_disconnects_.erase(id);
 
-            if (!is_server_) {
-                HelloMessage hello(CURRENT_PROTOCOL_VERSION);
-                NetBuffer buf;
-                hello.serialize(buf);
-                send_control(id, buf);
-                TELEM_LOG_DEBUG("ConnectionHandler: Sent Hello to peer {}", id);
-            }
+        // Only send Hello if we are the client
+        if (!is_server_) {
+            HelloMessage hello(CURRENT_PROTOCOL_VERSION);
+            NetBuffer buf;
+            hello.serialize(buf);
+            send_control(id, buf);
+            TELEM_LOG_DEBUG("ConnectionHandler: Sent Hello to peer {}", id);
         }
     }
 

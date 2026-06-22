@@ -1,7 +1,7 @@
 #include "net_manager.hpp"
 #include "connection_handler.hpp"
 #include "net_pipeline.hpp"
-#include "real_net_transport.hpp"
+#include "net_transport.hpp"
 #include "telemetry/telemetry.hpp"
 
 namespace simnet::core::net {
@@ -90,7 +90,7 @@ namespace simnet::core::net {
 
         impl_->role = role;
         if (!impl_->transport) {
-            impl_->transport = std::make_unique<RealNetTransport>();
+            impl_->transport = std::make_unique<NetTransport>();
         }
         impl_->pipeline = std::make_unique<NetPipeline>();
 
@@ -154,11 +154,11 @@ namespace simnet::core::net {
         impl_->initialized = false;
     }
 
-    void NetManager::update(utils::TimePoint now) const
+    void NetManager::update(utils::TimePoint now, int timeout_ms) const
     {
         if (!impl_->initialized) return;
         impl_->current_time = now;
-        impl_->transport->service(now);
+        impl_->transport->service(now, timeout_ms);
         impl_->conn_handler->update(now);
     }
 

@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include "sim_config.hpp"
+#include "telemetry/telemetry.hpp"
 
 namespace simnet::core::config {
     inline bool load_json(const std::string &path, SimConfig &cfg)
@@ -52,7 +53,7 @@ namespace simnet::core::config {
 
             return true;
         } catch (std::exception &e) {
-            std::cerr << e.what() << std::endl;
+            TELEM_LOG_ERROR("Failed to parse config JSON: {}", e.what());
             return false;
         }
     }

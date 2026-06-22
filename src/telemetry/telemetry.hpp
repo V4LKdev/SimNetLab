@@ -15,6 +15,7 @@
 #include <spdlog/spdlog.h>          // actual logger
 #include <tracy/Tracy.hpp>          // zone macros, plots, etc.
 #include <cstring>
+#include <fmt/format.h>
 
 #include "logger.hpp"                // get_logger() declaration
 #include "colors.hpp"                // TELEM_COLOR_* constants
@@ -29,6 +30,9 @@ namespace simnet::telemetry {
     void shutdown();
 }
 
+#define TELEM_INIT(app, logfile)    simnet::telemetry::init(app, logfile)
+#define TELEM_SHUTDOWN()            simnet::telemetry::shutdown()
+#define TELEM_SET_LOG_LEVEL(level)  simnet::telemetry::set_log_level(level)
 
 // =============================================================================
 // Tracy zones & frame markers
@@ -83,9 +87,22 @@ namespace simnet::telemetry {
             ::simnet::telemetry::MetricsCollector::instance().get_counter(name));         \
     } while(0)
 
+// Increment a counter with a formatted name
+#define TELEM_COUNTER_INC_FMT(fmt_str, ...)                                    \
+    do {                                                                       \
+        std::string _name = fmt::format(fmt_str, __VA_ARGS__);                 \
+        ::simnet::telemetry::MetricsCollector::instance().add_counter(_name, 1); \
+    } while(0)
+
 #define TELEM_COUNTER_ADD(name, value)                                   \
     do { ::simnet::telemetry::MetricsCollector::instance().add_counter(  \
              name, (value)); } while(0)
+
+#define TELEM_COUNTER_ADD_FMT(fmt_str, delta, ...)                            \
+    do {                                                                      \
+        std::string _name = fmt::format(fmt_str, __VA_ARGS__);                \
+        ::simnet::telemetry::MetricsCollector::instance().add_counter(_name, delta); \
+    } while(0)
 
 #define TELEM_COUNTER_SET(name, value)                                   \
     do { ::simnet::telemetry::MetricsCollector::instance().set_counter(  \
@@ -104,6 +121,9 @@ namespace simnet::telemetry {
 // =============================================================================
 #else
 
+#define TELEM_INIT(app, logfile)
+#define TELEM_SHUTDOWN()
+#define TELEM_SET_LOG_LEVEL(level)
 #define TELEM_TRACY_ZONE(name)
 #define TELEM_TRACY_ZONE_C(name, color)
 #define TELEM_TRACY_PLOT(name, val)
@@ -117,7 +137,9 @@ namespace simnet::telemetry {
 #define TELEM_LOG_WARN(...)
 #define TELEM_LOG_ERROR(...)
 #define TELEM_COUNTER_INC(name, delta)
+#define TELEM_COUNTER_INC_FMT(fmt_str, ...)   do {} while(0)
 #define TELEM_COUNTER_ADD(name, value)
+#define TELEM_COUNTER_ADD_FMT(fmt_str, delta, ...) do {} while(0)
 #define TELEM_COUNTER_SET(name, value)
 #define TELEM_HISTOGRAM_ADD(name, value)
 #define TELEM_FLUSH_METRICS()

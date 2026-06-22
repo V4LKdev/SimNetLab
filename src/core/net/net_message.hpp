@@ -114,8 +114,7 @@ namespace simnet::core::net::internal {
         }
 
         if (result) {
-            std::string counter_name = fmt::format("net.control_in_{}", static_cast<int>(type));
-            telemetry::MetricsCollector::instance().add_counter(counter_name, 1);
+            TELEM_COUNTER_INC_FMT("net.control_in_{}", static_cast<int>(type));
             TELEM_COUNTER_INC("net.control_total", 1);
         } else {
             TELEM_COUNTER_INC("net.control_parse_error", 1);

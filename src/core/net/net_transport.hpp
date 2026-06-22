@@ -10,11 +10,11 @@ namespace simnet::core::net::internal {
     * All ENet calls are confined to this class.  External code talks to
     * INetTransport only, making it possible to swap in a mock for testing.
     */
-    class RealNetTransport final : public INetTransport {
+    class NetTransport final : public INetTransport {
     public:
-        RealNetTransport() = default;
+        NetTransport() = default;
 
-        ~RealNetTransport() override;
+        ~NetTransport() override;
 
         bool initialize_server(uint16_t port, size_t max_peers) override;
 
@@ -30,7 +30,7 @@ namespace simnet::core::net::internal {
 
         void set_callbacks(TransportCallbacks callbacks) override;
 
-        void service(utils::TimePoint now) override;
+        void service(utils::TimePoint now, int timeout_ms) override;
 
     private:
         ENetHost *host_ = nullptr;
@@ -38,6 +38,8 @@ namespace simnet::core::net::internal {
         std::unordered_map<PeerID, ENetPeer *> id_to_peer_;
         std::unordered_map<ENetPeer *, PeerID> peer_ptr_to_id_;
         TransportCallbacks callbacks_;
+
+        void dispatch_event(ENetEvent &event);
 
         void on_enet_connect(const ENetEvent &event);
 

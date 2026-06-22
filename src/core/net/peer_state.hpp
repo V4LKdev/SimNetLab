@@ -1,7 +1,7 @@
 #pragma once
 #include "net_types.hpp"
 #include "telemetry/telemetry.hpp"
-#include "utils/time_keeper.hpp"
+#include "core/utils/time_keeper.hpp"
 
 namespace simnet::core::net::internal {
     enum class ConnectionState {

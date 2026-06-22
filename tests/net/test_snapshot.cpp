@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include "net/net_snapshot.hpp"
-#include "net/net_buffer.hpp"
-#include "net/net_types.hpp"
+#include "core/net/net_snapshot.hpp"
+#include "core/net/net_buffer.hpp"
+#include "core/net/net_types.hpp"
 #include <stdexcept>
 #include <catch2/catch_approx.hpp>
 

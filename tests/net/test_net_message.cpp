@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include "net/net_message.hpp"
-#include "net/net_buffer.hpp"
-#include "net/net_types.hpp"
+#include "core/net/net_message.hpp"
+#include "core/net/net_buffer.hpp"
+#include "core/net/net_types.hpp"
 #include <memory>
 
 using simnet::core::net::internal::NetMessage;

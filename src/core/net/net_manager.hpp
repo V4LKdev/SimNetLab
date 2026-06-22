@@ -67,7 +67,7 @@ namespace simnet::core::net {
         * @brief Process incoming events and maintain connections.
         * @param now Monotonic timestamp for timeout/keep‑alive logic.
         */
-        void update(utils::TimePoint now) const;
+        void update(utils::TimePoint now, int timeout_ms) const;
 
         /**
         * @brief (Client only) Initiate a connection to the remote host.

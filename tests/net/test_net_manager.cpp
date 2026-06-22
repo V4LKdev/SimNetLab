@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include "net/net_manager.hpp"
-#include "net/net_snapshot.hpp"
-#include "net/net_message.hpp"
+#include "core/net/net_manager.hpp"
+#include "core/net/net_snapshot.hpp"
+#include "core/net/net_message.hpp"
 #include "mock_transport.hpp"
 #include "test_helpers.hpp"
 #include <memory>

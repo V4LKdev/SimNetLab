@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include "net/connection_handler.hpp"
-#include "net/net_message.hpp"
-#include "net/net_types.hpp"
+#include "core/net/connection_handler.hpp"
+#include "core/net/net_message.hpp"
+#include "core/net/net_types.hpp"
 #include "mock_transport.hpp"
 #include "test_helpers.hpp"
 

@@ -8,8 +8,9 @@ add_library(game_client STATIC
 target_include_directories(game_client PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
 )
-target_include_directories(game_client PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-)
+target_include_directories(game_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(game_client PUBLIC game_shared)
+
+# -------- Precompiled Header ----------
+#target_precompile_headers(game_client PRIVATE game_shared.hpp)

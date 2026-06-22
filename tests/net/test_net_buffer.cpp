@@ -2,8 +2,9 @@
 #include <catch2/catch_approx.hpp>
 
 #include <cstdint>
-#include "net/net_buffer.hpp"
-#include "net/net_types.hpp"
+
+#include "core/net/net_buffer.hpp"
+#include "core/net/net_types.hpp"
 
 using simnet::core::net::internal::NetBuffer;
 

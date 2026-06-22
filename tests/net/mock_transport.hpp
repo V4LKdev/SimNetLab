@@ -1,7 +1,7 @@
 #pragma once
-#include "net/net_transport_interface.hpp"
-#include "net/net_buffer.hpp"
-#include "net/net_types.hpp"
+#include "core/net/net_transport_interface.hpp"
+#include "core/net/net_buffer.hpp"
+#include "core/net/net_types.hpp"
 #include <vector>
 #include <cstdint>
 
@@ -71,7 +71,7 @@ namespace simnet::core::net::internal {
             callbacks = std::move(cb);
         }
 
-        void service(utils::TimePoint /*now*/) override
+        void service(utils::TimePoint /*now*/, int /*timeout_ms*/) override
         {
             ++service_count;
         }

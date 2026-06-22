@@ -14,6 +14,7 @@
 #include "utils/controller.hpp"
 #include "utils/id_generator.hpp"
 #include "utils/time_keeper.hpp"
+#include "utils/path_utils.hpp"
 
 // --- Network Facade ----------------------------------------------------------
 #include "net/net_manager.hpp"
