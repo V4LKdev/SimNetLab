@@ -13,7 +13,7 @@ namespace simnet::core::net::internal {
     using PeerID = uint32_t;
 
     // --- Protocol version -------------------------------
-    constexpr ProtocolVersion CURRENT_PROTOCOL_VERSION = 1;
+    constexpr ProtocolVersion CURRENT_PROTOCOL_VERSION = 2;
     // ----------------------------------------------------
 
     enum class NetChannel : uint8_t {
@@ -39,7 +39,7 @@ namespace simnet::core::net::internal {
         // InputAck = 21, /// Server acknolwledgement of least received input command
 
         Snapshot = 30, /// Server to client authoritative world state update
-        ConfigUpdate = 40, /// Server to client on config hotreload
+        // ConfigUpdate = 40, /// Server to client on config hotreload
         // StateSync
         // ResyncRequest
         // Debug
@@ -48,6 +48,7 @@ namespace simnet::core::net::internal {
     /// Handshake / Request rejection reason type
     enum class RejectReason : uint8_t {
         VersionMismatch = 1,
+        ConfigMismatch = 2,
         ServerFull = 10,
 
         Kicked = 20,
@@ -98,6 +99,8 @@ namespace simnet::core::net::internal {
 
     struct HelloPayload {
         ProtocolVersion version;
+        /// Confirm server and client operate on the same config (until config send / hotreload are in)
+        uint64_t config_fingerprint;
     };
 
     struct RejectPayload {
@@ -108,26 +111,18 @@ namespace simnet::core::net::internal {
         DisconnectReason reason;
     };
 
-    struct ConfigUpdatePayload {
-        config::SimConfig new_cfg;
-    };
-
-
     constexpr std::size_t PACKET_HEADER_SIZE =
             sizeof(MessageType);
     static_assert(sizeof(MessageHeader) == PACKET_HEADER_SIZE);
 
     constexpr std::size_t HELLO_SIZE =
-            sizeof(ProtocolVersion);
-    static_assert(sizeof(HelloPayload) == HELLO_SIZE);
+            sizeof(ProtocolVersion) +
+            sizeof(uint64_t); // config fingerprint
+// No assert due to padding
 
     constexpr std::size_t REJECT_SIZE =
             sizeof(RejectReason);
     static_assert(sizeof(RejectPayload) == REJECT_SIZE);
-
-    constexpr std::size_t CONFIG_UPDATE_SIZE =
-            sizeof(config::SimConfig);
-    static_assert(sizeof(ConfigUpdatePayload) == CONFIG_UPDATE_SIZE);
 
     constexpr std::size_t SNAPSHOT_HEADER_SIZE =
             sizeof(uint32_t) + // tick

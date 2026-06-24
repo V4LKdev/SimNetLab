@@ -20,11 +20,6 @@ namespace simnet::core::net {
 
     enum class NetRole { server, client };
 
-    struct NetConfig {
-        uint16_t port = 0;
-        std::size_t max_peers = 0; // server only
-    };
-
     using SnapshotCallback = std::function<void(const internal::ReplicationSnapshot &)>;
 
     /**
@@ -38,7 +33,12 @@ namespace simnet::core::net {
     */
     class NetManager {
     public:
-        NetManager();
+        /**
+        * @brief Initialize the network stack for a given role.
+        * @param role Server or client.
+        * @param config Port, max peers/channels, and timing settings.
+        */
+        NetManager(NetRole role, const config::SimConfig &config);
 
         ~NetManager();
 
@@ -50,13 +50,8 @@ namespace simnet::core::net {
 
         NetManager &operator=(NetManager &&) = delete;
 
-        /**
-        * @brief Initialize the network stack for a given role.
-        * @param role Server or client.
-        * @param config Port, max peers/channels, and timing settings.
-        * @return true if ENet and transport started successfully.
-        */
-        bool initialize(NetRole role, const NetConfig &config) const;
+        [[nodiscard]]
+        bool is_initialized() const;
 
         /**
          * @brief Tear down the entire network stack and release resources.
@@ -102,6 +97,13 @@ namespace simnet::core::net {
 
         /// Called on each received full‑state snapshot.
         void set_snapshot_callback(SnapshotCallback callback) const;
+
+        /// (server only) Get a list of all handshaked peer IDs.
+        [[nodiscard]]
+        std::vector<PeerID> get_connected_peer_ids() const;
+
+        [[nodiscard]]
+        uint64_t get_config_fingerprint() const;
 
         /**
          * @brief Inject a mock transport (for unit testing only).

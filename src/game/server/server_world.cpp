@@ -3,6 +3,8 @@
 #include <utility>
 #include <thread>
 
+#include "app_context.hpp"
+#include "components.hpp"
 #include "game/shared/game_shared.hpp"
 #include "../shared/systems/system_functions.hpp"
 #include "systems/system_functions.hpp"
@@ -12,8 +14,12 @@ namespace simnet::game::server {
         : net_(net),
           config_(std::move(config))
     {
-        // 1. Set Threads
+        // 1. Set Threads and context
         configure_threads();
+
+        ctx_ = std::make_unique<AppContext>();
+        ctx_->net = net_;
+        world_.set_ctx(ctx_.get());
 
         // 2. Register all resources
         register_components();
@@ -45,8 +51,16 @@ namespace simnet::game::server {
         world_.component<Boid>();
         // Singletons
         world_.component<NeighborCache>().add(flecs::Singleton);
+        world_.set<NeighborCache>({});
         world_.component<config::SimConfig>().add(flecs::Singleton);
         world_.set<config::SimConfig>(config_);
+        world_.component<SimTick>().add(flecs::Singleton);
+        world_.set<SimTick>({0});
+        world_.component<SnapshotSequence>().add(flecs::Singleton);
+        world_.set<SnapshotSequence>({0});
+
+        world_.component<GlobalSnapshot>().add(flecs::Singleton);
+        world_.set<GlobalSnapshot>({});
 
         TELEM_LOG_DEBUG("ServerWorld: Components registered");
     }
@@ -69,6 +83,13 @@ namespace simnet::game::server {
                 .multi_threaded(false) // structural changes
                 .run(boid_population_manager_system);
 
+        world_.system("IncrementSimTick")
+                .kind(preload)
+                .multi_threaded(false)
+                .each([](SimTick &tick) {
+                    tick.value++;
+                });
+
         // --- Simulation ---
         register_flocking_systems(world_, prepare, compute, apply);
 
@@ -77,6 +98,16 @@ namespace simnet::game::server {
 #endif
 
         // --- Netsend ---
+        world_.system("BuildGlobalSnapshot")
+                .kind(netsend)
+                .write<GlobalSnapshot>()
+                .multi_threaded(false)
+                .run(build_global_snapshot_system);
+
+        world_.system("SendSnapshots")
+                .kind(netsend)
+                .multi_threaded(false)
+                .run(send_snapshots_system);
 
         TELEM_LOG_DEBUG("ServerWorld: Systems registered");
     }

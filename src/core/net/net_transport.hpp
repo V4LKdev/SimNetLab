@@ -38,6 +38,7 @@ namespace simnet::core::net::internal {
         std::unordered_map<PeerID, ENetPeer *> id_to_peer_;
         std::unordered_map<ENetPeer *, PeerID> peer_ptr_to_id_;
         TransportCallbacks callbacks_;
+        bool shutdown_done_ = false;
 
         void dispatch_event(ENetEvent &event);
 

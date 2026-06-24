@@ -31,20 +31,25 @@ namespace simnet::core::net::internal {
     // --- Hello Message ---
     class HelloMessage final : public NetMessage {
     public:
-        explicit HelloMessage(ProtocolVersion version) : version_(version)
+        explicit HelloMessage(ProtocolVersion version, uint64_t config_fingerprint)
+            : version_(version),
+              config_fingerprint_(config_fingerprint)
         {
         }
 
         [[nodiscard]] ProtocolVersion get_version() const { return version_; }
+        [[nodiscard]] uint64_t get_config_fingerprint() const { return config_fingerprint_; }
 
         void serialize(NetBuffer &buffer) const override
         {
             buffer.write(static_cast<uint8_t>(MessageType::Hello));
             buffer.write(version_);
+            buffer.write(config_fingerprint_);
         }
 
     private:
         ProtocolVersion version_;
+        uint64_t config_fingerprint_;
     };
 
     // --- Welcome Message ---
@@ -92,7 +97,8 @@ namespace simnet::core::net::internal {
                     return nullptr;
                 }
                 ProtocolVersion version = buffer.read<uint16_t>();
-                result = std::make_unique<HelloMessage>(version);
+                uint64_t config_fingerprint = buffer.read<uint64_t>();
+                result = std::make_unique<HelloMessage>(version, config_fingerprint);
                 break;
             }
             case MessageType::Welcome:

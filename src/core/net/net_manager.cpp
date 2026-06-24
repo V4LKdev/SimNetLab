@@ -3,12 +3,14 @@
 #include "net_pipeline.hpp"
 #include "net_transport.hpp"
 #include "telemetry/telemetry.hpp"
+#include <mutex>
 
 namespace simnet::core::net {
     using namespace internal;
 
     struct NetManager::Impl {
         NetRole role = NetRole::client;
+        config::SimConfig sim_config;
         std::unique_ptr<INetTransport> transport;
         std::unique_ptr<ConnectionHandler> conn_handler;
         std::unique_ptr<NetPipeline> pipeline;
@@ -71,21 +73,20 @@ namespace simnet::core::net {
         }
     };
 
-    NetManager::NetManager() : impl_(std::make_unique<Impl>())
+    NetManager::NetManager(NetRole role, const config::SimConfig &config)
+        : impl_(std::make_unique<Impl>())
     {
-    }
+        if (impl_->initialized) {
+            return;
+        }
 
-    NetManager::~NetManager() { shutdown(); }
-
-    bool NetManager::initialize(NetRole role, const NetConfig &config) const
-    {
-        if (impl_->initialized) return false;
+        impl_->sim_config = config;
 
         TELEM_LOG_INFO("NetManager: Initializing as {}", (role == NetRole::server ? "server" : "client"));
 
         if (enet_initialize() != 0) {
             TELEM_LOG_ERROR("NetManager: enet_initialize failed");
-            return false;
+            return;
         }
 
         impl_->role = role;
@@ -96,7 +97,7 @@ namespace simnet::core::net {
 
         bool ok = false;
         if (role == NetRole::server) {
-            ok = impl_->transport->initialize_server(config.port, config.max_peers);
+            ok = impl_->transport->initialize_server(config.net_port, config.net_max_peers);
         } else {
             ok = impl_->transport->initialize_client();
         }
@@ -106,10 +107,10 @@ namespace simnet::core::net {
             impl_->transport.reset();
             impl_->pipeline.reset();
             enet_deinitialize();
-            return false;
+            return;
         }
 
-        impl_->conn_handler = std::make_unique<ConnectionHandler>(*impl_->transport);
+        impl_->conn_handler = std::make_unique<ConnectionHandler>(*impl_->transport, impl_->sim_config);
         impl_->conn_handler->set_role(role == NetRole::server);
 
         // Wire ConnectionHandler callbacks
@@ -137,8 +138,17 @@ namespace simnet::core::net {
         impl_->transport->set_callbacks(std::move(tcb));
 
         impl_->initialized = true;
-        return true;
     }
+
+    NetManager::~NetManager() { shutdown(); }
+
+    bool NetManager::is_initialized() const
+    {
+        if (!impl_->initialized) return false;
+        return impl_->initialized;
+    }
+
+    static std::once_flag enet_deinit_flag;
 
     void NetManager::shutdown() const
     {
@@ -150,8 +160,12 @@ namespace simnet::core::net {
         impl_->conn_handler.reset();
         impl_->pipeline.reset();
         impl_->transport.reset();
-        enet_deinitialize();
         impl_->initialized = false;
+
+        std::call_once(enet_deinit_flag, [] {
+            TELEM_LOG_DEBUG("NetManager: Deinitializing ENet");
+            enet_deinitialize();
+        });
     }
 
     void NetManager::update(utils::TimePoint now, int timeout_ms) const
@@ -242,8 +256,33 @@ namespace simnet::core::net {
         impl_->snapshot_callback = std::move(callback);
     }
 
-    void NetManager::set_transport_for_testing(std::unique_ptr<internal::INetTransport> transport) const
+    std::vector<PeerID> NetManager::get_connected_peer_ids() const
+    {
+        if (!impl_->conn_handler) return {};
+        return impl_->conn_handler->get_connected_peer_ids();
+    }
+
+    uint64_t NetManager::get_config_fingerprint() const
+    {
+        return impl_->sim_config.fingerprint();
+    }
+
+    void NetManager::set_transport_for_testing(std::unique_ptr<INetTransport> transport) const
     {
         impl_->transport = std::move(transport);
+        impl_->conn_handler->set_transport(*impl_->transport);
+
+        // Re‑apply callbacks
+        TransportCallbacks tcb;
+        tcb.on_new_connection = [this](PeerID id) {
+            impl_->conn_handler->on_transport_connect(id);
+        };
+        tcb.on_disconnection = [this](PeerID id, DisconnectReason reason) {
+            impl_->conn_handler->on_transport_disconnect(id, reason);
+        };
+        tcb.on_data = [this](PeerID id, NetBuffer &buffer) {
+            impl_->dispatch_incoming(id, buffer);
+        };
+        impl_->transport->set_callbacks(std::move(tcb));
     }
 }

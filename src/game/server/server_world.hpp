@@ -1,6 +1,8 @@
 #pragma once
 #include <memory>
 #include <flecs.h>
+
+#include "app_context.hpp"
 #include "core/core.hpp"
 
 namespace simnet::game::server {
@@ -44,6 +46,7 @@ namespace simnet::game::server {
         void configure_threads();
 
         flecs::world world_;
+        std::unique_ptr<AppContext> ctx_;
         net::NetManager *net_ = nullptr;
         config::SimConfig config_;
     };

@@ -1,4 +1,7 @@
 #pragma once
+#include <any>
+#include <unordered_map>
+#include <string>
 #include "net_types.hpp"
 #include "telemetry/telemetry.hpp"
 #include "core/utils/time_keeper.hpp"
@@ -82,10 +85,12 @@ namespace simnet::core::net::internal {
             return std::chrono::duration<float>(now - connect_time_).count();
         }
 
+        std::unordered_map<std::string, std::any> get_processor_data() const { return processor_data_; }
+
     private:
         PeerID peer_id_;
         ConnectionState state_ = ConnectionState::disconnected;
         utils::TimePoint connect_time_{};
-        DisconnectReason pending_disconnect_reason_ = DisconnectReason::Other;
+        std::unordered_map<std::string, std::any> processor_data_;
     };
 }

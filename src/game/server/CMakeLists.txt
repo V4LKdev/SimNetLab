@@ -2,6 +2,8 @@
 add_library(game_server STATIC
         server_world.cpp
         systems/population_manager.cpp
+        systems/build_global_snapshot.cpp
+        systems/send_snapshots.cpp
 )
 
 target_include_directories(game_server PUBLIC

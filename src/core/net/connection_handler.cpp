@@ -3,8 +3,9 @@
 #include "telemetry/telemetry.hpp"
 
 namespace simnet::core::net::internal {
-    ConnectionHandler::ConnectionHandler(INetTransport &transport)
-        : transport_(transport)
+    ConnectionHandler::ConnectionHandler(INetTransport &transport, const config::SimConfig &config)
+        : transport_(&transport),
+          config_(config)
     {
     }
 
@@ -30,7 +31,7 @@ namespace simnet::core::net::internal {
 
         // Only send Hello if we are the client
         if (!is_server_) {
-            HelloMessage hello(CURRENT_PROTOCOL_VERSION);
+            HelloMessage hello(CURRENT_PROTOCOL_VERSION, config_.fingerprint());
             NetBuffer buf;
             hello.serialize(buf);
             send_control(id, buf);
@@ -81,7 +82,7 @@ namespace simnet::core::net::internal {
         }
 
         if (auto *hello = dynamic_cast<const HelloMessage *>(message.get())) {
-            handle_hello(id, hello->get_version());
+            handle_hello(id, hello->get_version(), hello->get_config_fingerprint());
         } else if (auto *welcome = dynamic_cast<const WelcomeMessage *>(message.get())) {
             handle_welcome(id);
         } else if (auto *reject = dynamic_cast<const RejectMessage *>(message.get())) {
@@ -103,37 +104,56 @@ namespace simnet::core::net::internal {
 
     // ---- Handshake state machine ----
 
-    void ConnectionHandler::handle_hello(PeerID id, ProtocolVersion version)
+    void ConnectionHandler::handle_hello(PeerID id, ProtocolVersion version, uint64_t client_fingerprint)
     {
         TELEM_LOG_DEBUG("ConnectionHandler: Received Hello from peer {}, version {}", id, version);
 
         auto it = peers_.find(id);
         if (it == peers_.end()) return;
 
-        if (version == CURRENT_PROTOCOL_VERSION) {
-            WelcomeMessage welcome;
-            NetBuffer buf;
-            welcome.serialize(buf);
-            send_control(id, buf);
-
-            it->second.mark_connected();
-
-            double dur_ms = std::chrono::duration<double, std::milli>(
-                current_time_ - it->second.connect_time()).count();
-            TELEM_HISTOGRAM_ADD("net.handshake_duration_ms", dur_ms);
-            TELEM_COUNTER_INC("net.handshakes_completed", 1);
-
-            TELEM_LOG_DEBUG("ConnectionHandler: Sent Welcome to peer {}", id);
-            if (on_connected) on_connected(id);
-        } else {
+        if (version != CURRENT_PROTOCOL_VERSION) {
+            // Version mismatch reject
             TELEM_LOG_WARN("ConnectionHandler: Version mismatch for peer {} ({} != {})",
                            id, version, CURRENT_PROTOCOL_VERSION);
             RejectMessage reject(RejectReason::VersionMismatch);
             NetBuffer buf;
             reject.serialize(buf);
             send_control(id, buf);
-            transport_.disconnect(id, DisconnectReason::Rejected);
+            transport_->disconnect(id, DisconnectReason::Rejected);
+            return;
         }
+
+        const uint64_t server_fingerprint = config_.fingerprint();
+
+        TELEM_LOG_WARN("DEBUG: client_fingerprint={:016x} server_fingerprint={:016x}",
+                       client_fingerprint, server_fingerprint);
+
+        if (client_fingerprint != server_fingerprint) {
+            TELEM_LOG_WARN("ConnectionHandler: Config fingerprint mismatch for peer {} (client={:016x} server={:016x})",
+                           id, client_fingerprint, server_fingerprint);
+            RejectMessage reject(RejectReason::ConfigMismatch);
+            NetBuffer buf;
+            reject.serialize(buf);
+            send_control(id, buf);
+            transport_->disconnect(id, DisconnectReason::Rejected);
+            return;
+        }
+
+        // Accept hello
+        WelcomeMessage welcome;
+        NetBuffer buf;
+        welcome.serialize(buf);
+        send_control(id, buf);
+
+        it->second.mark_connected();
+
+        double dur_ms = std::chrono::duration<double, std::milli>(
+            current_time_ - it->second.connect_time()).count();
+        TELEM_HISTOGRAM_ADD("net.handshake_duration_ms", dur_ms);
+        TELEM_COUNTER_INC("net.handshakes_completed", 1);
+
+        TELEM_LOG_DEBUG("ConnectionHandler: Sent Welcome to peer {}", id);
+        if (on_connected) on_connected(id);
     }
 
     void ConnectionHandler::handle_welcome(PeerID id)
@@ -162,9 +182,9 @@ namespace simnet::core::net::internal {
 
     void ConnectionHandler::send_control(PeerID id, const NetBuffer &buffer)
     {
-        transport_.send(id, buffer,
-                        static_cast<uint8_t>(NetChannel::System),
-                        TransportReliability::reliable);
+        transport_->send(id, buffer,
+                         static_cast<uint8_t>(NetChannel::System),
+                         TransportReliability::reliable);
     }
 
     std::vector<PeerID> ConnectionHandler::get_connected_peer_ids() const

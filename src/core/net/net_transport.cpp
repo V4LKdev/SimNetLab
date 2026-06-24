@@ -42,28 +42,16 @@ namespace simnet::core::net::internal {
 
     void NetTransport::shutdown()
     {
-        if (!host_) return;
+        if (!host_ || shutdown_done_) return;
 
         TELEM_LOG_INFO("RealNetTransport: Shutting down...");
 
-        auto reason = is_server_
-                          ? static_cast<enet_uint32>(DisconnectReason::ServerClosed)
-                          : static_cast<enet_uint32>(DisconnectReason::ClientQuit);
-
-        for (auto &[id, peer]: id_to_peer_) {
-            enet_peer_disconnect(peer, reason);
-        }
-        // Drain pending events
-        for (int i = 0; i < 10; ++i) {
-            ENetEvent event;
-            while (enet_host_service(host_, &event, 0) > 0) {
-                // Discard
-            }
-        }
-
+        // ENet will clean up all peers and resources automatically.
         enet_host_destroy(host_);
         host_ = nullptr;
         id_to_peer_.clear();
+        peer_ptr_to_id_.clear(); // also clear reverse map
+        shutdown_done_ = true;
     }
 
     PeerID NetTransport::connect(const std::string &address, uint16_t port)
@@ -164,19 +152,17 @@ namespace simnet::core::net::internal {
 
     void NetTransport::dispatch_event(ENetEvent &event)
     {
-        while (enet_host_service(host_, &event, 0) > 0) {
-            switch (event.type) {
-                case ENET_EVENT_TYPE_CONNECT:
-                    on_enet_connect(event);
-                    break;
-                case ENET_EVENT_TYPE_DISCONNECT:
-                    on_enet_disconnect(event);
-                    break;
-                case ENET_EVENT_TYPE_RECEIVE:
-                    on_enet_receive(event);
-                    break;
-                default: break;
-            }
+        switch (event.type) {
+            case ENET_EVENT_TYPE_CONNECT:
+                on_enet_connect(event);
+                break;
+            case ENET_EVENT_TYPE_DISCONNECT:
+                on_enet_disconnect(event);
+                break;
+            case ENET_EVENT_TYPE_RECEIVE:
+                on_enet_receive(event);
+                break;
+            default: break;
         }
     }
 

@@ -22,7 +22,6 @@ namespace simnet::core::config {
             // use value() with existing cfg as default source.
             cfg.sim_hz = j.value("sim_hz", cfg.sim_hz);
             cfg.max_sim_steps = j.value("max_sim_steps", cfg.max_sim_steps);
-            cfg.max_accum_sec = j.value("max_accum_sec", cfg.max_accum_sec);
             cfg.world_half = j.value("world_half", cfg.world_half);
             cfg.max_boids = j.value("max_boids", cfg.max_boids);
             cfg.boid_scale = j.value("boid_scale", cfg.boid_scale);
@@ -44,12 +43,35 @@ namespace simnet::core::config {
             cfg.enable_predator = j.value("enable_predator", cfg.enable_predator);
             cfg.enable_lure = j.value("enable_lure", cfg.enable_lure);
 
-            if (j.contains("simd_backend")) {
-                cfg.simd_backend = j["simd_backend"].get<std::string>();
-            }
+            cfg.simd_backend = j.value("simd_backend", cfg.simd_backend);
+
             cfg.seed = j.value("seed", cfg.seed);
             cfg.multithreaded_ecs = j.value("multithreaded_ecs", cfg.multithreaded_ecs);
             cfg.ecs_thread_count = j.value("ecs_thread_count", cfg.ecs_thread_count);
+            cfg.snapshot_send_interval = j.value("snapshot_send_interval", cfg.snapshot_send_interval);
+            cfg.net_port = j.value("net_port", cfg.net_port);
+            cfg.net_max_peers = j.value("net_max_peers", cfg.net_max_peers);
+            cfg.enable_send_interval = j.value("enable_send_interval", cfg.enable_send_interval);
+            cfg.enable_incremental_snapshots = j.
+                    value("enable_incremental_snapshots", cfg.enable_incremental_snapshots);
+            cfg.enable_delta_compression = j.value("enable_delta_compression", cfg.enable_delta_compression);
+            cfg.enable_variable_bit_delta_indexing = j.value("enable_variable_bit_delta_indexing",
+                                                             cfg.enable_variable_bit_delta_indexing);
+            cfg.enable_float_quantization = j.value("enable_float_quantization", cfg.enable_float_quantization);
+            cfg.enable_octahedral_heading = j.value("enable_octahedral_heading", cfg.enable_octahedral_heading);
+            cfg.enable_bit_packing = j.value("enable_bit_packing", cfg.enable_bit_packing);
+            cfg.enable_aoi_filter = j.value("enable_aoi_filter", cfg.enable_aoi_filter);
+            cfg.enable_vector_field_consistency = j.value("enable_vector_field_consistency",
+                                                          cfg.enable_vector_field_consistency);
+            cfg.enable_entity_lod = j.value("enable_entity_lod", cfg.enable_entity_lod);
+            cfg.enable_leader_follower = j.value("enable_leader_follower", cfg.enable_leader_follower);
+            cfg.enable_full_snapshot_compression = j.value("enable_full_snapshot_compression",
+                                                           cfg.enable_full_snapshot_compression);
+            cfg.enable_huffman_zstd_dictionary_compression = j.value("enable_huffman_zstd_dictionary_compression",
+                                                                     cfg.enable_huffman_zstd_dictionary_compression);
+            cfg.enable_dead_reckoning = j.value("enable_dead_reckoning", cfg.enable_dead_reckoning);
+            cfg.enable_dirty_tracking = j.value("enable_dirty_tracking", cfg.enable_dirty_tracking);
+            cfg.enable_tcm = j.value("enable_tcm", cfg.enable_tcm);
 
             return true;
         } catch (std::exception &e) {

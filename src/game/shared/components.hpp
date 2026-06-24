@@ -64,4 +64,9 @@ namespace simnet::game::shared {
         std::vector<size_t> offsets;
         std::vector<uint32_t> entries;
     };
+
+    /// Simulation tick counter (incremented each fixed step)
+    struct SimTick {
+        uint32_t value = 0;
+    };
 }

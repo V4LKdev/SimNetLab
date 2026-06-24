@@ -38,15 +38,26 @@ int main()
     TELEM_LOG_INFO("Run fingerprint: 0x{:016x}", static_cast<unsigned long long>(sim_cfg.fingerprint()));
 
     // --- network init ---
-    simnet::net::NetManager net;
-    simnet::net::NetConfig net_cfg;
-    net_cfg.port = 7777;
-    net_cfg.max_peers = 10;
+    simnet::net::NetManager net(simnet::net::NetRole::server, sim_cfg);
 
-    if (!net.initialize(simnet::net::NetRole::server, net_cfg)) {
+    if (!net.is_initialized()) {
         TELEM_LOG_ERROR("Failed to initiate server network");
         return EXIT_FAILURE;
     }
+
+    // Temp callback test
+    net.set_on_connected([&](simnet::net::PeerID id) {
+        TELEM_LOG_INFO("Client {} connected", id);
+        // TODO: send config, spawn player entity
+    });
+    net.set_on_disconnected([&](simnet::net::PeerID id, simnet::net::DisconnectReason reason) {
+        TELEM_LOG_INFO("Client {} disconnected, reason {}", id, static_cast<int>(reason));
+        // TODO: remove player entity
+    });
+    net.set_on_rejected([&](simnet::net::PeerID id, simnet::net::RejectReason reason) {
+        TELEM_LOG_WARN("Client {} rejected, reason {}", id, static_cast<int>(reason));
+    });
+
 
     // --- ecs ---
     simnet::game::server::ServerWorld world(sim_cfg, &net);
@@ -55,32 +66,38 @@ int main()
     auto last_time = Clock::now();
 
     // --- main loop ---
-    // TODO: check net server is running
     while (g_running) {
-        TELEM_TRACY_ZONE("ServerFrame");
+        try {
+            TELEM_TRACY_ZONE("ServerFrame");
 
-        // 1. Wait until a network event arrives OR the next simulation tick is due (whichever comes first)
-        int timeout_ms = controller.ms_until_next_tick();
-        timeout_ms = std::min(timeout_ms, 100);
-        // just clamp to wait atmost 100ms (should be catched by the controller anyways)
-        net.update(Clock::now(), timeout_ms);
+            // 1. Wait until a network event arrives OR the next simulation tick is due
+            int timeout_ms = controller.ms_until_next_tick();
+            timeout_ms = std::min(timeout_ms, 100);
+            net.update(Clock::now(), timeout_ms);
 
-        // 2. Measure how much real time has actually passed
-        auto now = Clock::now();
-        int64_t elapsed_ns = (now - last_time).count();
-        last_time = now;
+            // 2. Measure how much real time has actually passed
+            auto now = Clock::now();
+            int64_t elapsed_ns = (now - last_time).count();
+            last_time = now;
 
-        // 3. Advance the fixed‑step accumulator
-        controller.advance(elapsed_ns);
+            // 3. Advance the fixed‑step accumulator
+            controller.advance(elapsed_ns);
 
-        // 4. Run as many simulation ticks as the accumulator permits
-        while (controller.try_step()) {
-            world.run_tick(sim_cfg.dt_seconds());
+            // 4. Run as many simulation ticks as the accumulator permits
+            while (controller.try_step()) {
+                world.run_tick(sim_cfg.dt_seconds());
+            }
+
+            // 5. Periodically query for hotreloading config file
+
+            TELEM_TRACY_FRAME("ServerFrame");
+        } catch (const std::exception &e) {
+            TELEM_LOG_ERROR("Fatal exception in main loop: {}", e.what());
+            break;
+        } catch (...) {
+            TELEM_LOG_ERROR("Unknown fatal exception in main loop");
+            break;
         }
-
-        // 4. Periodically query for hotreloading config file.
-
-        TELEM_TRACY_FRAME("ServerFrame");
     }
 
     TELEM_FLUSH_METRICS();

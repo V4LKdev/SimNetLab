@@ -25,13 +25,15 @@ namespace simnet::core::net::internal {
         using on_disconnected_t = std::function<void(PeerID, DisconnectReason)>;
         using on_rejected_t = std::function<void(PeerID, RejectReason)>;
 
-        explicit ConnectionHandler(INetTransport &transport);
+        explicit ConnectionHandler(INetTransport &transport, const config::SimConfig &config);
 
         on_connected_t on_connected;
         on_disconnected_t on_disconnected;
         on_rejected_t on_rejected;
 
         void set_role(bool is_server) { is_server_ = is_server; }
+
+        void set_transport(INetTransport &transport) { transport_ = &transport; }
 
         /** Called each tick by NetManager (reserved for future use). */
         void update(utils::TimePoint now);
@@ -51,8 +53,9 @@ namespace simnet::core::net::internal {
         PeerState *find_peer(PeerID id);
 
     private:
-        INetTransport &transport_;
+        INetTransport *transport_ = nullptr;
         bool is_server_ = false;
+        const config::SimConfig &config_;
 
         utils::TimePoint current_time_{};
 
@@ -61,7 +64,7 @@ namespace simnet::core::net::internal {
 
         void send_control(PeerID id, const NetBuffer &buffer);
 
-        void handle_hello(PeerID id, ProtocolVersion version);
+        void handle_hello(PeerID id, ProtocolVersion version, uint64_t client_fingerprint);
 
         void handle_welcome(PeerID id);
 

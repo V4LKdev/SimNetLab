@@ -67,10 +67,10 @@ namespace simnet::game::shared {
             stats.polarisation = polarisation;
             stats.boid_count = static_cast<float>(count);
 
-            TELEM_LOG_INFO("FLOCK | n={:3d} | speed={:5.1f} steer={:5.1f} nbr={:4.1f} "
-                           "minDist={:4.1f} polar={:.2f}",
-                           count, stats.avg_speed, stats.avg_steer, stats.avg_neighbors,
-                           stats.min_nbr_dist, stats.polarisation);
+            TELEM_LOG_DEBUG("FLOCK | n={:3d} | speed={:5.1f} steer={:5.1f} nbr={:4.1f} "
+                            "minDist={:4.1f} polar={:.2f}",
+                            count, stats.avg_speed, stats.avg_steer, stats.avg_neighbors,
+                            stats.min_nbr_dist, stats.polarisation);
 
             TELEM_TRACY_PLOT("EntityCount", static_cast<int64_t>(count));
         }
