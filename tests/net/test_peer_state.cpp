@@ -1,6 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include "core/net/peer_state.hpp"
+#include "core/net/net_peer_state.hpp"
 #include "core/utils/time_keeper.hpp"
 
 using simnet::core::net::internal::PeerState;

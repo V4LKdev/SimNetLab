@@ -1,36 +1,31 @@
+// net_manager.hpp
 #pragma once
+
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
-#include "net_snapshot.hpp"
-#include "net_transport_interface.hpp"
-#include "net_types.hpp"
+
+#include "core/net/pipeline/net_pipeline_interfaces.hpp"
+#include "core/net/pipeline/net_pipeline_chain.hpp"
+#include "core/net/net_types.hpp"
+#include "core/net/net_transport_interface.hpp"
 #include "core/utils/time_keeper.hpp"
 
 namespace simnet::core::net {
-    namespace internal {
-        class NetProcessor;
-    }
-
-    // Re-exported from internal for clean public API
+    // re‑exported types
     using PeerID = internal::PeerID;
     using DisconnectReason = internal::DisconnectReason;
     using RejectReason = internal::RejectReason;
 
     enum class NetRole { server, client };
 
-    using SnapshotCallback = std::function<void(const internal::ReplicationSnapshot &)>;
-
     /**
-    * @brief Central network facade for client and server game instances.
-    *
-    * Hides transport, connection management, and packet processing pipelines
-    * behind a minimal public API. Game code only includes this header and
-    * uses callbacks to react to network events.
-    *
-    * @ingroup network
-    */
+     * @brief Central network facade.
+     *
+     * Owns transport, connection handler, and the pipeline chain.
+     * The pipeline is built once from SimConfig flags and reused for every peer tick.
+     */
     class NetManager {
     public:
         /**
@@ -50,8 +45,7 @@ namespace simnet::core::net {
 
         NetManager &operator=(NetManager &&) = delete;
 
-        [[nodiscard]]
-        bool is_initialized() const;
+        [[nodiscard]] bool is_initialized() const;
 
         /**
          * @brief Tear down the entire network stack and release resources.
@@ -70,20 +64,13 @@ namespace simnet::core::net {
         * @param port Remote port.
         * @return PeerID of the new connection, or 0 on failure.
         */
-        [[nodiscard]]
-        PeerID connect(const std::string &address, uint16_t port) const;
+        [[nodiscard]] PeerID connect(const std::string &address, uint16_t port) const;
 
         /**
-        * @brief (Server only) Broadcast a full replicated snapshot to all handshaked clients.
-        * @param snapshot Flat container with entity data and tick info.
+        * @brief (Server only) Send the current snapshot to all handshaked clients.
+        * @param snapshot The global SoA snapshot built by the ECS NetPrepareSnapshot system.
         */
-        void broadcast_snapshot(const internal::ReplicationSnapshot &snapshot) const;
-
-        /**
-        * @brief Register a network processing stage (delta, quantization, AoI, …).
-        * @param processor Unique pointer; ownership transfers.
-        */
-        void add_processor(std::unique_ptr<internal::NetProcessor> processor) const;
+        void broadcast_snapshot(const internal::NetworkSnapshot &snapshot) const;
 
         // Callbacks
         /// Called when a peer completes the handshake and is ready for gameplay.
@@ -95,15 +82,13 @@ namespace simnet::core::net {
         /// Called when a connection attempt is rejected (e.g., full server, bad version).
         void set_on_rejected(std::function<void(PeerID, RejectReason)> callback) const;
 
-        /// Called on each received full‑state snapshot.
-        void set_snapshot_callback(SnapshotCallback callback) const;
+        /// Called on each received full‑state snapshot (client only).
+        void set_on_snapshot_received(std::function<void(const internal::NetworkSnapshot &)> callback) const;
 
         /// (server only) Get a list of all handshaked peer IDs.
-        [[nodiscard]]
-        std::vector<PeerID> get_connected_peer_ids() const;
+        [[nodiscard]] std::vector<PeerID> get_connected_peer_ids() const;
 
-        [[nodiscard]]
-        uint64_t get_config_fingerprint() const;
+        [[nodiscard]] uint64_t get_config_fingerprint() const;
 
         /**
          * @brief Inject a mock transport (for unit testing only).

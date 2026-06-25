@@ -68,10 +68,13 @@ namespace simnet::core::net::internal {
         Other = 99
     };
 
-    /// Snapshot network technique feature flags
     enum class SnapshotFlags : uint16_t {
-        FullSnapshot = 1 << 0
+        None = 0,
+        FullSnapshot = 1 << 0, // complete baseline
+        DeltaSnapshot = 1 << 1, // diff against a given baseline_tick
+        IncrementalSnapshot = 1 << 2 // only entities that changed
     };
+
 
     constexpr SnapshotFlags operator|(SnapshotFlags lhs, SnapshotFlags rhs) noexcept
     {
@@ -118,7 +121,7 @@ namespace simnet::core::net::internal {
     constexpr std::size_t HELLO_SIZE =
             sizeof(ProtocolVersion) +
             sizeof(uint64_t); // config fingerprint
-// No assert due to padding
+    // No assert due to padding
 
     constexpr std::size_t REJECT_SIZE =
             sizeof(RejectReason);

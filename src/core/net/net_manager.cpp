@@ -1,9 +1,11 @@
 #include "net_manager.hpp"
-#include "connection_handler.hpp"
-#include "net_pipeline.hpp"
+#include "net_connection_handler.hpp"
 #include "net_transport.hpp"
 #include "telemetry/telemetry.hpp"
-#include <mutex>
+#include "core/net/pipeline/net_pipeline_chain.hpp"
+#include <algorithm>
+#include <shared_mutex>
+
 
 namespace simnet::core::net {
     using namespace internal;
@@ -13,13 +15,32 @@ namespace simnet::core::net {
         config::SimConfig sim_config;
         std::unique_ptr<INetTransport> transport;
         std::unique_ptr<ConnectionHandler> conn_handler;
-        std::unique_ptr<NetPipeline> pipeline;
-
-        SnapshotCallback snapshot_callback;
 
         std::function<void(PeerID)> game_on_connected;
         std::function<void(PeerID, DisconnectReason)> game_on_disconnected;
         std::function<void(PeerID, RejectReason)> game_on_rejected;
+        std::function<void(const NetworkSnapshot &)> on_snapshot_received;
+
+        PipelineChain chain; // built once, used for every peer
+
+        // --- delta baseline ring buffer ---
+        static constexpr size_t kHistorySize = 32;
+        std::array<std::shared_ptr<const NetworkSnapshot>, kHistorySize> history_ring_{};
+        std::shared_mutex history_mutex_;
+
+        void insert_snapshot(std::shared_ptr<const NetworkSnapshot> snap)
+        {
+            if (!snap) return;
+            std::unique_lock lock(history_mutex_);
+            history_ring_[snap->tick % kHistorySize] = std::move(snap);
+        }
+
+        std::shared_ptr<const NetworkSnapshot> get_baseline(uint64_t tick)
+        {
+            std::shared_lock lock(history_mutex_);
+            const auto &s = history_ring_[tick % kHistorySize];
+            return (s && s->tick == tick) ? s : nullptr;
+        }
 
         utils::TimePoint current_time;
 
@@ -35,7 +56,7 @@ namespace simnet::core::net {
                 return;
             }
 
-            size_t const incoming_size = buffer.size();
+            const size_t incoming_size = buffer.size();
 
             // Peek message type
             auto msg_type = static_cast<MessageType>(buffer.read<uint8_t>());
@@ -48,25 +69,10 @@ namespace simnet::core::net {
                     TELEM_COUNTER_INC("net.snapshot_rejected_no_handshake", 1);
                     return;
                 }
-                auto &peer_state = *peer;
 
-                pipeline->apply_incoming(peer_state, buffer, SnapshotFlags(0));
-                buffer.reset_data();
-
-
-                try {
-                    ReplicationSnapshot snap = ReplicationSnapshot::read(buffer);
-                    if (snapshot_callback) {
-                        snapshot_callback(snap);
-                    }
-
-                    // Telemetry
-                    TELEM_COUNTER_INC("net.snapshot_recv", 1);
-                    TELEM_HISTOGRAM_ADD("net.snapshot_in_size", static_cast<double>(incoming_size));
-                } catch (const std::exception &e) {
-                    TELEM_LOG_WARN("NetManager: Failed to parse snapshot from peer {}: {}", id, e.what());
-                    TELEM_COUNTER_INC("net.snapshot_parse_error", 1);
-                }
+                // TODO: client-side reverse pipeline will go here
+                TELEM_COUNTER_INC("net.snapshot_recv", 1);
+                TELEM_HISTOGRAM_ADD("net.snapshot_in_size", static_cast<double>(incoming_size));
             } else {
                 conn_handler->on_transport_data(id, buffer);
             }
@@ -93,7 +99,6 @@ namespace simnet::core::net {
         if (!impl_->transport) {
             impl_->transport = std::make_unique<NetTransport>();
         }
-        impl_->pipeline = std::make_unique<NetPipeline>();
 
         bool ok = false;
         if (role == NetRole::server) {
@@ -105,10 +110,15 @@ namespace simnet::core::net {
         if (!ok) {
             TELEM_LOG_ERROR("NetManager: Failed to initialize transport");
             impl_->transport.reset();
-            impl_->pipeline.reset();
             enet_deinitialize();
             return;
         }
+
+        // Build pipeline chain from config flags
+        auto &chain = impl_->chain;
+
+        // TODO: helper function to register pipeline functions based on the config
+
 
         impl_->conn_handler = std::make_unique<ConnectionHandler>(*impl_->transport, impl_->sim_config);
         impl_->conn_handler->set_role(role == NetRole::server);
@@ -158,7 +168,6 @@ namespace simnet::core::net {
 
         impl_->transport->shutdown();
         impl_->conn_handler.reset();
-        impl_->pipeline.reset();
         impl_->transport.reset();
         impl_->initialized = false;
 
@@ -191,38 +200,65 @@ namespace simnet::core::net {
     }
 
 
-    void NetManager::broadcast_snapshot(const ReplicationSnapshot &snapshot) const
+    void NetManager::broadcast_snapshot(const NetworkSnapshot &snapshot) const
     {
         TELEM_TRACY_ZONE_C("NetManager_broadcast_snapshot", TELEM_COLOR_NET_SEND);
 
         if (!impl_->initialized || impl_->role != NetRole::server) return;
 
-        TELEM_LOG_DEBUG("NetManager: Broadcasting snapshot (tick {}, {} entities)",
-                        snapshot.tick, snapshot.entities.size());
+        // Insert into history ring for delta baselines
+        impl_->insert_snapshot(std::make_shared<NetworkSnapshot>(snapshot));
 
         auto peer_ids = impl_->conn_handler->get_connected_peer_ids();
-
         TELEM_TRACY_PLOT("net.broadcast_peer_count", static_cast<int64_t>(peer_ids.size()));
 
         for (PeerID id: peer_ids) {
             auto &peer_state = impl_->conn_handler->get_peer_state(id);
-            if (!peer_state.is_handshake_complete()) {
-                continue;
+            if (!peer_state.is_handshake_complete()) continue;
+
+            // skip tick if send interval not met
+            if (impl_->sim_config.enable_send_interval) {
+                if (snapshot.tick % impl_->sim_config.snapshot_send_interval != 0)
+                    continue;
             }
-            NetBuffer buffer;
-            snapshot.write(buffer);
 
-            // Useful for later
-            size_t const size_before_pipeline = buffer.size();
+            // 1. active indices - use AoI or full set
+            std::vector<uint32_t> active_indices;
+            if (impl_->sim_config.enable_aoi_filter) {
+                // TODO: Needs to be filled by system
+                active_indices = peer_state.visible_indices();
+            } else {
+                active_indices.resize(snapshot.entity_ids.size());
+                std::iota(active_indices.begin(), active_indices.end(), 0u);
+            }
 
-            impl_->pipeline->apply_outgoing(impl_->conn_handler->get_peer_state(id), buffer,
-                                            SnapshotFlags::FullSnapshot);
+            // 2. delta baseline (only for delta serializer)
+            std::shared_ptr<const NetworkSnapshot> baseline = nullptr;
+            if (impl_->sim_config.enable_delta_compression && peer_state.last_acknowledged_tick() != 0) {
+                baseline = impl_->get_baseline(peer_state.last_acknowledged_tick());
+            }
 
-            // --- Telemetry ---
+            // 3. sequence & context
+            peer_state.increment_sequence();
+            PipelineContext ctx{
+                .peer_id = id,
+                .sequence = peer_state.next_sequence(),
+                .current_tick = snapshot.tick,
+                .snapshot = snapshot,
+                .baseline = std::move(baseline),
+                .peer_state = peer_state,
+                .active_indices = active_indices
+            };
+
+            // 4. run pipeline
+            NetBuffer final_buffer;
+            impl_->chain.execute(ctx, final_buffer);
+
+            // 5. telemetry & send
             TELEM_COUNTER_INC("net.snapshot_sent_per_peer", 1);
-            TELEM_HISTOGRAM_ADD("net.snapshot_out_size", static_cast<double>(buffer.size()));
+            TELEM_HISTOGRAM_ADD("net.snapshot_out_size", static_cast<double>(final_buffer.size()));
 
-            impl_->transport->send(id, buffer,
+            impl_->transport->send(id, final_buffer,
                                    static_cast<uint8_t>(NetChannel::Snapshot),
                                    TransportReliability::unreliable_fragmented);
         }
@@ -230,11 +266,6 @@ namespace simnet::core::net {
         TELEM_COUNTER_INC("net.snapshot_sent_total", static_cast<int64_t>(peer_ids.size()));
     }
 
-
-    void NetManager::add_processor(std::unique_ptr<NetProcessor> processor) const
-    {
-        impl_->pipeline->add_processor(std::move(processor));
-    }
 
     void NetManager::set_on_connected(std::function<void(PeerID)> callback) const
     {
@@ -251,9 +282,9 @@ namespace simnet::core::net {
         impl_->game_on_rejected = std::move(callback);
     }
 
-    void NetManager::set_snapshot_callback(SnapshotCallback callback) const
+    void NetManager::set_on_snapshot_received(std::function<void(const NetworkSnapshot &)> callback) const
     {
-        impl_->snapshot_callback = std::move(callback);
+        impl_->on_snapshot_received = std::move(callback);
     }
 
     std::vector<PeerID> NetManager::get_connected_peer_ids() const

@@ -1,6 +1,6 @@
 // test_connection_handler.cpp
 #include <catch2/catch_test_macros.hpp>
-#include "core/net/connection_handler.hpp"
+#include "core/net/net_connection_handler.hpp"
 #include "core/net/net_message.hpp"
 #include "core/net/net_types.hpp"
 #include "mock_transport.hpp"

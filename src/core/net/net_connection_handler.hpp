@@ -5,7 +5,7 @@
 #include <unordered_set>
 #include <vector>
 #include "net_transport_interface.hpp"
-#include "peer_state.hpp"
+#include "net_peer_state.hpp"
 #include "core/utils/time_keeper.hpp"
 
 namespace simnet::core::net::internal {

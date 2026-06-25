@@ -1,7 +1,6 @@
 # core library
 add_library(core STATIC
-        net/net_pipeline.cpp
-        net/connection_handler.cpp
+        net/net_connection_handler.cpp
         net/net_manager.cpp
         net/net_transport.cpp
 )

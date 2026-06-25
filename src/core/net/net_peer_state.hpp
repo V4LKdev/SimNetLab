@@ -1,8 +1,7 @@
 #pragma once
-#include <any>
-#include <unordered_map>
-#include <string>
+
 #include "net_types.hpp"
+#include "core/math/vec3.hpp"
 #include "telemetry/telemetry.hpp"
 #include "core/utils/time_keeper.hpp"
 
@@ -19,10 +18,7 @@ namespace simnet::core::net::internal {
     * @brief Per‑peer connection state and timing data.
     *
     * Tracks the connection lifecycle, activity timestamps, and the reason for any pending disconnection.
-    *
-    * @note This class may be extended with processor‑specific caches
-    *       (delta baseline, AoI visibility set) in the future.
-     */
+    */
     class PeerState {
     public:
         explicit PeerState(PeerID id) : peer_id_(id)
@@ -33,17 +29,14 @@ namespace simnet::core::net::internal {
 
         PeerState &operator=(const PeerState &) = default;
 
-        // Allow move - enables proper container handling.
         PeerState(PeerState &&) = default;
 
         PeerState &operator=(PeerState &&) = default;
 
-        [[nodiscard]] PeerID get_id() const { return peer_id_; }
-        [[nodiscard]] ConnectionState get_state() const { return state_; }
-        [[nodiscard]] bool is_connected() const { return state_ == ConnectionState::connected; }
-        [[nodiscard]] utils::TimePoint connect_time() const { return connect_time_; }
 
-        // ----- State transitions -----
+        void record_connect_time(const utils::TimePoint &now) { connect_time_ = now; }
+
+        // --- State transitions ---
         void mark_connecting()
         {
             state_ = ConnectionState::connecting;
@@ -76,21 +69,32 @@ namespace simnet::core::net::internal {
             TELEM_COUNTER_INC("net.peer_state_disconnected", 1);
         }
 
+        // --- Accessors ---
+        [[nodiscard]] PeerID get_id() const { return peer_id_; }
+        [[nodiscard]] utils::TimePoint connect_time() const { return connect_time_; }
         [[nodiscard]] bool is_handshake_complete() const { return state_ == ConnectionState::connected; }
 
-        void record_connect_time(const utils::TimePoint &now) { connect_time_ = now; }
+        [[nodiscard]] uint32_t next_sequence() const { return next_sequence_; }
+        void increment_sequence() { ++next_sequence_; }
 
-        [[nodiscard]] float connect_time_seconds(const utils::TimePoint &now) const
-        {
-            return std::chrono::duration<float>(now - connect_time_).count();
-        }
+        [[nodiscard]] uint64_t last_acknowledged_tick() const { return last_acknowledged_tick_; }
+        void set_last_acknowledged_tick(uint64_t tick) { last_acknowledged_tick_ = tick; }
 
-        std::unordered_map<std::string, std::any> get_processor_data() const { return processor_data_; }
+        [[nodiscard]] const math::Vec3& viewport_center() const { return viewport_center_; }
+        void set_viewport_center(const math::Vec3& center) { viewport_center_ = center; }
+
+        [[nodiscard]] const std::vector<uint32_t>& visible_indices() const { return visible_indices_; }
+        void set_visible_indices(std::vector<uint32_t> indices) { visible_indices_ = std::move(indices); }
+
 
     private:
         PeerID peer_id_;
         ConnectionState state_ = ConnectionState::disconnected;
         utils::TimePoint connect_time_{};
-        std::unordered_map<std::string, std::any> processor_data_;
+
+        uint32_t next_sequence_ = 0;
+        uint64_t last_acknowledged_tick_ = 0;
+        math::Vec3 viewport_center_ = math::Vec3::zero();
+        std::vector<uint32_t> visible_indices_;
     };
 }
