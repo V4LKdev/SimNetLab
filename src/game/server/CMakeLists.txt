@@ -2,8 +2,9 @@
 add_library(game_server STATIC
         server_world.cpp
         systems/population_manager.cpp
-        systems/build_global_snapshot.cpp
-        systems/send_snapshots.cpp
+        systems/net_compute_visibility.cpp
+        systems/net_pipeline.cpp
+        systems/net_prepare_snapshot.cpp
 )
 
 target_include_directories(game_server PUBLIC

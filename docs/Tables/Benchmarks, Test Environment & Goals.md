@@ -1,4 +1,3 @@
-
 # Test Plan
 ## Phase 1: Core comparison (single tech, one client, local loopback)
 - Reset state: seed fixed, starting with 0 boids, ramp to 500 in 10 seconds, steady state for 30s, then ramp again.

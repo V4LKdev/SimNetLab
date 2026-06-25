@@ -41,6 +41,8 @@ namespace simnet::game::server {
     private:
         void register_components();
 
+        void build_network_pipeline();
+
         void register_server_systems();
 
         void configure_threads();

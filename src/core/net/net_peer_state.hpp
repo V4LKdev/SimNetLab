@@ -80,12 +80,11 @@ namespace simnet::core::net::internal {
         [[nodiscard]] uint64_t last_acknowledged_tick() const { return last_acknowledged_tick_; }
         void set_last_acknowledged_tick(uint64_t tick) { last_acknowledged_tick_ = tick; }
 
-        [[nodiscard]] const math::Vec3& viewport_center() const { return viewport_center_; }
-        void set_viewport_center(const math::Vec3& center) { viewport_center_ = center; }
+        [[nodiscard]] const math::Vec3 &viewport_center() const { return viewport_center_; }
+        void set_viewport_center(const math::Vec3 &center) { viewport_center_ = center; }
 
-        [[nodiscard]] const std::vector<uint32_t>& visible_indices() const { return visible_indices_; }
+        [[nodiscard]] const std::vector<uint32_t> &visible_indices() const { return visible_indices_; }
         void set_visible_indices(std::vector<uint32_t> indices) { visible_indices_ = std::move(indices); }
-
 
     private:
         PeerID peer_id_;

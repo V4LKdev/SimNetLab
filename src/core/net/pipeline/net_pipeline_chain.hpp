@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include <memory>
-#include "core/net/pipeline/net_pipeline_interfaces.hpp"
+#include "net_pipeline_interfaces.hpp"
 
 namespace simnet::core::net::internal {
     class PipelineChain {

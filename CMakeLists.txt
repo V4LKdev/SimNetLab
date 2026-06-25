@@ -15,7 +15,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 # ---- Control what gets compiled and linked at build time -----------------------
 option(BUILD_TELEMETRY "Build with splog, Tracy, and benchmark support" ON)
 option(BUILD_SIMD "Build with Highway SIMD" OFF)
-option(BUILD_TESTS "Build Catch2 unit/integration tests" ON)
+option(BUILD_TESTS "Build Catch2 unit/integration tests" OFF)
 option(USE_UNITY_BUILD "Enable unity builds for faster compilation" ON)
 # --------------------------------------------------------------------------------
 

@@ -60,8 +60,8 @@ namespace simnet::game::server {
 
             size_t destroyed = 0;
 
-            // Flecs iteration order reflects creation order.
-            auto q = world.query_builder<const shared::NetworkId>().build();
+            const auto *ctx = static_cast<AppContext *>(world.get_ctx());
+            auto &q = ctx->boid_destroy_query;
 
             q.each([&](flecs::entity e, const shared::NetworkId &) {
                 if (destroyed >= to_destroy) return;
@@ -83,7 +83,7 @@ namespace simnet::game::server {
         const config::SimConfig &config = world.get<config::SimConfig>();
 
         // 1. Count current boids
-        size_t current_count = world.query<shared::Boid>().count();
+        size_t current_count = world.count<shared::Boid>();
 
         // 2. reset network ID generator if 0 boids
         if (current_count == 0 && config.max_boids > 0) {

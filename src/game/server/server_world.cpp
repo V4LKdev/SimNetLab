@@ -7,6 +7,7 @@
 #include "components.hpp"
 #include "game/shared/game_shared.hpp"
 #include "../shared/systems/system_functions.hpp"
+#include "core/net/pipeline/serializer/full_snapshot_serializer.hpp"
 #include "systems/system_functions.hpp"
 
 namespace simnet::game::server {
@@ -23,6 +24,25 @@ namespace simnet::game::server {
 
         // 2. Register all resources
         register_components();
+
+        // 3. Build cached queries
+        ctx_->snapshot_query = world_.query_builder<
+                    const shared::Position,
+                    const shared::Heading,
+                    const shared::Hue,
+                    const shared::NetworkId>()
+                .with<shared::Boid>().in()
+                .cached()
+                .build();
+
+        ctx_->boid_destroy_query = world_.query_builder<const shared::NetworkId>()
+                .cached()
+                .build();
+
+        // 4. Build the global network pipeline
+        build_network_pipeline();
+
+        // 5. Register all systems
         register_server_systems();
     }
 
@@ -59,55 +79,69 @@ namespace simnet::game::server {
         world_.component<SnapshotSequence>().add(flecs::Singleton);
         world_.set<SnapshotSequence>({0});
 
-        world_.component<GlobalSnapshot>().add(flecs::Singleton);
-        world_.set<GlobalSnapshot>({});
+        world_.component<CurrentSnapshot>().add(flecs::Singleton);
+        world_.set<CurrentSnapshot>({});
+
+        world_.component<NetPipelineChain>().add(flecs::Singleton);
 
         TELEM_LOG_DEBUG("ServerWorld: Components registered");
+    }
+
+    void ServerWorld::build_network_pipeline()
+    {
+        using namespace net::internal;
+
+        PipelineChain chain;
+
+        // Set serializer
+        chain.set_serializer(std::make_unique<FullSnapshotSerializer>(config_));
+
+        // add filters and encoders
+
+        NetPipelineChain component{std::move(chain)};
+        world_.set<NetPipelineChain>(std::move(component));
+
+        TELEM_LOG_DEBUG("ServerWorld: Network pipeline built");
     }
 
     void ServerWorld::register_server_systems()
     {
         using namespace shared;
 
-        // --- Phases ---
-        const auto preload = world_.entity("Preload").add(flecs::Phase);
-        const auto prepare = world_.entity("SimPrepare").add(flecs::Phase).depends_on(preload);
-        const auto compute = world_.entity("SimCompute").add(flecs::Phase).depends_on(prepare);
-        const auto apply = world_.entity("SimApply").add(flecs::Phase).depends_on(compute);
-        const auto simpost = world_.entity("SimPost").add(flecs::Phase).depends_on(apply);
-        auto netsend = world_.entity("NetSend").add(flecs::Phase).depends_on(simpost);
-
-        // --- Preload ---
-        world_.system("BoidPopulationManager")
-                .kind(preload)
-                .multi_threaded(false) // structural changes
-                .run(boid_population_manager_system);
-
         world_.system("IncrementSimTick")
-                .kind(preload)
+                .kind(flecs::PreFrame)
                 .multi_threaded(false)
                 .each([](SimTick &tick) {
                     tick.value++;
                 });
 
-        // --- Simulation ---
-        register_flocking_systems(world_, prepare, compute, apply);
+        world_.system("BoidPopulationManager")
+                .kind(flecs::OnLoad)
+                .multi_threaded(false) // structural changes
+                .run(boid_population_manager_system);
 
-#ifdef TELEMETRY_ENABLED
-        register_telemetry_systems(world_, simpost);
-#endif
+        // --- Simulation ---
+        register_flocking_systems(world_);
 
         // --- Netsend ---
-        world_.system("BuildGlobalSnapshot")
-                .kind(netsend)
-                .write<GlobalSnapshot>()
-                .multi_threaded(false)
-                .run(build_global_snapshot_system);
+        world_.system("NetPrepareSnapshot")
+                .kind(flecs::OnStore)
+                .multi_threaded(false) // writes to singleton
+                .run(net_prepare_snapshot_system);
 
-        world_.system("SendSnapshots")
-                .kind(netsend)
-                .multi_threaded(false)
-                .run(send_snapshots_system);
+        world_.system("NetComputePeerVisibility")
+                .kind(flecs::OnStore)
+                .multi_threaded(false) // writes to PeerState via NetManager
+                .run(net_compute_peer_visibility_system);
+
+        world_.system("NetPipeline")
+                .kind(flecs::OnStore)
+                .multi_threaded(false) // will manually dispatch peers if parallelised
+                .run(net_pipeline_system);
+
+#ifdef TELEMETRY_ENABLED
+        register_telemetry_systems(world_);
+#endif
 
         TELEM_LOG_DEBUG("ServerWorld: Systems registered");
     }

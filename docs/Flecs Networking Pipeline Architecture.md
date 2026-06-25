@@ -30,9 +30,9 @@ SimPost
 └─ (telemetry, optional)
 
 NetSend                         ← depends_on SimPost
-├─ NetPrepareSnapshot           ← NEW (replaces old BuildGlobalSnapshot)
-├─ NetComputePeerVisibility     ← NEW
-└─ NetPipeline                  ← NEW (replaces old SendSnapshots)
+├─ NetPrepareSnapshot           
+├─ NetComputePeerVisibility
+└─ NetPipeline
 ```
 
 ## Singletons (ECS)
@@ -80,7 +80,7 @@ NetComputePeerVisibility (per peer, multithreaded via job system or manual dispa
    ENet send
 ```
 
-- **Zero per‑peer copy** of entity data – all stages read directly from the global `NetworkSnapshot`.
+- **Zero per‑peer copy** of entity data. all stages read directly from the global `NetworkSnapshot`.
 - Filters and serialisers work only on index lists and per‑peer state.
 
 ## Pipeline Configuration

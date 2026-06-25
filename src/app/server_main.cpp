@@ -45,7 +45,7 @@ int main()
         return EXIT_FAILURE;
     }
 
-    // Temp callback test
+    // Temp callback test (move to game/server file later)
     net.set_on_connected([&](simnet::net::PeerID id) {
         TELEM_LOG_INFO("Client {} connected", id);
         // TODO: send config, spawn player entity

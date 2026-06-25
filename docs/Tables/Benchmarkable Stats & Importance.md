@@ -1,4 +1,4 @@
-## Core (non-negotiable)
+## Core
 - Bandwidth (bytes per second & bytes per sim-tick).
 - Packet count / size.
 - Entity count.

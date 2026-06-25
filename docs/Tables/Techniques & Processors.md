@@ -18,3 +18,17 @@
 | (Dead Reckoning)?                                  | Send state corrections instead of full state                                                                     | Pre-serialization <br>(error check)                    | Hard                                                                                 | Massive reduction of bandwidth, but requires client side simulation                                                                  | Needs client sim.                                                                                                                                       |
 | Dirty flags                                        | Only send changed entities<br>(for boids, a straight forward each tick could be inferred as unchanged steer)     | Pre-serialization<br>(select entities)                 | Easy                                                                                 | Minor bandwidth savings in active and bunched up boids, good for lots of individual entities                                         | Consider sparse-update indexing over simple bitmaps                                                                                                     |
 | Tunneling, Compressing, Multiplexing (TCM)         | Transport-layer header compression and packet aggregation                                                        | Transport layer                                        | Very Hard                                                                            |                                                                                                                                      | Out of scope rn                                                                                                                                         |
+
+
+| Technique             | Source                      | Date | Credibility            |
+| --------------------- | --------------------------- | ---- | ---------------------- |
+| Full State (Baseline) | Aalto University thesis     | 2024 | Academic thesis        |
+| Send Intervals        | Gaffer On Games             | 2014 | Industry authority     |
+| Partial Sends         | Netick benchmarks           | 2023 | Commercial solution    |
+| Quantization          | Unity Netcode docs          | 2024 | Official documentation |
+| Octahedral Mapping    | Godot Engine proposal       | 2021 | Open-source engine     |
+| Delta Compression     | SDEC codec                  | 2026 | Published benchmarks   |
+| Area of Interest      | U.S. Government publication | 2025 | Peer-reviewed          |
+| LOD/Priorities        | AoI adaption paper          | 2025 | Peer-reviewed          |
+| Dead Reckoning        | GS-DR-LL paper              | 2006 | Peer-reviewed          |
+| Dirty Flags           | KinematicSoup guide         | 2026 | Industry best practice |

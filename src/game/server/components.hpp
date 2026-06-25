@@ -1,13 +1,19 @@
 #pragma once
 
-#include "core/net/net_snapshot.hpp"
+#include "core/net/pipeline/net_pipeline_interfaces.hpp"
+#include "core/net/pipeline/net_pipeline_chain.hpp"
 
 namespace simnet::game::server {
-    struct GlobalSnapshot {
-        std::vector<net::internal::ReplicatedEntity> entities;
+    struct CurrentSnapshot {
+        std::shared_ptr<net::internal::NetworkSnapshot> snapshot;
     };
 
     struct SnapshotSequence {
         uint32_t value = 0;
+    };
+
+    /// Singleton holding the global immutable pipeline chain for all peers.
+    struct NetPipelineChain {
+        net::internal::PipelineChain chain;
     };
 }

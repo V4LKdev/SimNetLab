@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/net/pipeline/net_pipeline_interfaces.hpp"
+#include "../net_pipeline_interfaces.hpp"
 #include "core/net/pipeline/serializer/net_serialization_helpers.hpp"
 #include "core/net/net_buffer.hpp"
 #include "core/net/net_types.hpp"

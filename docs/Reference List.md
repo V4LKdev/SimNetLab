@@ -25,6 +25,7 @@ https://ieeexplore.ieee.org/document/8514394
 
 Random:
 https://en.cppreference.com/cpp/language/raii
+https://version-2305--o3deorg.netlify.app/docs/user-guide/networking/multiplayer/code_separation/
 
 
 Project Architecture:

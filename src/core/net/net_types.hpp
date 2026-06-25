@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
-#include "core/config/sim_config.hpp"
 
 /**
  *  Central definition of the network protocol's unchanging elements.
