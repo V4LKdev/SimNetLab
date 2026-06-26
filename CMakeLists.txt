@@ -1,49 +1,60 @@
-# root lists
-cmake_minimum_required(VERSION 3.25)
-project(SimNetLab LANGUAGES C CXX)
+cmake_minimum_required(VERSION 4.1)
+project(SimNetLab VERSION 0.1.0 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 26)
+# --- C++23 Standard ---
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Output directories
+# --- C++ Modules ---
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
+# --- Build Options ---
+option(BUILD_BENCHMARKS "Build Google Benchmark executables" OFF)
+option(ENABLE_TELEMETRY_TRACY "Enable Tracy real‑time profiling in telemetry" ON)
+
+# --- Output Directories ---
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-# ---- Control what gets compiled and linked at build time -----------------------
-option(BUILD_TELEMETRY "Build with splog, Tracy, and benchmark support" ON)
-option(BUILD_SIMD "Build with Highway SIMD" OFF)
-option(BUILD_TESTS "Build Catch2 unit/integration tests" OFF)
-option(USE_UNITY_BUILD "Enable unity builds for faster compilation" ON)
-# --------------------------------------------------------------------------------
+# --- Compile Commands for IDE/LSP ---
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Unity Build
-if (USE_UNITY_BUILD)
-    set(CMAKE_UNITY_BUILD ON)
-    set(CMAKE_UNITY_BUILD_BATCH_SIZE 8)
+# --- Sanitizers ---
+include(cmake/Sanitizers.cmake)
+
+# --- Build Options ---
+option(BUILD_BENCHMARKS "Build Google Benchmark executables" OFF)
+
+# --- Dependencies ---
+find_package(spdlog CONFIG REQUIRED)
+find_package(flecs CONFIG REQUIRED)
+find_package(unofficial-enet CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(Catch2 CONFIG REQUIRED)
+
+if (ENABLE_TELEMETRY_TRACY)
+    find_package(Tracy CONFIG REQUIRED)
 endif ()
 
-# Precompiled Headers
-set(CMAKE_PRECOMPILE_HEADERS ON)
+if (BUILD_BENCHMARKS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(benchmark CONFIG REQUIRED)
+endif ()
 
-# Include optional targets first (they are used by core)
+# --- Subdirectories ---
 add_subdirectory(src/telemetry)
-add_subdirectory(src/simd)
+#add_subdirectory(src/core)
+#add_subdirectory(src/game/shared)
+#add_subdirectory(src/game/client)
+#add_subdirectory(src/game/server)
+#add_subdirectory(src/app)
 
-# Core engine (no game logic)
-add_subdirectory(src/core)
+# --- Tests ---
+#enable_testing()
+#add_subdirectory(src/tests)
 
-# Game libraries - define them before the executables
-add_subdirectory(src/game/shared)
-add_subdirectory(src/game/client)
-add_subdirectory(src/game/server)
-
-# Executables
-add_subdirectory(src/app)
-
-if (BUILD_TESTS)
-    enable_testing()
-    add_subdirectory(tests)
+# --- Benchmarks (optional, Linux-only) ---
+if (BUILD_BENCHMARKS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    #add_subdirectory(src/benchmarks)
 endif ()

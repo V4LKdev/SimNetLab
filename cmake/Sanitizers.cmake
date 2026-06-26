@@ -1,0 +1,13 @@
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+
+function(target_enable_sanitizers TARGET)
+    if (ENABLE_ASAN)
+        target_compile_options(${TARGET} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(${TARGET} PRIVATE -fsanitize=address)
+    endif ()
+    if (ENABLE_UBSAN)
+        target_compile_options(${TARGET} PRIVATE -fsanitize=undefined)
+        target_link_options(${TARGET} PRIVATE -fsanitize=undefined)
+    endif ()
+endfunction()
