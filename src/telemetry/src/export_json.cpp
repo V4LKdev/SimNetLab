@@ -8,7 +8,7 @@ module;
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
-module telemetry;
+module simnet.telemetry;
 
 namespace telemetry::detail {
     static void add_tick_record(nlohmann::json &j, const TickRecord &r)
@@ -31,12 +31,29 @@ namespace telemetry::detail {
             {"snapshots_lost", r.snapshots_lost},
             {"uncompressed_bytes", r.uncompressed_bytes},
             {"compressed_bytes", r.compressed_bytes},
+            {"pipeline_input_rows", r.pipeline_input_rows},
+            {"pipeline_selected_rows", r.pipeline_selected_rows},
+            {"pipeline_output_rows", r.pipeline_output_rows},
+            {"pipeline_canonical_bytes", r.pipeline_canonical_bytes},
+            {"pipeline_encoded_bytes", r.pipeline_encoded_bytes},
+            {"pipeline_stage_failures", r.pipeline_stage_failures},
+            {"pipeline_decode_failures", r.pipeline_decode_failures},
+            {"pipeline_baseline_hits", r.pipeline_baseline_hits},
+            {"pipeline_baseline_misses", r.pipeline_baseline_misses},
+            {"pipeline_stale_baselines", r.pipeline_stale_baselines},
             {"state_hash", r.state_hash},
             {"pos_drift", r.pos_drift},
             {"vel_drift", r.vel_drift},
             {"anisotropy_x", r.anisotropy_x},
             {"anisotropy_y", r.anisotropy_y},
-            {"anisotropy_z", r.anisotropy_z}
+            {"anisotropy_z", r.anisotropy_z},
+            {"neighbor_cache_edges", r.neighbor_cache_edges},
+            {"neighbor_cache_checks", r.neighbor_cache_checks},
+            {"spatial_grid_cells", r.spatial_grid_cells},
+            {"spatial_grid_occupied_cells", r.spatial_grid_occupied_cells},
+            {"flock_avg_speed", r.flock_avg_speed},
+            {"flock_avg_steer", r.flock_avg_steer},
+            {"flock_polarization", r.flock_polarization}
         };
     }
 
@@ -74,4 +91,4 @@ namespace telemetry::detail {
         }
         out << root.dump(2);
     }
-} // namespace telemetry::detail
+}

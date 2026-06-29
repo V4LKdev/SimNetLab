@@ -7,7 +7,7 @@ module;
 #include <utility>
 #include <spdlog/spdlog.h>
 
-module telemetry;
+module simnet.telemetry;
 
 namespace telemetry::detail {
     void write_csv(std::string_view filepath,
@@ -36,8 +36,15 @@ namespace telemetry::detail {
                 "bytes_sent,bytes_recv,packets_sent,packets_lost,"
                 "snapshots_sent,snapshots_acked,snapshots_lost,"
                 "uncompressed_bytes,compressed_bytes,"
+                "pipeline_input_rows,pipeline_selected_rows,pipeline_output_rows,"
+                "pipeline_canonical_bytes,pipeline_encoded_bytes,"
+                "pipeline_stage_failures,pipeline_decode_failures,"
+                "pipeline_baseline_hits,pipeline_baseline_misses,pipeline_stale_baselines,"
                 "state_hash,pos_drift,vel_drift,"
-                "anisotropy_x,anisotropy_y,anisotropy_z\n";
+                "anisotropy_x,anisotropy_y,anisotropy_z,"
+                "neighbor_cache_edges,neighbor_cache_checks,"
+                "spatial_grid_cells,spatial_grid_occupied_cells,"
+                "flock_avg_speed,flock_avg_steer,flock_polarization\n";
 
         for (const auto &r: records) {
             out << r.tick << ','
@@ -57,12 +64,29 @@ namespace telemetry::detail {
                     << r.snapshots_lost << ','
                     << r.uncompressed_bytes << ','
                     << r.compressed_bytes << ','
+                    << r.pipeline_input_rows << ','
+                    << r.pipeline_selected_rows << ','
+                    << r.pipeline_output_rows << ','
+                    << r.pipeline_canonical_bytes << ','
+                    << r.pipeline_encoded_bytes << ','
+                    << r.pipeline_stage_failures << ','
+                    << r.pipeline_decode_failures << ','
+                    << r.pipeline_baseline_hits << ','
+                    << r.pipeline_baseline_misses << ','
+                    << r.pipeline_stale_baselines << ','
                     << r.state_hash << ','
                     << r.pos_drift << ','
                     << r.vel_drift << ','
                     << r.anisotropy_x << ','
                     << r.anisotropy_y << ','
-                    << r.anisotropy_z << '\n';
+                    << r.anisotropy_z << ','
+                    << r.neighbor_cache_edges << ','
+                    << r.neighbor_cache_checks << ','
+                    << r.spatial_grid_cells << ','
+                    << r.spatial_grid_occupied_cells << ','
+                    << r.flock_avg_speed << ','
+                    << r.flock_avg_steer << ','
+                    << r.flock_polarization << '\n';
         }
     }
-} // namespace telemetry::detail
+}

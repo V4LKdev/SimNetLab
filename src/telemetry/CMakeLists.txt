@@ -1,6 +1,9 @@
 # telemetry
 add_library(telemetry STATIC)
 
+find_package(spdlog CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+
 # --- Module Interface (PUBLIC) ---
 target_sources(telemetry
         PUBLIC
@@ -9,6 +12,8 @@ target_sources(telemetry
         FILES
         include/telemetry/telemetry.cppm
 )
+
+target_include_directories(telemetry PUBLIC include)
 
 # --- Implementation (PRIVATE) ---
 target_sources(telemetry
@@ -20,9 +25,9 @@ target_sources(telemetry
 
 # --- Conditional Tracy Support ---
 if (ENABLE_TELEMETRY_TRACY)
-    target_sources(telemetry PRIVATE src/tracy.cpp)
-    target_compile_definitions(telemetry PRIVATE TELEMETRY_TRACY)
-    target_link_libraries(telemetry PRIVATE Tracy::TracyClient)
+    find_package(Tracy CONFIG REQUIRED)
+    target_compile_definitions(telemetry PUBLIC TRACY_ENABLE SIMNET_TELEMETRY_TRACY)
+    target_link_libraries(telemetry PUBLIC Tracy::TracyClient)
 endif ()
 
 target_link_libraries(telemetry
