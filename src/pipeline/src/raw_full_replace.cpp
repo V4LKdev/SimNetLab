@@ -1,0 +1,307 @@
+module;
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
+#include <string>
+#include <utility>
+
+module simnet.pipeline;
+
+import :codec;
+import :types;
+import :wire;
+import simnet.core;
+import simnet.snapshot;
+
+namespace
+{
+    void require_raw_full_replace(simnet::PipelineDefinition const& pipeline)
+    {
+        if (pipeline.profile != simnet::PipelineProfileKind::RawFullReplace) {
+            throw std::runtime_error("unsupported pipeline profile");
+        }
+        if (pipeline.codec != simnet::CodecKind::ByteAligned) {
+            throw std::runtime_error("raw full-replace requires byte-aligned codec");
+        }
+        if (pipeline.techniques != simnet::PipelineTechniqueFlags::None) {
+            throw std::runtime_error("raw full-replace does not support enabled techniques");
+        }
+    }
+
+    void require_snapshot(simnet::WorldSnapshot const* snapshot)
+    {
+        if (snapshot == nullptr) {
+            throw std::runtime_error("encode input snapshot is null");
+        }
+
+        auto const validation = simnet::validate_world_snapshot(*snapshot);
+        if (!validation.valid) {
+            throw std::runtime_error("encode input snapshot is invalid: " + validation.message);
+        }
+    }
+
+    void require_u32_count(std::size_t count, char const* what)
+    {
+        if (count > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::runtime_error(std::string { what } + " exceeds uint32 range");
+        }
+    }
+
+    [[nodiscard]] simnet::DecodeOutput invalid_decode(
+        simnet::EncodedPacket const* packet,
+        std::string error
+    )
+    {
+        auto output = simnet::DecodeOutput {};
+        output.report.tick = packet == nullptr ? 0U : packet->tick;
+        output.report.sequence = packet == nullptr ? 0U : packet->sequence;
+        output.report.packet_bytes = packet == nullptr
+            ? 0U
+            : static_cast<std::uint32_t>(
+                std::min<std::size_t>(packet->bytes.size(), std::numeric_limits<std::uint32_t>::max())
+            );
+        output.report.valid = false;
+        output.report.error = std::move(error);
+        return output;
+    }
+
+    [[nodiscard]] bool checked_payload_size(
+        simnet::pipeline_wire::PacketHeader const& header,
+        std::size_t byte_count
+    ) noexcept
+    {
+        if (byte_count < simnet::pipeline_wire::header_bytes) {
+            return false;
+        }
+        return header.payload_bytes == byte_count - simnet::pipeline_wire::header_bytes;
+    }
+}
+
+namespace simnet
+{
+    PipelineDefinition make_raw_full_replace_pipeline(PacketBudget budget)
+    {
+        return {
+            .profile = PipelineProfileKind::RawFullReplace,
+            .codec = CodecKind::ByteAligned,
+            .techniques = PipelineTechniqueFlags::None,
+            .budget = budget,
+        };
+    }
+
+    EncodeOutput encode_snapshot(
+        PipelineDefinition const& pipeline,
+        ClientReplicationState& client_state,
+        PipelineScratch& scratch,
+        EncodeInput const& input
+    )
+    {
+        require_raw_full_replace(pipeline);
+        require_snapshot(input.snapshot);
+        auto const& snapshot = *input.snapshot;
+        require_u32_count(snapshot.size(), "snapshot entity count");
+
+        auto const sequence = client_state.next_sequence;
+        if (sequence == 0U) {
+            throw std::runtime_error("pipeline sequence 0 is reserved");
+        }
+        if (sequence == std::numeric_limits<SequenceId>::max()) {
+            throw std::runtime_error("pipeline sequence would wrap to reserved 0");
+        }
+
+        auto const payload_byte_count = snapshot.size()
+            * static_cast<std::size_t>(pipeline_wire::raw_record_bytes);
+        if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
+            || payload_byte_count + pipeline_wire::header_bytes > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::runtime_error("encoded raw full-replace packet exceeds uint32 byte range");
+        }
+        auto const payload_bytes = static_cast<std::uint32_t>(payload_byte_count);
+        auto const header = pipeline_wire::PacketHeader {
+            .magic = pipeline_wire::packet_magic,
+            .protocol = pipeline_wire::protocol_version,
+            .schema = pipeline_wire::schema_version,
+            .packet_kind = PipelinePacketKind::Snapshot,
+            .snapshot_kind = SnapshotKind::FullReplace,
+            .flags = PipelinePacketFlags::None,
+            .tick = snapshot.tick,
+            .sequence = sequence,
+            .baseline_sequence = 0,
+            .upsert_count = static_cast<std::uint32_t>(snapshot.size()),
+            .delete_count = 0,
+            .payload_bytes = payload_bytes,
+        };
+
+        scratch.bytes.clear();
+        scratch.bytes.reserve(pipeline_wire::header_bytes + payload_bytes);
+        pipeline_wire::write_header(scratch.bytes, header);
+
+        for (std::size_t source_index = 0; source_index < snapshot.size(); ++source_index) {
+            pipeline_wire::write_u32(scratch.bytes, snapshot.ids[source_index]);
+            pipeline_wire::write_vec3(scratch.bytes, snapshot.positions[source_index]);
+            pipeline_wire::write_vec3(scratch.bytes, snapshot.headings[source_index]);
+            pipeline_wire::write_u8(scratch.bytes, snapshot.hues[source_index]);
+        }
+
+        auto packet = EncodedPacket {
+            .tick = snapshot.tick,
+            .sequence = sequence,
+            .baseline_sequence = 0,
+            .kind = PipelinePacketKind::Snapshot,
+            .flags = PipelinePacketFlags::None,
+            .bytes = scratch.bytes,
+        };
+
+        auto const final_bytes = static_cast<std::uint32_t>(packet.bytes.size());
+        auto report = EncodeReport {
+            .tick = snapshot.tick,
+            .sequence = sequence,
+            .profile = pipeline.profile,
+            .codec = pipeline.codec,
+            .techniques = pipeline.techniques,
+            .emitted = true,
+            .skipped = false,
+            .skip_reason = EncodeSkipReason::None,
+            .budget_exceeded = final_bytes > pipeline.budget.max_packet_bytes,
+            .input_entities = static_cast<std::uint32_t>(snapshot.size()),
+            .selected_entities = static_cast<std::uint32_t>(snapshot.size()),
+            .upsert_count = static_cast<std::uint32_t>(snapshot.size()),
+            .delete_count = 0,
+            .packet_bytes = final_bytes,
+            .payload_bytes = payload_bytes,
+            .uncompressed_bytes = final_bytes,
+            .final_bytes = final_bytes,
+        };
+
+        auto output = EncodeOutput {
+            .kind = EncodeResultKind::Packet,
+            .skip_reason = EncodeSkipReason::None,
+            .packet = std::move(packet),
+            .report = report,
+        };
+        client_state.next_sequence = sequence + 1U;
+        return output;
+    }
+
+    DecodeOutput decode_packet(
+        PipelineDefinition const& pipeline,
+        ClientReplicationState& client_state,
+        PipelineScratch& scratch,
+        DecodeInput const& input
+    )
+    {
+        require_raw_full_replace(pipeline);
+        static_cast<void>(scratch);
+
+        if (input.packet == nullptr) {
+            return invalid_decode(nullptr, "decode input packet is null");
+        }
+
+        auto const& packet = *input.packet;
+        if (packet.bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
+            return invalid_decode(&packet, "packet byte count exceeds uint32 range");
+        }
+        if (packet.bytes.size() < pipeline_wire::header_bytes) {
+            return invalid_decode(&packet, "packet is shorter than header");
+        }
+
+        auto header = pipeline_wire::PacketHeader {};
+        if (!pipeline_wire::read_header(packet.bytes, header)) {
+            return invalid_decode(&packet, "failed to read packet header");
+        }
+        if (header.magic != pipeline_wire::packet_magic) {
+            return invalid_decode(&packet, "invalid packet magic");
+        }
+        if (header.protocol != pipeline_wire::protocol_version || header.schema != pipeline_wire::schema_version) {
+            return invalid_decode(&packet, "unsupported packet version");
+        }
+        if (header.packet_kind != PipelinePacketKind::Snapshot) {
+            return invalid_decode(&packet, "unsupported packet kind");
+        }
+        if (header.snapshot_kind != SnapshotKind::FullReplace) {
+            return invalid_decode(&packet, "unsupported snapshot kind");
+        }
+        if (header.baseline_sequence != 0U) {
+            return invalid_decode(&packet, "raw full-replace baseline sequence must be 0");
+        }
+        if (header.delete_count != 0U) {
+            return invalid_decode(&packet, "raw full-replace delete count must be 0");
+        }
+        if (header.flags != PipelinePacketFlags::None) {
+            return invalid_decode(&packet, "unsupported packet flags");
+        }
+        if (packet.tick != header.tick
+            || packet.sequence != header.sequence
+            || packet.baseline_sequence != header.baseline_sequence
+            || packet.kind != header.packet_kind
+            || packet.flags != header.flags) {
+            return invalid_decode(&packet, "outer packet metadata does not match header");
+        }
+        if (header.sequence == 0U) {
+            return invalid_decode(&packet, "packet sequence 0 is reserved");
+        }
+        if (header.sequence <= client_state.latest_remote_sequence) {
+            return invalid_decode(&packet, "stale or out-of-order packet sequence");
+        }
+        if (!checked_payload_size(header, packet.bytes.size())) {
+            return invalid_decode(&packet, "packet payload size does not match header");
+        }
+
+        auto const expected_payload = static_cast<std::uint64_t>(header.delete_count)
+                * pipeline_wire::delete_record_bytes
+            + static_cast<std::uint64_t>(header.upsert_count) * pipeline_wire::raw_record_bytes;
+        if (expected_payload != header.payload_bytes) {
+            return invalid_decode(&packet, "packet payload counts do not match payload size");
+        }
+
+        auto offset = static_cast<std::size_t>(pipeline_wire::header_bytes);
+        auto patch = ClientSnapshotPatch {};
+        patch.tick = header.tick;
+        patch.kind = SnapshotKind::FullReplace;
+        patch.reserve(header.upsert_count, header.delete_count);
+
+        for (std::uint32_t index = 0; index < header.delete_count; ++index) {
+            auto id = EntityNetId {};
+            if (!pipeline_wire::read_u32(packet.bytes, offset, id)) {
+                return invalid_decode(&packet, "truncated delete id data");
+            }
+            patch.deletes.push_back(id);
+        }
+
+        for (std::uint32_t index = 0; index < header.upsert_count; ++index) {
+            auto boid = BoidState {};
+            if (!pipeline_wire::read_u32(packet.bytes, offset, boid.id)
+                || !pipeline_wire::read_vec3(packet.bytes, offset, boid.position)
+                || !pipeline_wire::read_vec3(packet.bytes, offset, boid.heading)
+                || !pipeline_wire::read_u8(packet.bytes, offset, boid.hue)) {
+                return invalid_decode(&packet, "truncated upsert record data");
+            }
+            patch.upserts.push_back(boid);
+        }
+
+        if (offset != packet.bytes.size()) {
+            return invalid_decode(&packet, "packet has trailing bytes");
+        }
+
+        auto const validation = validate_client_snapshot_patch(patch);
+        if (!validation.valid) {
+            return invalid_decode(&packet, "decoded patch is invalid: " + validation.message);
+        }
+
+        client_state.latest_remote_sequence = header.sequence;
+
+        auto report = DecodeReport {
+            .tick = header.tick,
+            .sequence = header.sequence,
+            .upsert_count = header.upsert_count,
+            .delete_count = header.delete_count,
+            .packet_bytes = static_cast<std::uint32_t>(packet.bytes.size()),
+            .valid = true,
+            .error = {},
+        };
+
+        return { .patch = std::move(patch), .report = std::move(report) };
+    }
+}

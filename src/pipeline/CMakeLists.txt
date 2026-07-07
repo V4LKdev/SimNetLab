@@ -3,18 +3,25 @@ add_library(simnet_pipeline)
 target_sources(simnet_pipeline
     PUBLIC
         FILE_SET CXX_MODULES
-        BASE_DIRS include
+        BASE_DIRS import
         FILES
-            include/pipeline.cppm
+            import/pipeline.cppm
+            import/pipeline_types.cppm
+            import/pipeline_codec.cppm
+    PRIVATE
+        FILE_SET private_modules
+        TYPE CXX_MODULES
+        BASE_DIRS private
+        FILES
+            private/pipeline_wire.cppm
+    PRIVATE
+        src/raw_full_replace.cpp
 )
 
 target_link_libraries(simnet_pipeline
-    PRIVATE
+    PUBLIC
         simnet_core
-        simnet_config
-        simnet_telemetry
         simnet_snapshot
-        simnet_spatial
 )
 
 simnet_configure_target(simnet_pipeline)
