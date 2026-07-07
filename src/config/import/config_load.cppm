@@ -37,6 +37,7 @@ export namespace simnet
     [[nodiscard]] ClientConfig load_client_config(std::filesystem::path const& path);
 
     /// Returns a traceability fingerprint for runtime configuration.
+    /// (Raw-byte fingerprints are only stable within the same ABI/endian build.)
     [[nodiscard]] ConfigFingerprint fingerprint_runtime_config(
         SharedConfig const& shared,
         ServerConfig const& local
