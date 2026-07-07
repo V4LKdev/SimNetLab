@@ -1,3 +1,3 @@
 export module snapshot;
 
-import core;
+import simnet.core;
