@@ -295,6 +295,13 @@ namespace simnet
             return lhs.key < rhs.key;
         });
 
+        for (std::size_t index = 1; index < scratch.entries.size(); ++index) {
+            if (scratch.entries[index - 1].key == scratch.entries[index].key
+                && scratch.entries[index - 1].source_index == scratch.entries[index].source_index) {
+                throw std::runtime_error("spatial grid worker ranges produced duplicate source indices");
+            }
+        }
+
         grid.occupied_cells.clear();
         grid.occupied_cells.reserve(scratch.entries.size());
         grid.entries = scratch.entries;
