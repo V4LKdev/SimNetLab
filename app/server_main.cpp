@@ -1,4 +1,4 @@
-import config;
+import simnet.config;
 import simnet.core;
 import game_server;
 import pipeline;

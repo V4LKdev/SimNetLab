@@ -1,6 +1,6 @@
 export module render;
 
-import config;
+import simnet.config;
 import simnet.core;
 import game_client;
 import snapshot;

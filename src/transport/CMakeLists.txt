@@ -1,5 +1,3 @@
-find_package(unofficial-enet CONFIG REQUIRED)
-
 add_library(simnet_transport)
 
 target_sources(simnet_transport
@@ -15,8 +13,12 @@ target_link_libraries(simnet_transport
         simnet_core
         simnet_config
         simnet_telemetry
-    PRIVATE
-        unofficial::enet::enet
 )
+
+if (SIMNET_ENABLE_ENET)
+    find_package(unofficial-enet CONFIG REQUIRED)
+    target_compile_definitions(simnet_transport PUBLIC SIMNET_ENABLE_ENET=1)
+    target_link_libraries(simnet_transport PRIVATE unofficial::enet::enet)
+endif ()
 
 simnet_configure_target(simnet_transport)

@@ -1,6 +1,6 @@
 export module game_shared;
 
-import config;
+import simnet.config;
 import simnet.core;
 import snapshot;
 import spatial;

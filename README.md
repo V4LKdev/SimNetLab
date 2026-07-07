@@ -79,7 +79,12 @@ cmake --preset debug -DSIMNET_WARNINGS_AS_ERRORS=ON
 cmake --preset debug -DSIMNET_ENABLE_ASAN=ON
 cmake --preset debug -DSIMNET_ENABLE_UBSAN=ON
 cmake --preset debug -DSIMNET_ENABLE_TRACY=ON
+cmake --preset debug -DSIMNET_ENABLE_RENDER=OFF
+cmake --preset debug -DSIMNET_ENABLE_BENCHMARKING=OFF
+cmake --preset debug -DSIMNET_ENABLE_ENET=OFF
 ```
+
+Default runtime configs live in `config/server_default.json` and `config/client_default.json`.
 
 ## Modules
 

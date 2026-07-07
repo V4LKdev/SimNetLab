@@ -1,6 +1,6 @@
 export module game_client;
 
-import config;
+import simnet.config;
 import simnet.core;
 import game_shared;
 import snapshot;
