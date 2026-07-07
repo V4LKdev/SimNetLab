@@ -4,7 +4,7 @@
 
 The first profile is `RawSnapshot`: selected entities are written as byte-aligned records in network byte order, and decode returns a logical snapshot patch. The private wire header and records are serialized field-by-field, not by writing C++ object memory.
 
-`PipelineDefinition` names the profile, codec, enabled technique flags, and packet budget. `RawSnapshot` uses the byte-aligned codec and can be combined with the `SendInterval` and `Incremental` policies. Other technique flags are reserved for later profiles.
+`PipelineDefinition` names the profile, codec, enabled technique flags, and packet budget. `RawSnapshot` supports the byte-aligned codec, plus the explicit bit-packed codec for quantized oct-heading snapshots. Other technique flags are reserved for later profiles.
 
 `SendInterval` is the first emit policy. When enabled, encode emits only on matching ticks and returns `EncodeResultKind::Skipped` with `EncodeSkipReason::SendInterval` otherwise. Skips do not consume packet sequences.
 
