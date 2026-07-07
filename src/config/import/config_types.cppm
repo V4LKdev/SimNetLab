@@ -61,9 +61,13 @@ export namespace simnet
     /// Logging and profiling settings.
     struct TelemetryConfig
     {
-        bool enable_tracy { false };
-        bool enable_file_log { true };
+        bool tracy_enabled { false };
+        bool console_log_enabled { true };
+        bool file_log_enabled { true };
         std::string log_directory { "logs" };
+        std::string min_level { "info" };
+        bool metrics_csv_enabled { true };
+        bool metrics_json_enabled { false };
     };
 
     /// Declarative load ramp settings.

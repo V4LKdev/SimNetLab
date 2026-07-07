@@ -6,9 +6,13 @@
     "max_clients": 8
   },
   "telemetry": {
-    "enable_tracy": false,
-    "enable_file_log": true,
-    "log_directory": "logs"
+    "tracy_enabled": false,
+    "console_log_enabled": true,
+    "file_log_enabled": true,
+    "log_directory": "logs",
+    "min_level": "info",
+    "metrics_csv_enabled": true,
+    "metrics_json_enabled": false
   },
   "benchmark": {
     "enabled": false,

@@ -5,4 +5,4 @@ import simnet.core;
 import game_shared;
 import snapshot;
 import spatial;
-import telemetry;
+import simnet.telemetry;

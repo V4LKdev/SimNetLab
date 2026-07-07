@@ -1,5 +1,6 @@
 # Build outputs
 /build/
+/logs/
 
 # Local IDE/user state
 /.idea/

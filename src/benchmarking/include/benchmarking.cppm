@@ -4,4 +4,4 @@ import simnet.config;
 import simnet.core;
 import pipeline;
 import snapshot;
-import telemetry;
+import simnet.telemetry;
