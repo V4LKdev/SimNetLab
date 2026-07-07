@@ -26,13 +26,11 @@ namespace
         if (pipeline.profile != simnet::PipelineProfileKind::RawSnapshot) {
             throw std::runtime_error("unsupported pipeline profile");
         }
-        if (pipeline.codec != simnet::CodecKind::ByteAligned) {
-            throw std::runtime_error("raw snapshot requires byte-aligned codec");
-        }
         auto constexpr supported_techniques = static_cast<std::uint32_t>(
             simnet::PipelineTechniqueFlags::SendInterval
                 | simnet::PipelineTechniqueFlags::Incremental
                 | simnet::PipelineTechniqueFlags::Quantization
+                | simnet::PipelineTechniqueFlags::OctHeading
         );
         auto const requested_techniques = static_cast<std::uint32_t>(pipeline.techniques);
         auto const unsupported_techniques = requested_techniques & ~supported_techniques;
@@ -42,6 +40,15 @@ namespace
         if (simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Incremental)
             && simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization)) {
             throw std::runtime_error("raw snapshot quantization does not support incremental packets yet");
+        }
+        if (simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::OctHeading)
+            && !simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization)) {
+            throw std::runtime_error("oct heading requires quantization");
+        }
+        if (pipeline.codec == simnet::CodecKind::BitPacked
+            && (!simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization)
+                || !simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::OctHeading))) {
+            throw std::runtime_error("bit-packed raw snapshot requires quantization and oct heading");
         }
     }
 
@@ -103,6 +110,30 @@ namespace
     [[nodiscard]] bool is_quantized(simnet::PipelineDefinition const& pipeline) noexcept
     {
         return simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization);
+    }
+
+    [[nodiscard]] bool uses_oct_heading(simnet::PipelineDefinition const& pipeline) noexcept
+    {
+        return simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::OctHeading);
+    }
+
+    [[nodiscard]] bool is_bitpacked(simnet::PipelineDefinition const& pipeline) noexcept
+    {
+        return pipeline.codec == simnet::CodecKind::BitPacked;
+    }
+
+    [[nodiscard]] std::uint32_t encoded_record_bytes(simnet::PipelineDefinition const& pipeline) noexcept
+    {
+        if (is_bitpacked(pipeline)) {
+            return simnet::pipeline_wire::bitpacked_quantized_oct_record_bytes;
+        }
+        if (uses_oct_heading(pipeline)) {
+            return simnet::pipeline_wire::quantized_oct_record_bytes;
+        }
+        if (is_quantized(pipeline)) {
+            return simnet::pipeline_wire::quantized_record_bytes;
+        }
+        return simnet::pipeline_wire::raw_record_bytes;
     }
 
     [[nodiscard]] bool should_emit_for_send_interval(
@@ -185,6 +216,58 @@ namespace
         return static_cast<float>(signed_value) / 32767.0F;
     }
 
+    [[nodiscard]] float sign_not_zero(float value) noexcept
+    {
+        return value < 0.0F ? -1.0F : 1.0F;
+    }
+
+    [[nodiscard]] std::uint16_t encode_oct_component(float value) noexcept
+    {
+        return quantize_snorm16(value);
+    }
+
+    [[nodiscard]] float decode_oct_component(std::uint16_t value) noexcept
+    {
+        return dequantize_snorm16(value);
+    }
+
+    [[nodiscard]] std::pair<std::uint16_t, std::uint16_t> encode_oct_heading(simnet::Vec3f heading) noexcept
+    {
+        auto value = simnet::normalize_or(heading, { .x = 1.0F, .y = 0.0F, .z = 0.0F });
+        auto const inv_l1 = 1.0F / (std::abs(value.x) + std::abs(value.y) + std::abs(value.z));
+        value.x *= inv_l1;
+        value.y *= inv_l1;
+        value.z *= inv_l1;
+
+        if (value.z < 0.0F) {
+            auto const old_x = value.x;
+            auto const old_y = value.y;
+            value.x = (1.0F - std::abs(old_y)) * sign_not_zero(old_x);
+            value.y = (1.0F - std::abs(old_x)) * sign_not_zero(old_y);
+        }
+
+        return { encode_oct_component(value.x), encode_oct_component(value.y) };
+    }
+
+    [[nodiscard]] simnet::Vec3f decode_oct_heading(std::uint16_t encoded_x, std::uint16_t encoded_y) noexcept
+    {
+        auto value = simnet::Vec3f {
+            .x = decode_oct_component(encoded_x),
+            .y = decode_oct_component(encoded_y),
+            .z = 0.0F,
+        };
+        value.z = 1.0F - std::abs(value.x) - std::abs(value.y);
+
+        if (value.z < 0.0F) {
+            auto const old_x = value.x;
+            auto const old_y = value.y;
+            value.x = (1.0F - std::abs(old_y)) * sign_not_zero(old_x);
+            value.y = (1.0F - std::abs(old_x)) * sign_not_zero(old_y);
+        }
+
+        return simnet::normalize_or(value, { .x = 1.0F, .y = 0.0F, .z = 0.0F });
+    }
+
     void write_quantized_vec3(
         std::vector<std::byte>& bytes,
         simnet::Vec3f value,
@@ -201,6 +284,13 @@ namespace
         simnet::pipeline_wire::write_u16(bytes, quantize_snorm16(value.x));
         simnet::pipeline_wire::write_u16(bytes, quantize_snorm16(value.y));
         simnet::pipeline_wire::write_u16(bytes, quantize_snorm16(value.z));
+    }
+
+    void write_oct_heading(std::vector<std::byte>& bytes, simnet::Vec3f value)
+    {
+        auto const [x, y] = encode_oct_heading(value);
+        simnet::pipeline_wire::write_u16(bytes, x);
+        simnet::pipeline_wire::write_u16(bytes, y);
     }
 
     [[nodiscard]] bool read_quantized_vec3(
@@ -250,6 +340,135 @@ namespace
             },
             { .x = 1.0F, .y = 0.0F, .z = 0.0F }
         );
+        return true;
+    }
+
+    [[nodiscard]] bool read_oct_heading(
+        std::span<const std::byte> bytes,
+        std::size_t& offset,
+        simnet::Vec3f& value
+    )
+    {
+        auto x = std::uint16_t {};
+        auto y = std::uint16_t {};
+        if (!simnet::pipeline_wire::read_u16(bytes, offset, x)
+            || !simnet::pipeline_wire::read_u16(bytes, offset, y)) {
+            return false;
+        }
+
+        value = decode_oct_heading(x, y);
+        return true;
+    }
+
+    struct BitWriter
+    {
+        std::vector<std::byte>& bytes;
+        std::uint8_t scratch {};
+        std::uint8_t used_bits {};
+    };
+
+    void write_bits(BitWriter& writer, std::uint32_t value, std::uint8_t bit_count)
+    {
+        for (auto bit_index = bit_count; bit_index > 0U; --bit_index) {
+            auto const bit = static_cast<std::uint8_t>((value >> (bit_index - 1U)) & 1U);
+            writer.scratch = static_cast<std::uint8_t>((writer.scratch << 1U) | bit);
+            ++writer.used_bits;
+            if (writer.used_bits == 8U) {
+                writer.bytes.push_back(static_cast<std::byte>(writer.scratch));
+                writer.scratch = 0;
+                writer.used_bits = 0;
+            }
+        }
+    }
+
+    void flush_bits(BitWriter& writer)
+    {
+        if (writer.used_bits == 0U) {
+            return;
+        }
+        writer.scratch = static_cast<std::uint8_t>(writer.scratch << (8U - writer.used_bits));
+        writer.bytes.push_back(static_cast<std::byte>(writer.scratch));
+        writer.scratch = 0;
+        writer.used_bits = 0;
+    }
+
+    struct BitReader
+    {
+        std::span<const std::byte> bytes;
+        std::size_t bit_offset {};
+    };
+
+    [[nodiscard]] bool read_bits(BitReader& reader, std::uint8_t bit_count, std::uint32_t& value)
+    {
+        if (reader.bit_offset + bit_count > reader.bytes.size() * 8U) {
+            return false;
+        }
+
+        value = 0;
+        for (std::uint8_t index = 0; index < bit_count; ++index) {
+            auto const absolute_bit = reader.bit_offset + index;
+            auto const byte_index = absolute_bit / 8U;
+            auto const bit_in_byte = 7U - (absolute_bit % 8U);
+            auto const byte = std::to_integer<std::uint8_t>(reader.bytes[byte_index]);
+            value = (value << 1U) | ((byte >> bit_in_byte) & 1U);
+        }
+        reader.bit_offset += bit_count;
+        return true;
+    }
+
+    void write_bitpacked_record(
+        std::vector<std::byte>& bytes,
+        simnet::EntityNetId id,
+        simnet::Vec3f position,
+        simnet::Vec3f heading,
+        std::uint8_t hue,
+        simnet::Aabb3f bounds
+    )
+    {
+        auto writer = BitWriter { .bytes = bytes };
+        auto const [oct_x, oct_y] = encode_oct_heading(heading);
+        write_bits(writer, id, 32);
+        write_bits(writer, quantize_unorm16(position.x, bounds.min.x, bounds.max.x), 16);
+        write_bits(writer, quantize_unorm16(position.y, bounds.min.y, bounds.max.y), 16);
+        write_bits(writer, quantize_unorm16(position.z, bounds.min.z, bounds.max.z), 16);
+        write_bits(writer, oct_x, 16);
+        write_bits(writer, oct_y, 16);
+        write_bits(writer, hue, 8);
+        flush_bits(writer);
+    }
+
+    [[nodiscard]] bool read_bitpacked_record(
+        std::span<const std::byte> bytes,
+        simnet::Aabb3f bounds,
+        simnet::BoidState& boid
+    )
+    {
+        auto reader = BitReader { .bytes = bytes };
+        auto id = std::uint32_t {};
+        auto px = std::uint32_t {};
+        auto py = std::uint32_t {};
+        auto pz = std::uint32_t {};
+        auto hx = std::uint32_t {};
+        auto hy = std::uint32_t {};
+        auto hue = std::uint32_t {};
+        if (!read_bits(reader, 32, id)
+            || !read_bits(reader, 16, px)
+            || !read_bits(reader, 16, py)
+            || !read_bits(reader, 16, pz)
+            || !read_bits(reader, 16, hx)
+            || !read_bits(reader, 16, hy)
+            || !read_bits(reader, 8, hue)) {
+            return false;
+        }
+
+        boid.id = id;
+        boid.position = {
+            .x = dequantize_unorm16(static_cast<std::uint16_t>(px), bounds.min.x, bounds.max.x),
+            .y = dequantize_unorm16(static_cast<std::uint16_t>(py), bounds.min.y, bounds.max.y),
+            .z = dequantize_unorm16(static_cast<std::uint16_t>(pz), bounds.min.z, bounds.max.z),
+        };
+        boid.heading = decode_oct_heading(static_cast<std::uint16_t>(hx), static_cast<std::uint16_t>(hy));
+        boid.hue = static_cast<std::uint8_t>(hue);
         return true;
     }
 
@@ -371,9 +590,9 @@ namespace simnet
             ? scratch.selected_indices.size()
             : snapshot.size();
         auto const snapshot_kind = incremental_enabled ? SnapshotKind::Patch : SnapshotKind::FullReplace;
-        auto const record_bytes = quantized
-            ? pipeline_wire::quantized_record_bytes
-            : pipeline_wire::raw_record_bytes;
+        auto const oct_heading = uses_oct_heading(pipeline);
+        auto const bitpacked = is_bitpacked(pipeline);
+        auto const record_bytes = encoded_record_bytes(pipeline);
         auto const payload_byte_count = selected_count
             * static_cast<std::size_t>(record_bytes);
         if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
@@ -401,6 +620,18 @@ namespace simnet
         pipeline_wire::write_header(scratch.bytes, header);
 
         auto write_record = [&](std::size_t source_index) {
+            if (bitpacked) {
+                write_bitpacked_record(
+                    scratch.bytes,
+                    snapshot.ids[source_index],
+                    snapshot.positions[source_index],
+                    snapshot.headings[source_index],
+                    snapshot.hues[source_index],
+                    pipeline.quantization.position_bounds
+                );
+                return;
+            }
+
             pipeline_wire::write_u32(scratch.bytes, snapshot.ids[source_index]);
             if (quantized) {
                 write_quantized_vec3(
@@ -408,7 +639,11 @@ namespace simnet
                     snapshot.positions[source_index],
                     pipeline.quantization.position_bounds
                 );
-                write_quantized_heading(scratch.bytes, snapshot.headings[source_index]);
+                if (oct_heading) {
+                    write_oct_heading(scratch.bytes, snapshot.headings[source_index]);
+                } else {
+                    write_quantized_heading(scratch.bytes, snapshot.headings[source_index]);
+                }
             } else {
                 pipeline_wire::write_vec3(scratch.bytes, snapshot.positions[source_index]);
                 pipeline_wire::write_vec3(scratch.bytes, snapshot.headings[source_index]);
@@ -541,9 +776,9 @@ namespace simnet
         }
 
         auto const quantized = is_quantized(pipeline);
-        auto const record_bytes = quantized
-            ? pipeline_wire::quantized_record_bytes
-            : pipeline_wire::raw_record_bytes;
+        auto const oct_heading = uses_oct_heading(pipeline);
+        auto const bitpacked = is_bitpacked(pipeline);
+        auto const record_bytes = encoded_record_bytes(pipeline);
         auto const expected_payload = static_cast<std::uint64_t>(header.delete_count)
                 * pipeline_wire::delete_record_bytes
             + static_cast<std::uint64_t>(header.upsert_count) * record_bytes;
@@ -567,19 +802,45 @@ namespace simnet
 
         for (std::uint32_t index = 0; index < header.upsert_count; ++index) {
             auto boid = BoidState {};
-            auto read_ok = pipeline_wire::read_u32(packet.bytes, offset, boid.id);
-            if (read_ok && quantized) {
-                read_ok = read_quantized_vec3(
-                    packet.bytes,
-                    offset,
-                    pipeline.quantization.position_bounds,
-                    boid.position
-                ) && read_quantized_heading(packet.bytes, offset, boid.heading);
-            } else if (read_ok) {
-                read_ok = pipeline_wire::read_vec3(packet.bytes, offset, boid.position)
-                    && pipeline_wire::read_vec3(packet.bytes, offset, boid.heading);
+            auto read_ok = true;
+            if (bitpacked) {
+                auto const record_begin = offset;
+                auto const record_end = record_begin + record_bytes;
+                if (record_end > packet.bytes.size()) {
+                    read_ok = false;
+                } else {
+                    read_ok = read_bitpacked_record(
+                        std::span<const std::byte> { packet.bytes }.subspan(record_begin, record_bytes),
+                        pipeline.quantization.position_bounds,
+                        boid
+                    );
+                    offset = record_end;
+                }
+            } else {
+                read_ok = pipeline_wire::read_u32(packet.bytes, offset, boid.id);
             }
-            if (!read_ok || !pipeline_wire::read_u8(packet.bytes, offset, boid.hue)) {
+            if (!bitpacked) {
+                if (read_ok && quantized) {
+                    read_ok = read_quantized_vec3(
+                        packet.bytes,
+                        offset,
+                        pipeline.quantization.position_bounds,
+                        boid.position
+                    );
+                    if (read_ok && oct_heading) {
+                        read_ok = read_oct_heading(packet.bytes, offset, boid.heading);
+                    } else if (read_ok) {
+                        read_ok = read_quantized_heading(packet.bytes, offset, boid.heading);
+                    }
+                } else if (read_ok) {
+                    read_ok = pipeline_wire::read_vec3(packet.bytes, offset, boid.position)
+                        && pipeline_wire::read_vec3(packet.bytes, offset, boid.heading);
+                }
+                if (read_ok) {
+                    read_ok = pipeline_wire::read_u8(packet.bytes, offset, boid.hue);
+                }
+            }
+            if (!read_ok) {
                 return invalid_decode(&packet, "truncated upsert record data");
             }
             patch.upserts.push_back(boid);
