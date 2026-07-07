@@ -112,9 +112,11 @@ int main()
             validation.valid ? "synthetic snapshot validation: valid"
                              : "synthetic snapshot validation: " + validation.message);
 
-        auto pipeline = simnet::make_raw_full_replace_pipeline();
-        pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;
+        auto pipeline = simnet::make_raw_snapshot_pipeline();
+        pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval
+            | simnet::PipelineTechniqueFlags::Incremental;
         pipeline.send_interval.interval_ticks = 2;
+        pipeline.incremental.max_entities_per_packet = 512;
 
         auto replication_state = simnet::ClientReplicationState {};
         auto decode_state = simnet::ClientReplicationState {};

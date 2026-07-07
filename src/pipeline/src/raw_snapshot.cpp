@@ -18,21 +18,21 @@ import simnet.snapshot;
 
 namespace
 {
-    void require_raw_full_replace(simnet::PipelineDefinition const& pipeline)
+    void require_raw_snapshot(simnet::PipelineDefinition const& pipeline)
     {
-        if (pipeline.profile != simnet::PipelineProfileKind::RawFullReplace) {
+        if (pipeline.profile != simnet::PipelineProfileKind::RawSnapshot) {
             throw std::runtime_error("unsupported pipeline profile");
         }
         if (pipeline.codec != simnet::CodecKind::ByteAligned) {
-            throw std::runtime_error("raw full-replace requires byte-aligned codec");
+            throw std::runtime_error("raw snapshot requires byte-aligned codec");
         }
         auto constexpr supported_techniques = static_cast<std::uint32_t>(
-            simnet::PipelineTechniqueFlags::SendInterval
+            simnet::PipelineTechniqueFlags::SendInterval | simnet::PipelineTechniqueFlags::Incremental
         );
         auto const requested_techniques = static_cast<std::uint32_t>(pipeline.techniques);
         auto const unsupported_techniques = requested_techniques & ~supported_techniques;
         if (unsupported_techniques != 0U) {
-            throw std::runtime_error("raw full-replace does not support requested techniques");
+            throw std::runtime_error("raw snapshot does not support requested techniques");
         }
     }
 
@@ -63,6 +63,19 @@ namespace
         }
     }
 
+    void require_incremental_settings(simnet::PipelineDefinition const& pipeline)
+    {
+        if (simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Incremental)
+            && pipeline.incremental.max_entities_per_packet == 0U) {
+            throw std::runtime_error("incremental max entities per packet must be greater than 0");
+        }
+    }
+
+    [[nodiscard]] bool is_incremental(simnet::PipelineDefinition const& pipeline) noexcept
+    {
+        return simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Incremental);
+    }
+
     [[nodiscard]] bool should_emit_for_send_interval(
         simnet::PipelineDefinition const& pipeline,
         simnet::Tick tick
@@ -75,6 +88,43 @@ namespace
         auto const interval = static_cast<simnet::Tick>(pipeline.send_interval.interval_ticks);
         auto const phase = static_cast<simnet::Tick>(pipeline.send_interval.phase_offset);
         return ((tick + phase) % interval) == 0U;
+    }
+
+    void select_incremental_indices(
+        simnet::PipelineScratch& scratch,
+        std::size_t entity_count,
+        std::uint32_t cursor,
+        std::uint32_t max_entities
+    )
+    {
+        scratch.selected_indices.clear();
+        if (entity_count == 0) {
+            return;
+        }
+
+        auto const selected_count = std::min<std::size_t>(entity_count, max_entities);
+        scratch.selected_indices.reserve(selected_count);
+        auto const start = static_cast<std::size_t>(cursor) % entity_count;
+
+        // First pass scheduling uses snapshot-order cursoring; selected IDs are sorted before encode.
+        for (std::size_t offset = 0; offset < selected_count; ++offset) {
+            auto const source_index = (start + offset) % entity_count;
+            scratch.selected_indices.push_back(static_cast<std::uint32_t>(source_index));
+        }
+        std::sort(scratch.selected_indices.begin(), scratch.selected_indices.end());
+    }
+
+    [[nodiscard]] std::uint32_t next_incremental_cursor(
+        std::size_t entity_count,
+        std::uint32_t cursor,
+        std::uint32_t selected_count
+    ) noexcept
+    {
+        if (entity_count == 0) {
+            return 0;
+        }
+        auto const next = (static_cast<std::uint64_t>(cursor) + selected_count) % entity_count;
+        return static_cast<std::uint32_t>(next);
     }
 
     [[nodiscard]] simnet::EncodeOutput skipped_encode(
@@ -143,10 +193,10 @@ namespace
 
 namespace simnet
 {
-    PipelineDefinition make_raw_full_replace_pipeline(PacketBudget budget)
+    PipelineDefinition make_raw_snapshot_pipeline(PacketBudget budget)
     {
         return {
-            .profile = PipelineProfileKind::RawFullReplace,
+            .profile = PipelineProfileKind::RawSnapshot,
             .codec = CodecKind::ByteAligned,
             .techniques = PipelineTechniqueFlags::None,
             .budget = budget,
@@ -160,8 +210,9 @@ namespace simnet
         EncodeInput const& input
     )
     {
-        require_raw_full_replace(pipeline);
+        require_raw_snapshot(pipeline);
         require_send_interval_settings(pipeline);
+        require_incremental_settings(pipeline);
         require_snapshot(input.snapshot);
         auto const& snapshot = *input.snapshot;
         require_u32_count(snapshot.size(), "snapshot entity count");
@@ -178,11 +229,25 @@ namespace simnet
             throw std::runtime_error("pipeline sequence would wrap to reserved 0");
         }
 
-        auto const payload_byte_count = snapshot.size()
+        auto const incremental_enabled = is_incremental(pipeline);
+        if (incremental_enabled) {
+            select_incremental_indices(
+                scratch,
+                snapshot.size(),
+                client_state.incremental_cursor,
+                pipeline.incremental.max_entities_per_packet
+            );
+        }
+
+        auto const selected_count = incremental_enabled
+            ? scratch.selected_indices.size()
+            : snapshot.size();
+        auto const snapshot_kind = incremental_enabled ? SnapshotKind::Patch : SnapshotKind::FullReplace;
+        auto const payload_byte_count = selected_count
             * static_cast<std::size_t>(pipeline_wire::raw_record_bytes);
         if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
             || payload_byte_count + pipeline_wire::header_bytes > std::numeric_limits<std::uint32_t>::max()) {
-            throw std::runtime_error("encoded raw full-replace packet exceeds uint32 byte range");
+            throw std::runtime_error("encoded raw snapshot packet exceeds uint32 byte range");
         }
         auto const payload_bytes = static_cast<std::uint32_t>(payload_byte_count);
         auto const header = pipeline_wire::PacketHeader {
@@ -190,12 +255,12 @@ namespace simnet
             .protocol = pipeline_wire::protocol_version,
             .schema = pipeline_wire::schema_version,
             .packet_kind = PipelinePacketKind::Snapshot,
-            .snapshot_kind = SnapshotKind::FullReplace,
+            .snapshot_kind = snapshot_kind,
             .flags = PipelinePacketFlags::None,
             .tick = snapshot.tick,
             .sequence = sequence,
             .baseline_sequence = 0,
-            .upsert_count = static_cast<std::uint32_t>(snapshot.size()),
+            .upsert_count = static_cast<std::uint32_t>(selected_count),
             .delete_count = 0,
             .payload_bytes = payload_bytes,
         };
@@ -204,11 +269,21 @@ namespace simnet
         scratch.bytes.reserve(pipeline_wire::header_bytes + payload_bytes);
         pipeline_wire::write_header(scratch.bytes, header);
 
-        for (std::size_t source_index = 0; source_index < snapshot.size(); ++source_index) {
+        auto write_record = [&](std::size_t source_index) {
             pipeline_wire::write_u32(scratch.bytes, snapshot.ids[source_index]);
             pipeline_wire::write_vec3(scratch.bytes, snapshot.positions[source_index]);
             pipeline_wire::write_vec3(scratch.bytes, snapshot.headings[source_index]);
             pipeline_wire::write_u8(scratch.bytes, snapshot.hues[source_index]);
+        };
+
+        if (incremental_enabled) {
+            for (auto const source_index : scratch.selected_indices) {
+                write_record(source_index);
+            }
+        } else {
+            for (std::size_t source_index = 0; source_index < snapshot.size(); ++source_index) {
+                write_record(source_index);
+            }
         }
 
         auto packet = EncodedPacket {
@@ -232,8 +307,8 @@ namespace simnet
             .skip_reason = EncodeSkipReason::None,
             .budget_exceeded = final_bytes > pipeline.budget.max_packet_bytes,
             .input_entities = static_cast<std::uint32_t>(snapshot.size()),
-            .selected_entities = static_cast<std::uint32_t>(snapshot.size()),
-            .upsert_count = static_cast<std::uint32_t>(snapshot.size()),
+            .selected_entities = static_cast<std::uint32_t>(selected_count),
+            .upsert_count = static_cast<std::uint32_t>(selected_count),
             .delete_count = 0,
             .packet_bytes = final_bytes,
             .payload_bytes = payload_bytes,
@@ -247,7 +322,16 @@ namespace simnet
             .packet = std::move(packet),
             .report = report,
         };
+
+        auto const next_cursor = incremental_enabled
+            ? next_incremental_cursor(
+                snapshot.size(),
+                client_state.incremental_cursor,
+                static_cast<std::uint32_t>(selected_count)
+            )
+            : client_state.incremental_cursor;
         client_state.next_sequence = sequence + 1U;
+        client_state.incremental_cursor = next_cursor;
         return output;
     }
 
@@ -258,7 +342,7 @@ namespace simnet
         DecodeInput const& input
     )
     {
-        require_raw_full_replace(pipeline);
+        require_raw_snapshot(pipeline);
         static_cast<void>(scratch);
 
         if (input.packet == nullptr) {
@@ -286,14 +370,14 @@ namespace simnet
         if (header.packet_kind != PipelinePacketKind::Snapshot) {
             return invalid_decode(&packet, "unsupported packet kind");
         }
-        if (header.snapshot_kind != SnapshotKind::FullReplace) {
+        if (header.snapshot_kind != SnapshotKind::FullReplace && header.snapshot_kind != SnapshotKind::Patch) {
             return invalid_decode(&packet, "unsupported snapshot kind");
         }
         if (header.baseline_sequence != 0U) {
-            return invalid_decode(&packet, "raw full-replace baseline sequence must be 0");
+            return invalid_decode(&packet, "raw snapshot baseline sequence must be 0");
         }
         if (header.delete_count != 0U) {
-            return invalid_decode(&packet, "raw full-replace delete count must be 0");
+            return invalid_decode(&packet, "raw snapshot delete count must be 0");
         }
         if (header.flags != PipelinePacketFlags::None) {
             return invalid_decode(&packet, "unsupported packet flags");
@@ -325,7 +409,7 @@ namespace simnet
         auto offset = static_cast<std::size_t>(pipeline_wire::header_bytes);
         auto patch = ClientSnapshotPatch {};
         patch.tick = header.tick;
-        patch.kind = SnapshotKind::FullReplace;
+        patch.kind = header.snapshot_kind;
         patch.reserve(header.upsert_count, header.delete_count);
 
         for (std::uint32_t index = 0; index < header.delete_count; ++index) {
