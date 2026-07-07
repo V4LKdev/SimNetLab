@@ -1,0 +1,60 @@
+{
+  "version": 10,
+  "$schema": "https://cmake.org/cmake/help/latest/manual/presets/schema.json",
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 3,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "vcpkg-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "inherits": "vcpkg-base",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "relWithDebInfo",
+      "displayName": "RelWithDebInfo",
+      "inherits": "vcpkg-base",
+      "binaryDir": "${sourceDir}/build/relWithDebInfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "inherits": "vcpkg-base",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "relWithDebInfo",
+      "configurePreset": "relWithDebInfo"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "simnetlab",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "flecs",
+    "enet",
+    {
+      "name": "raylib",
+      "platform": "!linux"
+    },
+    "highway",
+    "spdlog",
+    "nlohmann-json",
+    "catch2",
+    "tracy",
+    "benchmark"
+  ]
+}
