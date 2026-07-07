@@ -1,4 +1,4 @@
 export module spatial;
 
-import core;
+import simnet.core;
 import snapshot;

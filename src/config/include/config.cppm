@@ -1,3 +1,3 @@
 export module config;
 
-import core;
+import simnet.core;

@@ -1,5 +1,5 @@
 import config;
-import core;
+import simnet.core;
 import game_server;
 import pipeline;
 import telemetry;
