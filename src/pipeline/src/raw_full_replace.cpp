@@ -26,8 +26,13 @@ namespace
         if (pipeline.codec != simnet::CodecKind::ByteAligned) {
             throw std::runtime_error("raw full-replace requires byte-aligned codec");
         }
-        if (pipeline.techniques != simnet::PipelineTechniqueFlags::None) {
-            throw std::runtime_error("raw full-replace does not support enabled techniques");
+        auto constexpr supported_techniques = static_cast<std::uint32_t>(
+            simnet::PipelineTechniqueFlags::SendInterval
+        );
+        auto const requested_techniques = static_cast<std::uint32_t>(pipeline.techniques);
+        auto const unsupported_techniques = requested_techniques & ~supported_techniques;
+        if (unsupported_techniques != 0U) {
+            throw std::runtime_error("raw full-replace does not support requested techniques");
         }
     }
 
@@ -48,6 +53,62 @@ namespace
         if (count > std::numeric_limits<std::uint32_t>::max()) {
             throw std::runtime_error(std::string { what } + " exceeds uint32 range");
         }
+    }
+
+    void require_send_interval_settings(simnet::PipelineDefinition const& pipeline)
+    {
+        if (simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::SendInterval)
+            && pipeline.send_interval.interval_ticks == 0U) {
+            throw std::runtime_error("send interval tick count must be greater than 0");
+        }
+    }
+
+    [[nodiscard]] bool should_emit_for_send_interval(
+        simnet::PipelineDefinition const& pipeline,
+        simnet::Tick tick
+    ) noexcept
+    {
+        if (!simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::SendInterval)) {
+            return true;
+        }
+
+        auto const interval = static_cast<simnet::Tick>(pipeline.send_interval.interval_ticks);
+        auto const phase = static_cast<simnet::Tick>(pipeline.send_interval.phase_offset);
+        return ((tick + phase) % interval) == 0U;
+    }
+
+    [[nodiscard]] simnet::EncodeOutput skipped_encode(
+        simnet::PipelineDefinition const& pipeline,
+        simnet::WorldSnapshot const& snapshot,
+        simnet::EncodeSkipReason reason
+    )
+    {
+        auto report = simnet::EncodeReport {
+            .tick = snapshot.tick,
+            .sequence = 0,
+            .profile = pipeline.profile,
+            .codec = pipeline.codec,
+            .techniques = pipeline.techniques,
+            .emitted = false,
+            .skipped = true,
+            .skip_reason = reason,
+            .budget_exceeded = false,
+            .input_entities = static_cast<std::uint32_t>(snapshot.size()),
+            .selected_entities = 0,
+            .upsert_count = 0,
+            .delete_count = 0,
+            .packet_bytes = 0,
+            .payload_bytes = 0,
+            .uncompressed_bytes = 0,
+            .final_bytes = 0,
+        };
+
+        return {
+            .kind = simnet::EncodeResultKind::Skipped,
+            .skip_reason = reason,
+            .packet = {},
+            .report = report,
+        };
     }
 
     [[nodiscard]] simnet::DecodeOutput invalid_decode(
@@ -100,9 +161,14 @@ namespace simnet
     )
     {
         require_raw_full_replace(pipeline);
+        require_send_interval_settings(pipeline);
         require_snapshot(input.snapshot);
         auto const& snapshot = *input.snapshot;
         require_u32_count(snapshot.size(), "snapshot entity count");
+
+        if (!should_emit_for_send_interval(pipeline, snapshot.tick)) {
+            return skipped_encode(pipeline, snapshot, EncodeSkipReason::SendInterval);
+        }
 
         auto const sequence = client_state.next_sequence;
         if (sequence == 0U) {

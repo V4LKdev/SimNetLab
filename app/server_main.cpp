@@ -36,6 +36,25 @@ namespace
 
         return bounds;
     }
+
+    void log_encode_report(simnet::EncodeReport const& report)
+    {
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            "pipeline tick: " + std::to_string(report.tick));
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            report.emitted ? "pipeline emitted: true" : "pipeline emitted: false");
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            report.skipped ? "pipeline skipped: true" : "pipeline skipped: false");
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            "pipeline packet bytes: " + std::to_string(report.packet_bytes));
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            "pipeline selected entities: " + std::to_string(report.selected_entities));
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            "pipeline upserts: " + std::to_string(report.upsert_count));
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            report.budget_exceeded ? "pipeline packet budget exceeded: true"
+                                   : "pipeline packet budget exceeded: false");
+    }
 }
 
 int main()
@@ -93,39 +112,43 @@ int main()
             validation.valid ? "synthetic snapshot validation: valid"
                              : "synthetic snapshot validation: " + validation.message);
 
-        auto const pipeline = simnet::make_raw_full_replace_pipeline();
-        auto replication_state = simnet::ClientReplicationState {};
-        auto pipeline_scratch = simnet::PipelineScratch {};
-        auto encode_output = simnet::encode_snapshot(
-            pipeline,
-            replication_state,
-            pipeline_scratch,
-            { .snapshot = &snapshot }
-        );
-        auto decode_state = simnet::ClientReplicationState {};
-        auto decode_output = simnet::decode_packet(
-            pipeline,
-            decode_state,
-            pipeline_scratch,
-            { .packet = &encode_output.packet }
-        );
-        auto const patch_validation = simnet::validate_client_snapshot_patch(decode_output.patch);
+        auto pipeline = simnet::make_raw_full_replace_pipeline();
+        pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;
+        pipeline.send_interval.interval_ticks = 2;
 
-        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
-            "pipeline packet bytes: " + std::to_string(encode_output.report.packet_bytes));
-        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
-            "pipeline selected entities: " + std::to_string(encode_output.report.selected_entities));
-        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
-            "pipeline upserts: " + std::to_string(encode_output.report.upsert_count));
-        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
-            encode_output.report.budget_exceeded ? "pipeline packet budget exceeded: true"
-                                                 : "pipeline packet budget exceeded: false");
-        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
-            decode_output.report.valid ? "pipeline decode: valid"
-                                       : "pipeline decode: " + decode_output.report.error);
-        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
-            patch_validation.valid ? "pipeline decoded patch validation: valid"
-                                   : "pipeline decoded patch validation: " + patch_validation.message);
+        auto replication_state = simnet::ClientReplicationState {};
+        auto decode_state = simnet::ClientReplicationState {};
+        auto pipeline_scratch = simnet::PipelineScratch {};
+
+        for (simnet::Tick tick = 0; tick < 3; ++tick) {
+            auto const tick_snapshot = simnet::make_synthetic_world_snapshot(synthetic_settings, tick);
+            auto encode_output = simnet::encode_snapshot(
+                pipeline,
+                replication_state,
+                pipeline_scratch,
+                { .snapshot = &tick_snapshot }
+            );
+            log_encode_report(encode_output.report);
+
+            if (encode_output.kind == simnet::EncodeResultKind::Skipped) {
+                continue;
+            }
+
+            auto decode_output = simnet::decode_packet(
+                pipeline,
+                decode_state,
+                pipeline_scratch,
+                { .packet = &encode_output.packet }
+            );
+            auto const patch_validation = simnet::validate_client_snapshot_patch(decode_output.patch);
+
+            simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+                decode_output.report.valid ? "pipeline decode: valid"
+                                           : "pipeline decode: " + decode_output.report.error);
+            simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+                patch_validation.valid ? "pipeline decoded patch validation: valid"
+                                       : "pipeline decoded patch validation: " + patch_validation.message);
+        }
 
         SIMNET_TRACE_PLOT("server.network_fingerprint", static_cast<double>(network_fingerprint.value));
         SIMNET_TRACE_PLOT("server.runtime_fingerprint", static_cast<double>(runtime_fingerprint.value));

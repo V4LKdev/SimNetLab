@@ -116,6 +116,13 @@ export namespace simnet
         std::uint32_t max_packet_bytes { 1200 };
     };
 
+    /// Tick cadence settings for optional send interval policy.
+    struct SendIntervalSettings
+    {
+        std::uint32_t interval_ticks { 1 };
+        std::uint32_t phase_offset { 0 };
+    };
+
     /// Immutable pipeline profile definition.
     struct PipelineDefinition
     {
@@ -123,6 +130,7 @@ export namespace simnet
         CodecKind codec { CodecKind::ByteAligned };
         PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
         PacketBudget budget {};
+        SendIntervalSettings send_interval {};
     };
 
     /// Caller-owned per-client replication state.
