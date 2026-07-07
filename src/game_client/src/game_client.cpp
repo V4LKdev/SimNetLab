@@ -13,6 +13,74 @@ import simnet.snapshot;
 
 namespace simnet
 {
+    namespace
+    {
+        [[nodiscard]] flecs::entity make_replicated_entity(flecs::world& world, BoidState const& boid)
+        {
+            return world.entity()
+                .set<NetIdentity>({ .id = boid.id })
+                .set<Position>({ .value = boid.position })
+                .set<Heading>({ .value = boid.heading })
+                .set<Hue>({ .value = boid.hue })
+                .add<BoidTag>();
+        }
+
+        void update_replicated_entity(flecs::world& world, flecs::entity_t entity_id, BoidState const& boid)
+        {
+            auto entity = flecs::entity { world, entity_id };
+            entity.set<Position>({ .value = boid.position });
+            entity.set<Heading>({ .value = boid.heading });
+            entity.set<Hue>({ .value = boid.hue });
+        }
+
+        void delete_entity_if_alive(flecs::world& world, flecs::entity_t entity_id)
+        {
+            if (entity_id != 0 && ecs_is_alive(world.c_ptr(), entity_id)) {
+                ecs_delete(world.c_ptr(), entity_id);
+            }
+        }
+
+        [[nodiscard]] bool delete_matches(
+            ClientSnapshotPatch const& patch,
+            std::size_t& delete_index,
+            EntityNetId id
+        ) noexcept
+        {
+            while (delete_index < patch.deletes.size() && patch.deletes[delete_index] < id) {
+                ++delete_index;
+            }
+            if (delete_index < patch.deletes.size() && patch.deletes[delete_index] == id) {
+                ++delete_index;
+                return true;
+            }
+            return false;
+        }
+
+        [[nodiscard]] bool upsert_before_current(
+            ClientSnapshotPatch const& patch,
+            std::size_t upsert_index,
+            EntityNetId id
+        ) noexcept
+        {
+            return upsert_index < patch.upserts.size() && patch.upserts[upsert_index].id < id;
+        }
+
+        [[nodiscard]] bool upsert_matches(
+            ClientSnapshotPatch const& patch,
+            std::size_t upsert_index,
+            EntityNetId id
+        ) noexcept
+        {
+            return upsert_index < patch.upserts.size() && patch.upserts[upsert_index].id == id;
+        }
+
+        void append_entity(ClientReplicationIndex& index, EntityNetId id, flecs::entity_t entity_id)
+        {
+            index.ids.push_back(id);
+            index.entities.push_back(entity_id);
+        }
+    }
+
     void register_client_game(flecs::world& world)
     {
         register_game_components(world);
@@ -42,37 +110,75 @@ namespace simnet
             return report;
         }
 
-        if (patch.kind == SnapshotKind::Patch) {
-            report.valid = false;
-            report.error = "Patch apply not implemented yet";
-            return report;
-        }
-
         register_client_game(world);
         auto& index = world.ensure<ClientReplicationIndex>();
         auto& clock = world.ensure<ClientReplicationClock>();
         report.previous_entities = static_cast<std::uint32_t>(index.size());
 
+        if (patch.kind == SnapshotKind::Patch) {
+            auto next_index = ClientReplicationIndex {};
+            next_index.reserve(index.size() + patch.upserts.size());
+
+            auto current_index = std::size_t {};
+            auto upsert_index = std::size_t {};
+            auto delete_index = std::size_t {};
+
+            while (current_index < index.ids.size()) {
+                auto const current_id = index.ids[current_index];
+
+                while (upsert_before_current(patch, upsert_index, current_id)) {
+                    auto const& boid = patch.upserts[upsert_index];
+                    auto entity = make_replicated_entity(world, boid);
+                    append_entity(next_index, boid.id, entity.id());
+                    ++upsert_index;
+                }
+
+                if (delete_matches(patch, delete_index, current_id)) {
+                    delete_entity_if_alive(world, index.entities[current_index]);
+                    ++current_index;
+                    continue;
+                }
+
+                if (upsert_matches(patch, upsert_index, current_id)) {
+                    auto const& boid = patch.upserts[upsert_index];
+                    update_replicated_entity(world, index.entities[current_index], boid);
+                    append_entity(next_index, current_id, index.entities[current_index]);
+                    ++upsert_index;
+                    ++current_index;
+                    continue;
+                }
+
+                append_entity(next_index, current_id, index.entities[current_index]);
+                ++current_index;
+            }
+
+            while (upsert_index < patch.upserts.size()) {
+                auto const& boid = patch.upserts[upsert_index];
+                auto entity = make_replicated_entity(world, boid);
+                append_entity(next_index, boid.id, entity.id());
+                ++upsert_index;
+            }
+
+            index = std::move(next_index);
+            clock.latest_tick = patch.tick;
+            world.modified<ClientReplicationIndex>();
+            world.modified<ClientReplicationClock>();
+
+            report.final_entities = static_cast<std::uint32_t>(index.size());
+            return report;
+        }
+
         auto old_entities = index.entities;
         for (auto const entity_id : old_entities) {
-            if (entity_id != 0 && ecs_is_alive(world.c_ptr(), entity_id)) {
-                ecs_delete(world.c_ptr(), entity_id);
-            }
+            delete_entity_if_alive(world, entity_id);
         }
 
         auto next_index = ClientReplicationIndex {};
         next_index.reserve(patch.upserts.size());
 
         for (auto const& boid : patch.upserts) {
-            auto entity = world.entity()
-                .set<NetIdentity>({ .id = boid.id })
-                .set<Position>({ .value = boid.position })
-                .set<Heading>({ .value = boid.heading })
-                .set<Hue>({ .value = boid.hue })
-                .add<BoidTag>();
-
-            next_index.ids.push_back(boid.id);
-            next_index.entities.push_back(entity.id());
+            auto entity = make_replicated_entity(world, boid);
+            append_entity(next_index, boid.id, entity.id());
         }
 
         index = std::move(next_index);
