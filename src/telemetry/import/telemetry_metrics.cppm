@@ -1,3 +1,4 @@
+/// @brief Raw metric submission API.
 export module simnet.telemetry:metrics;
 
 import :types;

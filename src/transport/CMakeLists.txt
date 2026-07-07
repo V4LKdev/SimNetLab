@@ -9,7 +9,7 @@ target_sources(simnet_transport
 )
 
 target_link_libraries(simnet_transport
-    PUBLIC
+    PRIVATE
         simnet_core
         simnet_config
         simnet_telemetry
@@ -17,7 +17,7 @@ target_link_libraries(simnet_transport
 
 if (SIMNET_ENABLE_ENET)
     find_package(unofficial-enet CONFIG REQUIRED)
-    target_compile_definitions(simnet_transport PUBLIC SIMNET_ENABLE_ENET=1)
+    target_compile_definitions(simnet_transport PRIVATE SIMNET_ENABLE_ENET=1)
     target_link_libraries(simnet_transport PRIVATE unofficial::enet::enet)
 endif ()
 

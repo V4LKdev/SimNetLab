@@ -2,12 +2,22 @@ module;
 
 #include <filesystem>
 
+/// @brief Runtime configuration loading and fingerprinting.
 export module simnet.config:load;
 
 import :types;
 
 export namespace simnet
 {
+    /// Returns the default shared runtime config file path.
+    [[nodiscard]] std::filesystem::path default_shared_config_path();
+
+    /// Returns the default server runtime config file path.
+    [[nodiscard]] std::filesystem::path default_server_config_path();
+
+    /// Returns the default client runtime config file path.
+    [[nodiscard]] std::filesystem::path default_client_config_path();
+
     /// Returns the default shared configuration.
     [[nodiscard]] SharedConfig default_shared_config();
 

@@ -19,6 +19,7 @@ namespace
 {
     using Json = nlohmann::json;
 
+    // FNV-1a is enough here for stable traceability fingerprints.
     constexpr std::uint64_t fnv_offset_basis = 14695981039346656037ULL;
     constexpr std::uint64_t fnv_prime = 1099511628211ULL;
 
@@ -204,6 +205,7 @@ namespace
     {
         validate_root(json);
 
+        // Missing fields intentionally keep their typed defaults.
         auto config = simnet::default_shared_config();
 
         if (auto const* section = optional_object(json, "run")) {
@@ -226,6 +228,7 @@ namespace
     {
         validate_root(json);
 
+        // Server-local config owns transport, telemetry, and benchmark knobs.
         auto config = simnet::default_server_config();
 
         read_optional(json, "headless", config.headless);
@@ -246,6 +249,7 @@ namespace
     {
         validate_root(json);
 
+        // Client-local config owns transport, telemetry, and rendering knobs.
         auto config = simnet::default_client_config();
 
         read_optional(json, "headless", config.headless);
@@ -264,6 +268,7 @@ namespace
 
     void hash_shared(std::uint64_t& hash, simnet::SharedConfig const& config) noexcept
     {
+        // Network compatibility is based only on shared deterministic settings.
         hash_bytes(hash, config.run.seed);
         hash_bytes(hash, config.simulation.tick_rate_hz);
         hash_bytes(hash, config.simulation.world_half);
@@ -296,6 +301,21 @@ namespace
 
 namespace simnet
 {
+    std::filesystem::path default_shared_config_path()
+    {
+        return std::filesystem::path { SIMNET_DEFAULT_CONFIG_DIR } / "shared_default.json";
+    }
+
+    std::filesystem::path default_server_config_path()
+    {
+        return std::filesystem::path { SIMNET_DEFAULT_CONFIG_DIR } / "server_default.json";
+    }
+
+    std::filesystem::path default_client_config_path()
+    {
+        return std::filesystem::path { SIMNET_DEFAULT_CONFIG_DIR } / "client_default.json";
+    }
+
     SharedConfig default_shared_config()
     {
         return {};

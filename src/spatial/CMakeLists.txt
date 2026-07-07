@@ -9,7 +9,7 @@ target_sources(simnet_spatial
 )
 
 target_link_libraries(simnet_spatial
-    PUBLIC
+    PRIVATE
         simnet_core
         simnet_snapshot
 )

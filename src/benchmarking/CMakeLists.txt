@@ -11,13 +11,12 @@ target_sources(simnet_benchmarking
 )
 
 target_link_libraries(simnet_benchmarking
-    PUBLIC
+    PRIVATE
         simnet_core
         simnet_config
         simnet_telemetry
         simnet_snapshot
         simnet_pipeline
-    PRIVATE
         benchmark::benchmark
 )
 

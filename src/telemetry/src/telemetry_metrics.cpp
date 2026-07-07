@@ -18,6 +18,7 @@ namespace simnet
 {
     void submit_tick_metrics(TickMetrics const& metrics)
     {
+        // Stored raw for later CSV or JSON sinks.
         std::scoped_lock lock { metrics_mutex };
         tick_metrics.push_back(metrics);
     }

@@ -2,6 +2,7 @@ module;
 
 #include <cmath>
 
+/// @brief Core vector and bounds math.
 export module simnet.core:math;
 
 export namespace simnet

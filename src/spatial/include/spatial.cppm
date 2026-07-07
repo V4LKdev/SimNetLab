@@ -1,4 +1,5 @@
+/// @brief Public spatial acceleration module.
 export module spatial;
 
 import simnet.core;
-import snapshot;
+import simnet.snapshot;

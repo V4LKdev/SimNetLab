@@ -3,6 +3,7 @@ module;
 #include <chrono>
 #include <cstdint>
 
+/// @brief Core fixed-step timing types.
 export module simnet.core:time;
 
 export namespace simnet
