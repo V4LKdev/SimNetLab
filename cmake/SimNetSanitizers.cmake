@@ -1,0 +1,13 @@
+option(SIMNET_ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(SIMNET_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+
+function(target_enable_sanitizers TARGET)
+    if (SIMNET_ENABLE_ASAN)
+        target_compile_options(${TARGET} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(${TARGET} PRIVATE -fsanitize=address)
+    endif ()
+    if (SIMNET_ENABLE_UBSAN)
+        target_compile_options(${TARGET} PRIVATE -fsanitize=undefined)
+        target_link_options(${TARGET} PRIVATE -fsanitize=undefined)
+    endif ()
+endfunction()
