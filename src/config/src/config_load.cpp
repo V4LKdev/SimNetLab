@@ -171,9 +171,13 @@ namespace
 
     void apply_telemetry(Json const& json, simnet::TelemetryConfig& config)
     {
-        read_optional(json, "enable_tracy", config.enable_tracy);
-        read_optional(json, "enable_file_log", config.enable_file_log);
+        read_optional(json, "tracy_enabled", config.tracy_enabled);
+        read_optional(json, "console_log_enabled", config.console_log_enabled);
+        read_optional(json, "file_log_enabled", config.file_log_enabled);
         read_optional(json, "log_directory", config.log_directory);
+        read_optional(json, "min_level", config.min_level);
+        read_optional(json, "metrics_csv_enabled", config.metrics_csv_enabled);
+        read_optional(json, "metrics_json_enabled", config.metrics_json_enabled);
     }
 
     void apply_load_ramp(Json const& json, simnet::LoadRampConfig& config)
@@ -281,8 +285,12 @@ namespace
         hash_string(hash, transport.host);
         hash_bytes(hash, transport.port);
         hash_bytes(hash, transport.max_clients);
-        hash_bytes(hash, telemetry.enable_tracy);
-        hash_bytes(hash, telemetry.enable_file_log);
+        hash_bytes(hash, telemetry.tracy_enabled);
+        hash_bytes(hash, telemetry.console_log_enabled);
+        hash_bytes(hash, telemetry.file_log_enabled);
+        hash_string(hash, telemetry.min_level);
+        hash_bytes(hash, telemetry.metrics_csv_enabled);
+        hash_bytes(hash, telemetry.metrics_json_enabled);
     }
 }
 
