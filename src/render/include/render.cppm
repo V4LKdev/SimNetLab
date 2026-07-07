@@ -5,4 +5,4 @@ import simnet.config;
 import simnet.core;
 import game_client;
 import simnet.snapshot;
-import spatial;
+import simnet.spatial;
