@@ -1,26 +1,5 @@
 {
-  "run": {
-    "seed": 12345,
-    "headless": false
-  },
-  "simulation": {
-    "tick_rate_hz": 60.0,
-    "world_half": 400.0,
-    "initial_boid_count": 1000
-  },
-  "spatial": {
-    "cell_size": 20.0,
-    "max_neighbors": 64
-  },
-  "pipeline": {
-    "enable_aoi": false,
-    "enable_incremental": false,
-    "enable_quantization": false,
-    "enable_delta": false,
-    "enable_compression": false,
-    "position_bits": 16,
-    "heading_bits": 16
-  },
+  "headless": false,
   "transport": {
     "host": "127.0.0.1",
     "port": 7777,

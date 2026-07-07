@@ -1,7 +1,6 @@
 {
   "run": {
-    "seed": 12345,
-    "headless": false
+    "seed": 12345
   },
   "simulation": {
     "tick_rate_hz": 60.0,
@@ -20,15 +19,5 @@
     "enable_compression": false,
     "position_bits": 16,
     "heading_bits": 16
-  },
-  "transport": {
-    "host": "127.0.0.1",
-    "port": 7777,
-    "max_clients": 8
-  },
-  "telemetry": {
-    "enable_tracy": false,
-    "enable_file_log": true,
-    "log_directory": "logs"
   }
 }

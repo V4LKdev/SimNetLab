@@ -6,4 +6,4 @@ Import it with:
 import simnet.config;
 ```
 
-It exports client/server config structs, defaults, JSON loading, and runtime/network fingerprints. It does not own CLI parsing, live state, logging setup, or compile-time feature switches.
+It exports shared, client, and server config structs, defaults, JSON loading, and fingerprints. It does not own CLI parsing, live state, logging setup, or compile-time feature switches.

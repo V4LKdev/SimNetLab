@@ -84,7 +84,7 @@ cmake --preset debug -DSIMNET_ENABLE_BENCHMARKING=OFF
 cmake --preset debug -DSIMNET_ENABLE_ENET=OFF
 ```
 
-Default runtime configs live in `config/server_default.json` and `config/client_default.json`.
+Default runtime configs live in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`.
 
 ## Modules
 

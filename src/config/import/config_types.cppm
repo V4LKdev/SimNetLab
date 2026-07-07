@@ -9,11 +9,10 @@ import simnet.core;
 
 export namespace simnet
 {
-    /// Process-level runtime configuration.
+    /// Shared deterministic run configuration.
     struct RunConfig
     {
         std::uint64_t seed { 12345 };
-        bool headless { false };
     };
 
     /// Simulation world and tick settings.
@@ -84,25 +83,28 @@ export namespace simnet
         LoadRampConfig load_ramp {};
     };
 
-    /// Server runtime configuration.
-    struct ServerConfig
+    /// Shared network-compatible runtime configuration.
+    struct SharedConfig
     {
         RunConfig run {};
         SimulationConfig simulation {};
         SpatialConfig spatial {};
         PipelineConfig pipeline {};
+    };
+
+    /// Server-local runtime configuration.
+    struct ServerConfig
+    {
+        bool headless { true };
         TransportConfig transport {};
         TelemetryConfig telemetry {};
         BenchmarkScenarioConfig benchmark {};
     };
 
-    /// Client runtime configuration.
+    /// Client-local runtime configuration.
     struct ClientConfig
     {
-        RunConfig run {};
-        SimulationConfig simulation {};
-        SpatialConfig spatial {};
-        PipelineConfig pipeline {};
+        bool headless { false };
         TransportConfig transport {};
         RenderConfig render {};
         TelemetryConfig telemetry {};
