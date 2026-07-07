@@ -64,9 +64,16 @@ export namespace simnet
         SpatialGridStats stats {};
     };
 
+    /// Per-worker build storage.
+    struct SpatialGridWorkerScratch
+    {
+        std::vector<CellEntry> entries;
+    };
+
     /// Reusable build storage.
     struct SpatialGridScratch
     {
+        std::vector<SpatialGridWorkerScratch> workers;
         std::vector<CellEntry> entries;
     };
 }

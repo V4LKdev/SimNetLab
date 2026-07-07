@@ -80,6 +80,25 @@ namespace
         }
     }
 
+    void validate_position_range(
+        std::span<const simnet::Vec3f> positions,
+        std::uint32_t begin_index,
+        std::uint32_t end_index
+    )
+    {
+        if (positions.size() > std::numeric_limits<std::uint32_t>::max()
+            || begin_index > end_index
+            || end_index > positions.size()) {
+            throw std::runtime_error("invalid spatial grid worker range");
+        }
+
+        for (auto index = begin_index; index < end_index; ++index) {
+            if (!simnet::is_finite(positions[index])) {
+                throw std::runtime_error("spatial grid position contains a non-finite component");
+            }
+        }
+    }
+
     void validate_flat_key_capacity(std::uint32_t dim_x, std::uint32_t dim_y, std::uint32_t dim_z)
     {
         auto constexpr max = std::numeric_limits<simnet::CellKey>::max();
@@ -194,11 +213,21 @@ namespace simnet
         std::uint32_t worker_count
     )
     {
-        static_cast<void>(worker_count);
+        if (worker_count == 0U) {
+            throw std::runtime_error("spatial grid worker count must be non-zero");
+        }
+
+        scratch.workers.resize(worker_count);
         scratch.entries.reserve(entity_capacity);
+
+        auto const per_worker_capacity =
+            entity_capacity / worker_count + (entity_capacity % worker_count == 0U ? 0U : 1U);
+        for (auto& worker : scratch.workers) {
+            worker.entries.reserve(per_worker_capacity);
+        }
     }
 
-    void build_spatial_grid_serial(
+    void begin_spatial_grid_build(
         SpatialGrid& grid,
         SpatialGridScratch& scratch,
         std::span<const Vec3f> positions
@@ -207,14 +236,56 @@ namespace simnet
         validate_grid_ready(grid);
         validate_positions(positions);
 
+        for (auto& worker : scratch.workers) {
+            worker.entries.clear();
+        }
         scratch.entries.clear();
-        scratch.entries.reserve(positions.size());
+        grid.occupied_cells.clear();
+        grid.entries.clear();
+        grid.stats = { .entity_count = static_cast<std::uint32_t>(positions.size()) };
+    }
 
-        for (std::size_t index = 0; index < positions.size(); ++index) {
-            scratch.entries.push_back({
+    void build_spatial_grid_worker_entries(
+        SpatialGrid const& grid,
+        SpatialGridWorkerScratch& worker_scratch,
+        std::span<const Vec3f> positions,
+        std::uint32_t begin_index,
+        std::uint32_t end_index
+    )
+    {
+        validate_grid_ready(grid);
+        validate_position_range(positions, begin_index, end_index);
+
+        worker_scratch.entries.clear();
+        worker_scratch.entries.reserve(end_index - begin_index);
+
+        for (auto index = begin_index; index < end_index; ++index) {
+            worker_scratch.entries.push_back({
                 .key = key_for(grid, positions[index]),
-                .source_index = static_cast<std::uint32_t>(index),
+                .source_index = index,
             });
+        }
+    }
+
+    void finish_spatial_grid_build(
+        SpatialGrid& grid,
+        SpatialGridScratch& scratch
+    )
+    {
+        validate_grid_ready(grid);
+
+        auto entry_count = std::size_t {};
+        for (auto const& worker : scratch.workers) {
+            entry_count += worker.entries.size();
+        }
+        if (entry_count > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::runtime_error("spatial grid entry count exceeds supported index range");
+        }
+
+        scratch.entries.clear();
+        scratch.entries.reserve(entry_count);
+        for (auto const& worker : scratch.workers) {
+            scratch.entries.insert(scratch.entries.end(), worker.entries.begin(), worker.entries.end());
         }
 
         std::ranges::sort(scratch.entries, [](CellEntry lhs, CellEntry rhs) {
@@ -248,7 +319,7 @@ namespace simnet
         }
 
         auto const occupied_cell_count = static_cast<std::uint32_t>(grid.occupied_cells.size());
-        auto const entity_count = static_cast<std::uint32_t>(positions.size());
+        auto const entity_count = static_cast<std::uint32_t>(entry_count);
         auto const average_load = occupied_cell_count == 0U
             ? 0.0F
             : static_cast<float>(entity_count) / static_cast<float>(occupied_cell_count);
@@ -261,14 +332,24 @@ namespace simnet
         };
     }
 
-    void build_spatial_grid_parallel(
+    void build_spatial_grid_serial(
         SpatialGrid& grid,
         SpatialGridScratch& scratch,
-        std::span<const Vec3f> positions,
-        std::uint32_t worker_count
+        std::span<const Vec3f> positions
     )
     {
-        static_cast<void>(worker_count);
-        build_spatial_grid_serial(grid, scratch, positions);
+        if (scratch.workers.empty()) {
+            prepare_spatial_grid_scratch(scratch, positions.size(), 1U);
+        }
+
+        begin_spatial_grid_build(grid, scratch, positions);
+        build_spatial_grid_worker_entries(
+            grid,
+            scratch.workers.front(),
+            positions,
+            0U,
+            static_cast<std::uint32_t>(positions.size())
+        );
+        finish_spatial_grid_build(grid, scratch);
     }
 }
