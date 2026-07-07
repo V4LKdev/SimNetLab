@@ -68,6 +68,27 @@ namespace
         return &*found;
     }
 
+    Json load_json(std::filesystem::path const& path)
+    {
+        std::ifstream file { path };
+        if (!file) {
+            throw std::runtime_error("failed to open config file: " + path.string());
+        }
+
+        try {
+            return Json::parse(file);
+        } catch (nlohmann::json::exception const& error) {
+            throw std::runtime_error("failed to parse config file '" + path.string() + "': " + error.what());
+        }
+    }
+
+    void validate_root(Json const& json)
+    {
+        if (!json.is_object()) {
+            throw std::runtime_error("invalid config root: expected object");
+        }
+    }
+
     void validate_positive(char const* name, double value)
     {
         if (value <= 0.0) {
@@ -92,7 +113,6 @@ namespace
     void apply_run(Json const& json, simnet::RunConfig& config)
     {
         read_optional(json, "seed", config.seed);
-        read_optional(json, "headless", config.headless);
     }
 
     void apply_simulation(Json const& json, simnet::SimulationConfig& config)
@@ -176,55 +196,41 @@ namespace
         }
     }
 
-    Json load_json(std::filesystem::path const& path)
+    simnet::SharedConfig parse_shared_config(Json const& json)
     {
-        std::ifstream file { path };
-        if (!file) {
-            throw std::runtime_error("failed to open config file: " + path.string());
-        }
+        validate_root(json);
 
-        try {
-            return Json::parse(file);
-        } catch (nlohmann::json::exception const& error) {
-            throw std::runtime_error("failed to parse config file '" + path.string() + "': " + error.what());
-        }
-    }
-
-    void apply_common(Json const& json, simnet::RunConfig& run, simnet::SimulationConfig& simulation,
-        simnet::SpatialConfig& spatial, simnet::PipelineConfig& pipeline, simnet::TransportConfig& transport,
-        simnet::TelemetryConfig& telemetry)
-    {
-        if (!json.is_object()) {
-            throw std::runtime_error("invalid config root: expected object");
-        }
+        auto config = simnet::default_shared_config();
 
         if (auto const* section = optional_object(json, "run")) {
-            apply_run(*section, run);
+            apply_run(*section, config.run);
         }
         if (auto const* section = optional_object(json, "simulation")) {
-            apply_simulation(*section, simulation);
+            apply_simulation(*section, config.simulation);
         }
         if (auto const* section = optional_object(json, "spatial")) {
-            apply_spatial(*section, spatial);
+            apply_spatial(*section, config.spatial);
         }
         if (auto const* section = optional_object(json, "pipeline")) {
-            apply_pipeline(*section, pipeline);
+            apply_pipeline(*section, config.pipeline);
         }
-        if (auto const* section = optional_object(json, "transport")) {
-            apply_transport(*section, transport);
-        }
-        if (auto const* section = optional_object(json, "telemetry")) {
-            apply_telemetry(*section, telemetry);
-        }
+
+        return config;
     }
 
     simnet::ServerConfig parse_server_config(Json const& json)
     {
+        validate_root(json);
+
         auto config = simnet::default_server_config();
 
-        apply_common(json, config.run, config.simulation, config.spatial, config.pipeline, config.transport,
-            config.telemetry);
-
+        read_optional(json, "headless", config.headless);
+        if (auto const* section = optional_object(json, "transport")) {
+            apply_transport(*section, config.transport);
+        }
+        if (auto const* section = optional_object(json, "telemetry")) {
+            apply_telemetry(*section, config.telemetry);
+        }
         if (auto const* section = optional_object(json, "benchmark")) {
             apply_benchmark(*section, config.benchmark);
         }
@@ -234,53 +240,44 @@ namespace
 
     simnet::ClientConfig parse_client_config(Json const& json)
     {
+        validate_root(json);
+
         auto config = simnet::default_client_config();
 
-        apply_common(json, config.run, config.simulation, config.spatial, config.pipeline, config.transport,
-            config.telemetry);
-
+        read_optional(json, "headless", config.headless);
+        if (auto const* section = optional_object(json, "transport")) {
+            apply_transport(*section, config.transport);
+        }
         if (auto const* section = optional_object(json, "render")) {
             apply_render(*section, config.render);
+        }
+        if (auto const* section = optional_object(json, "telemetry")) {
+            apply_telemetry(*section, config.telemetry);
         }
 
         return config;
     }
 
-    void hash_network_config(std::uint64_t& hash, simnet::SimulationConfig const& simulation,
-        simnet::SpatialConfig const& spatial, simnet::PipelineConfig const& pipeline) noexcept
+    void hash_shared(std::uint64_t& hash, simnet::SharedConfig const& config) noexcept
     {
-        hash_bytes(hash, simulation.tick_rate_hz);
-        hash_bytes(hash, simulation.world_half);
-        hash_bytes(hash, spatial.cell_size);
-        hash_bytes(hash, spatial.max_neighbors);
-        hash_bytes(hash, pipeline.enable_aoi);
-        hash_bytes(hash, pipeline.enable_incremental);
-        hash_bytes(hash, pipeline.enable_quantization);
-        hash_bytes(hash, pipeline.enable_delta);
-        hash_bytes(hash, pipeline.enable_compression);
-        hash_bytes(hash, pipeline.position_bits);
-        hash_bytes(hash, pipeline.heading_bits);
+        hash_bytes(hash, config.run.seed);
+        hash_bytes(hash, config.simulation.tick_rate_hz);
+        hash_bytes(hash, config.simulation.world_half);
+        hash_bytes(hash, config.simulation.initial_boid_count);
+        hash_bytes(hash, config.spatial.cell_size);
+        hash_bytes(hash, config.spatial.max_neighbors);
+        hash_bytes(hash, config.pipeline.enable_aoi);
+        hash_bytes(hash, config.pipeline.enable_incremental);
+        hash_bytes(hash, config.pipeline.enable_quantization);
+        hash_bytes(hash, config.pipeline.enable_delta);
+        hash_bytes(hash, config.pipeline.enable_compression);
+        hash_bytes(hash, config.pipeline.position_bits);
+        hash_bytes(hash, config.pipeline.heading_bits);
     }
 
-    void hash_runtime_common(std::uint64_t& hash, simnet::RunConfig const& run,
-        simnet::SimulationConfig const& simulation, simnet::SpatialConfig const& spatial,
-        simnet::PipelineConfig const& pipeline, simnet::TransportConfig const& transport,
+    void hash_transport_and_telemetry(std::uint64_t& hash, simnet::TransportConfig const& transport,
         simnet::TelemetryConfig const& telemetry) noexcept
     {
-        hash_bytes(hash, run.seed);
-        hash_bytes(hash, run.headless);
-        hash_bytes(hash, simulation.tick_rate_hz);
-        hash_bytes(hash, simulation.world_half);
-        hash_bytes(hash, simulation.initial_boid_count);
-        hash_bytes(hash, spatial.cell_size);
-        hash_bytes(hash, spatial.max_neighbors);
-        hash_bytes(hash, pipeline.enable_aoi);
-        hash_bytes(hash, pipeline.enable_incremental);
-        hash_bytes(hash, pipeline.enable_quantization);
-        hash_bytes(hash, pipeline.enable_delta);
-        hash_bytes(hash, pipeline.enable_compression);
-        hash_bytes(hash, pipeline.position_bits);
-        hash_bytes(hash, pipeline.heading_bits);
         hash_string(hash, transport.host);
         hash_bytes(hash, transport.port);
         hash_bytes(hash, transport.max_clients);
@@ -291,16 +288,24 @@ namespace
 
 namespace simnet
 {
+    SharedConfig default_shared_config()
+    {
+        return {};
+    }
+
     ServerConfig default_server_config()
     {
-        auto config = ServerConfig {};
-        config.run.headless = true;
-        return config;
+        return {};
     }
 
     ClientConfig default_client_config()
     {
         return {};
+    }
+
+    SharedConfig load_shared_config(std::filesystem::path const& path)
+    {
+        return parse_shared_config(load_json(path));
     }
 
     ServerConfig load_server_config(std::filesystem::path const& path)
@@ -313,44 +318,39 @@ namespace simnet
         return parse_client_config(load_json(path));
     }
 
-    ConfigFingerprint fingerprint_runtime_config(ServerConfig const& config) noexcept
+    ConfigFingerprint fingerprint_runtime_config(SharedConfig const& shared, ServerConfig const& local) noexcept
     {
         auto hash = fnv_offset_basis;
 
-        hash_runtime_common(hash, config.run, config.simulation, config.spatial, config.pipeline, config.transport,
-            config.telemetry);
-        hash_bytes(hash, config.benchmark.enabled);
-        hash_bytes(hash, config.benchmark.repetitions);
-        hash_bytes(hash, config.benchmark.load_ramp.enabled);
-        hash_bytes(hash, config.benchmark.load_ramp.add_boids_per_step);
-        hash_bytes(hash, config.benchmark.load_ramp.step_interval_seconds);
-        hash_bytes(hash, config.benchmark.load_ramp.max_boids);
+        hash_shared(hash, shared);
+        hash_bytes(hash, local.headless);
+        hash_transport_and_telemetry(hash, local.transport, local.telemetry);
+        hash_bytes(hash, local.benchmark.enabled);
+        hash_bytes(hash, local.benchmark.repetitions);
+        hash_bytes(hash, local.benchmark.load_ramp.enabled);
+        hash_bytes(hash, local.benchmark.load_ramp.add_boids_per_step);
+        hash_bytes(hash, local.benchmark.load_ramp.step_interval_seconds);
+        hash_bytes(hash, local.benchmark.load_ramp.max_boids);
 
         return { .value = hash };
     }
 
-    ConfigFingerprint fingerprint_runtime_config(ClientConfig const& config) noexcept
+    ConfigFingerprint fingerprint_runtime_config(SharedConfig const& shared, ClientConfig const& local) noexcept
     {
         auto hash = fnv_offset_basis;
 
-        hash_runtime_common(hash, config.run, config.simulation, config.spatial, config.pipeline, config.transport,
-            config.telemetry);
-        hash_bytes(hash, config.render.enabled);
+        hash_shared(hash, shared);
+        hash_bytes(hash, local.headless);
+        hash_transport_and_telemetry(hash, local.transport, local.telemetry);
+        hash_bytes(hash, local.render.enabled);
 
         return { .value = hash };
     }
 
-    ConfigFingerprint fingerprint_network_compatibility(ServerConfig const& config) noexcept
+    ConfigFingerprint fingerprint_network_compatibility(SharedConfig const& config) noexcept
     {
         auto hash = fnv_offset_basis;
-        hash_network_config(hash, config.simulation, config.spatial, config.pipeline);
-        return { .value = hash };
-    }
-
-    ConfigFingerprint fingerprint_network_compatibility(ClientConfig const& config) noexcept
-    {
-        auto hash = fnv_offset_basis;
-        hash_network_config(hash, config.simulation, config.spatial, config.pipeline);
+        hash_shared(hash, config);
         return { .value = hash };
     }
 }

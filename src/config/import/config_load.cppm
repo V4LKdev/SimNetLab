@@ -8,11 +8,17 @@ import :types;
 
 export namespace simnet
 {
+    /// Returns the default shared configuration.
+    [[nodiscard]] SharedConfig default_shared_config();
+
     /// Returns the default server configuration.
     [[nodiscard]] ServerConfig default_server_config();
 
     /// Returns the default client configuration.
     [[nodiscard]] ClientConfig default_client_config();
+
+    /// Loads shared configuration from a JSON file.
+    [[nodiscard]] SharedConfig load_shared_config(std::filesystem::path const& path);
 
     /// Loads server configuration from a JSON file.
     [[nodiscard]] ServerConfig load_server_config(std::filesystem::path const& path);
@@ -21,14 +27,17 @@ export namespace simnet
     [[nodiscard]] ClientConfig load_client_config(std::filesystem::path const& path);
 
     /// Returns a traceability fingerprint for runtime configuration.
-    [[nodiscard]] ConfigFingerprint fingerprint_runtime_config(ServerConfig const& config) noexcept;
+    [[nodiscard]] ConfigFingerprint fingerprint_runtime_config(
+        SharedConfig const& shared,
+        ServerConfig const& local
+    ) noexcept;
 
     /// Returns a traceability fingerprint for runtime configuration.
-    [[nodiscard]] ConfigFingerprint fingerprint_runtime_config(ClientConfig const& config) noexcept;
+    [[nodiscard]] ConfigFingerprint fingerprint_runtime_config(
+        SharedConfig const& shared,
+        ClientConfig const& local
+    ) noexcept;
 
     /// Returns a compatibility fingerprint for network-relevant configuration.
-    [[nodiscard]] ConfigFingerprint fingerprint_network_compatibility(ServerConfig const& config) noexcept;
-
-    /// Returns a compatibility fingerprint for network-relevant configuration.
-    [[nodiscard]] ConfigFingerprint fingerprint_network_compatibility(ClientConfig const& config) noexcept;
+    [[nodiscard]] ConfigFingerprint fingerprint_network_compatibility(SharedConfig const& config) noexcept;
 }
