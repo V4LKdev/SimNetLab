@@ -26,6 +26,11 @@
     "port": 7777,
     "max_clients": 8
   },
+  "render": {
+    "enabled": true,
+    "width": 1280,
+    "height": 720
+  },
   "telemetry": {
     "enable_tracy": false,
     "enable_file_log": true,

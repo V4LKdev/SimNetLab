@@ -19,6 +19,9 @@ target_link_libraries(Client
         simnet_game_client
         simnet_pipeline
         simnet_transport
-        simnet_render
 )
+if (SIMNET_ENABLE_RENDER)
+    target_compile_definitions(Client PRIVATE SIMNET_ENABLE_RENDER=1)
+    target_link_libraries(Client PRIVATE simnet_render)
+endif ()
 simnet_configure_target(Client)

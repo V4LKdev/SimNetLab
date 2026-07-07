@@ -1,6 +1,6 @@
 export module pipeline;
 
-import config;
+import simnet.config;
 import simnet.core;
 import snapshot;
 import spatial;
