@@ -82,6 +82,7 @@ namespace
     {
         std::scoped_lock lock { logger_mutex };
         if (!logger) {
+            // Logging before initialization should still be visible.
             logger = make_default_logger();
         }
         return logger;
@@ -94,6 +95,7 @@ namespace simnet
     {
         auto sinks = std::vector<spdlog::sink_ptr> {};
 
+        // Build the active sink set from runtime config.
         if (config.console_log_enabled) {
             sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
         }
@@ -123,6 +125,7 @@ namespace simnet
         std::shared_ptr<spdlog::logger> old_logger;
         {
             std::scoped_lock lock { logger_mutex };
+            // Moving out makes repeated shutdown calls harmless.
             old_logger = std::move(logger);
             logger.reset();
         }

@@ -11,13 +11,12 @@ target_sources(simnet_render
 )
 
 target_link_libraries(simnet_render
-    PUBLIC
+    PRIVATE
         simnet_core
         simnet_config
         simnet_snapshot
         simnet_spatial
         simnet_game_client
-    PRIVATE
         raylib
 )
 

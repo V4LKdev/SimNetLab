@@ -2,6 +2,7 @@ module;
 
 #include <string_view>
 
+/// @brief Telemetry logging lifecycle and sink API.
 export module simnet.telemetry:log;
 
 import :types;

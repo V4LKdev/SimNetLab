@@ -1,3 +1,4 @@
+/// @brief Umbrella module for dependency-free core vocabulary.
 export module simnet.core;
 
 export import :math;

@@ -3,9 +3,8 @@ module;
 #include <cstdint>
 #include <string>
 
+/// @brief Runtime configuration data contracts.
 export module simnet.config:types;
-
-import simnet.core;
 
 export namespace simnet
 {

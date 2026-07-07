@@ -4,6 +4,7 @@ module;
 #include <cstdint>
 #include <span>
 
+/// @brief Core byte and network identifier types.
 export module simnet.core:bytes;
 
 export namespace simnet

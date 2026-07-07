@@ -1,3 +1,4 @@
+/// @brief Public transport abstraction module.
 export module transport;
 
 import simnet.config;

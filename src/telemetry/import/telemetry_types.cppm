@@ -3,6 +3,7 @@ module;
 #include <cstdint>
 #include <string_view>
 
+/// @brief Telemetry public data contracts.
 export module simnet.telemetry:types;
 
 import simnet.core;

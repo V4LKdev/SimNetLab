@@ -25,6 +25,7 @@ namespace simnet
 {
     LogLevel parse_log_level(std::string_view value) noexcept
     {
+        // Unknown values deliberately fall back to a useful default.
         const auto normalized = lowercase(value);
         if (normalized == "trace") {
             return LogLevel::Trace;
