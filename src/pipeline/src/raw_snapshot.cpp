@@ -1,12 +1,15 @@
 module;
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 module simnet.pipeline;
 
@@ -27,12 +30,18 @@ namespace
             throw std::runtime_error("raw snapshot requires byte-aligned codec");
         }
         auto constexpr supported_techniques = static_cast<std::uint32_t>(
-            simnet::PipelineTechniqueFlags::SendInterval | simnet::PipelineTechniqueFlags::Incremental
+            simnet::PipelineTechniqueFlags::SendInterval
+                | simnet::PipelineTechniqueFlags::Incremental
+                | simnet::PipelineTechniqueFlags::Quantization
         );
         auto const requested_techniques = static_cast<std::uint32_t>(pipeline.techniques);
         auto const unsupported_techniques = requested_techniques & ~supported_techniques;
         if (unsupported_techniques != 0U) {
             throw std::runtime_error("raw snapshot does not support requested techniques");
+        }
+        if (simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Incremental)
+            && simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization)) {
+            throw std::runtime_error("raw snapshot quantization does not support incremental packets yet");
         }
     }
 
@@ -71,9 +80,29 @@ namespace
         }
     }
 
+    void require_quantization_settings(simnet::PipelineDefinition const& pipeline)
+    {
+        if (!simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization)) {
+            return;
+        }
+
+        auto const bounds = pipeline.quantization.position_bounds;
+        if (!simnet::is_finite(bounds.min) || !simnet::is_finite(bounds.max)) {
+            throw std::runtime_error("quantization bounds must be finite");
+        }
+        if (bounds.min.x >= bounds.max.x || bounds.min.y >= bounds.max.y || bounds.min.z >= bounds.max.z) {
+            throw std::runtime_error("quantization bounds must have positive extent");
+        }
+    }
+
     [[nodiscard]] bool is_incremental(simnet::PipelineDefinition const& pipeline) noexcept
     {
         return simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Incremental);
+    }
+
+    [[nodiscard]] bool is_quantized(simnet::PipelineDefinition const& pipeline) noexcept
+    {
+        return simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization);
     }
 
     [[nodiscard]] bool should_emit_for_send_interval(
@@ -125,6 +154,103 @@ namespace
         }
         auto const next = (static_cast<std::uint64_t>(cursor) + selected_count) % entity_count;
         return static_cast<std::uint32_t>(next);
+    }
+
+    [[nodiscard]] std::uint16_t quantize_unorm16(float value, float min, float max) noexcept
+    {
+        auto const normalized = std::clamp((value - min) / (max - min), 0.0F, 1.0F);
+        return static_cast<std::uint16_t>(std::lround(normalized * 65535.0F));
+    }
+
+    [[nodiscard]] float dequantize_unorm16(std::uint16_t value, float min, float max) noexcept
+    {
+        auto const normalized = static_cast<float>(value) / 65535.0F;
+        return min + (normalized * (max - min));
+    }
+
+    [[nodiscard]] std::uint16_t quantize_snorm16(float value) noexcept
+    {
+        auto const clamped = std::clamp(value, -1.0F, 1.0F);
+        auto const signed_value = static_cast<std::int32_t>(std::lround(clamped * 32767.0F));
+        return signed_value < 0
+            ? static_cast<std::uint16_t>(65536 + signed_value)
+            : static_cast<std::uint16_t>(signed_value);
+    }
+
+    [[nodiscard]] float dequantize_snorm16(std::uint16_t value) noexcept
+    {
+        auto const signed_value = value > 32767U
+            ? static_cast<std::int32_t>(value) - 65536
+            : static_cast<std::int32_t>(value);
+        return static_cast<float>(signed_value) / 32767.0F;
+    }
+
+    void write_quantized_vec3(
+        std::vector<std::byte>& bytes,
+        simnet::Vec3f value,
+        simnet::Aabb3f bounds
+    )
+    {
+        simnet::pipeline_wire::write_u16(bytes, quantize_unorm16(value.x, bounds.min.x, bounds.max.x));
+        simnet::pipeline_wire::write_u16(bytes, quantize_unorm16(value.y, bounds.min.y, bounds.max.y));
+        simnet::pipeline_wire::write_u16(bytes, quantize_unorm16(value.z, bounds.min.z, bounds.max.z));
+    }
+
+    void write_quantized_heading(std::vector<std::byte>& bytes, simnet::Vec3f value)
+    {
+        simnet::pipeline_wire::write_u16(bytes, quantize_snorm16(value.x));
+        simnet::pipeline_wire::write_u16(bytes, quantize_snorm16(value.y));
+        simnet::pipeline_wire::write_u16(bytes, quantize_snorm16(value.z));
+    }
+
+    [[nodiscard]] bool read_quantized_vec3(
+        std::span<const std::byte> bytes,
+        std::size_t& offset,
+        simnet::Aabb3f bounds,
+        simnet::Vec3f& value
+    )
+    {
+        auto x = std::uint16_t {};
+        auto y = std::uint16_t {};
+        auto z = std::uint16_t {};
+        if (!simnet::pipeline_wire::read_u16(bytes, offset, x)
+            || !simnet::pipeline_wire::read_u16(bytes, offset, y)
+            || !simnet::pipeline_wire::read_u16(bytes, offset, z)) {
+            return false;
+        }
+
+        value = {
+            .x = dequantize_unorm16(x, bounds.min.x, bounds.max.x),
+            .y = dequantize_unorm16(y, bounds.min.y, bounds.max.y),
+            .z = dequantize_unorm16(z, bounds.min.z, bounds.max.z),
+        };
+        return true;
+    }
+
+    [[nodiscard]] bool read_quantized_heading(
+        std::span<const std::byte> bytes,
+        std::size_t& offset,
+        simnet::Vec3f& value
+    )
+    {
+        auto x = std::uint16_t {};
+        auto y = std::uint16_t {};
+        auto z = std::uint16_t {};
+        if (!simnet::pipeline_wire::read_u16(bytes, offset, x)
+            || !simnet::pipeline_wire::read_u16(bytes, offset, y)
+            || !simnet::pipeline_wire::read_u16(bytes, offset, z)) {
+            return false;
+        }
+
+        value = simnet::normalize_or(
+            {
+                .x = dequantize_snorm16(x),
+                .y = dequantize_snorm16(y),
+                .z = dequantize_snorm16(z),
+            },
+            { .x = 1.0F, .y = 0.0F, .z = 0.0F }
+        );
+        return true;
     }
 
     [[nodiscard]] simnet::EncodeOutput skipped_encode(
@@ -213,6 +339,7 @@ namespace simnet
         require_raw_snapshot(pipeline);
         require_send_interval_settings(pipeline);
         require_incremental_settings(pipeline);
+        require_quantization_settings(pipeline);
         require_snapshot(input.snapshot);
         auto const& snapshot = *input.snapshot;
         require_u32_count(snapshot.size(), "snapshot entity count");
@@ -230,6 +357,7 @@ namespace simnet
         }
 
         auto const incremental_enabled = is_incremental(pipeline);
+        auto const quantized = is_quantized(pipeline);
         if (incremental_enabled) {
             select_incremental_indices(
                 scratch,
@@ -243,8 +371,11 @@ namespace simnet
             ? scratch.selected_indices.size()
             : snapshot.size();
         auto const snapshot_kind = incremental_enabled ? SnapshotKind::Patch : SnapshotKind::FullReplace;
+        auto const record_bytes = quantized
+            ? pipeline_wire::quantized_record_bytes
+            : pipeline_wire::raw_record_bytes;
         auto const payload_byte_count = selected_count
-            * static_cast<std::size_t>(pipeline_wire::raw_record_bytes);
+            * static_cast<std::size_t>(record_bytes);
         if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
             || payload_byte_count + pipeline_wire::header_bytes > std::numeric_limits<std::uint32_t>::max()) {
             throw std::runtime_error("encoded raw snapshot packet exceeds uint32 byte range");
@@ -271,8 +402,17 @@ namespace simnet
 
         auto write_record = [&](std::size_t source_index) {
             pipeline_wire::write_u32(scratch.bytes, snapshot.ids[source_index]);
-            pipeline_wire::write_vec3(scratch.bytes, snapshot.positions[source_index]);
-            pipeline_wire::write_vec3(scratch.bytes, snapshot.headings[source_index]);
+            if (quantized) {
+                write_quantized_vec3(
+                    scratch.bytes,
+                    snapshot.positions[source_index],
+                    pipeline.quantization.position_bounds
+                );
+                write_quantized_heading(scratch.bytes, snapshot.headings[source_index]);
+            } else {
+                pipeline_wire::write_vec3(scratch.bytes, snapshot.positions[source_index]);
+                pipeline_wire::write_vec3(scratch.bytes, snapshot.headings[source_index]);
+            }
             pipeline_wire::write_u8(scratch.bytes, snapshot.hues[source_index]);
         };
 
@@ -343,6 +483,7 @@ namespace simnet
     )
     {
         require_raw_snapshot(pipeline);
+        require_quantization_settings(pipeline);
         static_cast<void>(scratch);
 
         if (input.packet == nullptr) {
@@ -399,9 +540,13 @@ namespace simnet
             return invalid_decode(&packet, "packet payload size does not match header");
         }
 
+        auto const quantized = is_quantized(pipeline);
+        auto const record_bytes = quantized
+            ? pipeline_wire::quantized_record_bytes
+            : pipeline_wire::raw_record_bytes;
         auto const expected_payload = static_cast<std::uint64_t>(header.delete_count)
                 * pipeline_wire::delete_record_bytes
-            + static_cast<std::uint64_t>(header.upsert_count) * pipeline_wire::raw_record_bytes;
+            + static_cast<std::uint64_t>(header.upsert_count) * record_bytes;
         if (expected_payload != header.payload_bytes) {
             return invalid_decode(&packet, "packet payload counts do not match payload size");
         }
@@ -422,10 +567,19 @@ namespace simnet
 
         for (std::uint32_t index = 0; index < header.upsert_count; ++index) {
             auto boid = BoidState {};
-            if (!pipeline_wire::read_u32(packet.bytes, offset, boid.id)
-                || !pipeline_wire::read_vec3(packet.bytes, offset, boid.position)
-                || !pipeline_wire::read_vec3(packet.bytes, offset, boid.heading)
-                || !pipeline_wire::read_u8(packet.bytes, offset, boid.hue)) {
+            auto read_ok = pipeline_wire::read_u32(packet.bytes, offset, boid.id);
+            if (read_ok && quantized) {
+                read_ok = read_quantized_vec3(
+                    packet.bytes,
+                    offset,
+                    pipeline.quantization.position_bounds,
+                    boid.position
+                ) && read_quantized_heading(packet.bytes, offset, boid.heading);
+            } else if (read_ok) {
+                read_ok = pipeline_wire::read_vec3(packet.bytes, offset, boid.position)
+                    && pipeline_wire::read_vec3(packet.bytes, offset, boid.heading);
+            }
+            if (!read_ok || !pipeline_wire::read_u8(packet.bytes, offset, boid.hue)) {
                 return invalid_decode(&packet, "truncated upsert record data");
             }
             patch.upserts.push_back(boid);
