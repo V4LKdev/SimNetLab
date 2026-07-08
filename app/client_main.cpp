@@ -5,16 +5,7 @@
 #include <simnet/telemetry_trace.hpp>
 
 import simnet.config;
-import simnet.core;
-import simnet.game_client;
-import simnet.pipeline;
-
-#if SIMNET_ENABLE_RENDER
-import render;
-#endif
-
 import simnet.telemetry;
-import transport;
 
 int main()
 {
