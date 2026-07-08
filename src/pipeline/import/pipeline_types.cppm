@@ -129,6 +129,12 @@ export namespace simnet
         std::uint32_t max_entities_per_packet { 512 };
     };
 
+    /// Byte-aligned quantization settings.
+    struct QuantizationSettings
+    {
+        Aabb3f position_bounds { make_centered_bounds(400.0F) };
+    };
+
     /// Immutable pipeline profile definition.
     struct PipelineDefinition
     {
@@ -138,6 +144,7 @@ export namespace simnet
         PacketBudget budget {};
         SendIntervalSettings send_interval {};
         IncrementalSettings incremental {};
+        QuantizationSettings quantization {};
     };
 
     /// Caller-owned per-client replication state.

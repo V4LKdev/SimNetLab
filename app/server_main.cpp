@@ -114,9 +114,9 @@ int main()
 
         auto pipeline = simnet::make_raw_snapshot_pipeline();
         pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval
-            | simnet::PipelineTechniqueFlags::Incremental;
+            | simnet::PipelineTechniqueFlags::Quantization;
         pipeline.send_interval.interval_ticks = 2;
-        pipeline.incremental.max_entities_per_packet = 512;
+        pipeline.quantization.position_bounds = simnet::make_centered_bounds(shared_config.simulation.world_half);
 
         auto replication_state = simnet::ClientReplicationState {};
         auto decode_state = simnet::ClientReplicationState {};
