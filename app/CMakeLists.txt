@@ -4,9 +4,9 @@ target_link_libraries(Server
         simnet_core
         simnet_config
         simnet_telemetry
-        simnet_game_server
+        simnet_snapshot
+        simnet_synthetic
         simnet_pipeline
-        simnet_transport
 )
 simnet_configure_target(Server)
 

@@ -7,7 +7,7 @@
 import simnet.config;
 import simnet.core;
 import game_client;
-import pipeline;
+import simnet.pipeline;
 
 #if SIMNET_ENABLE_RENDER
 import render;
