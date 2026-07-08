@@ -113,8 +113,10 @@ int main()
                              : "synthetic snapshot validation: " + validation.message);
 
         auto pipeline = simnet::make_raw_snapshot_pipeline();
+        pipeline.codec = simnet::CodecKind::BitPacked;
         pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval
-            | simnet::PipelineTechniqueFlags::Quantization;
+            | simnet::PipelineTechniqueFlags::Quantization
+            | simnet::PipelineTechniqueFlags::OctHeading;
         pipeline.send_interval.interval_ticks = 2;
         pipeline.quantization.position_bounds = simnet::make_centered_bounds(shared_config.simulation.world_half);
 

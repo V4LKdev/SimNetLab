@@ -12,6 +12,8 @@ The first profile is `RawSnapshot`: selected entities are written as byte-aligne
 
 `Quantization` is the first transform policy. In this pass it is byte-aligned and full-snapshot only: positions are stored as 16-bit unsigned values inside configured bounds, and headings are stored as 16-bit signed normalized components.
 
+`OctHeading` stores normalized headings as two octahedral 16-bit components. `BitPacked` is a codec option for quantized oct-heading snapshots; with the current field widths it proves the codec path while staying 15 bytes per entity.
+
 `PacketBudget::max_packet_bytes` is compared against the final encoded packet size, including the private pipeline header. Encode advances `ClientReplicationState::next_sequence` only after a packet/report is fully built. Sequence `0` is reserved. Decode rejects stale or out-of-order sequences and treats malformed packet bytes as data errors with `DecodeReport::valid = false`.
 
 The module owns packet codec contracts and reports, but not transport, ECS, rendering, telemetry, synthetic generation, AoI, LOD, delta, compression, or client storage.

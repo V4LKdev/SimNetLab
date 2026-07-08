@@ -25,12 +25,19 @@ namespace simnet::pipeline_wire
     inline constexpr std::uint32_t vec3_bytes = 3 * f32_bytes;
     inline constexpr std::uint32_t raw_record_bytes = u32_bytes + vec3_bytes + vec3_bytes + u8_bytes;
     inline constexpr std::uint32_t quantized_record_bytes = u32_bytes + (3 * u16_bytes) + (3 * u16_bytes) + u8_bytes;
+    inline constexpr std::uint32_t quantized_oct_record_bytes = u32_bytes + (3 * u16_bytes) + (2 * u16_bytes) + u8_bytes;
+    inline constexpr std::uint32_t bitpacked_quantized_oct_record_bits = 32 + (3 * 16) + (2 * 16) + 8;
+    inline constexpr std::uint32_t bitpacked_quantized_oct_record_bytes =
+        (bitpacked_quantized_oct_record_bits + 7) / 8;
     inline constexpr std::uint32_t delete_record_bytes = u32_bytes;
     inline constexpr std::uint32_t header_bytes = u32_bytes + u16_bytes + u16_bytes + u8_bytes + u8_bytes
         + u32_bytes + u64_bytes + u32_bytes + u32_bytes + u32_bytes + u32_bytes + u32_bytes;
 
     static_assert(raw_record_bytes == 29);
     static_assert(quantized_record_bytes == 17);
+    static_assert(quantized_oct_record_bytes == 15);
+    static_assert(bitpacked_quantized_oct_record_bits == 120);
+    static_assert(bitpacked_quantized_oct_record_bytes == 15);
     static_assert(delete_record_bytes == 4);
     static_assert(header_bytes == 42);
 
