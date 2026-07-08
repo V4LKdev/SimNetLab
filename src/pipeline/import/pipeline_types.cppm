@@ -17,7 +17,7 @@ export namespace simnet
     /// Available compiled pipeline profiles.
     enum class PipelineProfileKind : std::uint8_t
     {
-        RawFullReplace
+        RawSnapshot
     };
 
     /// Packet codec family used by a pipeline profile.
@@ -123,14 +123,21 @@ export namespace simnet
         std::uint32_t phase_offset { 0 };
     };
 
+    /// Round-robin partial snapshot settings.
+    struct IncrementalSettings
+    {
+        std::uint32_t max_entities_per_packet { 512 };
+    };
+
     /// Immutable pipeline profile definition.
     struct PipelineDefinition
     {
-        PipelineProfileKind profile { PipelineProfileKind::RawFullReplace };
+        PipelineProfileKind profile { PipelineProfileKind::RawSnapshot };
         CodecKind codec { CodecKind::ByteAligned };
         PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
         PacketBudget budget {};
         SendIntervalSettings send_interval {};
+        IncrementalSettings incremental {};
     };
 
     /// Caller-owned per-client replication state.
@@ -139,6 +146,7 @@ export namespace simnet
         SequenceId next_sequence { 1 };
         SequenceId latest_remote_sequence {};
         SequenceId latest_acked_sequence {};
+        std::uint32_t incremental_cursor {};
     };
 
     /// Caller-owned reusable pipeline scratch memory.
@@ -164,7 +172,7 @@ export namespace simnet
     {
         Tick tick {};
         SequenceId sequence {};
-        PipelineProfileKind profile { PipelineProfileKind::RawFullReplace };
+        PipelineProfileKind profile { PipelineProfileKind::RawSnapshot };
         CodecKind codec { CodecKind::ByteAligned };
         PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
         bool emitted {};

@@ -5,8 +5,8 @@ import :types;
 
 export namespace simnet
 {
-    /// Creates the raw full-replace pipeline profile.
-    [[nodiscard]] PipelineDefinition make_raw_full_replace_pipeline(PacketBudget budget = {});
+    /// Creates the raw byte-aligned snapshot pipeline profile.
+    [[nodiscard]] PipelineDefinition make_raw_snapshot_pipeline(PacketBudget budget = {});
 
     /// Encodes an authoritative snapshot into a pipeline-owned packet.
     [[nodiscard]] EncodeOutput encode_snapshot(

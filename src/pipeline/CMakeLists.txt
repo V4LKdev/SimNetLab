@@ -15,7 +15,7 @@ target_sources(simnet_pipeline
         FILES
             private/pipeline_wire.cppm
     PRIVATE
-        src/raw_full_replace.cpp
+        src/raw_snapshot.cpp
 )
 
 target_link_libraries(simnet_pipeline
