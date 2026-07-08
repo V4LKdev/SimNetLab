@@ -3,6 +3,6 @@ export module render;
 
 import simnet.config;
 import simnet.core;
-import game_client;
+import simnet.game_client;
 import simnet.snapshot;
 import simnet.spatial;

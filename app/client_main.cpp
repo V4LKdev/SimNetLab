@@ -6,7 +6,7 @@
 
 import simnet.config;
 import simnet.core;
-import game_client;
+import simnet.game_client;
 import simnet.pipeline;
 
 #if SIMNET_ENABLE_RENDER
