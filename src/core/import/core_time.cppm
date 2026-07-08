@@ -25,7 +25,7 @@ export namespace simnet
         Tick tick {};
     };
 
-    /// Returns the fixed timestep duration for the configured tick rate.
+    /// Returns the fixed timestep duration for the configured tick rate, truncated to whole nanoseconds.
     [[nodiscard]] constexpr std::chrono::nanoseconds fixed_dt_from_tick_rate(
         FixedStepSettings settings
     ) noexcept

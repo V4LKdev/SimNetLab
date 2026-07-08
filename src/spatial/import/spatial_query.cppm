@@ -27,6 +27,7 @@ namespace simnet::spatial_detail
             && grid.settings.bounds.max.z > grid.settings.bounds.min.z;
     }
 
+    // Keep this coordinate/key logic in sync with spatial_build.cpp until query templates can share private detail.
     [[nodiscard]] inline std::uint32_t clamp_axis(
         float value,
         float min,
@@ -74,24 +75,6 @@ namespace simnet::spatial_detail
         auto const y = static_cast<CellKey>(clamped.y);
         auto const z = static_cast<CellKey>(clamped.z);
         return x + y * grid.dim_x + z * grid.dim_x * static_cast<CellKey>(grid.dim_y);
-    }
-
-    [[nodiscard]] inline CellCoord position_to_cell_coord(
-        SpatialGrid const& grid,
-        Vec3f position
-    ) noexcept
-    {
-        return {
-            .x = static_cast<std::int32_t>(
-                clamp_axis(position.x, grid.settings.bounds.min.x, grid.settings.cell_size, grid.dim_x)
-            ),
-            .y = static_cast<std::int32_t>(
-                clamp_axis(position.y, grid.settings.bounds.min.y, grid.settings.cell_size, grid.dim_y)
-            ),
-            .z = static_cast<std::int32_t>(
-                clamp_axis(position.z, grid.settings.bounds.min.z, grid.settings.cell_size, grid.dim_z)
-            ),
-        };
     }
 
     [[nodiscard]] inline CellRange const* find_cell_range(SpatialGrid const& grid, CellKey key) noexcept
@@ -146,6 +129,7 @@ namespace simnet::spatial_detail
 export namespace simnet
 {
     /// Calls callback with source indices whose positions are inside the radius.
+    /// The positions span must match the finite source positions used to build the grid.
     template <class Callback>
     void query_radius(
         SpatialGrid const& grid,
@@ -249,6 +233,7 @@ export namespace simnet
     }
 
     /// Calls callback with source indices whose positions are inside the bounds.
+    /// The positions span must match the finite source positions used to build the grid.
     template <class Callback>
     void query_aabb(
         SpatialGrid const& grid,

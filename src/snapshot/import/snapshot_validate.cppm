@@ -55,6 +55,10 @@ export namespace simnet
     /// Validates the logical client patch contract.
     [[nodiscard]] inline SnapshotValidationResult validate_client_snapshot_patch(ClientSnapshotPatch const& patch)
     {
+        if (patch.kind != SnapshotKind::FullReplace && patch.kind != SnapshotKind::Patch) {
+            return { false, "client snapshot patch kind is unknown" };
+        }
+
         for (std::size_t index = 1; index < patch.upserts.size(); ++index) {
             if (patch.upserts[index - 1].id >= patch.upserts[index].id) {
                 return { false, "client snapshot patch upserts must be strictly ascending" };

@@ -19,8 +19,16 @@ import simnet.config;
 
 namespace
 {
+    enum class LoggerLifecycle
+    {
+        NeverInitialized,
+        Active,
+        Shutdown
+    };
+
     std::mutex logger_mutex;
     std::shared_ptr<spdlog::logger> logger;
+    LoggerLifecycle logger_lifecycle { LoggerLifecycle::NeverInitialized };
 
     [[nodiscard]] spdlog::level::level_enum to_spdlog_level(simnet::LogLevel level) noexcept
     {
@@ -81,6 +89,9 @@ namespace
     [[nodiscard]] std::shared_ptr<spdlog::logger> current_logger()
     {
         std::scoped_lock lock { logger_mutex };
+        if (logger_lifecycle == LoggerLifecycle::Shutdown) {
+            return {};
+        }
         if (!logger) {
             // Logging before initialization should still be visible.
             logger = make_default_logger();
@@ -118,6 +129,7 @@ namespace simnet
 
         std::scoped_lock lock { logger_mutex };
         logger = std::move(created);
+        logger_lifecycle = LoggerLifecycle::Active;
     }
 
     void shutdown_telemetry()
@@ -128,6 +140,7 @@ namespace simnet
             // Moving out makes repeated shutdown calls harmless.
             old_logger = std::move(logger);
             logger.reset();
+            logger_lifecycle = LoggerLifecycle::Shutdown;
         }
         if (old_logger) {
             old_logger->flush();
@@ -137,11 +150,17 @@ namespace simnet
     void log(LogCategory category, LogLevel level, std::string_view message)
     {
         auto active_logger = current_logger();
+        if (!active_logger) {
+            return;
+        }
         active_logger->log(to_spdlog_level(level), "[{}] {}", category_name(category), message);
     }
 
     void flush_telemetry()
     {
-        current_logger()->flush();
+        auto active_logger = current_logger();
+        if (active_logger) {
+            active_logger->flush();
+        }
     }
 }

@@ -110,9 +110,14 @@ namespace simnet
             return report;
         }
 
-        register_client_game(world);
         auto& index = world.ensure<ClientReplicationIndex>();
         auto& clock = world.ensure<ClientReplicationClock>();
+        if (patch.tick < clock.latest_tick) {
+            report.valid = false;
+            report.error = "stale patch tick";
+            report.final_entities = static_cast<std::uint32_t>(index.size());
+            return report;
+        }
         report.previous_entities = static_cast<std::uint32_t>(index.size());
 
         if (patch.kind == SnapshotKind::Patch) {

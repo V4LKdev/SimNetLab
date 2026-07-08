@@ -56,5 +56,5 @@ export namespace simnet
     };
 
     /// Parses a text log level, defaulting to Info for unknown input.
-    [[nodiscard]] LogLevel parse_log_level(std::string_view value) noexcept;
+    [[nodiscard]] LogLevel parse_log_level(std::string_view value);
 }

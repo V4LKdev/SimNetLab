@@ -52,9 +52,7 @@ export namespace simnet
     enum class EncodeSkipReason : std::uint8_t
     {
         None,
-        SendInterval,
-        EmptySelection,
-        BudgetPolicy
+        SendInterval
     };
 
     /// Combines pipeline technique flags.
@@ -110,7 +108,7 @@ export namespace simnet
         None = 0
     };
 
-    /// Final encoded packet byte budget hint for packet planning.
+    /// Soft final encoded packet byte target for reports; encode still emits oversized packets.
     struct PacketBudget
     {
         std::uint32_t max_packet_bytes { 1200 };
@@ -123,7 +121,7 @@ export namespace simnet
         std::uint32_t phase_offset { 0 };
     };
 
-    /// Round-robin partial snapshot settings.
+    /// Round-robin upsert-only partial snapshot settings.
     struct IncrementalSettings
     {
         std::uint32_t max_entities_per_packet { 512 };

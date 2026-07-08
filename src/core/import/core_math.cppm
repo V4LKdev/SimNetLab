@@ -70,7 +70,7 @@ export namespace simnet
         return std::sqrt(length_squared(value));
     }
 
-    /// Returns a normalized vector or the fallback for zero-length input.
+    /// Returns a normalized vector or the fallback for exact zero-length input.
     [[nodiscard]] inline Vec3f normalize_or(Vec3f value, Vec3f fallback) noexcept
     {
         const auto magnitude = length(value);
@@ -86,7 +86,7 @@ export namespace simnet
         return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
     }
 
-    /// Returns centered bounds with equal half extent on each axis.
+    /// Returns centered bounds with equal half extent on each axis; expects half_extent >= 0.
     [[nodiscard]] constexpr Aabb3f make_centered_bounds(float half_extent) noexcept
     {
         return {
