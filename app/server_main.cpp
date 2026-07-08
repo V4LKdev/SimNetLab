@@ -9,6 +9,7 @@
 import simnet.config;
 import simnet.core;
 import simnet.game_server;
+import simnet.pipeline;
 import simnet.snapshot;
 import simnet.telemetry;
 
@@ -59,6 +60,55 @@ namespace
         }
         simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info, message);
     }
+
+    [[nodiscard]] simnet::PipelineDefinition make_server_smoke_pipeline(
+        simnet::SharedConfig const& shared_config
+    )
+    {
+        auto pipeline = simnet::make_raw_snapshot_pipeline();
+        pipeline.codec = simnet::CodecKind::BitPacked;
+        pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;
+        pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
+        pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
+        pipeline.send_interval.interval_ticks = 2;
+        pipeline.quantization.position_bounds = simnet::make_centered_bounds(shared_config.simulation.world_half);
+        return pipeline;
+    }
+
+    [[nodiscard]] std::string skip_reason_name(simnet::EncodeSkipReason reason)
+    {
+        switch (reason) {
+        case simnet::EncodeSkipReason::None:
+            return "None";
+        case simnet::EncodeSkipReason::SendInterval:
+            return "SendInterval";
+        }
+        return "Unknown";
+    }
+
+    void log_encode_report(simnet::EncodeOutput const& output)
+    {
+        auto const& report = output.report;
+        if (output.kind == simnet::EncodeResultKind::Skipped) {
+            simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+                "server encode tick=" + std::to_string(report.tick)
+                    + " entities=" + std::to_string(report.input_entities)
+                    + " result=skipped"
+                    + " reason=" + skip_reason_name(output.skip_reason));
+            return;
+        }
+
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            "server encode tick=" + std::to_string(report.tick)
+                + " entities=" + std::to_string(report.input_entities)
+                + " result=packet"
+                + " sequence=" + std::to_string(report.sequence)
+                + " bytes=" + std::to_string(report.packet_bytes)
+                + " selected=" + std::to_string(report.selected_entities)
+                + " upserts=" + std::to_string(report.upsert_count)
+                + " deletes=" + std::to_string(report.delete_count)
+                + " budget_exceeded=" + (report.budget_exceeded ? std::string { "true" } : std::string { "false" }));
+    }
 }
 
 int main()
@@ -85,6 +135,9 @@ int main()
 
         auto world = flecs::world {};
         simnet::register_server_game(world);
+        auto const pipeline = make_server_smoke_pipeline(shared_config);
+        auto replication_state = simnet::ClientReplicationState {};
+        auto pipeline_scratch = simnet::PipelineScratch {};
 
         for (simnet::Tick tick = 0; tick < smoke_tick_count; ++tick) {
             populate_or_update_smoke_world(world, tick);
@@ -100,7 +153,16 @@ int main()
                 return 1;
             }
 
+            auto const encode_output = simnet::encode_snapshot(
+                pipeline,
+                replication_state,
+                pipeline_scratch,
+                { .snapshot = &snapshot }
+            );
+            log_encode_report(encode_output);
+
             SIMNET_TRACE_PLOT("server.snapshot_entities", static_cast<double>(extraction.entity_count));
+            SIMNET_TRACE_PLOT("server.encode_packet_bytes", static_cast<double>(encode_output.report.packet_bytes));
             SIMNET_TRACE_FRAME("server");
         }
 
