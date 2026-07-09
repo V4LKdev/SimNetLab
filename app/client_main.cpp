@@ -282,6 +282,7 @@ int main()
             .server_address = client_config.transport.host,
             .server_port = client_config.transport.port,
             .identity = session_identity,
+            .limits = simnet::app::transport_limits(client_config.transport),
         });
         if (!connect.ok) {
             simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,

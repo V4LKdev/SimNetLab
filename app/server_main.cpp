@@ -405,6 +405,7 @@ int main()
             .port = server_config.transport.port,
             .max_peers = server_config.transport.max_clients,
             .expected_identity = session_identity,
+            .limits = simnet::app::transport_limits(server_config.transport),
         });
         if (!transport_start.ok) {
             simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
@@ -470,8 +471,7 @@ int main()
                 auto const sent = transport.send({
                     .peer = peer_state->peer,
                     .lane = simnet::Lane::Snapshot,
-                    // Phase 3 uses reliable delivery for deterministic end-to-end validation.
-                    .delivery = simnet::Delivery::ReliableSequenced,
+                    .delivery = simnet::app::snapshot_delivery(server_config.transport),
                     .payload = encode_output.packet.bytes,
                 });
                 if (!sent.ok) {

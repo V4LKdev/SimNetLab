@@ -3,7 +3,10 @@
   "transport": {
     "host": "127.0.0.1",
     "port": 7777,
-    "max_clients": 8
+    "max_clients": 8,
+    "max_payload_bytes": 1200,
+    "send_size_policy": "enforce_limit",
+    "snapshot_delivery": "reliable_sequenced"
   },
   "render": {
     "enabled": true,
