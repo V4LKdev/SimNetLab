@@ -8,9 +8,11 @@ The first profile is `RawSnapshot`: selected entities are written as byte-aligne
 
 `SendInterval` is the first emit policy. When enabled, encode emits only on matching ticks and returns `EncodeResultKind::Skipped` with `EncodeSkipReason::SendInterval` otherwise. Skips do not consume packet sequences.
 
-`Incremental` is the first selection policy. It currently emits upsert-only `SnapshotKind::Patch` packets with a round-robin slice of the current `WorldSnapshot`; missing entities mean unchanged. It does not emit deletes yet, so removed authoritative entities require a future `FullReplace` resync or a later delete-support pass. Dirty flags, AoI, priorities, and deltas are not part of this pass.
+`Incremental` is the first selection policy. It currently emits upsert-only `SnapshotKind::Patch` packets with a round-robin slice of the current `WorldSnapshot`; missing entities mean unchanged. It does not emit deletes yet, so removed authoritative entities require a future `FullReplace` resync or a later delete-support pass. Dirty flags, AoI, and priorities are not part of this pass.
 
-`Quantization` is the first transform policy. In this pass it is byte-aligned and full-snapshot only: positions are stored as 16-bit unsigned values inside configured bounds, and headings are stored as 16-bit signed normalized components.
+`Delta` accepts an explicit baseline snapshot and nonzero baseline sequence from the caller. It emits a `SnapshotKind::Patch` containing absolute changed/new upserts and explicit sorted delete IDs. Without a baseline it falls back to `FullReplace`. Decode does not need baseline snapshot contents, but it rejects a delta unless the packet baseline matches the caller's latest successfully applied sequence. Delta selection works with the existing byte-aligned, quantized, oct-heading, and bit-packed record codecs; combining Delta and Incremental is explicitly unsupported.
+
+`Quantization` stores positions as 16-bit unsigned values inside configured bounds and headings as 16-bit signed normalized components. It supports full and delta packets but remains incompatible with Incremental selection.
 
 `OctHeading` stores normalized headings as two octahedral 16-bit components. `BitPacked` is a codec option for quantized oct-heading snapshots; with the current field widths it proves the codec path while staying 15 bytes per entity.
 

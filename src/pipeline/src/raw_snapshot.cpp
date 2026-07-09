@@ -35,6 +35,7 @@ namespace
                 | simnet::PipelineTechniqueFlags::Incremental
                 | simnet::PipelineTechniqueFlags::Quantization
                 | simnet::PipelineTechniqueFlags::OctHeading
+                | simnet::PipelineTechniqueFlags::Delta
         );
         auto const requested_techniques = static_cast<std::uint32_t>(pipeline.techniques);
         auto const unsupported_techniques = requested_techniques & ~supported_techniques;
@@ -44,6 +45,10 @@ namespace
         if (simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Incremental)
             && simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization)) {
             throw std::runtime_error("raw snapshot quantization does not support incremental packets yet");
+        }
+        if (simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Incremental)
+            && simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Delta)) {
+            throw std::runtime_error("raw snapshot does not support combining incremental and delta selection");
         }
         if (simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::OctHeading)
             && !simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization)) {
@@ -56,15 +61,15 @@ namespace
         }
     }
 
-    void require_snapshot(simnet::WorldSnapshot const* snapshot)
+    void require_snapshot(simnet::WorldSnapshot const* snapshot, char const* what)
     {
         if (snapshot == nullptr) {
-            throw std::runtime_error("encode input snapshot is null");
+            throw std::runtime_error(std::string { what } + " is null");
         }
 
         auto const validation = simnet::validate_world_snapshot(*snapshot);
         if (!validation.valid) {
-            throw std::runtime_error("encode input snapshot is invalid: " + validation.message);
+            throw std::runtime_error(std::string { what } + " is invalid: " + validation.message);
         }
     }
 
@@ -114,6 +119,11 @@ namespace
     [[nodiscard]] bool is_quantized(simnet::PipelineDefinition const& pipeline) noexcept
     {
         return simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization);
+    }
+
+    [[nodiscard]] bool is_delta(simnet::PipelineDefinition const& pipeline) noexcept
+    {
+        return simnet::has_flag(pipeline.techniques, simnet::PipelineTechniqueFlags::Delta);
     }
 
     [[nodiscard]] bool uses_oct_heading(simnet::PipelineDefinition const& pipeline) noexcept
@@ -169,6 +179,7 @@ namespace
             simnet::PipelineTechniqueFlags::Incremental
                 | simnet::PipelineTechniqueFlags::Quantization
                 | simnet::PipelineTechniqueFlags::OctHeading
+                | simnet::PipelineTechniqueFlags::Delta
         );
         return static_cast<std::uint32_t>(pipeline.techniques) & mask;
     }
@@ -247,6 +258,64 @@ namespace
             scratch.selected_indices.push_back(static_cast<std::uint32_t>(source_index));
         }
         std::sort(scratch.selected_indices.begin(), scratch.selected_indices.end());
+    }
+
+    [[nodiscard]] bool same_vec3(simnet::Vec3f left, simnet::Vec3f right) noexcept
+    {
+        return left.x == right.x && left.y == right.y && left.z == right.z;
+    }
+
+    [[nodiscard]] bool same_entity_state(
+        simnet::WorldSnapshot const& current,
+        std::size_t current_index,
+        simnet::WorldSnapshot const& baseline,
+        std::size_t baseline_index
+    ) noexcept
+    {
+        return same_vec3(current.positions[current_index], baseline.positions[baseline_index])
+            && same_vec3(current.headings[current_index], baseline.headings[baseline_index])
+            && current.hues[current_index] == baseline.hues[baseline_index];
+    }
+
+    void select_delta_records(
+        simnet::PipelineScratch& scratch,
+        simnet::WorldSnapshot const& current,
+        simnet::WorldSnapshot const& baseline
+    )
+    {
+        scratch.selected_indices.clear();
+        scratch.selected_delete_ids.clear();
+        scratch.selected_indices.reserve(current.size());
+        scratch.selected_delete_ids.reserve(baseline.size());
+
+        auto current_index = std::size_t {};
+        auto baseline_index = std::size_t {};
+        while (current_index < current.size() && baseline_index < baseline.size()) {
+            auto const current_id = current.ids[current_index];
+            auto const baseline_id = baseline.ids[baseline_index];
+            if (current_id < baseline_id) {
+                scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+                ++current_index;
+            } else if (baseline_id < current_id) {
+                scratch.selected_delete_ids.push_back(baseline_id);
+                ++baseline_index;
+            } else {
+                if (!same_entity_state(current, current_index, baseline, baseline_index)) {
+                    scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+                }
+                ++current_index;
+                ++baseline_index;
+            }
+        }
+
+        while (current_index < current.size()) {
+            scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+            ++current_index;
+        }
+        while (baseline_index < baseline.size()) {
+            scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);
+            ++baseline_index;
+        }
     }
 
     [[nodiscard]] std::uint32_t next_incremental_cursor(
@@ -556,11 +625,14 @@ namespace
         auto report = simnet::EncodeReport {
             .tick = snapshot.tick,
             .sequence = 0,
+            .baseline_sequence = 0,
+            .snapshot_kind = simnet::SnapshotKind::FullReplace,
             .profile = pipeline.profile,
             .codec = pipeline.codec,
             .techniques = pipeline.techniques,
             .emitted = false,
             .skipped = true,
+            .delta = false,
             .skip_reason = reason,
             .budget_exceeded = false,
             .input_entities = static_cast<std::uint32_t>(snapshot.size()),
@@ -585,12 +657,16 @@ namespace
         std::span<std::byte const> bytes,
         std::string error,
         simnet::Tick tick = 0,
-        simnet::SequenceId sequence = 0
+        simnet::SequenceId sequence = 0,
+        simnet::SequenceId baseline_sequence = 0,
+        simnet::SnapshotKind snapshot_kind = simnet::SnapshotKind::FullReplace
     )
     {
         auto output = simnet::DecodeOutput {};
         output.report.tick = tick;
         output.report.sequence = sequence;
+        output.report.baseline_sequence = baseline_sequence;
+        output.report.snapshot_kind = snapshot_kind;
         output.report.packet_bytes = static_cast<std::uint32_t>(
             std::min<std::size_t>(bytes.size(), std::numeric_limits<std::uint32_t>::max())
         );
@@ -639,7 +715,21 @@ namespace simnet
         require_send_interval_settings(pipeline);
         require_incremental_settings(pipeline);
         require_quantization_settings(pipeline);
-        require_snapshot(input.snapshot);
+        require_snapshot(input.snapshot, "encode input snapshot");
+        auto const delta_enabled = is_delta(pipeline);
+        if (input.baseline_snapshot == nullptr) {
+            if (input.baseline_sequence != 0U) {
+                throw std::runtime_error("baseline sequence requires a baseline snapshot");
+            }
+        } else {
+            if (!delta_enabled) {
+                throw std::runtime_error("baseline snapshot requires the delta technique");
+            }
+            if (input.baseline_sequence == 0U) {
+                throw std::runtime_error("delta baseline sequence 0 is reserved");
+            }
+            require_snapshot(input.baseline_snapshot, "encode baseline snapshot");
+        }
         auto const& snapshot = *input.snapshot;
         require_u32_count(snapshot.size(), "snapshot entity count");
 
@@ -654,27 +744,43 @@ namespace simnet
         if (sequence == std::numeric_limits<SequenceId>::max()) {
             throw std::runtime_error("pipeline sequence would wrap to reserved 0");
         }
+        if (input.baseline_snapshot != nullptr && input.baseline_sequence >= sequence) {
+            throw std::runtime_error("delta baseline sequence must precede packet sequence");
+        }
 
         auto const incremental_enabled = is_incremental(pipeline);
+        auto const emit_delta = delta_enabled && input.baseline_snapshot != nullptr;
         auto const quantized = is_quantized(pipeline);
-        if (incremental_enabled) {
+        if (emit_delta) {
+            require_u32_count(input.baseline_snapshot->size(), "baseline snapshot entity count");
+            select_delta_records(scratch, snapshot, *input.baseline_snapshot);
+        } else if (incremental_enabled) {
+            scratch.selected_delete_ids.clear();
             select_incremental_indices(
                 scratch,
                 snapshot.size(),
                 client_state.incremental_cursor,
                 pipeline.incremental.max_entities_per_packet
             );
+        } else {
+            scratch.selected_indices.clear();
+            scratch.selected_delete_ids.clear();
         }
 
-        auto const selected_count = incremental_enabled
+        auto const selected_count = (emit_delta || incremental_enabled)
             ? scratch.selected_indices.size()
             : snapshot.size();
-        auto const snapshot_kind = incremental_enabled ? SnapshotKind::Patch : SnapshotKind::FullReplace;
+        auto const delete_count = emit_delta ? scratch.selected_delete_ids.size() : 0U;
+        auto const snapshot_kind = (emit_delta || incremental_enabled)
+            ? SnapshotKind::Patch
+            : SnapshotKind::FullReplace;
+        auto const baseline_sequence = emit_delta ? input.baseline_sequence : 0U;
         auto const oct_heading = uses_oct_heading(pipeline);
         auto const bitpacked = is_bitpacked(pipeline);
         auto const record_bytes = encoded_record_bytes(pipeline);
-        auto const payload_byte_count = selected_count
-            * static_cast<std::size_t>(record_bytes);
+        auto const payload_byte_count =
+            delete_count * static_cast<std::size_t>(pipeline_wire::delete_record_bytes)
+            + selected_count * static_cast<std::size_t>(record_bytes);
         if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
             || payload_byte_count + pipeline_wire::header_bytes > std::numeric_limits<std::uint32_t>::max()) {
             throw std::runtime_error("encoded raw snapshot packet exceeds uint32 byte range");
@@ -690,15 +796,18 @@ namespace simnet
             .flags = PipelinePacketFlags::None,
             .tick = snapshot.tick,
             .sequence = sequence,
-            .baseline_sequence = 0,
+            .baseline_sequence = baseline_sequence,
             .upsert_count = static_cast<std::uint32_t>(selected_count),
-            .delete_count = 0,
+            .delete_count = static_cast<std::uint32_t>(delete_count),
             .payload_bytes = payload_bytes,
         };
 
         scratch.bytes.clear();
         scratch.bytes.reserve(pipeline_wire::header_bytes + payload_bytes);
         pipeline_wire::write_header(scratch.bytes, header);
+        for (auto const id : scratch.selected_delete_ids) {
+            pipeline_wire::write_u32(scratch.bytes, id);
+        }
 
         auto write_record = [&](std::size_t source_index) {
             if (bitpacked) {
@@ -732,7 +841,7 @@ namespace simnet
             pipeline_wire::write_u8(scratch.bytes, snapshot.hues[source_index]);
         };
 
-        if (incremental_enabled) {
+        if (emit_delta || incremental_enabled) {
             for (auto const source_index : scratch.selected_indices) {
                 write_record(source_index);
             }
@@ -745,7 +854,7 @@ namespace simnet
         auto packet = EncodedPacket {
             .tick = snapshot.tick,
             .sequence = sequence,
-            .baseline_sequence = 0,
+            .baseline_sequence = baseline_sequence,
             .kind = PipelinePacketKind::Snapshot,
             .flags = PipelinePacketFlags::None,
             .bytes = scratch.bytes,
@@ -755,17 +864,20 @@ namespace simnet
         auto report = EncodeReport {
             .tick = snapshot.tick,
             .sequence = sequence,
+            .baseline_sequence = baseline_sequence,
+            .snapshot_kind = snapshot_kind,
             .profile = pipeline.profile,
             .codec = pipeline.codec,
             .techniques = pipeline.techniques,
             .emitted = true,
             .skipped = false,
+            .delta = emit_delta,
             .skip_reason = EncodeSkipReason::None,
             .budget_exceeded = final_bytes > pipeline.budget.max_packet_bytes,
             .input_entities = static_cast<std::uint32_t>(snapshot.size()),
             .selected_entities = static_cast<std::uint32_t>(selected_count),
             .upsert_count = static_cast<std::uint32_t>(selected_count),
-            .delete_count = 0,
+            .delete_count = static_cast<std::uint32_t>(delete_count),
             .packet_bytes = final_bytes,
             .payload_bytes = payload_bytes,
             .uncompressed_bytes = final_bytes,
@@ -815,7 +927,17 @@ namespace simnet
             return invalid_decode(bytes, "failed to read packet header");
         }
         auto invalid_packet = [&](std::string error) {
-            return invalid_decode(bytes, std::move(error), header.tick, header.sequence);
+            auto output = invalid_decode(
+                bytes,
+                std::move(error),
+                header.tick,
+                header.sequence,
+                header.baseline_sequence,
+                header.snapshot_kind
+            );
+            output.report.delta = is_delta(pipeline)
+                && header.snapshot_kind == SnapshotKind::Patch;
+            return output;
         };
         if (header.magic != pipeline_wire::packet_magic) {
             return invalid_packet("invalid packet magic");
@@ -832,12 +954,6 @@ namespace simnet
         if (header.snapshot_kind != SnapshotKind::FullReplace && header.snapshot_kind != SnapshotKind::Patch) {
             return invalid_packet("unsupported snapshot kind");
         }
-        if (header.baseline_sequence != 0U) {
-            return invalid_packet("raw snapshot baseline sequence must be 0");
-        }
-        if (header.delete_count != 0U) {
-            return invalid_packet("raw snapshot delete count must be 0");
-        }
         if (header.flags != PipelinePacketFlags::None) {
             return invalid_packet("unsupported packet flags");
         }
@@ -849,6 +965,33 @@ namespace simnet
         }
         if (!checked_payload_size(header, bytes.size())) {
             return invalid_packet("packet payload size does not match header");
+        }
+
+        auto const delta_enabled = is_delta(pipeline);
+        if (header.snapshot_kind == SnapshotKind::FullReplace) {
+            if (header.baseline_sequence != 0U) {
+                return invalid_packet("full snapshot baseline sequence must be 0");
+            }
+            if (header.delete_count != 0U) {
+                return invalid_packet("full snapshot delete count must be 0");
+            }
+        } else if (delta_enabled) {
+            if (header.baseline_sequence == 0U) {
+                return invalid_packet("delta patch baseline sequence 0 is reserved");
+            }
+            if (header.baseline_sequence >= header.sequence) {
+                return invalid_packet("delta patch baseline must precede packet sequence");
+            }
+            if (header.baseline_sequence != input.applied_baseline_sequence) {
+                return invalid_packet("delta patch baseline does not match applied baseline");
+            }
+        } else {
+            if (header.baseline_sequence != 0U) {
+                return invalid_packet("non-delta patch baseline sequence must be 0");
+            }
+            if (header.delete_count != 0U) {
+                return invalid_packet("non-delta patch delete count must be 0");
+            }
         }
 
         auto const quantized = is_quantized(pipeline);
@@ -936,9 +1079,12 @@ namespace simnet
         auto report = DecodeReport {
             .tick = header.tick,
             .sequence = header.sequence,
+            .baseline_sequence = header.baseline_sequence,
+            .snapshot_kind = header.snapshot_kind,
             .upsert_count = header.upsert_count,
             .delete_count = header.delete_count,
             .packet_bytes = static_cast<std::uint32_t>(bytes.size()),
+            .delta = delta_enabled && header.snapshot_kind == SnapshotKind::Patch,
             .valid = true,
             .error = {},
         };

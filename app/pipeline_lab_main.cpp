@@ -29,7 +29,9 @@ namespace
     {
         std::string scenario;
         simnet::Tick tick {};
+        simnet::SequenceId baseline_sequence {};
         bool emitted {};
+        bool delta {};
         simnet::EncodeSkipReason skip_reason { simnet::EncodeSkipReason::None };
         simnet::SnapshotKind kind { simnet::SnapshotKind::Patch };
         std::uint32_t input_entities {};
@@ -80,6 +82,8 @@ namespace
         };
         add_field(record, "scenario", report.scenario);
         add_field(record, "result", report.emitted ? std::string { "packet" } : std::string { "skipped" });
+        add_field(record, "baseline_sequence", static_cast<std::uint64_t>(report.baseline_sequence));
+        add_field(record, "delta", report.delta);
         add_field(record, "skip_reason", skip_reason_name(report.skip_reason));
         add_field(record, "kind", report.emitted ? snapshot_kind_name(report.kind) : std::string { "None" });
         add_field(record, "input_entities", static_cast<std::uint64_t>(report.input_entities));
@@ -152,7 +156,9 @@ namespace
             auto report = LabTickReport {
                 .scenario = scenario.name,
                 .tick = tick,
+                .baseline_sequence = encode_output.report.baseline_sequence,
                 .emitted = encode_output.kind == simnet::EncodeResultKind::Packet,
+                .delta = encode_output.report.delta,
                 .skip_reason = encode_output.skip_reason,
                 .input_entities = encode_output.report.input_entities,
                 .selected_entities = encode_output.report.selected_entities,
@@ -261,6 +267,192 @@ namespace
             .ticks = 5,
         };
     }
+
+    [[nodiscard]] simnet::WorldSnapshot make_delta_snapshot(
+        simnet::Tick tick,
+        std::vector<simnet::BoidState> const& boids
+    )
+    {
+        auto snapshot = simnet::WorldSnapshot {};
+        snapshot.tick = tick;
+        snapshot.reserve(boids.size());
+        for (auto const& boid : boids) {
+            snapshot.ids.push_back(boid.id);
+            snapshot.positions.push_back(boid.position);
+            snapshot.headings.push_back(boid.heading);
+            snapshot.hues.push_back(boid.hue);
+        }
+        return snapshot;
+    }
+
+    [[nodiscard]] bool run_delta_scenario()
+    {
+        auto pipeline = simnet::make_raw_snapshot_pipeline();
+        pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
+
+        auto const baseline = make_delta_snapshot(0, {
+            { .id = 1, .position = { 1.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 10 },
+            { .id = 2, .position = { 2.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 20 },
+            { .id = 3, .position = { 3.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 30 },
+        });
+        auto const current = make_delta_snapshot(1, {
+            { .id = 1, .position = { 1.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 10 },
+            { .id = 2, .position = { 20.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 20 },
+            { .id = 4, .position = { 4.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 40 },
+        });
+
+        auto encode_state = simnet::ClientReplicationState {};
+        auto decode_state = simnet::ClientReplicationState {};
+        auto scratch = simnet::PipelineScratch {};
+        auto full = simnet::encode_snapshot(
+            pipeline,
+            encode_state,
+            scratch,
+            { .snapshot = &baseline }
+        );
+        auto full_decoded = simnet::decode_packet(
+            pipeline,
+            decode_state,
+            scratch,
+            { .bytes = full.packet.bytes }
+        );
+
+        auto delta = simnet::encode_snapshot(
+            pipeline,
+            encode_state,
+            scratch,
+            {
+                .snapshot = &current,
+                .baseline_snapshot = &baseline,
+                .baseline_sequence = full.packet.sequence,
+            }
+        );
+        auto const sequence_before_mismatch = decode_state.latest_remote_sequence;
+        auto wrong_baseline = simnet::decode_packet(
+            pipeline,
+            decode_state,
+            scratch,
+            {
+                .bytes = delta.packet.bytes,
+                .applied_baseline_sequence = 0,
+            }
+        );
+        auto const wrong_baseline_preserved_state =
+            decode_state.latest_remote_sequence == sequence_before_mismatch
+            && wrong_baseline.patch.upserts.empty()
+            && wrong_baseline.patch.deletes.empty();
+        auto delta_decoded = simnet::decode_packet(
+            pipeline,
+            decode_state,
+            scratch,
+            {
+                .bytes = delta.packet.bytes,
+                .applied_baseline_sequence = full.packet.sequence,
+            }
+        );
+
+        auto bitpacked_pipeline = pipeline;
+        bitpacked_pipeline.codec = simnet::CodecKind::BitPacked;
+        bitpacked_pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization
+            | simnet::PipelineTechniqueFlags::OctHeading;
+        bitpacked_pipeline.quantization.position_bounds = simnet::make_centered_bounds(100.0F);
+        auto bitpacked_encode_state = simnet::ClientReplicationState {};
+        auto bitpacked_decode_state = simnet::ClientReplicationState {};
+        auto bitpacked_full = simnet::encode_snapshot(
+            bitpacked_pipeline,
+            bitpacked_encode_state,
+            scratch,
+            { .snapshot = &baseline }
+        );
+        auto bitpacked_full_decoded = simnet::decode_packet(
+            bitpacked_pipeline,
+            bitpacked_decode_state,
+            scratch,
+            { .bytes = bitpacked_full.packet.bytes }
+        );
+        auto bitpacked_delta = simnet::encode_snapshot(
+            bitpacked_pipeline,
+            bitpacked_encode_state,
+            scratch,
+            {
+                .snapshot = &current,
+                .baseline_snapshot = &baseline,
+                .baseline_sequence = bitpacked_full.packet.sequence,
+            }
+        );
+        auto bitpacked_delta_decoded = simnet::decode_packet(
+            bitpacked_pipeline,
+            bitpacked_decode_state,
+            scratch,
+            {
+                .bytes = bitpacked_delta.packet.bytes,
+                .applied_baseline_sequence = bitpacked_full.packet.sequence,
+            }
+        );
+        auto const bitpacked_delta_valid = bitpacked_full_decoded.report.valid
+            && bitpacked_delta_decoded.report.valid
+            && bitpacked_delta.report.upsert_count == 2
+            && bitpacked_delta.report.delete_count == 1
+            && bitpacked_delta_decoded.patch.deletes == std::vector<simnet::EntityNetId> { 3 };
+
+        auto const signature_changes = simnet::pipeline_decode_signature(pipeline)
+            != simnet::pipeline_decode_signature(simnet::make_raw_snapshot_pipeline());
+        auto const valid = signature_changes
+            && bitpacked_delta_valid
+            && full.kind == simnet::EncodeResultKind::Packet
+            && full.report.snapshot_kind == simnet::SnapshotKind::FullReplace
+            && full.report.baseline_sequence == 0
+            && full_decoded.report.valid
+            && delta.kind == simnet::EncodeResultKind::Packet
+            && delta.report.delta
+            && delta.report.snapshot_kind == simnet::SnapshotKind::Patch
+            && delta.report.baseline_sequence == full.packet.sequence
+            && delta.report.upsert_count == 2
+            && delta.report.delete_count == 1
+            && !wrong_baseline.report.valid
+            && wrong_baseline_preserved_state
+            && decode_state.latest_remote_sequence == delta.packet.sequence
+            && sequence_before_mismatch == full.packet.sequence
+            && delta_decoded.report.valid
+            && delta_decoded.patch.upserts.size() == 2
+            && delta_decoded.patch.upserts[0].id == 2
+            && delta_decoded.patch.upserts[1].id == 4
+            && delta_decoded.patch.deletes == std::vector<simnet::EntityNetId> { 3 };
+
+        publish_metric_record(make_tick_record({
+            .scenario = "delta",
+            .tick = baseline.tick,
+            .baseline_sequence = full.report.baseline_sequence,
+            .emitted = true,
+            .delta = full.report.delta,
+            .kind = full.report.snapshot_kind,
+            .input_entities = full.report.input_entities,
+            .selected_entities = full.report.selected_entities,
+            .upserts = full.report.upsert_count,
+            .deletes = full.report.delete_count,
+            .packet_bytes = full.report.packet_bytes,
+            .budget_exceeded = full.report.budget_exceeded,
+            .decode_valid = full_decoded.report.valid,
+            .error = {},
+        }));
+        publish_metric_record(make_tick_record({
+            .scenario = "delta",
+            .tick = current.tick,
+            .baseline_sequence = delta.report.baseline_sequence,
+            .emitted = true,
+            .delta = delta.report.delta,
+            .kind = delta.report.snapshot_kind,
+            .input_entities = delta.report.input_entities,
+            .selected_entities = delta.report.selected_entities,
+            .upserts = delta.report.upsert_count,
+            .deletes = delta.report.delete_count,
+            .packet_bytes = delta.report.packet_bytes,
+            .budget_exceeded = delta.report.budget_exceeded,
+            .decode_valid = delta_decoded.report.valid,
+            .error = valid ? std::string {} : std::string { "delta scenario invariant failed" },
+        }));
+        return valid;
+    }
 }
 
 int main()
@@ -287,6 +479,7 @@ int main()
             auto const summary = run_scenario(scenario);
             failed = failed || summary.decode_failures != 0U;
         }
+        failed = failed || !run_delta_scenario();
 
         simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
             failed ? "pipeline lab failed" : "pipeline lab complete");

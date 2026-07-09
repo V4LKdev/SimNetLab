@@ -16,7 +16,7 @@ namespace simnet::pipeline_wire
 {
     inline constexpr std::uint32_t packet_magic = 0x534E504Cu;
     inline constexpr std::uint16_t protocol_version = 1;
-    inline constexpr std::uint16_t schema_version = 2;
+    inline constexpr std::uint16_t schema_version = 3;
     inline constexpr std::uint32_t u8_bytes = 1;
     inline constexpr std::uint32_t u16_bytes = 2;
     inline constexpr std::uint32_t u32_bytes = 4;
