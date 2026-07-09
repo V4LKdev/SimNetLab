@@ -3,6 +3,7 @@ target_link_libraries(Server
     PRIVATE
         simnet_config
         simnet_game_server
+        simnet_pipeline
         simnet_telemetry
 )
 simnet_configure_target(Server)
