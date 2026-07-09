@@ -124,6 +124,20 @@ export namespace simnet
         std::uint32_t native_reason {};
     };
 
+    /// Cumulative semantic acknowledgement of decoded and applied snapshots.
+    struct SnapshotAck
+    {
+        SequenceId newest_received_snapshot {};
+        std::uint32_t received_mask {};
+        SequenceId newest_applied_snapshot {};
+    };
+
+    struct SnapshotAckReceived
+    {
+        PeerId peer {};
+        SnapshotAck ack {};
+    };
+
     struct TransportErrorEvent
     {
         std::string message {};
@@ -133,6 +147,7 @@ export namespace simnet
         PeerConnected,
         PeerSessionReady,
         PeerDisconnected,
+        SnapshotAckReceived,
         ReceivedPacket,
         TransportErrorEvent
     >;
