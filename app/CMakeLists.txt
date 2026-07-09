@@ -2,6 +2,7 @@ add_executable(Server server_main.cpp)
 target_link_libraries(Server
     PRIVATE
         simnet_config
+        simnet_game_server
         simnet_telemetry
 )
 simnet_configure_target(Server)
