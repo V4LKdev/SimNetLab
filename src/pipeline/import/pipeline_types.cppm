@@ -14,22 +14,6 @@ import simnet.snapshot;
 
 export namespace simnet
 {
-    // --- Profiles and codecs ---
-
-    /// Built pipeline profiles, as pre-configured combinations of techniques.
-    enum class PipelineProfileKind : std::uint8_t
-    {
-        RawSnapshot
-    };
-
-    /// Packet codec family used by a pipeline profile.
-    enum class CodecKind : std::uint8_t
-    {
-        ByteAligned /// field-by-field byte streams.
-    };
-
-    // --- Technique flags ---
-
     /// Replication technique flags. Combined with bitwise OR.
     enum class PipelineTechniqueFlags : std::uint32_t
     {
@@ -107,23 +91,6 @@ export namespace simnet
         return (value & flag) == flag;
     }
 
-    // --- Packet metadata ---
-
-    /// Encoded pipeline packet kind.
-    enum class PipelinePacketKind : std::uint8_t
-    {
-        Snapshot
-        // maybe Ack, Command, etc. later
-    };
-
-    /// Encoded pipeline packet flags.
-    enum class PipelinePacketFlags : std::uint32_t
-    {
-        None = 0
-        // Future:
-        // compressed flag, reliable, etc.
-    };
-
     // --- Settings structs ---
 
     /// Soft final encoded packet byte target for reports. Encode still emits oversized packets.
@@ -155,11 +122,9 @@ export namespace simnet
 
     // --- Pipeline state structs ---
 
-    /// Immutable definition of a pipeline profile and its enabled techniques.
+    /// Immutable definition of enabled pipeline techniques and settings.
     struct PipelineDefinition
     {
-        PipelineProfileKind profile { PipelineProfileKind::RawSnapshot };
-        CodecKind codec { CodecKind::ByteAligned };
         PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
         PacketBudget budget {};
         SendIntervalSettings send_interval {};

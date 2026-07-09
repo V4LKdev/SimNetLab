@@ -59,7 +59,7 @@ ENet connect
 
 Duplicate `ClientHello` after readiness is treated as a protocol error and disconnects the peer with `ProtocolMismatch`.
 
-Identity mismatches report a specific disconnect code for the first mismatching field: application protocol, compatible config, pipeline wire profile, then capabilities.
+Identity mismatches report a specific disconnect code for the first mismatching field: application protocol, compatible config, pipeline decode signature, then capabilities.
 
 `poll` appends events to the caller-owned event vector. If ENet reports a backend service error after earlier events were appended, those events remain available and `poll` returns `BackendError`.
 

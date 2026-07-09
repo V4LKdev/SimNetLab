@@ -10,7 +10,7 @@ module;
 
 module simnet.pipeline;
 
-import :codec;
+import :api;
 import :types;
 import :messages;
 import :wire;
@@ -36,8 +36,6 @@ namespace
         report.sequence          = 0;
         report.baseline_sequence = 0;
         report.snapshot_kind     = simnet::SnapshotKind::FullReplace;
-        report.profile           = pipeline.profile;
-        report.codec             = pipeline.codec;
         report.techniques        = pipeline.techniques;
         report.emitted           = false;
         report.skipped           = true;
@@ -76,8 +74,6 @@ namespace simnet
     PipelineDefinition make_raw_snapshot_pipeline(PacketBudget budget)
     {
         return {
-            .profile = PipelineProfileKind::RawSnapshot,
-            .codec = CodecKind::ByteAligned,
             .techniques = PipelineTechniqueFlags::None,
             .budget = budget,
         };
@@ -188,9 +184,7 @@ namespace simnet
             .protocol          = pipeline_wire::protocol_version,
             .schema            = pipeline_wire::schema_version,
             .decode_signature  = pipeline_signature::make_pipeline_decode_signature(pipeline),
-            .packet_kind       = PipelinePacketKind::Snapshot,
             .snapshot_kind     = snapshot_kind,
-            .flags             = PipelinePacketFlags::None,
             .tick              = snapshot.tick,
             .sequence          = sequence,
             .baseline_sequence = baseline_sequence,
@@ -234,8 +228,6 @@ namespace simnet
             .tick              = snapshot.tick,
             .sequence          = sequence,
             .baseline_sequence = baseline_sequence,
-            .kind              = PipelinePacketKind::Snapshot,
-            .flags             = PipelinePacketFlags::None,
             .bytes             = scratch.bytes,
         };
 
@@ -246,8 +238,6 @@ namespace simnet
         report.sequence          = sequence;
         report.baseline_sequence = baseline_sequence;
         report.snapshot_kind     = snapshot_kind;
-        report.profile           = pipeline.profile;
-        report.codec             = pipeline.codec;
         report.techniques        = pipeline.techniques;
         report.emitted           = true;
         report.skipped           = false;

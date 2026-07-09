@@ -4,21 +4,19 @@
 ## Exported Types
 
 ### simnet.pipeline:types
-- `PipelineProfileKind` - named presets (currently only `RawSnapshot`).
-- `CodecKind` - currently `ByteAligned`.
 - `PipelineTechniqueFlags` - bitmask of optional techniques: `SendInterval`, `Incremental`, `Quantization`, `OctHeading`, `Delta`, `BitPacking`, and reserved flags (`Aoi`, `Lod`, `Compression`). Future flags: `DeadReckoning`, `DirtyFlags`, `LeaderFollower`.
-- `PipelineDefinition` - immutable configuration combining profile, codec, technique flags, and per-technique settings.
+- `PipelineDefinition` - immutable configuration combining technique flags and per-technique settings.
 - `ClientReplicationState` - per-client mutable state (sequence numbers, incremental cursor).
 - `PipelineScratch` - reusable buffers for encode/decode, owned by the caller to avoid allocations on the hot path.
-- `EncodeResultKind`, `EncodeSkipReason`, `PipelinePacketKind`, `PipelinePacketFlags` - metadata enums.
+- `EncodeResultKind` and `EncodeSkipReason` - encode result metadata.
 
 ### simnet.pipeline:messages
 - `EncodedPacket` - fully encoded output with tick, sequence, and raw `Byte` vector.
 - `EncodeInput` / `EncodeOutput`, `DecodeInput` / `DecodeOutput` - request/response envelopes.
 - `EncodeReport`, `DecodeReport` - detailed per-call metrics for telemetry and debugging.
 
-### simnet.pipeline:codec
-- `make_raw_snapshot_pipeline` - factory returning a default byte-aligned `PipelineDefinition`.
+### simnet.pipeline:api
+- `make_raw_snapshot_pipeline` - factory returning a default `PipelineDefinition`.
 - `pipeline_decode_signature` - canonical hash for receiver-side compatibility checks.
 - `encode_snapshot` - converts a `WorldSnapshot` into an `EncodedPacket`, respecting technique flags.
 - `decode_packet` - converts raw bytes into a `ClientSnapshotPatch`, rejecting invalid or incompatible packets.

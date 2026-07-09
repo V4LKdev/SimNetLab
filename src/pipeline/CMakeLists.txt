@@ -7,7 +7,7 @@ target_sources(simnet_pipeline
         FILES
             import/pipeline.cppm
             import/pipeline_types.cppm
-            import/pipeline_codec.cppm
+            import/pipeline_api.cppm
             import/pipeline_messages.cppm
     PRIVATE
         FILE_SET private_modules

@@ -20,8 +20,6 @@ export namespace simnet
         Tick                tick {};
         SequenceId          sequence {};
         SequenceId          baseline_sequence {};   /// nonzero for delta
-        PipelinePacketKind  kind { PipelinePacketKind::Snapshot };
-        PipelinePacketFlags flags { PipelinePacketFlags::None };
         std::vector<Byte>   bytes;                  /// raw header + body
     };
 
@@ -32,8 +30,6 @@ export namespace simnet
         SequenceId           sequence {};
         SequenceId           baseline_sequence {};
         SnapshotKind         snapshot_kind { SnapshotKind::FullReplace };
-        PipelineProfileKind  profile { PipelineProfileKind::RawSnapshot };
-        CodecKind            codec { CodecKind::ByteAligned };
         PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
 
         bool emitted           {}; /// true when a packet was emitted
