@@ -25,6 +25,7 @@ add_executable(Client client_main.cpp)
 target_link_libraries(Client
     PRIVATE
         simnet_config
+        simnet_game_client
         simnet_pipeline
         simnet_telemetry
         simnet_transport

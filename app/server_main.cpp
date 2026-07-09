@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <flecs.h>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -18,14 +19,32 @@ import simnet.snapshot;
 import simnet.telemetry;
 import simnet.transport;
 
-#include "app_session.hpp"
+#include "app_smoke.hpp"
 
 namespace
 {
-    constexpr std::uint32_t smoke_boid_count = 10;
-    constexpr simnet::Tick smoke_tick_count = 5;
     constexpr auto handshake_timeout = std::chrono::seconds(2);
     constexpr auto handshake_drain_time = std::chrono::milliseconds(50);
+    constexpr auto final_send_drain_time = std::chrono::milliseconds(500);
+
+    struct ServerHandshakeResult
+    {
+        bool valid {};
+        std::optional<simnet::PeerId> ready_peer {};
+    };
+
+    struct OutboundPeerState
+    {
+        simnet::PeerId peer {};
+        simnet::ClientReplicationState pipeline_state {};
+    };
+
+    enum class TransportServiceResult
+    {
+        Ready,
+        Disconnected,
+        Failed
+    };
 
     [[nodiscard]] simnet::BoidState make_smoke_boid(
         simnet::EntityNetId id,
@@ -49,13 +68,13 @@ namespace
 
     void populate_or_update_smoke_world(flecs::world& world, simnet::Tick tick)
     {
-        for (std::uint32_t index = 0; index < smoke_boid_count; ++index) {
+        for (std::uint32_t index = 0; index < simnet::app::smoke_boid_count; ++index) {
             auto const id = static_cast<simnet::EntityNetId>(index + 1U);
             static_cast<void>(simnet::upsert_authoritative_boid(world, make_smoke_boid(id, index, tick)));
         }
 
         if (tick == 2) {
-            static_cast<void>(simnet::delete_authoritative_boid(world, smoke_boid_count));
+            static_cast<void>(simnet::delete_authoritative_boid(world, simnet::app::smoke_boid_count));
         }
     }
 
@@ -105,10 +124,11 @@ namespace
                 + " budget_exceeded=" + (report.budget_exceeded ? std::string { "true" } : std::string { "false" }));
     }
 
-    [[nodiscard]] bool run_handshake_window(simnet::TransportServer& transport)
+    [[nodiscard]] ServerHandshakeResult run_handshake_window(simnet::TransportServer& transport)
     {
         auto connected = false;
-        auto ready = false;
+        auto session_ready = false;
+        auto ready_peer = std::optional<simnet::PeerId> {};
         auto failed = false;
         auto stop_at = std::chrono::steady_clock::now() + handshake_timeout;
         auto events = std::vector<simnet::TransportEvent> {};
@@ -119,7 +139,7 @@ namespace
             if (!poll.ok) {
                 simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                     "server transport poll failed: " + poll.error.message);
-                return false;
+                return {};
             }
 
             for (auto const& event : events) {
@@ -128,7 +148,8 @@ namespace
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
                         "server transport peer connected peer=" + std::to_string(value->peer));
                 } else if (auto const* value = std::get_if<simnet::PeerSessionReady>(&event)) {
-                    ready = true;
+                    session_ready = true;
+                    ready_peer = value->peer;
                     auto const drain_deadline = std::chrono::steady_clock::now() + handshake_drain_time;
                     stop_at = std::min(stop_at, drain_deadline);
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
@@ -137,13 +158,15 @@ namespace
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Warn,
                         "server transport peer disconnected peer=" + std::to_string(value->peer)
                             + " code=" + std::to_string(static_cast<std::uint16_t>(value->code)));
-                    if (!ready) {
+                    if (!ready_peer.has_value()) {
                         failed = true;
+                    } else if (*ready_peer == value->peer) {
+                        ready_peer.reset();
                     }
                 } else if (auto const* value = std::get_if<simnet::TransportErrorEvent>(&event)) {
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                         "server transport error: " + value->message);
-                    if (!ready) {
+                    if (!ready_peer.has_value()) {
                         failed = true;
                     }
                 } else if (std::holds_alternative<simnet::ReceivedPacket>(event)) {
@@ -154,19 +177,67 @@ namespace
         }
 
         if (failed) {
-            return false;
+            return {};
         }
         if (!connected) {
             simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
                 "server transport handshake window ended without a peer");
-            return true;
+            return { .valid = true };
         }
-        if (!ready) {
+        if (!session_ready) {
             simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                 "server transport peer did not become session ready");
-            return false;
+            return {};
         }
-        return true;
+        return {
+            .valid = true,
+            .ready_peer = ready_peer,
+        };
+    }
+
+    [[nodiscard]] TransportServiceResult service_transport(
+        simnet::TransportServer& transport,
+        simnet::PeerId peer,
+        std::uint32_t timeout_ms
+    )
+    {
+        auto events = std::vector<simnet::TransportEvent> {};
+        auto const poll = transport.poll(events, timeout_ms);
+        if (!poll.ok) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                "server transport poll failed: " + poll.error.message);
+            return TransportServiceResult::Failed;
+        }
+
+        for (auto const& event : events) {
+            if (auto const* value = std::get_if<simnet::PeerDisconnected>(&event)) {
+                simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+                    "server transport peer disconnected peer=" + std::to_string(value->peer)
+                        + " code=" + std::to_string(static_cast<std::uint16_t>(value->code)));
+                if (value->peer == peer) {
+                    return TransportServiceResult::Disconnected;
+                }
+            } else if (auto const* value = std::get_if<simnet::TransportErrorEvent>(&event)) {
+                simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                    "server transport error: " + value->message);
+                return TransportServiceResult::Failed;
+            } else if (std::holds_alternative<simnet::ReceivedPacket>(event)) {
+                simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                    "server received unexpected app payload");
+                return TransportServiceResult::Failed;
+            }
+        }
+        return TransportServiceResult::Ready;
+    }
+
+    void drain_final_send(simnet::TransportServer& transport, simnet::PeerId peer)
+    {
+        auto const deadline = std::chrono::steady_clock::now() + final_send_drain_time;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (service_transport(transport, peer, 10) != TransportServiceResult::Ready) {
+                return;
+            }
+        }
     }
 }
 
@@ -208,9 +279,9 @@ int main()
         simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
             "server transport listening on " + server_config.transport.host
                 + ":" + std::to_string(server_config.transport.port));
-        auto const handshake_valid = run_handshake_window(transport);
-        transport.stop();
-        if (!handshake_valid) {
+        auto const handshake = run_handshake_window(transport);
+        if (!handshake.valid) {
+            transport.stop();
             simnet::shutdown_telemetry();
             return 1;
         }
@@ -220,10 +291,16 @@ int main()
 
         auto world = flecs::world {};
         simnet::register_server_game(world);
-        auto replication_state = simnet::ClientReplicationState {};
+        auto candidate_pipeline_state = simnet::ClientReplicationState {};
+        auto peer_state = handshake.ready_peer.has_value()
+            ? std::optional<OutboundPeerState> { {
+                .peer = *handshake.ready_peer,
+                .pipeline_state = {},
+            } }
+            : std::nullopt;
         auto pipeline_scratch = simnet::PipelineScratch {};
 
-        for (simnet::Tick tick = 0; tick < smoke_tick_count; ++tick) {
+        for (simnet::Tick tick = 0; tick < simnet::app::smoke_tick_count; ++tick) {
             populate_or_update_smoke_world(world, tick);
 
             auto snapshot = simnet::WorldSnapshot {};
@@ -239,19 +316,55 @@ int main()
 
             auto const encode_output = simnet::encode_snapshot(
                 pipeline,
-                replication_state,
+                peer_state.has_value() ? peer_state->pipeline_state : candidate_pipeline_state,
                 pipeline_scratch,
                 { .snapshot = &snapshot }
             );
             log_encode_report(encode_output);
+
+            if (peer_state.has_value() && encode_output.kind == simnet::EncodeResultKind::Packet) {
+                auto const sent = transport.send({
+                    .peer = peer_state->peer,
+                    .lane = simnet::Lane::Snapshot,
+                    // Phase 3 uses reliable delivery for deterministic end-to-end validation.
+                    .delivery = simnet::Delivery::ReliableSequenced,
+                    .payload = encode_output.packet.bytes,
+                });
+                if (!sent.ok) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "server snapshot send failed: " + sent.error.message);
+                    transport.stop();
+                    simnet::shutdown_telemetry();
+                    return 1;
+                }
+                simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+                    "server snapshot sent tick=" + std::to_string(encode_output.report.tick)
+                        + " sequence=" + std::to_string(encode_output.report.sequence)
+                        + " bytes=" + std::to_string(encode_output.report.packet_bytes));
+            }
+            if (peer_state.has_value()) {
+                auto const service = service_transport(transport, peer_state->peer, 10);
+                if (service == TransportServiceResult::Failed
+                    || (service == TransportServiceResult::Disconnected
+                        && tick != simnet::app::smoke_final_tick)) {
+                    transport.stop();
+                    simnet::shutdown_telemetry();
+                    return 1;
+                }
+                if (service == TransportServiceResult::Disconnected) {
+                    peer_state.reset();
+                }
+            }
 
             SIMNET_TRACE_PLOT("server.snapshot_entities", static_cast<double>(extraction.entity_count));
             SIMNET_TRACE_PLOT("server.encode_packet_bytes", static_cast<double>(encode_output.report.packet_bytes));
             SIMNET_TRACE_FRAME("server");
         }
 
-        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
-            "snapshot transport sending is not implemented yet");
+        if (peer_state.has_value()) {
+            drain_final_send(transport, peer_state->peer);
+        }
+        transport.stop();
 
         SIMNET_TRACE_PLOT("server.network_fingerprint", static_cast<double>(network_fingerprint.value));
         SIMNET_TRACE_PLOT("server.runtime_fingerprint", static_cast<double>(runtime_fingerprint.value));

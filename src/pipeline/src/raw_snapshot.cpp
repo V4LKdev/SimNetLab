@@ -582,18 +582,18 @@ namespace
     }
 
     [[nodiscard]] simnet::DecodeOutput invalid_decode(
-        simnet::EncodedPacket const* packet,
-        std::string error
+        std::span<std::byte const> bytes,
+        std::string error,
+        simnet::Tick tick = 0,
+        simnet::SequenceId sequence = 0
     )
     {
         auto output = simnet::DecodeOutput {};
-        output.report.tick = packet == nullptr ? 0U : packet->tick;
-        output.report.sequence = packet == nullptr ? 0U : packet->sequence;
-        output.report.packet_bytes = packet == nullptr
-            ? 0U
-            : static_cast<std::uint32_t>(
-                std::min<std::size_t>(packet->bytes.size(), std::numeric_limits<std::uint32_t>::max())
-            );
+        output.report.tick = tick;
+        output.report.sequence = sequence;
+        output.report.packet_bytes = static_cast<std::uint32_t>(
+            std::min<std::size_t>(bytes.size(), std::numeric_limits<std::uint32_t>::max())
+        );
         output.report.valid = false;
         output.report.error = std::move(error);
         return output;
@@ -802,61 +802,53 @@ namespace simnet
         require_quantization_settings(pipeline);
         static_cast<void>(scratch);
 
-        if (input.packet == nullptr) {
-            return invalid_decode(nullptr, "decode input packet is null");
+        auto const bytes = input.bytes;
+        if (bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
+            return invalid_decode(bytes, "packet byte count exceeds uint32 range");
         }
-
-        auto const& packet = *input.packet;
-        if (packet.bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
-            return invalid_decode(&packet, "packet byte count exceeds uint32 range");
-        }
-        if (packet.bytes.size() < pipeline_wire::header_bytes) {
-            return invalid_decode(&packet, "packet is shorter than header");
+        if (bytes.size() < pipeline_wire::header_bytes) {
+            return invalid_decode(bytes, "packet is shorter than header");
         }
 
         auto header = pipeline_wire::PacketHeader {};
-        if (!pipeline_wire::read_header(packet.bytes, header)) {
-            return invalid_decode(&packet, "failed to read packet header");
+        if (!pipeline_wire::read_header(bytes, header)) {
+            return invalid_decode(bytes, "failed to read packet header");
         }
+        auto invalid_packet = [&](std::string error) {
+            return invalid_decode(bytes, std::move(error), header.tick, header.sequence);
+        };
         if (header.magic != pipeline_wire::packet_magic) {
-            return invalid_decode(&packet, "invalid packet magic");
+            return invalid_packet("invalid packet magic");
         }
         if (header.protocol != pipeline_wire::protocol_version || header.schema != pipeline_wire::schema_version) {
-            return invalid_decode(&packet, "unsupported packet version");
+            return invalid_packet("unsupported packet version");
         }
         if (header.decode_signature != make_pipeline_decode_signature(pipeline)) {
-            return invalid_decode(&packet, "packet decode signature does not match local pipeline");
+            return invalid_packet("packet decode signature does not match local pipeline");
         }
         if (header.packet_kind != PipelinePacketKind::Snapshot) {
-            return invalid_decode(&packet, "unsupported packet kind");
+            return invalid_packet("unsupported packet kind");
         }
         if (header.snapshot_kind != SnapshotKind::FullReplace && header.snapshot_kind != SnapshotKind::Patch) {
-            return invalid_decode(&packet, "unsupported snapshot kind");
+            return invalid_packet("unsupported snapshot kind");
         }
         if (header.baseline_sequence != 0U) {
-            return invalid_decode(&packet, "raw snapshot baseline sequence must be 0");
+            return invalid_packet("raw snapshot baseline sequence must be 0");
         }
         if (header.delete_count != 0U) {
-            return invalid_decode(&packet, "raw snapshot delete count must be 0");
+            return invalid_packet("raw snapshot delete count must be 0");
         }
         if (header.flags != PipelinePacketFlags::None) {
-            return invalid_decode(&packet, "unsupported packet flags");
-        }
-        if (packet.tick != header.tick
-            || packet.sequence != header.sequence
-            || packet.baseline_sequence != header.baseline_sequence
-            || packet.kind != header.packet_kind
-            || packet.flags != header.flags) {
-            return invalid_decode(&packet, "outer packet metadata does not match header");
+            return invalid_packet("unsupported packet flags");
         }
         if (header.sequence == 0U) {
-            return invalid_decode(&packet, "packet sequence 0 is reserved");
+            return invalid_packet("packet sequence 0 is reserved");
         }
         if (header.sequence <= client_state.latest_remote_sequence) {
-            return invalid_decode(&packet, "stale or out-of-order packet sequence");
+            return invalid_packet("stale or out-of-order packet sequence");
         }
-        if (!checked_payload_size(header, packet.bytes.size())) {
-            return invalid_decode(&packet, "packet payload size does not match header");
+        if (!checked_payload_size(header, bytes.size())) {
+            return invalid_packet("packet payload size does not match header");
         }
 
         auto const quantized = is_quantized(pipeline);
@@ -867,7 +859,7 @@ namespace simnet
                 * pipeline_wire::delete_record_bytes
             + static_cast<std::uint64_t>(header.upsert_count) * record_bytes;
         if (expected_payload != header.payload_bytes) {
-            return invalid_decode(&packet, "packet payload counts do not match payload size");
+            return invalid_packet("packet payload counts do not match payload size");
         }
 
         auto offset = static_cast<std::size_t>(pipeline_wire::header_bytes);
@@ -878,8 +870,8 @@ namespace simnet
 
         for (std::uint32_t index = 0; index < header.delete_count; ++index) {
             auto id = EntityNetId {};
-            if (!pipeline_wire::read_u32(packet.bytes, offset, id)) {
-                return invalid_decode(&packet, "truncated delete id data");
+            if (!pipeline_wire::read_u32(bytes, offset, id)) {
+                return invalid_packet("truncated delete id data");
             }
             patch.deletes.push_back(id);
         }
@@ -890,53 +882,53 @@ namespace simnet
             if (bitpacked) {
                 auto const record_begin = offset;
                 auto const record_end = record_begin + record_bytes;
-                if (record_end > packet.bytes.size()) {
+                if (record_end > bytes.size()) {
                     read_ok = false;
                 } else {
                     read_ok = read_bitpacked_record(
-                        std::span<const std::byte> { packet.bytes }.subspan(record_begin, record_bytes),
+                        bytes.subspan(record_begin, record_bytes),
                         pipeline.quantization.position_bounds,
                         boid
                     );
                     offset = record_end;
                 }
             } else {
-                read_ok = pipeline_wire::read_u32(packet.bytes, offset, boid.id);
+                read_ok = pipeline_wire::read_u32(bytes, offset, boid.id);
             }
             if (!bitpacked) {
                 if (read_ok && quantized) {
                     read_ok = read_quantized_vec3(
-                        packet.bytes,
+                        bytes,
                         offset,
                         pipeline.quantization.position_bounds,
                         boid.position
                     );
                     if (read_ok && oct_heading) {
-                        read_ok = read_oct_heading(packet.bytes, offset, boid.heading);
+                        read_ok = read_oct_heading(bytes, offset, boid.heading);
                     } else if (read_ok) {
-                        read_ok = read_quantized_heading(packet.bytes, offset, boid.heading);
+                        read_ok = read_quantized_heading(bytes, offset, boid.heading);
                     }
                 } else if (read_ok) {
-                    read_ok = pipeline_wire::read_vec3(packet.bytes, offset, boid.position)
-                        && pipeline_wire::read_vec3(packet.bytes, offset, boid.heading);
+                    read_ok = pipeline_wire::read_vec3(bytes, offset, boid.position)
+                        && pipeline_wire::read_vec3(bytes, offset, boid.heading);
                 }
                 if (read_ok) {
-                    read_ok = pipeline_wire::read_u8(packet.bytes, offset, boid.hue);
+                    read_ok = pipeline_wire::read_u8(bytes, offset, boid.hue);
                 }
             }
             if (!read_ok) {
-                return invalid_decode(&packet, "truncated upsert record data");
+                return invalid_packet("truncated upsert record data");
             }
             patch.upserts.push_back(boid);
         }
 
-        if (offset != packet.bytes.size()) {
-            return invalid_decode(&packet, "packet has trailing bytes");
+        if (offset != bytes.size()) {
+            return invalid_packet("packet has trailing bytes");
         }
 
         auto const validation = validate_client_snapshot_patch(patch);
         if (!validation.valid) {
-            return invalid_decode(&packet, "decoded patch is invalid: " + validation.message);
+            return invalid_packet("decoded patch is invalid: " + validation.message);
         }
 
         client_state.latest_remote_sequence = header.sequence;
@@ -946,7 +938,7 @@ namespace simnet
             .sequence = header.sequence,
             .upsert_count = header.upsert_count,
             .delete_count = header.delete_count,
-            .packet_bytes = static_cast<std::uint32_t>(packet.bytes.size()),
+            .packet_bytes = static_cast<std::uint32_t>(bytes.size()),
             .valid = true,
             .error = {},
         };
