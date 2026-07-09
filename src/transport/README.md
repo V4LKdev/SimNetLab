@@ -13,6 +13,19 @@ private: ENet
 
 Forbidden dependencies include config, telemetry, pipeline, snapshot, game modules, synthetic data, spatial indexing, render, Flecs, and Raylib.
 
+## Backends
+
+The public settings carry an explicit backend choice:
+
+```txt
+ENet      -> implemented reference backend
+LocalIpc  -> reserved for a future local IPC backend
+```
+
+Selecting an unimplemented backend returns `UnsupportedBackend`; it must not silently fall back to ENet. The app config maps backend strings at the app boundary, keeping transport independent from config parsing.
+
+`SIMNET_ENABLE_LOCAL_IPC` is currently a reserved CMake option. It defaults off and does not build a backend until Phase 6b adds one.
+
 ## Lanes
 
 Three lanes map directly to ENet channels:

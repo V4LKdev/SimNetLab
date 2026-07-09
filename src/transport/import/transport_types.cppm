@@ -22,6 +22,12 @@ export namespace simnet
         Input = 2
     };
 
+    enum class TransportBackend : std::uint8_t
+    {
+        ENet,
+        LocalIpc
+    };
+
     enum class Delivery : std::uint8_t
     {
         ReliableSequenced,
@@ -61,6 +67,7 @@ export namespace simnet
         InvalidLane,
         InvalidDelivery,
         PayloadTooLarge,
+        UnsupportedBackend,
         BackendError
     };
 

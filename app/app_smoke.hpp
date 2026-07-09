@@ -38,6 +38,17 @@ namespace simnet::app
         };
     }
 
+    [[nodiscard]] inline TransportBackend transport_backend(TransportConfig const& config)
+    {
+        if (config.backend == "enet") {
+            return TransportBackend::ENet;
+        }
+        if (config.backend == "local_ipc") {
+            return TransportBackend::LocalIpc;
+        }
+        throw std::runtime_error("unsupported transport backend: " + config.backend);
+    }
+
     [[nodiscard]] inline SendSizePolicy transport_send_size_policy(TransportConfig const& config)
     {
         if (config.send_size_policy == "enforce_limit") {

@@ -268,6 +268,7 @@ int main()
 
         auto const network_fingerprint = simnet::fingerprint_network_compatibility(shared_config);
         auto const runtime_fingerprint = simnet::fingerprint_runtime_config(shared_config, client_config);
+        auto const transport_backend = simnet::app::transport_backend(client_config.transport);
 
         // Fingerprints give early confirmation that runtime config is coherent.
         simnet::log(simnet::LogCategory::Config, simnet::LogLevel::Info,
@@ -279,6 +280,7 @@ int main()
         auto const session_identity = simnet::app::make_session_identity(shared_config, pipeline);
         auto transport = simnet::TransportClient {};
         auto const connect = transport.connect({
+            .backend = transport_backend,
             .server_address = client_config.transport.host,
             .server_port = client_config.transport.port,
             .identity = session_identity,

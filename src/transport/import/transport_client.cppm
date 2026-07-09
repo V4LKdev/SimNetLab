@@ -14,6 +14,7 @@ export namespace simnet
 {
     struct TransportClientSettings
     {
+        TransportBackend backend { TransportBackend::ENet };
         std::string server_address { "127.0.0.1" };
         std::uint16_t server_port {};
         SessionIdentity identity {};

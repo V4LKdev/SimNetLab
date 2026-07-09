@@ -1,6 +1,7 @@
 {
   "headless": false,
   "transport": {
+    "backend": "enet",
     "host": "127.0.0.1",
     "port": 7777,
     "max_clients": 8,
