@@ -20,6 +20,7 @@ export namespace simnet
     /// Validates the full world snapshot contract.
     [[nodiscard]] inline SnapshotValidationResult validate_world_snapshot(WorldSnapshot const& snapshot)
     {
+        // --- 1. Vector sizes ---
         auto const count = snapshot.ids.size();
         if (snapshot.positions.size() != count) {
             return { false, "world snapshot positions size does not match ids size" };
@@ -31,12 +32,14 @@ export namespace simnet
             return { false, "world snapshot hues size does not match ids size" };
         }
 
+        // --- 2. Vector ordering ---
         for (std::size_t index = 1; index < count; ++index) {
             if (snapshot.ids[index - 1] >= snapshot.ids[index]) {
                 return { false, "world snapshot ids must be strictly ascending" };
             }
         }
 
+        // --- 3. Vector component validity ---
         for (std::size_t index = 0; index < count; ++index) {
             if (!is_finite(snapshot.positions[index])) {
                 return { false, "world snapshot position contains a non-finite component" };
@@ -55,10 +58,12 @@ export namespace simnet
     /// Validates the logical client patch contract.
     [[nodiscard]] inline SnapshotValidationResult validate_client_snapshot_patch(ClientSnapshotPatch const& patch)
     {
+        // --- 1. Patch kind ---
         if (patch.kind != SnapshotKind::FullReplace && patch.kind != SnapshotKind::Patch) {
             return { false, "client snapshot patch kind is unknown" };
         }
 
+        // --- 2. Vector ordering ---
         for (std::size_t index = 1; index < patch.upserts.size(); ++index) {
             if (patch.upserts[index - 1].id >= patch.upserts[index].id) {
                 return { false, "client snapshot patch upserts must be strictly ascending" };
@@ -71,6 +76,7 @@ export namespace simnet
             }
         }
 
+        // --- 3. Vector component validity ---
         auto delete_index = std::size_t {};
         for (auto const& boid : patch.upserts) {
             if (!is_finite(boid.position)) {
