@@ -26,6 +26,9 @@ namespace
         if (pipeline.profile != simnet::PipelineProfileKind::RawSnapshot) {
             throw std::runtime_error("unsupported pipeline profile");
         }
+        if (pipeline.codec != simnet::CodecKind::ByteAligned && pipeline.codec != simnet::CodecKind::BitPacked) {
+            throw std::runtime_error("unsupported raw snapshot codec");
+        }
         auto constexpr supported_techniques = static_cast<std::uint32_t>(
             simnet::PipelineTechniqueFlags::SendInterval
                 | simnet::PipelineTechniqueFlags::Incremental
