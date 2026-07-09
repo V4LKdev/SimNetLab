@@ -3,16 +3,22 @@ add_library(simnet_transport)
 target_sources(simnet_transport
     PUBLIC
         FILE_SET CXX_MODULES
-        BASE_DIRS include
+        BASE_DIRS import
         FILES
-            include/transport.cppm
+            import/transport.cppm
+            import/transport_types.cppm
+            import/transport_server.cppm
+            import/transport_client.cppm
+    PRIVATE
+        FILE_SET transport_private_modules TYPE CXX_MODULES
+        BASE_DIRS src
+        FILES
+            src/transport_enet.cpp
 )
 
 target_link_libraries(simnet_transport
-    PRIVATE
+    PUBLIC
         simnet_core
-        simnet_config
-        simnet_telemetry
 )
 
 if (SIMNET_ENABLE_ENET)

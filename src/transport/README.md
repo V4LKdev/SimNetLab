@@ -1,0 +1,76 @@
+# simnet_transport
+
+`simnet_transport` moves opaque byte payloads between peers and owns the small SimNet session handshake.
+
+It does not understand config files, telemetry, pipeline packets, snapshots, Flecs worlds, rendering, benchmarking, or gameplay data. Apps compute compatibility values and pass them in as opaque `SessionIdentity` fields.
+
+Allowed dependencies:
+
+```txt
+public:  simnet_core
+private: ENet
+```
+
+Forbidden dependencies include config, telemetry, pipeline, snapshot, game modules, synthetic data, spatial indexing, render, Flecs, and Raylib.
+
+## Lanes
+
+Three lanes map directly to ENet channels:
+
+```txt
+Control  -> channel 0
+Snapshot -> channel 1
+Input    -> channel 2
+```
+
+Control is used for handshake messages and uses reliable sequenced delivery internally. Snapshot and Input are exposed for app payloads, but Server/Client snapshot integration is a later milestone.
+
+## Delivery
+
+The public API exposes the relevant delivery modes:
+
+```txt
+ReliableSequenced
+UnreliableSequenced
+UnreliableUnsequenced
+UnreliableFragmented
+```
+
+If a future backend cannot support one honestly, it should reject that send mode instead of silently faking semantics.
+
+## Send Size Policy
+
+`TransportLimits` are real send-time behavior, separate from the pipeline's soft packet budget.
+
+`EnforceLimit` rejects oversized sends before reaching the backend and increments `oversize_drops`. `AllowBackendFragmentation` passes the payload to the backend.
+
+## Session Handshake
+
+ENet connection is not the same as SimNet session readiness.
+
+```txt
+ENet connect
+-> ClientHello on Control
+-> ServerAccept or ServerReject
+-> PeerSessionReady
+```
+
+`PeerConnected` means the backend connection exists. `PeerSessionReady` means the SimNet session identity matched and app payloads may be sent.
+
+Duplicate `ClientHello` after readiness is treated as a protocol error and disconnects the peer with `ProtocolMismatch`.
+
+Identity mismatches report a specific disconnect code for the first mismatching field: application protocol, compatible config, pipeline wire profile, then capabilities.
+
+`poll` appends events to the caller-owned event vector. If ENet reports a backend service error after earlier events were appended, those events remain available and `poll` returns `BackendError`.
+
+Client disconnect performs a bounded graceful ENet disconnect before destroying its host. It never starts a background worker or waits without a deadline.
+
+## Threading
+
+One thread owns each `TransportServer` or `TransportClient`. All `start`/`connect`, `poll`, `send`, and `disconnect` calls must happen from that owner thread.
+
+There is no background networking thread, no callbacks, and no hidden synchronization in this first backend.
+
+## Future Work
+
+Snapshot ACKs are future semantic session messages, not ENet acknowledgements. IPC and shared-memory backends are also future work and must preserve the same byte/session contract.
