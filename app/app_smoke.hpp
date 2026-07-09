@@ -15,6 +15,7 @@ namespace simnet::app
         pipeline.techniques |= PipelineTechniqueFlags::SendInterval;
         pipeline.techniques |= PipelineTechniqueFlags::Quantization;
         pipeline.techniques |= PipelineTechniqueFlags::OctHeading;
+        pipeline.techniques |= PipelineTechniqueFlags::Delta;
         pipeline.techniques |= PipelineTechniqueFlags::BitPacking;
         pipeline.send_interval.interval_ticks = 2;
         pipeline.quantization.position_bounds = make_centered_bounds(shared_config.simulation.world_half);
