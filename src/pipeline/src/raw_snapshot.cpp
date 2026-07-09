@@ -1,6 +1,7 @@
 module;
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -123,6 +124,77 @@ namespace
     [[nodiscard]] bool is_bitpacked(simnet::PipelineDefinition const& pipeline) noexcept
     {
         return pipeline.codec == simnet::CodecKind::BitPacked;
+    }
+
+    struct DecodeSignatureBuilder
+    {
+        std::uint64_t value { 14695981039346656037ULL };
+    };
+
+    void update_signature_byte(DecodeSignatureBuilder& signature, std::uint8_t value) noexcept
+    {
+        signature.value ^= value;
+        signature.value *= 1099511628211ULL;
+    }
+
+    void update_signature_u8(DecodeSignatureBuilder& signature, std::uint8_t value) noexcept
+    {
+        update_signature_byte(signature, value);
+    }
+
+    void update_signature_u16(DecodeSignatureBuilder& signature, std::uint16_t value) noexcept
+    {
+        update_signature_byte(signature, static_cast<std::uint8_t>((value >> 8U) & 0xFFU));
+        update_signature_byte(signature, static_cast<std::uint8_t>(value & 0xFFU));
+    }
+
+    void update_signature_u32(DecodeSignatureBuilder& signature, std::uint32_t value) noexcept
+    {
+        update_signature_byte(signature, static_cast<std::uint8_t>((value >> 24U) & 0xFFU));
+        update_signature_byte(signature, static_cast<std::uint8_t>((value >> 16U) & 0xFFU));
+        update_signature_byte(signature, static_cast<std::uint8_t>((value >> 8U) & 0xFFU));
+        update_signature_byte(signature, static_cast<std::uint8_t>(value & 0xFFU));
+    }
+
+    void update_signature_f32(DecodeSignatureBuilder& signature, float value) noexcept
+    {
+        update_signature_u32(signature, std::bit_cast<std::uint32_t>(value));
+    }
+
+    [[nodiscard]] std::uint32_t decode_relevant_technique_mask(
+        simnet::PipelineDefinition const& pipeline
+    ) noexcept
+    {
+        auto constexpr mask = static_cast<std::uint32_t>(
+            simnet::PipelineTechniqueFlags::Incremental
+                | simnet::PipelineTechniqueFlags::Quantization
+                | simnet::PipelineTechniqueFlags::OctHeading
+        );
+        return static_cast<std::uint32_t>(pipeline.techniques) & mask;
+    }
+
+    [[nodiscard]] std::uint64_t make_pipeline_decode_signature(
+        simnet::PipelineDefinition const& pipeline
+    ) noexcept
+    {
+        auto signature = DecodeSignatureBuilder {};
+        update_signature_u16(signature, simnet::pipeline_wire::protocol_version);
+        update_signature_u16(signature, simnet::pipeline_wire::schema_version);
+        update_signature_u8(signature, static_cast<std::uint8_t>(pipeline.profile));
+        update_signature_u8(signature, static_cast<std::uint8_t>(pipeline.codec));
+        update_signature_u32(signature, decode_relevant_technique_mask(pipeline));
+
+        if (is_quantized(pipeline)) {
+            auto const bounds = pipeline.quantization.position_bounds;
+            update_signature_f32(signature, bounds.min.x);
+            update_signature_f32(signature, bounds.min.y);
+            update_signature_f32(signature, bounds.min.z);
+            update_signature_f32(signature, bounds.max.x);
+            update_signature_f32(signature, bounds.max.y);
+            update_signature_f32(signature, bounds.max.z);
+        }
+
+        return signature.value;
     }
 
     [[nodiscard]] std::uint32_t encoded_record_bytes(simnet::PipelineDefinition const& pipeline) noexcept
@@ -607,6 +679,7 @@ namespace simnet
             .magic = pipeline_wire::packet_magic,
             .protocol = pipeline_wire::protocol_version,
             .schema = pipeline_wire::schema_version,
+            .decode_signature = make_pipeline_decode_signature(pipeline),
             .packet_kind = PipelinePacketKind::Snapshot,
             .snapshot_kind = snapshot_kind,
             .flags = PipelinePacketFlags::None,
@@ -745,6 +818,9 @@ namespace simnet
         }
         if (header.protocol != pipeline_wire::protocol_version || header.schema != pipeline_wire::schema_version) {
             return invalid_decode(&packet, "unsupported packet version");
+        }
+        if (header.decode_signature != make_pipeline_decode_signature(pipeline)) {
+            return invalid_decode(&packet, "packet decode signature does not match local pipeline");
         }
         if (header.packet_kind != PipelinePacketKind::Snapshot) {
             return invalid_decode(&packet, "unsupported packet kind");

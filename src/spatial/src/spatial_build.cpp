@@ -112,6 +112,7 @@ namespace
         }
     }
 
+    // Keep this coordinate/key logic in sync with spatial_query.cppm until query templates can share private detail.
     [[nodiscard]] std::uint32_t clamp_cell_axis(
         float value,
         float min,

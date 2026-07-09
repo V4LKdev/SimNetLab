@@ -66,8 +66,11 @@ namespace
 
     [[nodiscard]] simnet::Vec3f deterministic_heading(std::uint32_t index, simnet::Tick tick) noexcept
     {
-        auto const angle = static_cast<float>((index * 37U + tick * 17U) % 360U) * 0.017453292519943295F;
-        auto const z_wave = static_cast<float>((index * 13U + tick * 7U) % 200U) / 100.0F - 1.0F;
+        auto const wide_index = static_cast<std::uint64_t>(index);
+        auto const angle_seed = (wide_index * 37ULL + tick * 17ULL) % 360ULL;
+        auto const z_seed = (wide_index * 13ULL + tick * 7ULL) % 200ULL;
+        auto const angle = static_cast<float>(angle_seed) * 0.017453292519943295F;
+        auto const z_wave = static_cast<float>(z_seed) / 100.0F - 1.0F;
         return simnet::normalize_or(
             { std::cos(angle), std::sin(angle), z_wave * 0.25F },
             { 1.0F, 0.0F, 0.0F }
@@ -76,7 +79,8 @@ namespace
 
     [[nodiscard]] std::uint8_t deterministic_hue(std::uint32_t index, simnet::Tick tick) noexcept
     {
-        return static_cast<std::uint8_t>((index * 29U + tick * 11U) & 0xFFU);
+        auto const wide_index = static_cast<std::uint64_t>(index);
+        return static_cast<std::uint8_t>((wide_index * 29ULL + tick * 11ULL) & 0xFFULL);
     }
 
     [[nodiscard]] std::uint32_t grid_axis_count(std::uint32_t entity_count) noexcept
@@ -117,7 +121,7 @@ namespace
 
     void append_common_fields(simnet::WorldSnapshot& snapshot, std::uint32_t index, simnet::Tick tick)
     {
-        snapshot.ids.push_back(index);
+        snapshot.ids.push_back(static_cast<simnet::EntityNetId>(index));
         snapshot.headings.push_back(deterministic_heading(index, tick));
         snapshot.hues.push_back(deterministic_hue(index, tick));
     }

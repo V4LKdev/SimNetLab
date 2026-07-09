@@ -25,6 +25,7 @@ export namespace simnet
     };
 
     /// Authoritative full world state for one simulation tick.
+    /// The SoA vectors are lock-step arrays keyed by strictly ascending ids.
     struct WorldSnapshot
     {
         Tick tick {};
@@ -93,11 +94,10 @@ export namespace simnet
             deletes.reserve(delete_count);
         }
 
-        /// Clears all patch data while preserving capacity.
+        /// Clears patch data while preserving capacity and current patch kind.
         void clear() noexcept
         {
             tick = {};
-            kind = SnapshotKind::Patch;
             upserts.clear();
             deletes.clear();
         }

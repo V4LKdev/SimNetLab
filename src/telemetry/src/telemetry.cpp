@@ -23,7 +23,7 @@ namespace
 
 namespace simnet
 {
-    LogLevel parse_log_level(std::string_view value) noexcept
+    LogLevel parse_log_level(std::string_view value)
     {
         // Unknown values deliberately fall back to a useful default.
         const auto normalized = lowercase(value);

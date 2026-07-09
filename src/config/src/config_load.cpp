@@ -111,6 +111,13 @@ namespace
         }
     }
 
+    void validate_non_zero(char const* name, std::uint32_t value)
+    {
+        if (value == 0U) {
+            throw std::runtime_error(std::string { "invalid config field '" } + name + "': expected non-zero value");
+        }
+    }
+
     void apply_run(Json const& json, simnet::RunConfig& config)
     {
         read_optional(json, "seed", config.seed);
@@ -132,6 +139,7 @@ namespace
         read_optional(json, "max_neighbors", config.max_neighbors);
 
         validate_positive("spatial.cell_size", config.cell_size);
+        validate_non_zero("spatial.max_neighbors", config.max_neighbors);
     }
 
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
@@ -157,6 +165,7 @@ namespace
         if (config.port == 0) {
             throw std::runtime_error("invalid config field 'transport.port': expected non-zero port");
         }
+        validate_non_zero("transport.max_clients", config.max_clients);
     }
 
     void apply_render(Json const& json, simnet::RenderConfig& config)

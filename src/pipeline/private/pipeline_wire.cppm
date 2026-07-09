@@ -16,7 +16,7 @@ namespace simnet::pipeline_wire
 {
     inline constexpr std::uint32_t packet_magic = 0x534E504Cu;
     inline constexpr std::uint16_t protocol_version = 1;
-    inline constexpr std::uint16_t schema_version = 1;
+    inline constexpr std::uint16_t schema_version = 2;
     inline constexpr std::uint32_t u8_bytes = 1;
     inline constexpr std::uint32_t u16_bytes = 2;
     inline constexpr std::uint32_t u32_bytes = 4;
@@ -30,8 +30,8 @@ namespace simnet::pipeline_wire
     inline constexpr std::uint32_t bitpacked_quantized_oct_record_bytes =
         (bitpacked_quantized_oct_record_bits + 7) / 8;
     inline constexpr std::uint32_t delete_record_bytes = u32_bytes;
-    inline constexpr std::uint32_t header_bytes = u32_bytes + u16_bytes + u16_bytes + u8_bytes + u8_bytes
-        + u32_bytes + u64_bytes + u32_bytes + u32_bytes + u32_bytes + u32_bytes + u32_bytes;
+    inline constexpr std::uint32_t header_bytes = u32_bytes + u16_bytes + u16_bytes + u64_bytes
+        + u8_bytes + u8_bytes + u32_bytes + u64_bytes + u32_bytes + u32_bytes + u32_bytes + u32_bytes + u32_bytes;
 
     static_assert(raw_record_bytes == 29);
     static_assert(quantized_record_bytes == 17);
@@ -39,7 +39,7 @@ namespace simnet::pipeline_wire
     static_assert(bitpacked_quantized_oct_record_bits == 120);
     static_assert(bitpacked_quantized_oct_record_bytes == 15);
     static_assert(delete_record_bytes == 4);
-    static_assert(header_bytes == 42);
+    static_assert(header_bytes == 50);
 
     /// Private packet header serialized field-by-field in network byte order.
     struct PacketHeader
@@ -47,6 +47,7 @@ namespace simnet::pipeline_wire
         std::uint32_t magic {};
         std::uint16_t protocol {};
         std::uint16_t schema {};
+        std::uint64_t decode_signature {};
         PipelinePacketKind packet_kind { PipelinePacketKind::Snapshot };
         SnapshotKind snapshot_kind { SnapshotKind::FullReplace };
         PipelinePacketFlags flags { PipelinePacketFlags::None };
@@ -93,6 +94,7 @@ namespace simnet::pipeline_wire
         write_u32(bytes, header.magic);
         write_u16(bytes, header.protocol);
         write_u16(bytes, header.schema);
+        write_u64(bytes, header.decode_signature);
         write_u8(bytes, static_cast<std::uint8_t>(header.packet_kind));
         write_u8(bytes, static_cast<std::uint8_t>(header.snapshot_kind));
         write_u32(bytes, static_cast<std::uint32_t>(header.flags));
@@ -182,6 +184,7 @@ namespace simnet::pipeline_wire
         if (!read_u32(bytes, offset, header.magic)
             || !read_u16(bytes, offset, header.protocol)
             || !read_u16(bytes, offset, header.schema)
+            || !read_u64(bytes, offset, header.decode_signature)
             || !read_u8(bytes, offset, packet_kind)
             || !read_u8(bytes, offset, snapshot_kind)
             || !read_u32(bytes, offset, flags)
