@@ -7,6 +7,7 @@ target_link_libraries(Server
         simnet_snapshot
         simnet_synthetic
         simnet_pipeline
+        simnet_game_client
 )
 simnet_configure_target(Server)
 

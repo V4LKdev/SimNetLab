@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <exception>
+#include <flecs.h>
 #include <iostream>
 #include <string>
 
@@ -7,6 +8,7 @@
 
 import simnet.config;
 import simnet.core;
+import simnet.game_client;
 import simnet.pipeline;
 import simnet.snapshot;
 import simnet.synthetic;
@@ -54,6 +56,84 @@ namespace
         simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
             report.budget_exceeded ? "pipeline packet budget exceeded: true"
                                    : "pipeline packet budget exceeded: false");
+    }
+
+    [[nodiscard]] std::string snapshot_kind_name(simnet::SnapshotKind kind)
+    {
+        return kind == simnet::SnapshotKind::FullReplace ? "FullReplace" : "Patch";
+    }
+
+    [[nodiscard]] std::uint32_t client_entity_count(flecs::world const& world)
+    {
+        auto const* index = world.try_get<simnet::ClientReplicationIndex>();
+        return index == nullptr ? 0U : static_cast<std::uint32_t>(index->size());
+    }
+
+    void log_apply_report(simnet::ApplyPatchReport const& report, flecs::world const& world)
+    {
+        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+            "client apply tick: " + std::to_string(report.tick));
+        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+            "client apply kind: " + snapshot_kind_name(report.kind));
+        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+            "client apply upserts: " + std::to_string(report.upsert_count));
+        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+            "client apply deletes: " + std::to_string(report.delete_count));
+        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+            "client entity count: " + std::to_string(client_entity_count(world)));
+        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+            report.valid ? "client apply: valid" : "client apply: " + report.error);
+    }
+
+    void run_local_replication_smoke(
+        std::string const& label,
+        simnet::PipelineDefinition const& pipeline,
+        simnet::SyntheticSnapshotSettings const& settings,
+        simnet::Tick tick_count
+    )
+    {
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            "local replication smoke: " + label);
+
+        auto client_world = flecs::world {};
+        simnet::register_client_game(client_world);
+
+        auto replication_state = simnet::ClientReplicationState {};
+        auto decode_state = simnet::ClientReplicationState {};
+        auto pipeline_scratch = simnet::PipelineScratch {};
+
+        for (simnet::Tick tick = 0; tick < tick_count; ++tick) {
+            auto const tick_snapshot = simnet::make_synthetic_world_snapshot(settings, tick);
+            auto encode_output = simnet::encode_snapshot(
+                pipeline,
+                replication_state,
+                pipeline_scratch,
+                { .snapshot = &tick_snapshot }
+            );
+            log_encode_report(encode_output.report);
+
+            if (encode_output.kind == simnet::EncodeResultKind::Skipped) {
+                simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+                    "client entity count unchanged: " + std::to_string(client_entity_count(client_world)));
+                continue;
+            }
+
+            auto decode_output = simnet::decode_packet(
+                pipeline,
+                decode_state,
+                pipeline_scratch,
+                { .packet = &encode_output.packet }
+            );
+            simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+                decode_output.report.valid ? "pipeline decode: valid"
+                                           : "pipeline decode: " + decode_output.report.error);
+            if (!decode_output.report.valid) {
+                continue;
+            }
+
+            auto apply_report = simnet::apply_client_snapshot_patch(client_world, decode_output.patch);
+            log_apply_report(apply_report, client_world);
+        }
     }
 }
 
@@ -112,47 +192,23 @@ int main()
             validation.valid ? "synthetic snapshot validation: valid"
                              : "synthetic snapshot validation: " + validation.message);
 
-        auto pipeline = simnet::make_raw_snapshot_pipeline();
-        pipeline.codec = simnet::CodecKind::BitPacked;
-        pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval
+        auto full_pipeline = simnet::make_raw_snapshot_pipeline();
+        full_pipeline.codec = simnet::CodecKind::BitPacked;
+        full_pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval
             | simnet::PipelineTechniqueFlags::Quantization
             | simnet::PipelineTechniqueFlags::OctHeading;
-        pipeline.send_interval.interval_ticks = 2;
-        pipeline.quantization.position_bounds = simnet::make_centered_bounds(shared_config.simulation.world_half);
+        full_pipeline.send_interval.interval_ticks = 2;
+        full_pipeline.quantization.position_bounds = simnet::make_centered_bounds(shared_config.simulation.world_half);
+        run_local_replication_smoke("full snapshot bitpacked quantized oct", full_pipeline, synthetic_settings, 3);
 
-        auto replication_state = simnet::ClientReplicationState {};
-        auto decode_state = simnet::ClientReplicationState {};
-        auto pipeline_scratch = simnet::PipelineScratch {};
-
-        for (simnet::Tick tick = 0; tick < 3; ++tick) {
-            auto const tick_snapshot = simnet::make_synthetic_world_snapshot(synthetic_settings, tick);
-            auto encode_output = simnet::encode_snapshot(
-                pipeline,
-                replication_state,
-                pipeline_scratch,
-                { .snapshot = &tick_snapshot }
-            );
-            log_encode_report(encode_output.report);
-
-            if (encode_output.kind == simnet::EncodeResultKind::Skipped) {
-                continue;
-            }
-
-            auto decode_output = simnet::decode_packet(
-                pipeline,
-                decode_state,
-                pipeline_scratch,
-                { .packet = &encode_output.packet }
-            );
-            auto const patch_validation = simnet::validate_client_snapshot_patch(decode_output.patch);
-
-            simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
-                decode_output.report.valid ? "pipeline decode: valid"
-                                           : "pipeline decode: " + decode_output.report.error);
-            simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
-                patch_validation.valid ? "pipeline decoded patch validation: valid"
-                                       : "pipeline decoded patch validation: " + patch_validation.message);
-        }
+        auto incremental_settings = synthetic_settings;
+        incremental_settings.entity_count = 10;
+        auto incremental_pipeline = simnet::make_raw_snapshot_pipeline();
+        incremental_pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval
+            | simnet::PipelineTechniqueFlags::Incremental;
+        incremental_pipeline.send_interval.interval_ticks = 2;
+        incremental_pipeline.incremental.max_entities_per_packet = 4;
+        run_local_replication_smoke("incremental patch round-robin", incremental_pipeline, incremental_settings, 5);
 
         SIMNET_TRACE_PLOT("server.network_fingerprint", static_cast<double>(network_fingerprint.value));
         SIMNET_TRACE_PLOT("server.runtime_fingerprint", static_cast<double>(runtime_fingerprint.value));
