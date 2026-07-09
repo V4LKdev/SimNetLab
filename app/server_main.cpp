@@ -25,7 +25,7 @@ namespace
 {
     constexpr auto handshake_timeout = std::chrono::seconds(2);
     constexpr auto handshake_drain_time = std::chrono::milliseconds(50);
-    constexpr auto final_send_drain_time = std::chrono::milliseconds(500);
+    constexpr auto final_ack_timeout = std::chrono::seconds(2);
 
     struct ServerHandshakeResult
     {
@@ -37,6 +37,8 @@ namespace
     {
         simnet::PeerId peer {};
         simnet::ClientReplicationState pipeline_state {};
+        simnet::SequenceId latest_emitted_sequence {};
+        simnet::SnapshotAck latest_ack {};
     };
 
     enum class TransportServiceResult
@@ -45,6 +47,19 @@ namespace
         Disconnected,
         Failed
     };
+
+    [[nodiscard]] bool valid_ack_history_mask(simnet::SnapshotAck const& ack) noexcept
+    {
+        if (ack.newest_received_snapshot == 0U) {
+            return false;
+        }
+        if (ack.newest_received_snapshot > 32U) {
+            return true;
+        }
+        auto const history_bits = ack.newest_received_snapshot - 1U;
+        auto const allowed_mask = history_bits == 0U ? 0U : (1U << history_bits) - 1U;
+        return (ack.received_mask & ~allowed_mask) == 0U;
+    }
 
     [[nodiscard]] simnet::BoidState make_smoke_boid(
         simnet::EntityNetId id,
@@ -197,7 +212,7 @@ namespace
 
     [[nodiscard]] TransportServiceResult service_transport(
         simnet::TransportServer& transport,
-        simnet::PeerId peer,
+        OutboundPeerState& peer_state,
         std::uint32_t timeout_ms
     )
     {
@@ -214,9 +229,34 @@ namespace
                 simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
                     "server transport peer disconnected peer=" + std::to_string(value->peer)
                         + " code=" + std::to_string(static_cast<std::uint16_t>(value->code)));
-                if (value->peer == peer) {
+                if (value->peer == peer_state.peer) {
                     return TransportServiceResult::Disconnected;
                 }
+            } else if (auto const* value = std::get_if<simnet::SnapshotAckReceived>(&event)) {
+                auto const& ack = value->ack;
+                auto const history_does_not_regress =
+                    ack.newest_received_snapshot > peer_state.latest_ack.newest_received_snapshot
+                    || (ack.received_mask & peer_state.latest_ack.received_mask)
+                        == peer_state.latest_ack.received_mask;
+                auto const valid = value->peer == peer_state.peer
+                    && ack.newest_received_snapshot != 0
+                    && ack.newest_applied_snapshot <= ack.newest_received_snapshot
+                    && ack.newest_received_snapshot <= peer_state.latest_emitted_sequence
+                    && ack.newest_received_snapshot >= peer_state.latest_ack.newest_received_snapshot
+                    && ack.newest_applied_snapshot >= peer_state.latest_ack.newest_applied_snapshot
+                    && history_does_not_regress
+                    && valid_ack_history_mask(ack);
+                if (!valid) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "server received invalid snapshot ACK");
+                    return TransportServiceResult::Failed;
+                }
+                peer_state.latest_ack = ack;
+                simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+                    "server snapshot ACK received peer=" + std::to_string(value->peer)
+                        + " received=" + std::to_string(ack.newest_received_snapshot)
+                        + " mask=" + std::to_string(ack.received_mask)
+                        + " applied=" + std::to_string(ack.newest_applied_snapshot));
             } else if (auto const* value = std::get_if<simnet::TransportErrorEvent>(&event)) {
                 simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                     "server transport error: " + value->message);
@@ -230,14 +270,40 @@ namespace
         return TransportServiceResult::Ready;
     }
 
-    void drain_final_send(simnet::TransportServer& transport, simnet::PeerId peer)
+    [[nodiscard]] bool wait_for_final_ack(
+        simnet::TransportServer& transport,
+        OutboundPeerState& peer_state
+    )
     {
-        auto const deadline = std::chrono::steady_clock::now() + final_send_drain_time;
+        auto const final_sequence = peer_state.latest_emitted_sequence;
+        auto const deadline = std::chrono::steady_clock::now() + final_ack_timeout;
         while (std::chrono::steady_clock::now() < deadline) {
-            if (service_transport(transport, peer, 10) != TransportServiceResult::Ready) {
-                return;
+            if (peer_state.latest_ack.newest_received_snapshot == final_sequence
+                && peer_state.latest_ack.newest_applied_snapshot == final_sequence) {
+                if (peer_state.latest_ack.received_mask != simnet::app::smoke_final_received_mask) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "server final snapshot ACK history mask is invalid for smoke");
+                    return false;
+                }
+                return true;
+            }
+            auto const service = service_transport(transport, peer_state, 10);
+            if (peer_state.latest_ack.newest_received_snapshot == final_sequence
+                && peer_state.latest_ack.newest_applied_snapshot == final_sequence) {
+                if (peer_state.latest_ack.received_mask != simnet::app::smoke_final_received_mask) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "server final snapshot ACK history mask is invalid for smoke");
+                    return false;
+                }
+                return true;
+            }
+            if (service != TransportServiceResult::Ready) {
+                return false;
             }
         }
+        simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+            "server final snapshot ACK timed out");
+        return false;
     }
 }
 
@@ -341,18 +407,17 @@ int main()
                     "server snapshot sent tick=" + std::to_string(encode_output.report.tick)
                         + " sequence=" + std::to_string(encode_output.report.sequence)
                         + " bytes=" + std::to_string(encode_output.report.packet_bytes));
+                peer_state->latest_emitted_sequence = encode_output.report.sequence;
             }
             if (peer_state.has_value()) {
-                auto const service = service_transport(transport, peer_state->peer, 10);
+                auto const service = service_transport(transport, *peer_state, 10);
                 if (service == TransportServiceResult::Failed
                     || (service == TransportServiceResult::Disconnected
-                        && tick != simnet::app::smoke_final_tick)) {
+                        && peer_state->latest_ack.newest_applied_snapshot
+                            != peer_state->latest_emitted_sequence)) {
                     transport.stop();
                     simnet::shutdown_telemetry();
                     return 1;
-                }
-                if (service == TransportServiceResult::Disconnected) {
-                    peer_state.reset();
                 }
             }
 
@@ -361,8 +426,10 @@ int main()
             SIMNET_TRACE_FRAME("server");
         }
 
-        if (peer_state.has_value()) {
-            drain_final_send(transport, peer_state->peer);
+        if (peer_state.has_value() && !wait_for_final_ack(transport, *peer_state)) {
+            transport.stop();
+            simnet::shutdown_telemetry();
+            return 1;
         }
         transport.stop();
 

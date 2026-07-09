@@ -6,6 +6,8 @@ namespace simnet::app
     inline constexpr std::uint32_t smoke_boid_count = 10;
     inline constexpr Tick smoke_tick_count = 5;
     inline constexpr Tick smoke_final_tick = smoke_tick_count - 1;
+    inline constexpr SequenceId smoke_final_sequence = 3;
+    inline constexpr std::uint32_t smoke_final_received_mask = 0x3U;
 
     [[nodiscard]] inline PipelineDefinition make_smoke_pipeline(SharedConfig const& shared_config)
     {
