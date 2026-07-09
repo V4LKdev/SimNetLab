@@ -81,7 +81,7 @@ export namespace simnet
         return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
     }
 
-    /// Returns centered bounds with equal half extent on each axis; expects half_extent >= 0.
+    /// Returns centered bounds with equal half extent on each axis. Expects half_extent >= 0.
     [[nodiscard]] constexpr Aabb3f make_centered_bounds(float half_extent) noexcept
     {
         return {

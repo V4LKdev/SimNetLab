@@ -3,12 +3,12 @@
  * @brief Logging, tracing, and raw metrics.
  *
  * @details
- * Provides a configurable logging sink, thread‑safe metric buffers,
+ * Provides a configurable logging sink, thread-safe metric buffers,
  * Tracy profiler integration (when `SIMNET_ENABLE_TRACY` is defined),
  * and a color mapping for trace scopes.
  *
  * @note All public API functions in the log and metrics partitions are
- * thread‑safe. Initialization and shutdown must be serialized externally.
+ * thread-safe. Initialization and shutdown must be serialized externally.
  */
 export module simnet.telemetry;
 
@@ -16,7 +16,7 @@ export module simnet.telemetry;
  * @par simnet.telemetry:types
  * Core telemetry types: `LogLevel`, `LogCategory`, `TickMetrics`,
  * and `parse_log_level`. Also includes `category_trace_color` for
- * Tracy‑compatible color mapping.
+ * Tracy-compatible color mapping.
  */
 export import :types;
 

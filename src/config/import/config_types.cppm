@@ -19,7 +19,7 @@ export namespace simnet
     {
         double tick_rate_hz { 60.0 };
         float world_half { 400.0F };
-        /// Initial boid count; zero is valid for empty-world smoke and edge-case runs.
+        /// Initial boid count. Zero is valid for empty-world smoke and edge-case runs.
         std::uint32_t initial_boid_count { 1000 };
     };
 

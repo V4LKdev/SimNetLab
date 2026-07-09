@@ -11,7 +11,7 @@ import simnet.core;
 export namespace simnet
 {
     /// Logging severity.
-    enum class LogLevel
+    enum class LogLevel : std::uint8_t
     {
         Trace,     /// Most verbose.
         Debug,     /// Detailed diagnostics.
@@ -23,7 +23,7 @@ export namespace simnet
     };
 
     /// Logging source category (by module).
-    enum class LogCategory
+    enum class LogCategory : std::uint8_t
     {
         Core,
         Config,

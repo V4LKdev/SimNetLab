@@ -23,7 +23,7 @@ Snapshot -> channel 1
 Input    -> channel 2
 ```
 
-Control is used for handshake messages and uses reliable sequenced delivery internally. Snapshot carries opaque app payloads. Input is reserved for semantic `SnapshotAck` messages in this phase; future client input can extend the private session protocol.
+Control is used for handshake messages and uses reliable sequenced delivery internally. Snapshot carries opaque app payloads. Input is reserved for semantic `SnapshotAck` messages in this phase. Future client input can extend the private session protocol.
 
 ## Delivery
 
@@ -69,7 +69,7 @@ Client disconnect performs a bounded graceful ENet disconnect before destroying 
 
 `SnapshotAck` reports the newest snapshot sequence decoded by the client, a 32-bit history mask, and the newest sequence applied to client state. These are semantic replication acknowledgements, not ENet reliability acknowledgements.
 
-ACK messages use a fixed field-by-field wire format on the Input lane. Phase 4 sends them reliably for deterministic smoke verification; future cumulative runtime ACK traffic may use unreliable sequenced delivery. Transport validates only the wire envelope. Apps own sequence-history and baseline semantics.
+ACK messages use a fixed field-by-field wire format on the Input lane. Phase 4 sends them reliably for deterministic smoke verification. Future cumulative runtime ACK traffic may use unreliable sequenced delivery. Transport validates only the wire envelope. Apps own sequence-history and baseline semantics.
 
 ## Threading
 

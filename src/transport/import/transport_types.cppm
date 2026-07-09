@@ -96,7 +96,7 @@ export namespace simnet
         PeerId peer {};
         Lane lane { Lane::Snapshot };
         Delivery delivery { Delivery::UnreliableSequenced };
-        std::span<std::byte const> payload {};
+        std::span<Byte const> payload {};
     };
 
     struct ReceivedPacket
@@ -104,7 +104,7 @@ export namespace simnet
         PeerId peer {};
         Lane lane {};
         Delivery delivery {};
-        std::vector<std::byte> payload;
+        std::vector<Byte> payload;
     };
 
     struct PeerConnected
