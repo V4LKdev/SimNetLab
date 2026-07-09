@@ -22,31 +22,26 @@ export namespace simnet
         Vec3f max {};
     };
 
-    /// Returns the component-wise vector sum.
     [[nodiscard]] constexpr Vec3f operator+(Vec3f lhs, Vec3f rhs) noexcept
     {
         return { lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z };
     }
 
-    /// Returns the component-wise vector difference.
     [[nodiscard]] constexpr Vec3f operator-(Vec3f lhs, Vec3f rhs) noexcept
     {
         return { lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z };
     }
 
-    /// Returns the vector scaled by a scalar.
     [[nodiscard]] constexpr Vec3f operator*(Vec3f value, float scalar) noexcept
     {
         return { value.x * scalar, value.y * scalar, value.z * scalar };
     }
 
-    /// Returns the vector scaled by a scalar.
     [[nodiscard]] constexpr Vec3f operator*(float scalar, Vec3f value) noexcept
     {
         return value * scalar;
     }
 
-    /// Returns the vector divided by a scalar.
     [[nodiscard]] constexpr Vec3f operator/(Vec3f value, float scalar) noexcept
     {
         return { value.x / scalar, value.y / scalar, value.z / scalar };

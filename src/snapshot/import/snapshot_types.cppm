@@ -13,6 +13,7 @@ import simnet.core;
 export namespace simnet
 {
     /// Max deviation from unit length for heading normalisation check.
+    /// Must exceed octahedral dequantization error.
     inline constexpr float heading_normalization_tolerance = 0.01F;
 
     /// Per-entity replicated boid state.

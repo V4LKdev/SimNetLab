@@ -99,6 +99,8 @@ namespace
     {
         std::scoped_lock lock { logger_mutex };
         if (logger_lifecycle == LoggerLifecycle::Shutdown) {
+            // One-way latch: never resurrect after shutdown. Rebuilding sinks during
+            // teardown risks use-after-destruction of spdlog/static state. Drop the log.
             return {};
         }
         if (!logger) {

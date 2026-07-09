@@ -55,6 +55,8 @@ namespace simnet
 
     std::vector<TickMetrics> take_tick_metrics()
     {
+        // Swap-drain: the O(1) move under the lock hands the caller sole ownership and
+        // leaves an empty buffer ready for producers, keeping the critical section tiny.
         std::scoped_lock lock { metrics_mutex };
         auto output = std::move(tick_metrics);
         tick_metrics.clear();
