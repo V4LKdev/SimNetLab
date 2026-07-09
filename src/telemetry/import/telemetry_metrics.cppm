@@ -12,21 +12,22 @@ import :types;
 
 export namespace simnet
 {
+    /// A single metric value. Can be integral, floating, boolean, or a string.
     using MetricValue = std::variant<std::int64_t, std::uint64_t, double, bool, std::string>;
 
     /// Named value in a structured metric record.
     struct MetricField
     {
-        std::string name;
-        MetricValue value;
+        std::string name;   /// Name of the field.
+        MetricValue value;  /// Value of the field.
     };
 
     /// Generic semantic metric record for experiments and runtime events.
     struct MetricRecord
     {
-        std::string stream;
-        Tick tick {};
-        std::vector<MetricField> fields;
+        std::string stream;                 /// Logical metric stream name.
+        Tick tick {};                       /// Associated tick.
+        std::vector<MetricField> fields;    /// Key-value pairs for this record.
     };
 
     /// Submits per-tick raw metrics.
@@ -47,6 +48,6 @@ export namespace simnet
     /// Clears buffered generic metric records without returning them.
     void clear_metric_records();
 
-    /// Formats a metric record as one stable key=value line.
+    /// Formats a metric record as 'stream tick=... field=value...'.
     [[nodiscard]] std::string format_metric_record_key_value(MetricRecord const& record);
 }

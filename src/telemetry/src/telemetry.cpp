@@ -14,6 +14,7 @@ namespace
     [[nodiscard]] std::string lowercase(std::string_view value)
     {
         auto result = std::string { value };
+        // Per-char transform to lowercase
         std::ranges::transform(result, result.begin(), [](unsigned char character) {
             return static_cast<char>(std::tolower(character));
         });
@@ -25,7 +26,7 @@ namespace simnet
 {
     LogLevel parse_log_level(std::string_view value)
     {
-        // Unknown values deliberately fall back to a useful default.
+        // Unknown values fall back to Info
         const auto normalized = lowercase(value);
         if (normalized == "trace") {
             return LogLevel::Trace;
@@ -36,7 +37,7 @@ namespace simnet
         if (normalized == "info") {
             return LogLevel::Info;
         }
-        if (normalized == "warn" || normalized == "warning") {
+        if (normalized == "warn") {
             return LogLevel::Warn;
         }
         if (normalized == "error") {
