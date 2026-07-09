@@ -404,6 +404,7 @@ int main()
         auto const transport_start = transport.start({
             .backend = transport_backend,
             .bind_address = server_config.transport.host,
+            .local_ipc_path = server_config.transport.local_ipc_path,
             .port = server_config.transport.port,
             .max_peers = server_config.transport.max_clients,
             .expected_identity = session_identity,

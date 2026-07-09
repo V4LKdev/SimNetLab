@@ -3,6 +3,7 @@
   "transport": {
     "backend": "enet",
     "host": "127.0.0.1",
+    "local_ipc_path": "/tmp/simnet_transport.sock",
     "port": 7777,
     "max_clients": 8,
     "max_payload_bytes": 1200,

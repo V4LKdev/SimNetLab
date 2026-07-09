@@ -19,12 +19,12 @@ The public settings carry an explicit backend choice:
 
 ```txt
 ENet      -> implemented reference backend
-LocalIpc  -> reserved for a future local IPC backend
+LocalIpc  -> Linux/POSIX Unix-domain socket backend
 ```
 
-Selecting an unimplemented backend returns `UnsupportedBackend`; it must not silently fall back to ENet. The app config maps backend strings at the app boundary, keeping transport independent from config parsing.
+Selecting an unavailable backend returns `UnsupportedBackend`; it must not silently fall back to ENet. The app config maps backend strings at the app boundary, keeping transport independent from config parsing.
 
-`SIMNET_ENABLE_LOCAL_IPC` is currently a reserved CMake option. It defaults off and does not build a backend until Phase 6b adds one.
+`SIMNET_ENABLE_LOCAL_IPC` builds the Unix-domain socket backend on Linux/POSIX. It defaults on for Linux and off elsewhere. Windows named pipes and shared memory are intentionally not implemented yet.
 
 ## Lanes
 
@@ -50,6 +50,8 @@ UnreliableFragmented
 ```
 
 If a future backend cannot support one honestly, it should reject that send mode instead of silently faking semantics.
+
+`LocalIpc` is reliable stream IPC. It supports `ReliableSequenced` and rejects unreliable delivery modes with `UnsupportedDelivery`.
 
 ## Send Size Policy
 
@@ -94,8 +96,8 @@ There is no background networking thread, no callbacks, and no hidden synchroniz
 
 ## Future Work
 
-Kept smoke coverage lives in the `TransportSmoke` executable. It verifies local session readiness, identity rejection, and send-size enforcement without importing config, telemetry, pipeline, or game modules.
+Kept smoke coverage lives in the `TransportSmoke` executable. It verifies local session readiness, identity rejection, send-size enforcement, unavailable-backend rejection, and LocalIpc behavior when compiled in, without importing config, telemetry, pipeline, or game modules.
 
 Server and Client map their config to `TransportLimits` and snapshot delivery mode at the app boundary. Reliable sequenced snapshots remain the default deterministic smoke path; unreliable sequenced snapshots can be selected for experiments.
 
-IPC and shared-memory backends are future work and must preserve the same byte/session contract.
+Shared-memory backends are future work and must preserve the same byte/session contract.
