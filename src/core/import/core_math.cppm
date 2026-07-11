@@ -96,7 +96,7 @@ export namespace simnet
     }
 
     /// Returns true when the point lies inside the bounds.
-    [[nodiscard]] constexpr bool contains(Aabb3f bounds, Vec3f point) noexcept
+    [[nodiscard]] constexpr bool contains(const Aabb3f &bounds, Vec3f point) noexcept
     {
         return point.x >= bounds.min.x && point.x <= bounds.max.x
             && point.y >= bounds.min.y && point.y <= bounds.max.y
