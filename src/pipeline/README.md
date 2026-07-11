@@ -2,7 +2,7 @@
 
 `simnet_pipeline` converts authoritative `WorldSnapshot` data into pipeline-owned `EncodedPacket` bytes and decodes those packets into logical `ClientSnapshotPatch` updates.
 
-The first profile is `RawSnapshot`: selected entities are written as byte-aligned records in network byte order, and decode returns a logical snapshot patch. The private wire header and records are serialized field-by-field, not by writing C++ object memory. Each packet carries a private decode signature for the pipeline representation; decode rejects packets whose signature does not match the local `PipelineDefinition`.
+The first profile is `RawSnapshot`: selected entities are written as byte-aligned records in network byte order, and decode returns a logical snapshot patch. The private wire header and records are serialized field-by-field, not by writing C++ object memory. Each packet carries a private decode signature for the pipeline representation; decode rejects packets whose signature does not match the local `PipelineDefinition`. `pipeline_decode_signature` exposes that same canonical value to app/session code for compatibility checks; it is not a complete runtime configuration fingerprint.
 
 `PipelineDefinition` names the profile, codec, enabled technique flags, and packet budget. `RawSnapshot` supports the byte-aligned codec, plus the explicit bit-packed codec for quantized oct-heading snapshots. Other technique flags are reserved for later profiles.
 

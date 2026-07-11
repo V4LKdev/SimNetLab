@@ -5,6 +5,7 @@ target_link_libraries(Server
         simnet_game_server
         simnet_pipeline
         simnet_telemetry
+        simnet_transport
 )
 simnet_configure_target(Server)
 
@@ -24,6 +25,8 @@ add_executable(Client client_main.cpp)
 target_link_libraries(Client
     PRIVATE
         simnet_config
+        simnet_pipeline
         simnet_telemetry
+        simnet_transport
 )
 simnet_configure_target(Client)

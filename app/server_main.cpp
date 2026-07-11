@@ -1,8 +1,12 @@
+#include <algorithm>
+#include <chrono>
 #include <exception>
 #include <cstdint>
 #include <flecs.h>
 #include <iostream>
 #include <string>
+#include <variant>
+#include <vector>
 
 #include <simnet/telemetry_trace.hpp>
 
@@ -12,11 +16,16 @@ import simnet.game_server;
 import simnet.pipeline;
 import simnet.snapshot;
 import simnet.telemetry;
+import simnet.transport;
+
+#include "app_session.hpp"
 
 namespace
 {
     constexpr std::uint32_t smoke_boid_count = 10;
     constexpr simnet::Tick smoke_tick_count = 5;
+    constexpr auto handshake_timeout = std::chrono::seconds(2);
+    constexpr auto handshake_drain_time = std::chrono::milliseconds(50);
 
     [[nodiscard]] simnet::BoidState make_smoke_boid(
         simnet::EntityNetId id,
@@ -61,20 +70,6 @@ namespace
         simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info, message);
     }
 
-    [[nodiscard]] simnet::PipelineDefinition make_server_smoke_pipeline(
-        simnet::SharedConfig const& shared_config
-    )
-    {
-        auto pipeline = simnet::make_raw_snapshot_pipeline();
-        pipeline.codec = simnet::CodecKind::BitPacked;
-        pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;
-        pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
-        pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
-        pipeline.send_interval.interval_ticks = 2;
-        pipeline.quantization.position_bounds = simnet::make_centered_bounds(shared_config.simulation.world_half);
-        return pipeline;
-    }
-
     [[nodiscard]] std::string skip_reason_name(simnet::EncodeSkipReason reason)
     {
         switch (reason) {
@@ -109,6 +104,70 @@ namespace
                 + " deletes=" + std::to_string(report.delete_count)
                 + " budget_exceeded=" + (report.budget_exceeded ? std::string { "true" } : std::string { "false" }));
     }
+
+    [[nodiscard]] bool run_handshake_window(simnet::TransportServer& transport)
+    {
+        auto connected = false;
+        auto ready = false;
+        auto failed = false;
+        auto stop_at = std::chrono::steady_clock::now() + handshake_timeout;
+        auto events = std::vector<simnet::TransportEvent> {};
+
+        while (!failed && std::chrono::steady_clock::now() < stop_at) {
+            events.clear();
+            auto const poll = transport.poll(events, 10);
+            if (!poll.ok) {
+                simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                    "server transport poll failed: " + poll.error.message);
+                return false;
+            }
+
+            for (auto const& event : events) {
+                if (auto const* value = std::get_if<simnet::PeerConnected>(&event)) {
+                    connected = true;
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+                        "server transport peer connected peer=" + std::to_string(value->peer));
+                } else if (auto const* value = std::get_if<simnet::PeerSessionReady>(&event)) {
+                    ready = true;
+                    auto const drain_deadline = std::chrono::steady_clock::now() + handshake_drain_time;
+                    stop_at = std::min(stop_at, drain_deadline);
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+                        "server transport session ready peer=" + std::to_string(value->peer));
+                } else if (auto const* value = std::get_if<simnet::PeerDisconnected>(&event)) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Warn,
+                        "server transport peer disconnected peer=" + std::to_string(value->peer)
+                            + " code=" + std::to_string(static_cast<std::uint16_t>(value->code)));
+                    if (!ready) {
+                        failed = true;
+                    }
+                } else if (auto const* value = std::get_if<simnet::TransportErrorEvent>(&event)) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "server transport error: " + value->message);
+                    if (!ready) {
+                        failed = true;
+                    }
+                } else if (std::holds_alternative<simnet::ReceivedPacket>(event)) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Warn,
+                        "server received unexpected app payload during handshake phase");
+                }
+            }
+        }
+
+        if (failed) {
+            return false;
+        }
+        if (!connected) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+                "server transport handshake window ended without a peer");
+            return true;
+        }
+        if (!ready) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                "server transport peer did not become session ready");
+            return false;
+        }
+        return true;
+    }
 }
 
 int main()
@@ -130,12 +189,37 @@ int main()
             "server network fingerprint: " + std::to_string(network_fingerprint.value));
         simnet::log(simnet::LogCategory::Config, simnet::LogLevel::Info,
             "server runtime fingerprint: " + std::to_string(runtime_fingerprint.value));
+
+        auto const pipeline = simnet::app::make_smoke_pipeline(shared_config);
+        auto const session_identity = simnet::app::make_session_identity(shared_config, pipeline);
+        auto transport = simnet::TransportServer {};
+        auto const transport_start = transport.start({
+            .bind_address = server_config.transport.host,
+            .port = server_config.transport.port,
+            .max_peers = server_config.transport.max_clients,
+            .expected_identity = session_identity,
+        });
+        if (!transport_start.ok) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                "server transport start failed: " + transport_start.error.message);
+            simnet::shutdown_telemetry();
+            return 1;
+        }
+        simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+            "server transport listening on " + server_config.transport.host
+                + ":" + std::to_string(server_config.transport.port));
+        auto const handshake_valid = run_handshake_window(transport);
+        transport.stop();
+        if (!handshake_valid) {
+            simnet::shutdown_telemetry();
+            return 1;
+        }
+
         simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
             "authoritative snapshot producer smoke starting");
 
         auto world = flecs::world {};
         simnet::register_server_game(world);
-        auto const pipeline = make_server_smoke_pipeline(shared_config);
         auto replication_state = simnet::ClientReplicationState {};
         auto pipeline_scratch = simnet::PipelineScratch {};
 
@@ -167,7 +251,7 @@ int main()
         }
 
         simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
-            "authoritative runtime networking is not implemented yet");
+            "snapshot transport sending is not implemented yet");
 
         SIMNET_TRACE_PLOT("server.network_fingerprint", static_cast<double>(network_fingerprint.value));
         SIMNET_TRACE_PLOT("server.runtime_fingerprint", static_cast<double>(runtime_fingerprint.value));

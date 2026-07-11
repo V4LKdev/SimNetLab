@@ -623,6 +623,11 @@ namespace simnet
         };
     }
 
+    std::uint64_t pipeline_decode_signature(PipelineDefinition const& definition) noexcept
+    {
+        return make_pipeline_decode_signature(definition);
+    }
+
     EncodeOutput encode_snapshot(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
