@@ -180,7 +180,7 @@ namespace
                 scenario.pipeline,
                 decode_state,
                 scratch,
-                { .packet = &encode_output.packet }
+                { .bytes = encode_output.packet.bytes }
             );
             report.decode_valid = decode_output.report.valid;
             if (decode_output.report.valid) {

@@ -215,7 +215,7 @@ export namespace simnet
     /// Decode request.
     struct DecodeInput
     {
-        EncodedPacket const* packet {};
+        std::span<std::byte const> bytes {};
     };
 
     /// Encode result.
