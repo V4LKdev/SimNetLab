@@ -19,6 +19,7 @@ import simnet.config;
 
 namespace
 {
+    /// Tracks whether the logger has been initialized, is active, or has been shut down.
     enum class LoggerLifecycle
     {
         NeverInitialized,
@@ -26,58 +27,65 @@ namespace
         Shutdown
     };
 
+    /// Protects the shared logger pointer and its lifecycle state.
     std::mutex logger_mutex;
     std::shared_ptr<spdlog::logger> logger;
     LoggerLifecycle logger_lifecycle { LoggerLifecycle::NeverInitialized };
 
-    [[nodiscard]] spdlog::level::level_enum to_spdlog_level(simnet::LogLevel level) noexcept
+    // Brings simnet enums into scope
+    using namespace simnet;
+
+    /// Converts a simnet LogLevel to the corresponding spdlog level.
+    [[nodiscard]] spdlog::level::level_enum to_spdlog_level(LogLevel level) noexcept
     {
         switch (level) {
-        case simnet::LogLevel::Trace:
+        case LogLevel::Trace:
             return spdlog::level::trace;
-        case simnet::LogLevel::Debug:
+        case LogLevel::Debug:
             return spdlog::level::debug;
-        case simnet::LogLevel::Info:
+        case LogLevel::Info:
             return spdlog::level::info;
-        case simnet::LogLevel::Warn:
+        case LogLevel::Warn:
             return spdlog::level::warn;
-        case simnet::LogLevel::Error:
+        case LogLevel::Error:
             return spdlog::level::err;
-        case simnet::LogLevel::Critical:
+        case LogLevel::Critical:
             return spdlog::level::critical;
-        case simnet::LogLevel::Off:
+        case LogLevel::Off:
             return spdlog::level::off;
         }
         return spdlog::level::info;
     }
 
-    [[nodiscard]] std::string_view category_name(simnet::LogCategory category) noexcept
+    /// Maps a log category to a short name used in the log output.
+    [[nodiscard]] std::string_view category_name(LogCategory category) noexcept
     {
         switch (category) {
-        case simnet::LogCategory::Core:
+        case LogCategory::Core:
             return "core";
-        case simnet::LogCategory::Config:
+        case LogCategory::Config:
             return "config";
-        case simnet::LogCategory::Telemetry:
+        case LogCategory::Telemetry:
             return "telemetry";
-        case simnet::LogCategory::Simulation:
+        case LogCategory::Simulation:
             return "simulation";
-        case simnet::LogCategory::Snapshot:
+        case LogCategory::Snapshot:
             return "snapshot";
-        case simnet::LogCategory::Spatial:
+        case LogCategory::Spatial:
             return "spatial";
-        case simnet::LogCategory::Pipeline:
+        case LogCategory::Pipeline:
             return "pipeline";
-        case simnet::LogCategory::Transport:
+        case LogCategory::Transport:
             return "transport";
-        case simnet::LogCategory::Render:
+        case LogCategory::Render:
             return "render";
-        case simnet::LogCategory::Benchmark:
+        case LogCategory::Benchmark:
             return "benchmark";
         }
         return "unknown";
     }
 
+    /// Create a default logger that outputs to stdout, suitable for early or unconfigured logging.
     [[nodiscard]] std::shared_ptr<spdlog::logger> make_default_logger()
     {
         auto created = spdlog::stdout_color_mt("simnet");
@@ -86,6 +94,7 @@ namespace
         return created;
     }
 
+    /// Returns a shared logger pointer, or creates a default one.
     [[nodiscard]] std::shared_ptr<spdlog::logger> current_logger()
     {
         std::scoped_lock lock { logger_mutex };
@@ -93,12 +102,14 @@ namespace
             return {};
         }
         if (!logger) {
-            // Logging before initialization should still be visible.
+            // Logging before initialization should still be visible
             logger = make_default_logger();
         }
         return logger;
     }
 }
+
+// --- Public API ---
 
 namespace simnet
 {
@@ -106,7 +117,7 @@ namespace simnet
     {
         auto sinks = std::vector<spdlog::sink_ptr> {};
 
-        // Build the active sink set from runtime config.
+        // Build the active sink set from runtime config
         if (config.console_log_enabled) {
             sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
         }
@@ -119,14 +130,17 @@ namespace simnet
             ));
         }
 
+        // Always keep at least one sink to log calls don't silently fail
         if (sinks.empty()) {
             sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
         }
 
         auto created = std::make_shared<spdlog::logger>("simnet", sinks.begin(), sinks.end());
+        // e.g. [12:34:56.789] [info] [simulation] Tick 1234 completed in 10.5ms
         created->set_pattern("[%H:%M:%S.%e] [%^%l%$] [%n] %v");
         created->set_level(to_spdlog_level(parse_log_level(config.min_level)));
 
+        // Swap in the new logger and mark it as active
         std::scoped_lock lock { logger_mutex };
         logger = std::move(created);
         logger_lifecycle = LoggerLifecycle::Active;
@@ -137,11 +151,12 @@ namespace simnet
         std::shared_ptr<spdlog::logger> old_logger;
         {
             std::scoped_lock lock { logger_mutex };
-            // Moving out makes repeated shutdown calls harmless.
+            // Moving out makes repeated shutdown calls harmless
             old_logger = std::move(logger);
             logger.reset();
             logger_lifecycle = LoggerLifecycle::Shutdown;
         }
+        // Flush after releasing lock to avoid deadlock
         if (old_logger) {
             old_logger->flush();
         }

@@ -15,14 +15,23 @@ import :types;
 
 namespace
 {
-    std::mutex metrics_mutex;
-    std::vector<simnet::TickMetrics> tick_metrics;
-    std::vector<simnet::MetricRecord> metric_records;
+    using namespace simnet;
 
-    [[nodiscard]] std::string metric_value_to_string(simnet::MetricValue const& value)
+    /// Protects the two metric buffers.
+    std::mutex metrics_mutex;
+    std::vector<TickMetrics> tick_metrics;
+    std::vector<MetricRecord> metric_records;
+
+    /// Converts a metric value to its string representation.
+    [[nodiscard]] std::string metric_value_to_string(MetricValue const& value)
     {
-        return std::visit([](auto const& item) -> std::string {
-            using Value = std::decay_t<decltype(item)>;
+        // Visit with a lambda to handle each type in the variant
+        return std::visit([]<typename T0>(T0 const& item) -> std::string {
+
+            // Decay_t to remove references and cv-qualifiers for type comparison
+            using Value = std::decay_t<T0>;
+
+            // Handle each type explicitly
             if constexpr (std::is_same_v<Value, bool>) {
                 return item ? "true" : "false";
             } else if constexpr (std::is_same_v<Value, std::string>) {
@@ -36,6 +45,8 @@ namespace
 
 namespace simnet
 {
+    // --- Tick metrics ---
+
     void submit_tick_metrics(TickMetrics const& metrics)
     {
         std::scoped_lock lock { metrics_mutex };
@@ -55,6 +66,8 @@ namespace simnet
         std::scoped_lock lock { metrics_mutex };
         tick_metrics.clear();
     }
+
+    // --- Generic metrics ---
 
     void submit_metric_record(MetricRecord record)
     {
@@ -76,10 +89,14 @@ namespace simnet
         metric_records.clear();
     }
 
+    // --- Formatting ---
+
     std::string format_metric_record_key_value(MetricRecord const& record)
     {
         auto output = std::ostringstream {};
         output << record.stream << " tick=" << record.tick;
+
+        // Append each field as 'name=value'
         for (auto const& field : record.fields) {
             output << ' ' << field.name << '=' << metric_value_to_string(field.value);
         }
