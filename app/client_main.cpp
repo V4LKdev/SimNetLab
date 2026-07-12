@@ -22,6 +22,66 @@ import simnet.transport;
 namespace
 {
     constexpr auto handshake_timeout = std::chrono::seconds(2);
+    constexpr auto final_ack_drain_time = std::chrono::milliseconds(50);
+
+    struct SnapshotAckTracker
+    {
+        simnet::SnapshotAck value {};
+    };
+
+    [[nodiscard]] bool record_received_snapshot(
+        SnapshotAckTracker& tracker,
+        simnet::SequenceId sequence
+    ) noexcept
+    {
+        auto const previous = tracker.value.newest_received_snapshot;
+        if (sequence == 0 || sequence <= previous) {
+            return false;
+        }
+        if (previous == 0) {
+            tracker.value.newest_received_snapshot = sequence;
+            tracker.value.received_mask = 0;
+            return true;
+        }
+
+        auto const shift = sequence - previous;
+        if (shift >= 33U) {
+            tracker.value.received_mask = 0;
+        } else {
+            auto const shifted_history = shift == 32U
+                ? 0U
+                : tracker.value.received_mask << shift;
+            tracker.value.received_mask = shifted_history | (1U << (shift - 1U));
+        }
+        tracker.value.newest_received_snapshot = sequence;
+        return true;
+    }
+
+    [[nodiscard]] bool drain_final_ack(simnet::TransportClient& transport)
+    {
+        auto events = std::vector<simnet::TransportEvent> {};
+        auto const deadline = std::chrono::steady_clock::now() + final_ack_drain_time;
+        while (std::chrono::steady_clock::now() < deadline) {
+            events.clear();
+            auto const poll = transport.poll(events, 10);
+            if (!poll.ok) {
+                simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                    "client final ACK drain failed: " + poll.error.message);
+                return false;
+            }
+            for (auto const& event : events) {
+                if (std::holds_alternative<simnet::PeerDisconnected>(event)) {
+                    return true;
+                }
+                if (auto const* error = std::get_if<simnet::TransportErrorEvent>(&event)) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "client transport error during final ACK drain: " + error->message);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
 
     [[nodiscard]] bool wait_for_session(simnet::TransportClient& transport)
     {
@@ -74,6 +134,7 @@ namespace
     {
         auto decode_state = simnet::ClientReplicationState {};
         auto pipeline_scratch = simnet::PipelineScratch {};
+        auto ack_tracker = SnapshotAckTracker {};
         auto events = std::vector<simnet::TransportEvent> {};
         auto const deadline = std::chrono::steady_clock::now() + handshake_timeout;
 
@@ -105,11 +166,23 @@ namespace
                             "client snapshot decode failed: " + decoded.report.error);
                         return false;
                     }
+                    if (!record_received_snapshot(ack_tracker, decoded.report.sequence)) {
+                        simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                            "client snapshot ACK sequence tracking failed");
+                        return false;
+                    }
 
                     auto const applied = simnet::apply_client_snapshot_patch(world, decoded.patch);
                     if (!applied.valid) {
                         simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Error,
                             "client snapshot apply failed: " + applied.error);
+                        return false;
+                    }
+                    ack_tracker.value.newest_applied_snapshot = decoded.report.sequence;
+                    auto const ack_sent = transport.send_snapshot_ack(ack_tracker.value);
+                    if (!ack_sent.ok) {
+                        simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                            "client snapshot ACK send failed: " + ack_sent.error.message);
                         return false;
                     }
 
@@ -121,20 +194,28 @@ namespace
                             + " upserts=" + std::to_string(applied.upsert_count)
                             + " deletes=" + std::to_string(applied.delete_count)
                             + " entities=" + std::to_string(applied.final_entities));
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+                        "client snapshot ACK sent received="
+                            + std::to_string(ack_tracker.value.newest_received_snapshot)
+                            + " mask=" + std::to_string(ack_tracker.value.received_mask)
+                            + " applied=" + std::to_string(ack_tracker.value.newest_applied_snapshot));
 
                     if (applied.tick == simnet::app::smoke_final_tick) {
                         auto const& clock = world.get<simnet::ClientReplicationClock>();
                         auto const& index = world.get<simnet::ClientReplicationIndex>();
                         auto const final_state_valid = decoded.patch.kind == simnet::SnapshotKind::FullReplace
                             && clock.latest_tick == simnet::app::smoke_final_tick
-                            && index.size() == simnet::app::smoke_boid_count;
+                            && index.size() == simnet::app::smoke_boid_count
+                            && ack_tracker.value.newest_received_snapshot == simnet::app::smoke_final_sequence
+                            && ack_tracker.value.received_mask == simnet::app::smoke_final_received_mask
+                            && ack_tracker.value.newest_applied_snapshot == simnet::app::smoke_final_sequence;
                         if (!final_state_valid) {
                             simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Error,
                                 "client final replicated world validation failed"
                                     " tick=" + std::to_string(clock.latest_tick)
                                     + " entities=" + std::to_string(index.size()));
                         }
-                        return final_state_valid;
+                        return final_state_valid && drain_final_ack(transport);
                     }
                 } else if (auto const* value = std::get_if<simnet::PeerDisconnected>(&event)) {
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
