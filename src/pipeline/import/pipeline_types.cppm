@@ -158,6 +158,7 @@ export namespace simnet
     struct PipelineScratch
     {
         std::vector<std::uint32_t> selected_indices;
+        std::vector<EntityNetId> selected_delete_ids;
         std::vector<std::byte> bytes;
     };
 
@@ -177,11 +178,14 @@ export namespace simnet
     {
         Tick tick {};
         SequenceId sequence {};
+        SequenceId baseline_sequence {};
+        SnapshotKind snapshot_kind { SnapshotKind::FullReplace };
         PipelineProfileKind profile { PipelineProfileKind::RawSnapshot };
         CodecKind codec { CodecKind::ByteAligned };
         PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
         bool emitted {};
         bool skipped {};
+        bool delta {};
         EncodeSkipReason skip_reason { EncodeSkipReason::None };
         bool budget_exceeded {};
         std::uint32_t input_entities {};
@@ -199,9 +203,12 @@ export namespace simnet
     {
         Tick tick {};
         SequenceId sequence {};
+        SequenceId baseline_sequence {};
+        SnapshotKind snapshot_kind { SnapshotKind::FullReplace };
         std::uint32_t upsert_count {};
         std::uint32_t delete_count {};
         std::uint32_t packet_bytes {};
+        bool delta {};
         bool valid {};
         std::string error {};
     };
@@ -210,12 +217,15 @@ export namespace simnet
     struct EncodeInput
     {
         WorldSnapshot const* snapshot {};
+        WorldSnapshot const* baseline_snapshot {};
+        SequenceId baseline_sequence {};
     };
 
     /// Decode request.
     struct DecodeInput
     {
         std::span<std::byte const> bytes {};
+        SequenceId applied_baseline_sequence {};
     };
 
     /// Encode result.
