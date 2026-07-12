@@ -22,7 +22,7 @@ namespace simnet
     namespace transport_backend
     {
         constexpr std::uint32_t session_magic = 0x534E5453U;
-        constexpr std::uint16_t session_version = 1;
+        constexpr std::uint16_t session_version = 2;
         constexpr std::uint32_t session_header_bytes = 11;
         constexpr std::uint8_t channel_count = 3;
         constexpr PeerId server_peer_id = 1;
@@ -31,7 +31,8 @@ namespace simnet
         {
             ClientHello = 1,
             ServerAccept = 2,
-            ServerReject = 3
+            ServerReject = 3,
+            SnapshotAck = 4
         };
 
         struct SessionMessage
@@ -39,6 +40,7 @@ namespace simnet
             SessionMessageKind kind {};
             SessionIdentity identity {};
             DisconnectCode reject_code {};
+            SnapshotAck snapshot_ack {};
         };
 
         [[nodiscard]] TransportResult ok() noexcept
@@ -217,6 +219,10 @@ namespace simnet
                 write_u32(payload, message.identity.capabilities);
             } else if (message.kind == SessionMessageKind::ServerReject) {
                 write_u16(payload, static_cast<std::uint16_t>(message.reject_code));
+            } else if (message.kind == SessionMessageKind::SnapshotAck) {
+                write_u32(payload, message.snapshot_ack.newest_received_snapshot);
+                write_u32(payload, message.snapshot_ack.received_mask);
+                write_u32(payload, message.snapshot_ack.newest_applied_snapshot);
             }
 
             auto bytes = std::vector<std::byte> {};
@@ -266,6 +272,12 @@ namespace simnet
                 }
                 message.reject_code = static_cast<DisconnectCode>(code);
                 return true;
+            }
+            if (message.kind == SessionMessageKind::SnapshotAck) {
+                return payload_size == 12U
+                    && read_u32(data, size, offset, message.snapshot_ack.newest_received_snapshot)
+                    && read_u32(data, size, offset, message.snapshot_ack.received_mask)
+                    && read_u32(data, size, offset, message.snapshot_ack.newest_applied_snapshot);
             }
             return false;
         }
@@ -572,6 +584,20 @@ namespace simnet
                     } else {
                         impl_->handle_client_hello(*slot, message, out_events);
                     }
+                } else if (slot != nullptr && lane == Lane::Input) {
+                    auto message = SessionMessage {};
+                    auto const* data = reinterpret_cast<std::byte const*>(event.packet->data);
+                    if (!slot->session_ready
+                        || !decode_session_message(data, event.packet->dataLength, message)
+                        || message.kind != SessionMessageKind::SnapshotAck) {
+                        out_events.push_back(TransportErrorEvent { .message = "invalid snapshot ACK message" });
+                        impl_->disconnect(peer, DisconnectCode::ProtocolMismatch);
+                    } else {
+                        out_events.push_back(SnapshotAckReceived {
+                            .peer = peer,
+                            .ack = message.snapshot_ack,
+                        });
+                    }
                 } else if (slot != nullptr && slot->session_ready && valid_lane(lane)) {
                     auto payload = std::vector<std::byte>(event.packet->dataLength);
                     std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
@@ -648,7 +674,10 @@ namespace simnet
         bool transport_connected {};
         bool session_ready {};
 
-        [[nodiscard]] TransportResult send_session(SessionMessage const& message)
+        [[nodiscard]] TransportResult send_session(
+            SessionMessage const& message,
+            Lane lane = Lane::Control
+        )
         {
             auto bytes = encode_session_message(message);
             return send_to_peer(
@@ -656,7 +685,7 @@ namespace simnet
                 counters,
                 { .max_payload_bytes = settings.limits.max_payload_bytes,
                   .size_policy = SendSizePolicy::AllowBackendFragmentation },
-                Lane::Control,
+                lane,
                 Delivery::ReliableSequenced,
                 bytes
             );
@@ -864,6 +893,20 @@ namespace simnet
             return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
         }
         return send_to_peer(impl_->server, impl_->counters, impl_->settings.limits, lane, delivery, payload);
+    }
+
+    TransportResult TransportClient::send_snapshot_ack(SnapshotAck const& ack)
+    {
+        if (impl_ == nullptr || impl_->host == nullptr || impl_->server == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+        }
+        if (!impl_->session_ready) {
+            return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
+        }
+        return impl_->send_session({
+            .kind = SessionMessageKind::SnapshotAck,
+            .snapshot_ack = ack,
+        }, Lane::Input);
     }
 
     TransportStats TransportClient::stats() const

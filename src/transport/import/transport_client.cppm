@@ -49,6 +49,9 @@ export namespace simnet
             std::span<std::byte const> payload
         );
 
+        /// Sends a semantic snapshot acknowledgement on the reserved Input lane.
+        [[nodiscard]] TransportResult send_snapshot_ack(SnapshotAck const& ack);
+
         [[nodiscard]] TransportStats stats() const;
         [[nodiscard]] PeerStats server_stats() const;
 

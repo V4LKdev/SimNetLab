@@ -23,7 +23,7 @@ Snapshot -> channel 1
 Input    -> channel 2
 ```
 
-Control is used for handshake messages and uses reliable sequenced delivery internally. Snapshot and Input are exposed for app payloads, but Server/Client snapshot integration is a later milestone.
+Control is used for handshake messages and uses reliable sequenced delivery internally. Snapshot carries opaque app payloads. Input is reserved for semantic `SnapshotAck` messages in this phase; future client input can extend the private session protocol.
 
 ## Delivery
 
@@ -65,6 +65,12 @@ Identity mismatches report a specific disconnect code for the first mismatching 
 
 Client disconnect performs a bounded graceful ENet disconnect before destroying its host. It never starts a background worker or waits without a deadline.
 
+## Snapshot Acknowledgements
+
+`SnapshotAck` reports the newest snapshot sequence decoded by the client, a 32-bit history mask, and the newest sequence applied to client state. These are semantic replication acknowledgements, not ENet reliability acknowledgements.
+
+ACK messages use a fixed field-by-field wire format on the Input lane. Phase 4 sends them reliably for deterministic smoke verification; future cumulative runtime ACK traffic may use unreliable sequenced delivery. Transport validates only the wire envelope. Apps own sequence-history and baseline semantics.
+
 ## Threading
 
 One thread owns each `TransportServer` or `TransportClient`. All `start`/`connect`, `poll`, `send`, and `disconnect` calls must happen from that owner thread.
@@ -73,4 +79,4 @@ There is no background networking thread, no callbacks, and no hidden synchroniz
 
 ## Future Work
 
-Snapshot ACKs are future semantic session messages, not ENet acknowledgements. IPC and shared-memory backends are also future work and must preserve the same byte/session contract.
+Delta baseline selection from snapshot ACKs remains future work. IPC and shared-memory backends are also future work and must preserve the same byte/session contract.
