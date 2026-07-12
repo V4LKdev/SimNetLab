@@ -5,22 +5,29 @@ module;
 #include <string>
 #include <vector>
 
-/// @brief Snapshot data contracts.
+/// @brief Snapshot data types.
 export module simnet.snapshot:types;
 
 import simnet.core;
 
 export namespace simnet
 {
-    /// Allowed absolute heading length error.
+    /// Max deviation from unit length for heading normalisation check.
     inline constexpr float heading_normalization_tolerance = 0.01F;
 
     /// Per-entity replicated boid state.
     struct BoidState
     {
+        /// Network identifier.
         EntityNetId id {};
+
+        /// World-space position.
         Vec3f position {};
+
+        /// Normalized facing direction.
         Vec3f heading {};
+
+        /// Color hue (0 - 255)
         std::uint8_t hue {};
     };
 
@@ -28,10 +35,19 @@ export namespace simnet
     /// The SoA vectors are lock-step arrays keyed by strictly ascending ids.
     struct WorldSnapshot
     {
+        /// Simulation tick for this snapshot.
         Tick tick {};
+
+        /// Entity network identifiers (strictly ascending).
         std::vector<EntityNetId> ids;
+
+        /// Positions, same index order as ids.
         std::vector<Vec3f> positions;
+
+        /// Normalized facing directions, same index order as ids.
         std::vector<Vec3f> headings;
+
+        /// Color hues, same index order as ids.
         std::vector<std::uint8_t> hues;
 
         /// Returns the number of entities in the snapshot.
@@ -76,9 +92,16 @@ export namespace simnet
     /// Logical client-side changes for one simulation tick.
     struct ClientSnapshotPatch
     {
+        /// Simulation tick for this patch.
         Tick tick {};
+
+        /// How to apply the patch.
         SnapshotKind kind { SnapshotKind::Patch };
+
+        /// Entities to insert or update (ids strictly ascending).
         std::vector<BoidState> upserts;
+
+        /// Entities to delete (ids strictly ascending).
         std::vector<EntityNetId> deletes;
 
         /// Returns true when the patch contains no changes.
@@ -106,7 +129,10 @@ export namespace simnet
     /// First-error snapshot validation result.
     struct SnapshotValidationResult
     {
+        /// True when the snapshot is valid.
         bool valid { true };
+
+        /// Error message, if any.
         std::string message {};
     };
 }
