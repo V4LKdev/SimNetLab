@@ -3,7 +3,7 @@ module;
 #include <chrono>
 #include <cstdint>
 
-/// @brief Core fixed‑step timing types.
+/// @brief Core fixed-step timing types.
 export module simnet.core:time;
 
 export namespace simnet
@@ -14,7 +14,7 @@ export namespace simnet
     /// Nanosecond alias.
     using NS = std::chrono::nanoseconds;
 
-    /// Fixed‑step simulation configuration.
+    /// Fixed-step simulation configuration.
     struct FixedStepSettings
     {
         /// Tick rate in hertz.
@@ -27,10 +27,10 @@ export namespace simnet
         std::uint16_t max_steps_per_frame{ 5 };
     };
 
-    /// Accumulator state for a fixed‑step clock.
+    /// Accumulator state for a fixed-step clock.
     struct FixedStepClock
     {
-        /// Fractional wall‑time not yet consumed by a tick.
+        /// Fractional wall-time not yet consumed by a tick.
         NS    accumulator{};
         /// Duration of one tick, derived from tick_rate_hz.
         NS    fixed_dt{};
@@ -56,7 +56,7 @@ export namespace simnet
     }
 
 
-     /// Creates a FixedStepClock pre‑initialised with the correct fixed_dt.
+     /// Creates a FixedStepClock pre-initialised with the correct fixed_dt.
      /// `accumulator` and `tick` start at zero.
     [[nodiscard]] constexpr FixedStepClock make_clock(
         const FixedStepSettings &settings) noexcept
@@ -74,7 +74,7 @@ export namespace simnet
         NS                    delta,
         const FixedStepSettings &settings) noexcept
     {
-        // Refuse to run with a non‑positive timestep
+        // Refuse to run with a non-positive timestep
         if (state.fixed_dt <= NS{ 0 }) {
             return 0;
         }
@@ -88,7 +88,7 @@ export namespace simnet
 
         std::uint16_t steps_this_frame = 0;
 
-        // Consume whole ticks, respecting the per‑frame cap
+        // Consume whole ticks, respecting the per-frame cap
         while (state.accumulator >= state.fixed_dt &&
                steps_this_frame < settings.max_steps_per_frame)
         {

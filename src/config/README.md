@@ -2,8 +2,8 @@
 
 Import it with:
 
-```cpp
-import simnet.config;
+```txt
+import simnet.config
 ```
 
 It exports shared, client, and server config structs, defaults, JSON loading, and fingerprints. It does not own CLI parsing, live state, logging setup, or compile-time feature switches.

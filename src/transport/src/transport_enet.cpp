@@ -135,32 +135,32 @@ namespace simnet
             return Delivery::UnreliableSequenced;
         }
 
-        void write_u8(std::vector<std::byte>& bytes, std::uint8_t value)
+        void write_u8(std::vector<Byte>& bytes, std::uint8_t value)
         {
-            bytes.push_back(static_cast<std::byte>(value));
+            bytes.push_back(static_cast<Byte>(value));
         }
 
-        void write_u16(std::vector<std::byte>& bytes, std::uint16_t value)
+        void write_u16(std::vector<Byte>& bytes, std::uint16_t value)
         {
-            bytes.push_back(static_cast<std::byte>((value >> 8U) & 0xFFU));
-            bytes.push_back(static_cast<std::byte>(value & 0xFFU));
+            bytes.push_back(static_cast<Byte>((value >> 8U) & 0xFFU));
+            bytes.push_back(static_cast<Byte>(value & 0xFFU));
         }
 
-        void write_u32(std::vector<std::byte>& bytes, std::uint32_t value)
+        void write_u32(std::vector<Byte>& bytes, std::uint32_t value)
         {
-            bytes.push_back(static_cast<std::byte>((value >> 24U) & 0xFFU));
-            bytes.push_back(static_cast<std::byte>((value >> 16U) & 0xFFU));
-            bytes.push_back(static_cast<std::byte>((value >> 8U) & 0xFFU));
-            bytes.push_back(static_cast<std::byte>(value & 0xFFU));
+            bytes.push_back(static_cast<Byte>((value >> 24U) & 0xFFU));
+            bytes.push_back(static_cast<Byte>((value >> 16U) & 0xFFU));
+            bytes.push_back(static_cast<Byte>((value >> 8U) & 0xFFU));
+            bytes.push_back(static_cast<Byte>(value & 0xFFU));
         }
 
-        void write_u64(std::vector<std::byte>& bytes, std::uint64_t value)
+        void write_u64(std::vector<Byte>& bytes, std::uint64_t value)
         {
             write_u32(bytes, static_cast<std::uint32_t>((value >> 32U) & 0xFFFFFFFFULL));
             write_u32(bytes, static_cast<std::uint32_t>(value & 0xFFFFFFFFULL));
         }
 
-        [[nodiscard]] bool read_u8(std::byte const* data, std::size_t size, std::size_t& offset, std::uint8_t& value)
+        [[nodiscard]] bool read_u8(Byte const* data, std::size_t size, std::size_t& offset, std::uint8_t& value)
         {
             if (offset + 1U > size) {
                 return false;
@@ -170,7 +170,7 @@ namespace simnet
             return true;
         }
 
-        [[nodiscard]] bool read_u16(std::byte const* data, std::size_t size, std::size_t& offset, std::uint16_t& value)
+        [[nodiscard]] bool read_u16(Byte const* data, std::size_t size, std::size_t& offset, std::uint16_t& value)
         {
             std::uint8_t high {};
             std::uint8_t low {};
@@ -181,7 +181,7 @@ namespace simnet
             return true;
         }
 
-        [[nodiscard]] bool read_u32(std::byte const* data, std::size_t size, std::size_t& offset, std::uint32_t& value)
+        [[nodiscard]] bool read_u32(Byte const* data, std::size_t size, std::size_t& offset, std::uint32_t& value)
         {
             std::uint8_t a {};
             std::uint8_t b {};
@@ -198,7 +198,7 @@ namespace simnet
             return true;
         }
 
-        [[nodiscard]] bool read_u64(std::byte const* data, std::size_t size, std::size_t& offset, std::uint64_t& value)
+        [[nodiscard]] bool read_u64(Byte const* data, std::size_t size, std::size_t& offset, std::uint64_t& value)
         {
             std::uint32_t high {};
             std::uint32_t low {};
@@ -209,9 +209,9 @@ namespace simnet
             return true;
         }
 
-        [[nodiscard]] std::vector<std::byte> encode_session_message(SessionMessage const& message)
+        [[nodiscard]] std::vector<Byte> encode_session_message(SessionMessage const& message)
         {
-            auto payload = std::vector<std::byte> {};
+            auto payload = std::vector<Byte> {};
             if (message.kind == SessionMessageKind::ClientHello) {
                 write_u32(payload, message.identity.application_protocol_version);
                 write_u64(payload, message.identity.compatibility_fingerprint);
@@ -225,7 +225,7 @@ namespace simnet
                 write_u32(payload, message.snapshot_ack.newest_applied_snapshot);
             }
 
-            auto bytes = std::vector<std::byte> {};
+            auto bytes = std::vector<Byte> {};
             bytes.reserve(session_header_bytes + payload.size());
             write_u32(bytes, session_magic);
             write_u16(bytes, session_version);
@@ -236,7 +236,7 @@ namespace simnet
         }
 
         [[nodiscard]] bool decode_session_message(
-            std::byte const* data,
+            Byte const* data,
             std::size_t size,
             SessionMessage& message
         )
@@ -350,7 +350,7 @@ namespace simnet
             TransportLimits const& limits,
             Lane lane,
             Delivery delivery,
-            std::span<std::byte const> payload
+            std::span<Byte const> payload
         )
         {
             if (!valid_lane(lane)) {
@@ -576,7 +576,7 @@ namespace simnet
                 auto* slot = impl_->find(peer);
                 if (slot != nullptr && lane == Lane::Control) {
                     auto message = SessionMessage {};
-                    auto const* data = reinterpret_cast<std::byte const*>(event.packet->data);
+                    auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
                     if (!decode_session_message(data, event.packet->dataLength, message)
                         || message.kind != SessionMessageKind::ClientHello) {
                         out_events.push_back(TransportErrorEvent { .message = "invalid client session message" });
@@ -586,7 +586,7 @@ namespace simnet
                     }
                 } else if (slot != nullptr && lane == Lane::Input) {
                     auto message = SessionMessage {};
-                    auto const* data = reinterpret_cast<std::byte const*>(event.packet->data);
+                    auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
                     if (!slot->session_ready
                         || !decode_session_message(data, event.packet->dataLength, message)
                         || message.kind != SessionMessageKind::SnapshotAck) {
@@ -599,7 +599,7 @@ namespace simnet
                         });
                     }
                 } else if (slot != nullptr && slot->session_ready && valid_lane(lane)) {
-                    auto payload = std::vector<std::byte>(event.packet->dataLength);
+                    auto payload = std::vector<Byte>(event.packet->dataLength);
                     std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
                     out_events.push_back(ReceivedPacket {
                         .peer = peer,
@@ -833,7 +833,7 @@ namespace simnet
 
                 if (lane == Lane::Control) {
                     auto message = SessionMessage {};
-                    auto const* data = reinterpret_cast<std::byte const*>(event.packet->data);
+                    auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
                     if (!decode_session_message(data, event.packet->dataLength, message)) {
                         out_events.push_back(TransportErrorEvent { .message = "invalid server session message" });
                     } else if (message.kind == SessionMessageKind::ServerAccept) {
@@ -855,7 +855,7 @@ namespace simnet
                         impl_->session_ready = false;
                     }
                 } else if (impl_->session_ready && valid_lane(lane)) {
-                    auto payload = std::vector<std::byte>(event.packet->dataLength);
+                    auto payload = std::vector<Byte>(event.packet->dataLength);
                     std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
                     out_events.push_back(ReceivedPacket {
                         .peer = server_peer_id,
@@ -883,7 +883,7 @@ namespace simnet
     TransportResult TransportClient::send(
         Lane lane,
         Delivery delivery,
-        std::span<std::byte const> payload
+        std::span<Byte const> payload
     )
     {
         if (impl_ == nullptr || impl_->host == nullptr || impl_->server == nullptr) {

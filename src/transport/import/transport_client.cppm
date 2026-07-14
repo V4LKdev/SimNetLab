@@ -46,7 +46,7 @@ export namespace simnet
         [[nodiscard]] TransportResult send(
             Lane lane,
             Delivery delivery,
-            std::span<std::byte const> payload
+            std::span<Byte const> payload
         );
 
         /// Sends a semantic snapshot acknowledgement on the reserved Input lane.

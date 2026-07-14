@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @brief Tracy scoped‑trace macros.
+ * @brief Tracy scoped-trace macros.
  *
  * These macros are active only when the CMake option SIMNET_ENABLE_TRACY
  * is ON. Otherwise they expand to nothing and generate zero runtime cost.
