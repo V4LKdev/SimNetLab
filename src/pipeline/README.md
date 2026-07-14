@@ -1,21 +1,56 @@
-# simnet_pipeline
+@defgroup pipeline simnet.pipeline
+@brief Snapshot replication pipeline.
 
-`simnet_pipeline` converts authoritative `WorldSnapshot` data into pipeline-owned `EncodedPacket` bytes and decodes those packets into logical `ClientSnapshotPatch` updates.
+## Exported Types
 
-The first profile is `RawSnapshot`: selected entities are written as byte-aligned records in network byte order, and decode returns a logical snapshot patch. Decode accepts the serialized byte span directly and treats its private wire header as the receive-side metadata source of truth. The header and records are serialized field-by-field, not by writing C++ object memory. Each packet carries a private decode signature for the pipeline representation; decode rejects packets whose signature does not match the local `PipelineDefinition`. `pipeline_decode_signature` exposes that same canonical value to app/session code for compatibility checks; it is not a complete runtime configuration fingerprint.
+### simnet.pipeline:types
+- `PipelineProfileKind` - named presets (currently only `RawSnapshot`).
+- `CodecKind` - currently `ByteAligned`.
+- `PipelineTechniqueFlags` - bitmask of optional techniques: `SendInterval`, `Incremental`, `Quantization`, `OctHeading`, `Delta`, `BitPacking`, and reserved flags (`Aoi`, `Lod`, `Compression`). Future flags: `DeadReckoning`, `DirtyFlags`, `LeaderFollower`.
+- `PipelineDefinition` - immutable configuration combining profile, codec, technique flags, and per-technique settings.
+- `ClientReplicationState` - per-client mutable state (sequence numbers, incremental cursor).
+- `PipelineScratch` - reusable buffers for encode/decode, owned by the caller to avoid allocations on the hot path.
+- `EncodeResultKind`, `EncodeSkipReason`, `PipelinePacketKind`, `PipelinePacketFlags` - metadata enums.
 
-`PipelineDefinition` names the profile, codec, enabled technique flags, and packet budget. `RawSnapshot` supports the byte-aligned codec, plus the explicit bit-packed codec for quantized oct-heading snapshots. Other technique flags are reserved for later profiles.
+### simnet.pipeline:messages
+- `EncodedPacket` - fully encoded output with tick, sequence, and raw `Byte` vector.
+- `EncodeInput` / `EncodeOutput`, `DecodeInput` / `DecodeOutput` - request/response envelopes.
+- `EncodeReport`, `DecodeReport` - detailed per-call metrics for telemetry and debugging.
 
-`SendInterval` is the first emit policy. When enabled, encode emits only on matching ticks and returns `EncodeResultKind::Skipped` with `EncodeSkipReason::SendInterval` otherwise. Skips do not consume packet sequences.
+### simnet.pipeline:codec
+- `make_raw_snapshot_pipeline` - factory returning a default byte-aligned `PipelineDefinition`.
+- `pipeline_decode_signature` - canonical hash for receiver-side compatibility checks.
+- `encode_snapshot` - converts a `WorldSnapshot` into an `EncodedPacket`, respecting technique flags.
+- `decode_packet` - converts raw bytes into a `ClientSnapshotPatch`, rejecting invalid or incompatible packets.
 
-`Incremental` is the first selection policy. It currently emits upsert-only `SnapshotKind::Patch` packets with a round-robin slice of the current `WorldSnapshot`; missing entities mean unchanged. It does not emit deletes yet, so removed authoritative entities require a future `FullReplace` resync or a later delete-support pass. Dirty flags, AoI, and priorities are not part of this pass.
+## Technique Reference
 
-`Delta` accepts an explicit baseline snapshot and nonzero baseline sequence from the caller. It emits a `SnapshotKind::Patch` containing absolute changed/new upserts and explicit sorted delete IDs. Without a baseline it falls back to `FullReplace`. Decode does not need baseline snapshot contents, but it rejects a delta unless the packet baseline matches the caller's latest successfully applied sequence. Delta selection works with the existing byte-aligned, quantized, oct-heading, and bit-packed record codecs; combining Delta and Incremental is explicitly unsupported.
+### Send Interval
+When enabled, encoding only emits packets on ticks matching `(tick + phase) % interval == 0`. Skipped ticks return `EncodeResultKind::Skipped` with reason `SendInterval` and do not consume sequence numbers.
 
-`Quantization` stores positions as 16-bit unsigned values inside configured bounds and headings as 16-bit signed normalized components. It supports full and delta packets but remains incompatible with Incremental selection.
+### Incremental
+Emits upsert-only `Patch` packets using a round-robin cursor over the entity list. Missing entities are treated as unchanged. Delete operations are not yet supported. Removed entities require a future `FullReplace` resync.
 
-`OctHeading` stores normalized headings as two octahedral 16-bit components. `BitPacked` is a codec option for quantized oct-heading snapshots; with the current field widths it proves the codec path while staying 15 bytes per entity.
+### Quantization
+Stores positions as three 16-bit unsigned values within configurable `Aabb3f` bounds (`QuantizationSettings`). Headings are stored as three 16-bit signed normalized components.
 
-`PacketBudget::max_packet_bytes` is currently a soft reporting target compared against the final encoded packet size, including the private pipeline header. Oversized packets still emit, and `budget_exceeded = true` means only that the final packet exceeded the target; it does not imply encode failure, invalid packet bytes, transport drop, or reliability behavior. Encode advances `ClientReplicationState::next_sequence` only after a packet/report is fully built. Sequence `0` is reserved. Current evaluation assumes sequence IDs do not wrap; a proper wrap protocol is deferred to transport/reliability work. Decode rejects stale or out-of-order sequences, decode-signature mismatches, and malformed packet bytes with `DecodeReport::valid = false`.
+### Oct Heading
+Stores headings as two octahedral 16-bit components, reducing per-entity heading size from 12 bytes (or 6 bytes quantized) to 4 bytes. **Requires `Quantization`.** Works with both byte-aligned records and the `BitPacking` technique.
 
-The module owns packet codec contracts and reports, but not transport, ECS, rendering, telemetry, synthetic generation, AoI, LOD, delta, compression, or client storage.
+### Delta
+Emits `Patch` packets containing only entities that changed relative to a baseline snapshot. Requires a baseline snapshot and non-zero baseline sequence from the caller. Falls back to `FullReplace` when no baseline is provided. Decode rejects delta packets whose baseline sequence differs from the receiver's last applied sequence. **Incompatible with `Incremental`.** Delta works with quantization, oct heading, and `BitPacking`.
+
+### Bit Packing
+A technique flag (`PipelineTechniqueFlags::BitPacking`) that stores records in a continuous bit stream, currently at 15 bytes per entity. In the current implementation it **requires both `Quantization` and `OctHeading`**.
+
+### Reserved Flags
+`Aoi`, `Lod`, and `Compression` are defined in `PipelineTechniqueFlags` but not yet implemented. Their settings structs will be added to `PipelineDefinition` once the corresponding selection or post-processing passes are written.
+
+## Important Notes
+
+- Sequence `0` is reserved. `ClientReplicationState::next_sequence` starts at `1`. Encode throws if sequence would wrap to `0`.
+- `PacketBudget::max_packet_bytes` is a soft target. Oversized packets still emit and only set `budget_exceeded = true` in the report.
+- `PipelineScratch` must be reused across calls to avoid repeated allocations. Its internal vectors are cleared and refilled by encode/decode.
+- All public encode and decode functions are thread-safe when each thread supplies its own `ClientReplicationState` and `PipelineScratch`.
+- The private wire header contains a magic value (`SNPL`), protocol/schema versions, and a decode signature. Decode rejects packets with mismatched magic, versions, signature, or out-of-order/stale sequences.
+- The module owns the packet encoding contracts and reports, but not transport, ECS, rendering, or client-side storage.

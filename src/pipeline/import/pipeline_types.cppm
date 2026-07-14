@@ -14,7 +14,9 @@ import simnet.snapshot;
 
 export namespace simnet
 {
-    /// Available compiled pipeline profiles.
+    // --- Profiles and codecs ---
+
+    /// Built pipeline profiles, as pre-configured combinations of techniques.
     enum class PipelineProfileKind : std::uint8_t
     {
         RawSnapshot
@@ -23,29 +25,36 @@ export namespace simnet
     /// Packet codec family used by a pipeline profile.
     enum class CodecKind : std::uint8_t
     {
-        ByteAligned,
-        BitPacked
+        ByteAligned /// field-by-field byte streams.
     };
 
-    /// Optional replication techniques enabled by a pipeline definition.
+    // --- Technique flags ---
+
+    /// Replication technique flags. Combined with bitwise OR.
     enum class PipelineTechniqueFlags : std::uint32_t
     {
         None = 0,
-        SendInterval = 1U << 0U,
-        Incremental = 1U << 1U,
-        Quantization = 1U << 2U,
-        OctHeading = 1U << 3U,
-        Delta = 1U << 4U,
-        Aoi = 1U << 5U,
-        Lod = 1U << 6U,
-        Compression = 1U << 7U
+        SendInterval = 1U << 0U,    /// adjust snapshot cadence.
+        Incremental = 1U << 1U,     /// partial round-robin upserts.
+        Quantization = 1U << 2U,    /// position and heading quantisation.
+        OctHeading = 1U << 3U,      /// octahedral heading quantization.
+        Delta = 1U << 4U,           /// XOR delta from baseline.
+        Aoi = 1U << 5U,             /// area-of-interest filtering. (Reserved)
+        Lod = 1U << 6U,             /// level-of-detail priorities. (Reserved)
+        Compression = 1U << 7U,     /// full-payload compression. (Reserved)
+        BitPacking = 1U << 8U,      /// bit-packed record layout.
+
+        // Future flags:
+        // DeadReckoning // error-based correction sends
+        // DirtyFlags // send only changed entities (or assumption based from a straight linear motion)
+        // LeaderFollower // deterministic follower groups (major simulation work)
     };
 
     /// Result kind for an encode call.
     enum class EncodeResultKind : std::uint8_t
     {
-        Packet,
-        Skipped
+        Packet,     /// a complete packed was produced.
+        Skipped     /// no packed emitted this call.
     };
 
     /// Reason an encode call produced no packet.
@@ -53,6 +62,8 @@ export namespace simnet
     {
         None,
         SendInterval
+        // Future reasons:
+        // Aoi, Lod, etc.
     };
 
     /// Combines pipeline technique flags.
@@ -88,7 +99,7 @@ export namespace simnet
     }
 
     /// Returns true when all requested flags are set.
-    [[nodiscard]] constexpr bool has_flag(
+    [[nodiscard]] constexpr bool has_all_flags(
         PipelineTechniqueFlags value,
         PipelineTechniqueFlags flag
     ) noexcept
@@ -96,44 +107,55 @@ export namespace simnet
         return (value & flag) == flag;
     }
 
+    // --- Packet metadata ---
+
     /// Encoded pipeline packet kind.
     enum class PipelinePacketKind : std::uint8_t
     {
         Snapshot
+        // maybe Ack, Command, etc. later
     };
 
     /// Encoded pipeline packet flags.
     enum class PipelinePacketFlags : std::uint32_t
     {
         None = 0
+        // Future:
+        // compressed flag, reliable, etc.
     };
 
-    /// Soft final encoded packet byte target for reports; encode still emits oversized packets.
+    // --- Settings structs ---
+
+    /// Soft final encoded packet byte target for reports. Encode still emits oversized packets.
     struct PacketBudget
     {
         std::uint32_t max_packet_bytes { 1200 };
     };
 
-    /// Tick cadence settings for optional send interval policy.
+    /// Configuration for the send-interval policy.
     struct SendIntervalSettings
     {
+        /// Send every N ticks.
         std::uint32_t interval_ticks { 1 };
+        /// Tick offset for staggered sends.
         std::uint32_t phase_offset { 0 };
     };
 
-    /// Round-robin upsert-only partial snapshot settings.
+    /// Configuration for incremental round-robin selection.
     struct IncrementalSettings
     {
         std::uint32_t max_entities_per_packet { 512 };
     };
 
-    /// Byte-aligned quantization settings.
+    /// Configuration for position/heading quantization
     struct QuantizationSettings
     {
         Aabb3f position_bounds { make_centered_bounds(400.0F) };
     };
 
-    /// Immutable pipeline profile definition.
+    // --- Pipeline state structs ---
+
+    /// Immutable definition of a pipeline profile and its enabled techniques.
     struct PipelineDefinition
     {
         PipelineProfileKind profile { PipelineProfileKind::RawSnapshot };
@@ -143,104 +165,32 @@ export namespace simnet
         SendIntervalSettings send_interval {};
         IncrementalSettings incremental {};
         QuantizationSettings quantization {};
+
+        // Future:
+        // delta settings, aoi, lod, compression etc.
     };
 
     /// Caller-owned per-client replication state.
     struct ClientReplicationState
     {
+        /// Next outbound sequence id.
         SequenceId next_sequence { 1 };
+        /// Latest sequence received from remote.
         SequenceId latest_remote_sequence {};
+        /// Latest sequence acknowledged by remote.
         SequenceId latest_acked_sequence {};
+        /// Next incremental selection cursor for round-robin selection.
         std::uint32_t incremental_cursor {};
     };
 
-    /// Caller-owned reusable pipeline scratch memory.
+    /// Reusable scratch-memory for encode/decode. Stored externally to avoid allocations on hot path.
     struct PipelineScratch
     {
+        /// Indices of entities to send.
         std::vector<std::uint32_t> selected_indices;
+        /// IDs to delete (for delta)
         std::vector<EntityNetId> selected_delete_ids;
-        std::vector<std::byte> bytes;
-    };
-
-    /// Pipeline-owned encoded transfer object.
-    struct EncodedPacket
-    {
-        Tick tick {};
-        SequenceId sequence {};
-        SequenceId baseline_sequence {};
-        PipelinePacketKind kind { PipelinePacketKind::Snapshot };
-        PipelinePacketFlags flags { PipelinePacketFlags::None };
-        std::vector<std::byte> bytes;
-    };
-
-    /// Raw facts reported by encode.
-    struct EncodeReport
-    {
-        Tick tick {};
-        SequenceId sequence {};
-        SequenceId baseline_sequence {};
-        SnapshotKind snapshot_kind { SnapshotKind::FullReplace };
-        PipelineProfileKind profile { PipelineProfileKind::RawSnapshot };
-        CodecKind codec { CodecKind::ByteAligned };
-        PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
-        bool emitted {};
-        bool skipped {};
-        bool delta {};
-        EncodeSkipReason skip_reason { EncodeSkipReason::None };
-        bool budget_exceeded {};
-        std::uint32_t input_entities {};
-        std::uint32_t selected_entities {};
-        std::uint32_t upsert_count {};
-        std::uint32_t delete_count {};
-        std::uint32_t packet_bytes {};
-        std::uint32_t payload_bytes {};
-        std::uint32_t uncompressed_bytes {};
-        std::uint32_t final_bytes {};
-    };
-
-    /// Raw facts reported by decode.
-    struct DecodeReport
-    {
-        Tick tick {};
-        SequenceId sequence {};
-        SequenceId baseline_sequence {};
-        SnapshotKind snapshot_kind { SnapshotKind::FullReplace };
-        std::uint32_t upsert_count {};
-        std::uint32_t delete_count {};
-        std::uint32_t packet_bytes {};
-        bool delta {};
-        bool valid {};
-        std::string error {};
-    };
-
-    /// Encode request.
-    struct EncodeInput
-    {
-        WorldSnapshot const* snapshot {};
-        WorldSnapshot const* baseline_snapshot {};
-        SequenceId baseline_sequence {};
-    };
-
-    /// Decode request.
-    struct DecodeInput
-    {
-        std::span<std::byte const> bytes {};
-        SequenceId applied_baseline_sequence {};
-    };
-
-    /// Encode result.
-    struct EncodeOutput
-    {
-        EncodeResultKind kind { EncodeResultKind::Packet };
-        EncodeSkipReason skip_reason { EncodeSkipReason::None };
-        EncodedPacket packet {};
-        EncodeReport report {};
-    };
-
-    /// Decode result.
-    struct DecodeOutput
-    {
-        ClientSnapshotPatch patch {};
-        DecodeReport report {};
+        /// Temporary buffer for encoding.
+        std::vector<Byte> bytes;
     };
 }

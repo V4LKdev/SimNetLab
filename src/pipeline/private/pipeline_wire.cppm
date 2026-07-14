@@ -12,26 +12,78 @@ import :types;
 import simnet.core;
 import simnet.snapshot;
 
+/**
+ * Private wire encoding primitives. All integer fields are written in network byte order (MSB first).
+ * Packet headers and records are serialized field-by-field. No memcopies.
+ */
 namespace simnet::pipeline_wire
 {
-    inline constexpr std::uint32_t packet_magic = 0x534E504Cu;
+    // --- Constants ---
+
+    // Magic 'SNPL' (SimNet Packet Layout) used to reject garbage packets.
+    inline constexpr std::uint32_t packet_magic = 0x534E504Cu; // S N P L
     inline constexpr std::uint16_t protocol_version = 1;
     inline constexpr std::uint16_t schema_version = 3;
+
+    // Field sizes
     inline constexpr std::uint32_t u8_bytes = 1;
     inline constexpr std::uint32_t u16_bytes = 2;
     inline constexpr std::uint32_t u32_bytes = 4;
     inline constexpr std::uint32_t u64_bytes = 8;
     inline constexpr std::uint32_t f32_bytes = 4;
     inline constexpr std::uint32_t vec3_bytes = 3 * f32_bytes;
-    inline constexpr std::uint32_t raw_record_bytes = u32_bytes + vec3_bytes + vec3_bytes + u8_bytes;
-    inline constexpr std::uint32_t quantized_record_bytes = u32_bytes + (3 * u16_bytes) + (3 * u16_bytes) + u8_bytes;
-    inline constexpr std::uint32_t quantized_oct_record_bytes = u32_bytes + (3 * u16_bytes) + (2 * u16_bytes) + u8_bytes;
-    inline constexpr std::uint32_t bitpacked_quantized_oct_record_bits = 32 + (3 * 16) + (2 * 16) + 8;
+
+    // Record sizes for each supported codec path
+    inline constexpr std::uint32_t raw_record_bytes =
+        u32_bytes       // id
+        + vec3_bytes    // position
+        + vec3_bytes    // heading
+        + u8_bytes;     // hue
+    // 29
+
+    inline constexpr std::uint32_t quantized_record_bytes =
+        u32_bytes       //  id
+    + (3 * u16_bytes)   //  position
+    + (3 * u16_bytes)   //  heading
+    + u8_bytes;         //  hue
+    // 17
+
+    inline constexpr std::uint32_t quantized_oct_record_bytes =
+        u32_bytes       //  id
+    + (3 * u16_bytes)   //  position
+    + (2 * u16_bytes)   //  oct heading
+    + u8_bytes;         //  hue
+    // 15
+
+    inline constexpr std::uint32_t bitpacked_quantized_oct_record_bits =
+        32      //  id
+    + (3 * 16)  //  position
+    + (2 * 16)  //  oct heading
+    + 8;        //  hue
+    // 120 bit
+
     inline constexpr std::uint32_t bitpacked_quantized_oct_record_bytes =
         (bitpacked_quantized_oct_record_bits + 7) / 8;
-    inline constexpr std::uint32_t delete_record_bytes = u32_bytes;
-    inline constexpr std::uint32_t header_bytes = u32_bytes + u16_bytes + u16_bytes + u64_bytes
-        + u8_bytes + u8_bytes + u32_bytes + u64_bytes + u32_bytes + u32_bytes + u32_bytes + u32_bytes + u32_bytes;
+    // 15
+
+    inline constexpr std::uint32_t delete_record_bytes = u32_bytes; // 4
+
+    inline constexpr std::uint32_t header_bytes =
+        u32_bytes   //  magic
+    + u16_bytes     //  protocol
+    + u16_bytes     //  schema
+    + u64_bytes     //  decode_signature
+    + u8_bytes      //  packet_kind
+    + u8_bytes      //  snapshot_kind
+    + u32_bytes     //  flags
+    + u64_bytes     //  tick
+    + u32_bytes     //  sequence
+    + u32_bytes     //  baseline_sequence
+    + u32_bytes     //  upsert_count
+    + u32_bytes     //  delete_count
+    + u32_bytes;    //  payload_bytes
+    // 50
+
 
     static_assert(raw_record_bytes == 29);
     static_assert(quantized_record_bytes == 17);
@@ -40,6 +92,8 @@ namespace simnet::pipeline_wire
     static_assert(bitpacked_quantized_oct_record_bytes == 15);
     static_assert(delete_record_bytes == 4);
     static_assert(header_bytes == 50);
+
+    // --- Header struct decoded ---
 
     /// Private packet header serialized field-by-field in network byte order.
     struct PacketHeader
@@ -59,18 +113,23 @@ namespace simnet::pipeline_wire
         std::uint32_t payload_bytes {};
     };
 
-    void write_u8(std::vector<std::byte>& bytes, std::uint8_t value)
+    // --- Writers ---
+
+    /// Appends a single byte.
+    void write_u8(std::vector<Byte>& bytes, std::uint8_t value)
     {
-        bytes.push_back(static_cast<std::byte>(value));
+        bytes.push_back(static_cast<Byte>(value));
     }
 
-    void write_u16(std::vector<std::byte>& bytes, std::uint16_t value)
+    /// Appends a 16-bit unsigned integer in network byte order.
+    void write_u16(std::vector<Byte>& bytes, std::uint16_t value)
     {
         write_u8(bytes, static_cast<std::uint8_t>((value >> 8U) & 0xFFU));
         write_u8(bytes, static_cast<std::uint8_t>(value & 0xFFU));
     }
 
-    void write_u32(std::vector<std::byte>& bytes, std::uint32_t value)
+    /// Appends a 32-bit unsigned integer in network byte order.
+    void write_u32(std::vector<Byte>& bytes, std::uint32_t value)
     {
         write_u8(bytes, static_cast<std::uint8_t>((value >> 24U) & 0xFFU));
         write_u8(bytes, static_cast<std::uint8_t>((value >> 16U) & 0xFFU));
@@ -78,18 +137,21 @@ namespace simnet::pipeline_wire
         write_u8(bytes, static_cast<std::uint8_t>(value & 0xFFU));
     }
 
-    void write_u64(std::vector<std::byte>& bytes, std::uint64_t value)
+    /// Appends a 64-bit unsigned integer in network byte order.
+    void write_u64(std::vector<Byte>& bytes, std::uint64_t value)
     {
         write_u32(bytes, static_cast<std::uint32_t>((value >> 32U) & 0xFFFFFFFFULL));
         write_u32(bytes, static_cast<std::uint32_t>(value & 0xFFFFFFFFULL));
     }
 
-    void write_f32(std::vector<std::byte>& bytes, float value)
+    /// Appends a 32-bit floating point value in network byte order.
+    void write_f32(std::vector<Byte>& bytes, float value)
     {
         write_u32(bytes, std::bit_cast<std::uint32_t>(value));
     }
 
-    void write_header(std::vector<std::byte>& bytes, PacketHeader const& header)
+    /// Serializes full packet header.
+    void write_header(std::vector<Byte>& bytes, PacketHeader const& header)
     {
         write_u32(bytes, header.magic);
         write_u16(bytes, header.protocol);
@@ -106,14 +168,18 @@ namespace simnet::pipeline_wire
         write_u32(bytes, header.payload_bytes);
     }
 
-    void write_vec3(std::vector<std::byte>& bytes, Vec3f value)
+    /// Serializes a 3D vector as three floats.
+    void write_vec3(std::vector<Byte>& bytes, Vec3f value)
     {
         write_f32(bytes, value.x);
         write_f32(bytes, value.y);
         write_f32(bytes, value.z);
     }
 
-    bool read_u8(std::span<const std::byte> bytes, std::size_t& offset, std::uint8_t& value)
+    // --- Readers ---
+
+    /// Reads a single byte, advancing offset. Returns false on truncation.
+    bool read_u8(ByteSpan bytes, std::size_t& offset, std::uint8_t& value)
     {
         if (offset + 1U > bytes.size()) {
             return false;
@@ -123,7 +189,8 @@ namespace simnet::pipeline_wire
         return true;
     }
 
-    bool read_u16(std::span<const std::byte> bytes, std::size_t& offset, std::uint16_t& value)
+    /// Reads a 16-bit value in big-endian.
+    bool read_u16(ByteSpan bytes, std::size_t& offset, std::uint16_t& value)
     {
         auto b0 = std::uint8_t {};
         auto b1 = std::uint8_t {};
@@ -134,7 +201,8 @@ namespace simnet::pipeline_wire
         return true;
     }
 
-    bool read_u32(std::span<const std::byte> bytes, std::size_t& offset, std::uint32_t& value)
+    /// Reads a 32-bit value in big-endian.
+    bool read_u32(ByteSpan bytes, std::size_t& offset, std::uint32_t& value)
     {
         auto b0 = std::uint8_t {};
         auto b1 = std::uint8_t {};
@@ -153,7 +221,8 @@ namespace simnet::pipeline_wire
         return true;
     }
 
-    bool read_u64(std::span<const std::byte> bytes, std::size_t& offset, std::uint64_t& value)
+    /// Reads a 64-bit value in big-endian.
+    bool read_u64(ByteSpan bytes, std::size_t& offset, std::uint64_t& value)
     {
         auto hi = std::uint32_t {};
         auto lo = std::uint32_t {};
@@ -164,7 +233,8 @@ namespace simnet::pipeline_wire
         return true;
     }
 
-    bool read_f32(std::span<const std::byte> bytes, std::size_t& offset, float& value)
+    /// Reads a 32-bit floating point value from its 32-bit bit pattern.
+    bool read_f32(ByteSpan bytes, std::size_t& offset, float& value)
     {
         auto bits = std::uint32_t {};
         if (!read_u32(bytes, offset, bits)) {
@@ -174,7 +244,8 @@ namespace simnet::pipeline_wire
         return true;
     }
 
-    bool read_header(std::span<const std::byte> bytes, PacketHeader& header)
+    /// Reads a full packet header, advancing offset. Returns false on truncation.
+    bool read_header(ByteSpan bytes, PacketHeader& header)
     {
         auto offset = std::size_t {};
         auto packet_kind = std::uint8_t {};
@@ -203,7 +274,8 @@ namespace simnet::pipeline_wire
         return true;
     }
 
-    bool read_vec3(std::span<const std::byte> bytes, std::size_t& offset, Vec3f& value)
+    /// Reads a 3D vector as three floats in big-endian.
+    bool read_vec3(ByteSpan bytes, std::size_t& offset, Vec3f& value)
     {
         return read_f32(bytes, offset, value.x)
             && read_f32(bytes, offset, value.y)

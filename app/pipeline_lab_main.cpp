@@ -227,10 +227,10 @@ namespace
     [[nodiscard]] LabScenario make_quantized_bitpacked_scenario(simnet::SharedConfig const& config)
     {
         auto pipeline = simnet::make_raw_snapshot_pipeline();
-        pipeline.codec = simnet::CodecKind::BitPacked;
         pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval
             | simnet::PipelineTechniqueFlags::Quantization
-            | simnet::PipelineTechniqueFlags::OctHeading;
+            | simnet::PipelineTechniqueFlags::OctHeading
+            | simnet::PipelineTechniqueFlags::BitPacking;
         pipeline.send_interval.interval_ticks = 2;
         pipeline.quantization.position_bounds = simnet::make_centered_bounds(config.simulation.world_half);
 
@@ -352,9 +352,9 @@ namespace
         );
 
         auto bitpacked_pipeline = pipeline;
-        bitpacked_pipeline.codec = simnet::CodecKind::BitPacked;
         bitpacked_pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization
-            | simnet::PipelineTechniqueFlags::OctHeading;
+            | simnet::PipelineTechniqueFlags::OctHeading
+            | simnet::PipelineTechniqueFlags::BitPacking;
         bitpacked_pipeline.quantization.position_bounds = simnet::make_centered_bounds(100.0F);
         auto bitpacked_encode_state = simnet::ClientReplicationState {};
         auto bitpacked_decode_state = simnet::ClientReplicationState {};

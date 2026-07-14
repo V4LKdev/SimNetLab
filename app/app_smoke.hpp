@@ -12,10 +12,10 @@ namespace simnet::app
     [[nodiscard]] inline PipelineDefinition make_smoke_pipeline(SharedConfig const& shared_config)
     {
         auto pipeline = make_raw_snapshot_pipeline();
-        pipeline.codec = CodecKind::BitPacked;
         pipeline.techniques |= PipelineTechniqueFlags::SendInterval;
         pipeline.techniques |= PipelineTechniqueFlags::Quantization;
         pipeline.techniques |= PipelineTechniqueFlags::OctHeading;
+        pipeline.techniques |= PipelineTechniqueFlags::BitPacking;
         pipeline.send_interval.interval_ticks = 2;
         pipeline.quantization.position_bounds = make_centered_bounds(shared_config.simulation.world_half);
         return pipeline;
