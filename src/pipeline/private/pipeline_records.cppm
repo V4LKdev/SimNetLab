@@ -28,7 +28,7 @@ namespace simnet::pipeline_records
         Aabb3f bounds {};
     };
 
-    /// Resolves the record layout for a given pipeline definition, determining the codec and techniques used.
+    /// Resolves the record layout for a given pipeline definition.
     [[nodiscard]] RecordLayout resolve_record_layout(PipelineDefinition const& pipeline) noexcept
     {
         auto const bitpacked = has_all_flags(pipeline.techniques, PipelineTechniqueFlags::BitPacking);

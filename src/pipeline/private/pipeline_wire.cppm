@@ -33,7 +33,7 @@ namespace simnet::pipeline_wire
     inline constexpr std::uint32_t f32_bytes = 4;
     inline constexpr std::uint32_t vec3_bytes = 3 * f32_bytes;
 
-    // Record sizes for each supported codec path
+    // Record sizes for each supported layout
     inline constexpr std::uint32_t raw_record_bytes =
         u32_bytes       // id
         + vec3_bytes    // position
@@ -73,16 +73,14 @@ namespace simnet::pipeline_wire
     + u16_bytes     //  protocol
     + u16_bytes     //  schema
     + u64_bytes     //  decode_signature
-    + u8_bytes      //  packet_kind
     + u8_bytes      //  snapshot_kind
-    + u32_bytes     //  flags
     + u64_bytes     //  tick
     + u32_bytes     //  sequence
     + u32_bytes     //  baseline_sequence
     + u32_bytes     //  upsert_count
     + u32_bytes     //  delete_count
     + u32_bytes;    //  payload_bytes
-    // 50
+    // 45
 
 
     static_assert(raw_record_bytes == 29);
@@ -91,7 +89,7 @@ namespace simnet::pipeline_wire
     static_assert(bitpacked_quantized_oct_record_bits == 120);
     static_assert(bitpacked_quantized_oct_record_bytes == 15);
     static_assert(delete_record_bytes == 4);
-    static_assert(header_bytes == 50);
+    static_assert(header_bytes == 45);
 
     // --- Header struct decoded ---
 
@@ -102,9 +100,7 @@ namespace simnet::pipeline_wire
         std::uint16_t protocol {};
         std::uint16_t schema {};
         std::uint64_t decode_signature {};
-        PipelinePacketKind packet_kind { PipelinePacketKind::Snapshot };
         SnapshotKind snapshot_kind { SnapshotKind::FullReplace };
-        PipelinePacketFlags flags { PipelinePacketFlags::None };
         Tick tick {};
         SequenceId sequence {};
         SequenceId baseline_sequence {};
@@ -157,9 +153,7 @@ namespace simnet::pipeline_wire
         write_u16(bytes, header.protocol);
         write_u16(bytes, header.schema);
         write_u64(bytes, header.decode_signature);
-        write_u8(bytes, static_cast<std::uint8_t>(header.packet_kind));
         write_u8(bytes, static_cast<std::uint8_t>(header.snapshot_kind));
-        write_u32(bytes, static_cast<std::uint32_t>(header.flags));
         write_u64(bytes, header.tick);
         write_u32(bytes, header.sequence);
         write_u32(bytes, header.baseline_sequence);
@@ -248,17 +242,13 @@ namespace simnet::pipeline_wire
     bool read_header(ByteSpan bytes, PacketHeader& header)
     {
         auto offset = std::size_t {};
-        auto packet_kind = std::uint8_t {};
         auto snapshot_kind = std::uint8_t {};
-        auto flags = std::uint32_t {};
 
         if (!read_u32(bytes, offset, header.magic)
             || !read_u16(bytes, offset, header.protocol)
             || !read_u16(bytes, offset, header.schema)
             || !read_u64(bytes, offset, header.decode_signature)
-            || !read_u8(bytes, offset, packet_kind)
             || !read_u8(bytes, offset, snapshot_kind)
-            || !read_u32(bytes, offset, flags)
             || !read_u64(bytes, offset, header.tick)
             || !read_u32(bytes, offset, header.sequence)
             || !read_u32(bytes, offset, header.baseline_sequence)
@@ -268,9 +258,7 @@ namespace simnet::pipeline_wire
             return false;
         }
 
-        header.packet_kind = static_cast<PipelinePacketKind>(packet_kind);
         header.snapshot_kind = static_cast<SnapshotKind>(snapshot_kind);
-        header.flags = static_cast<PipelinePacketFlags>(flags);
         return true;
     }
 

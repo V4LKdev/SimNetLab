@@ -12,7 +12,7 @@ module;
 
 module simnet.pipeline;
 
-import :codec;
+import :api;
 import :types;
 import :messages;
 import :wire;
@@ -111,13 +111,9 @@ namespace simnet
             return invalid_packet("unsupported packet version");
         if (header.decode_signature != pipeline_signature::make_pipeline_decode_signature(pipeline))
             return invalid_packet("packet decode signature does not match local pipeline");
-        if (header.packet_kind != PipelinePacketKind::Snapshot)
-            return invalid_packet("unsupported packet kind");
         if (header.snapshot_kind != SnapshotKind::FullReplace
             && header.snapshot_kind != SnapshotKind::Patch)
             return invalid_packet("unsupported snapshot kind");
-        if (header.flags != PipelinePacketFlags::None)
-            return invalid_packet("unsupported packet flags");
         if (header.sequence == 0U)
             return invalid_packet("packet sequence 0 is reserved");
         if (header.sequence <= client_state.latest_remote_sequence)

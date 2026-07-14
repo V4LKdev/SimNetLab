@@ -15,8 +15,7 @@ export module simnet.pipeline;
 
 /**
  * @par simnet.pipeline:types
- * Vocabulary: profiles, codecs, technique flags, settings, client state,
- * and scratch memory.
+ * Vocabulary: technique flags, settings, client state, and scratch memory.
  */
 export import :types;
 
@@ -28,8 +27,8 @@ export import :types;
 export import :messages;
 
 /**
- * @par simnet.pipeline:codec
+ * @par simnet.pipeline:api
  * Public encode/decode entry points: `make_raw_snapshot_pipeline`,
  * `pipeline_decode_signature`, `encode_snapshot`, `decode_packet`.
  */
-export import :codec;
+export import :api;

@@ -3,14 +3,14 @@ module;
 #include <cstdint>
 
 /// @brief Pipeline encode and decode API.
-export module simnet.pipeline:codec;
+export module simnet.pipeline:api;
 
 import :types;
 import :messages;
 
 export namespace simnet
 {
-    /// Factory: builds a `PipelineDefinition` preset to raw byte-aligned snapshot.
+    /// Builds a default raw snapshot pipeline definition.
     [[nodiscard]] PipelineDefinition make_raw_snapshot_pipeline(PacketBudget budget = {});
 
     /// Computes the canonical decode-representation signature for the given pipeline.
@@ -34,7 +34,7 @@ export namespace simnet
     );
 
     /**
-     * Decodes a pipeline-owned packet into a 'ClientSnapshotPatch'.
+     * Decodes pipeline-owned bytes into a 'ClientSnapshotPatch'.
      *
      * - Validates the wire header and sequence numbers against 'client_state'.
      * - Reuses 'scratch' internal buffers.

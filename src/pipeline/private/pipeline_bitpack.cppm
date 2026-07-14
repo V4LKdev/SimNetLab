@@ -5,7 +5,7 @@ module;
 #include <span>
 #include <vector>
 
-/// @brief MSB-first bit stream primitives for packed record codecs.
+/// @brief MSB-first bit stream primitives for packed record layouts.
 module simnet.pipeline:bitpack;
 
 import simnet.core;

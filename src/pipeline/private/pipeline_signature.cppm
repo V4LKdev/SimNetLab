@@ -67,8 +67,6 @@ namespace simnet::pipeline_signature
 
         update_signature_u16(signature, pipeline_wire::protocol_version);
         update_signature_u16(signature, pipeline_wire::schema_version);
-        update_signature_u8(signature, static_cast<std::uint8_t>(pipeline.profile));
-        update_signature_u8(signature, static_cast<std::uint8_t>(pipeline.codec));
         update_signature_u32(signature, decode_relevant_technique_mask(pipeline));
 
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {

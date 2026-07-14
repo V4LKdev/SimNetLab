@@ -15,16 +15,9 @@ import simnet.snapshot;
 
 namespace simnet::pipeline_validate
 {
-    /// Ensures the pipeline definition is a valid RawSnapshot profile.
+    /// Ensures the pipeline definition uses a supported technique combination.
     void require_raw_snapshot(PipelineDefinition const& pipeline)
     {
-        if (pipeline.profile != PipelineProfileKind::RawSnapshot) {
-            throw std::runtime_error("unsupported pipeline profile");
-        }
-        if (pipeline.codec != CodecKind::ByteAligned) {
-            throw std::runtime_error("unsupported raw snapshot codec");
-        }
-
         auto constexpr supported_techniques = static_cast<std::uint32_t>(
             PipelineTechniqueFlags::SendInterval
                 | PipelineTechniqueFlags::Incremental
