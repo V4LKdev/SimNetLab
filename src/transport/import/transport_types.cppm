@@ -66,6 +66,7 @@ export namespace simnet
         PeerNotReady,
         InvalidLane,
         InvalidDelivery,
+        UnsupportedDelivery,
         PayloadTooLarge,
         UnsupportedBackend,
         BackendError

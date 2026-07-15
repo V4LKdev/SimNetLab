@@ -282,6 +282,7 @@ int main()
         auto const connect = transport.connect({
             .backend = transport_backend,
             .server_address = client_config.transport.host,
+            .local_ipc_path = client_config.transport.local_ipc_path,
             .server_port = client_config.transport.port,
             .identity = session_identity,
             .limits = simnet::app::transport_limits(client_config.transport),

@@ -171,6 +171,7 @@ namespace
     {
         read_optional(json, "backend", config.backend);
         read_optional(json, "host", config.host);
+        read_optional(json, "local_ipc_path", config.local_ipc_path);
         read_optional(json, "port", config.port);
         read_optional(json, "max_clients", config.max_clients);
         read_optional(json, "max_payload_bytes", config.max_payload_bytes);
@@ -178,6 +179,9 @@ namespace
         read_optional(json, "snapshot_delivery", config.snapshot_delivery);
 
         validate_one_of("transport.backend", config.backend, { "enet", "local_ipc" });
+        if (config.local_ipc_path.empty()) {
+            throw std::runtime_error("invalid config field 'transport.local_ipc_path': expected non-empty path");
+        }
         if (config.port == 0) {
             throw std::runtime_error("invalid config field 'transport.port': expected non-zero port");
         }
@@ -328,6 +332,7 @@ namespace
     {
         hash_string(hash, transport.backend);
         hash_string(hash, transport.host);
+        hash_string(hash, transport.local_ipc_path);
         hash_bytes(hash, transport.port);
         hash_bytes(hash, transport.max_clients);
         hash_bytes(hash, transport.max_payload_bytes);

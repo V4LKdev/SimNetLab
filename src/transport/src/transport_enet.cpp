@@ -1,15 +1,27 @@
 module;
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cerrno>
 #include <enet/enet.h>
+#include <limits>
+#include <optional>
+#include <poll.h>
 #include <span>
 #include <string>
 #include <utility>
 #include <vector>
+
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 
 module simnet.transport:backend;
 
@@ -24,6 +36,9 @@ namespace simnet
         constexpr std::uint32_t session_magic = 0x534E5453U;
         constexpr std::uint16_t session_version = 2;
         constexpr std::uint32_t session_header_bytes = 11;
+        constexpr std::uint32_t local_frame_magic = 0x534E5449U;
+        constexpr std::uint16_t local_frame_version = 1;
+        constexpr std::uint32_t local_frame_header_bytes = 12;
         constexpr std::uint8_t channel_count = 3;
         constexpr PeerId server_peer_id = 1;
 
@@ -282,6 +297,91 @@ namespace simnet
             return false;
         }
 
+        struct LocalFrame
+        {
+            Lane lane {};
+            Delivery delivery {};
+            std::vector<Byte> payload;
+        };
+
+        [[nodiscard]] std::vector<Byte> encode_local_frame(
+            Lane lane,
+            Delivery delivery,
+            std::span<Byte const> payload)
+        {
+            auto bytes = std::vector<Byte> {};
+            bytes.reserve(local_frame_header_bytes + payload.size());
+            write_u32(bytes, local_frame_magic);
+            write_u16(bytes, local_frame_version);
+            write_u8(bytes, lane_index(lane));
+            write_u8(bytes, static_cast<std::uint8_t>(delivery));
+            write_u32(bytes, static_cast<std::uint32_t>(payload.size()));
+            bytes.insert(bytes.end(), payload.begin(), payload.end());
+            return bytes;
+        }
+
+        [[nodiscard]] std::optional<LocalFrame> try_decode_local_frame(
+            std::vector<Byte>& buffer,
+            TransportLimits const& limits,
+            TransportResult& error)
+        {
+            if (buffer.size() < local_frame_header_bytes) {
+                return std::nullopt;
+            }
+
+            std::size_t offset {};
+            std::uint32_t magic {};
+            std::uint16_t version {};
+            std::uint8_t lane_value {};
+            std::uint8_t delivery_value {};
+            std::uint32_t payload_size {};
+            if (!read_u32(buffer.data(), buffer.size(), offset, magic)
+                || !read_u16(buffer.data(), buffer.size(), offset, version)
+                || !read_u8(buffer.data(), buffer.size(), offset, lane_value)
+                || !read_u8(buffer.data(), buffer.size(), offset, delivery_value)
+                || !read_u32(buffer.data(), buffer.size(), offset, payload_size)) {
+                error = fail(TransportErrorCode::BackendError, "failed to read local IPC frame header");
+                return std::nullopt;
+            }
+            if (magic != local_frame_magic || version != local_frame_version) {
+                error = fail(TransportErrorCode::BackendError, "invalid local IPC frame header");
+                return std::nullopt;
+            }
+            auto const lane = static_cast<Lane>(lane_value);
+            auto const delivery = static_cast<Delivery>(delivery_value);
+            if (!valid_lane(lane)) {
+                error = fail(TransportErrorCode::InvalidLane, "invalid local IPC frame lane");
+                return std::nullopt;
+            }
+            if (!valid_delivery(delivery)) {
+                error = fail(TransportErrorCode::InvalidDelivery, "invalid local IPC frame delivery");
+                return std::nullopt;
+            }
+            if (limits.size_policy == SendSizePolicy::EnforceLimit
+                && payload_size > limits.max_payload_bytes) {
+                error = fail(TransportErrorCode::PayloadTooLarge, "local IPC frame exceeds configured payload limit");
+                return std::nullopt;
+            }
+            if (buffer.size() < local_frame_header_bytes + static_cast<std::size_t>(payload_size)) {
+                return std::nullopt;
+            }
+
+            auto payload_begin = buffer.begin() + static_cast<std::ptrdiff_t>(local_frame_header_bytes);
+            auto payload_end = payload_begin + static_cast<std::ptrdiff_t>(payload_size);
+            auto payload = std::vector<Byte>(payload_begin, payload_end);
+            buffer.erase(buffer.begin(), payload_end);
+            return LocalFrame {
+                .lane = lane,
+                .delivery = delivery,
+                .payload = std::move(payload),
+            };
+        }
+
+        [[nodiscard]] bool local_delivery_supported(Delivery delivery) noexcept
+        {
+            return delivery == Delivery::ReliableSequenced;
+        }
+
         [[nodiscard]] PeerId event_peer_id(ENetPeer const* peer) noexcept
         {
             return static_cast<PeerId>(reinterpret_cast<std::uintptr_t>(peer->data));
@@ -401,6 +501,132 @@ namespace simnet
             };
         }
 
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        [[nodiscard]] bool set_nonblocking(int fd) noexcept
+        {
+            auto const flags = fcntl(fd, F_GETFL, 0);
+            return flags >= 0 && fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+        }
+
+        void close_fd(int& fd) noexcept
+        {
+            if (fd >= 0) {
+                close(fd);
+                fd = -1;
+            }
+        }
+
+        [[nodiscard]] bool make_unix_address(std::string const& path, sockaddr_un& address)
+        {
+            if (path.empty() || path.size() >= sizeof(address.sun_path)) {
+                return false;
+            }
+            std::memset(&address, 0, sizeof(address));
+            address.sun_family = AF_UNIX;
+            std::memcpy(address.sun_path, path.c_str(), path.size() + 1U);
+            return true;
+        }
+
+        [[nodiscard]] TransportResult write_all(int fd, std::span<Byte const> bytes)
+        {
+            std::size_t written {};
+            while (written < bytes.size()) {
+                auto poll_fd = pollfd { .fd = fd, .events = POLLOUT, .revents = 0 };
+                auto const poll_result = poll(&poll_fd, 1, 100);
+                if (poll_result < 0) {
+                    if (errno == EINTR) {
+                        continue;
+                    }
+                    return fail(TransportErrorCode::BackendError, "local IPC write poll failed", static_cast<std::uint32_t>(errno));
+                }
+                if (poll_result == 0) {
+                    return fail(TransportErrorCode::BackendError, "local IPC write timed out");
+                }
+                auto const result = send(
+                    fd,
+                    bytes.data() + written,
+                    bytes.size() - written,
+                    MSG_NOSIGNAL
+                );
+                if (result < 0) {
+                    if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+                        continue;
+                    }
+                    return fail(TransportErrorCode::BackendError, "local IPC write failed", static_cast<std::uint32_t>(errno));
+                }
+                if (result == 0) {
+                    return fail(TransportErrorCode::BackendError, "local IPC write closed");
+                }
+                written += static_cast<std::size_t>(result);
+            }
+            return ok();
+        }
+
+        [[nodiscard]] TransportResult read_available(int fd, std::vector<Byte>& buffer, bool& disconnected)
+        {
+            disconnected = false;
+            auto scratch = std::array<Byte, 4096> {};
+            for (;;) {
+                auto const result = recv(fd, scratch.data(), scratch.size(), 0);
+                if (result > 0) {
+                    buffer.insert(buffer.end(), scratch.begin(), scratch.begin() + result);
+                    continue;
+                }
+                if (result == 0) {
+                    disconnected = true;
+                    return ok();
+                }
+                if (errno == EINTR) {
+                    continue;
+                }
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    return ok();
+                }
+                return fail(TransportErrorCode::BackendError, "local IPC read failed", static_cast<std::uint32_t>(errno));
+            }
+        }
+
+        [[nodiscard]] TransportResult send_local_frame(
+            int fd,
+            TransportStats& stats,
+            TransportLimits const& limits,
+            Lane lane,
+            Delivery delivery,
+            std::span<Byte const> payload)
+        {
+            if (!valid_lane(lane)) {
+                ++stats.send_failures;
+                return fail(TransportErrorCode::InvalidLane, "invalid transport lane");
+            }
+            if (!valid_delivery(delivery)) {
+                ++stats.send_failures;
+                return fail(TransportErrorCode::InvalidDelivery, "invalid transport delivery mode");
+            }
+            if (!local_delivery_supported(delivery)) {
+                ++stats.send_failures;
+                return fail(TransportErrorCode::UnsupportedDelivery, "local IPC supports reliable sequenced delivery only");
+            }
+            if (limits.size_policy == SendSizePolicy::EnforceLimit && payload.size() > limits.max_payload_bytes) {
+                ++stats.send_failures;
+                ++stats.oversize_drops;
+                return fail(TransportErrorCode::PayloadTooLarge, "transport payload exceeds configured limit");
+            }
+            if (payload.size() > std::numeric_limits<std::uint32_t>::max()) {
+                ++stats.send_failures;
+                return fail(TransportErrorCode::PayloadTooLarge, "transport payload exceeds uint32 frame range");
+            }
+
+            auto frame = encode_local_frame(lane, delivery, payload);
+            auto const result = write_all(fd, frame);
+            if (!result.ok) {
+                ++stats.send_failures;
+                return result;
+            }
+            add_send_stats(stats, lane, payload.size());
+            return ok();
+        }
+#endif
+
         struct PeerSlot
         {
             PeerId id {};
@@ -413,11 +639,18 @@ namespace simnet
 
     struct TransportServer::Impl
     {
+        TransportBackend active_backend { TransportBackend::ENet };
         ENetHost* host {};
         TransportServerSettings settings {};
         TransportStats counters {};
         std::vector<PeerSlot> peers;
         PeerId next_peer_id { 1 };
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        int local_listen_fd { -1 };
+        int local_peer_fd { -1 };
+        bool local_session_ready {};
+        std::vector<Byte> local_inbound;
+#endif
 
         [[nodiscard]] PeerSlot* find(PeerId id) noexcept
         {
@@ -438,6 +671,57 @@ namespace simnet
                 bytes
             );
         }
+
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        [[nodiscard]] TransportResult send_local_session(SessionMessage const& message, Lane lane = Lane::Control)
+        {
+            auto bytes = encode_session_message(message);
+            return send_local_frame(
+                local_peer_fd,
+                counters,
+                { .max_payload_bytes = settings.limits.max_payload_bytes,
+                  .size_policy = SendSizePolicy::AllowBackendFragmentation },
+                lane,
+                Delivery::ReliableSequenced,
+                bytes
+            );
+        }
+
+        void handle_local_client_hello(SessionMessage const& message, std::vector<TransportEvent>& events)
+        {
+            if (local_session_ready) {
+                events.push_back(TransportErrorEvent { .message = "duplicate ClientHello after session ready" });
+                close_fd(local_peer_fd);
+                local_session_ready = false;
+                return;
+            }
+
+            auto const mismatch = identity_mismatch(message.identity, settings.expected_identity);
+            if (mismatch != DisconnectCode::None) {
+                static_cast<void>(send_local_session({
+                    .kind = SessionMessageKind::ServerReject,
+                    .reject_code = mismatch,
+                }));
+                events.push_back(TransportErrorEvent { .message = "client session identity mismatch" });
+                close_fd(local_peer_fd);
+                events.push_back(PeerDisconnected {
+                    .peer = server_peer_id,
+                    .code = mismatch,
+                    .native_reason = static_cast<std::uint32_t>(mismatch),
+                });
+                return;
+            }
+
+            auto accepted = send_local_session({ .kind = SessionMessageKind::ServerAccept });
+            if (!accepted.ok) {
+                events.push_back(TransportErrorEvent { .message = accepted.error.message });
+                close_fd(local_peer_fd);
+                return;
+            }
+            local_session_ready = true;
+            events.push_back(PeerSessionReady { .peer = server_peer_id });
+        }
+#endif
 
         void handle_client_hello(PeerSlot& slot, SessionMessage const& message, std::vector<TransportEvent>& events)
         {
@@ -470,6 +754,16 @@ namespace simnet
 
         void disconnect(PeerId id, DisconnectCode code) noexcept
         {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+            if (active_backend == TransportBackend::LocalIpc) {
+                if (id == server_peer_id) {
+                    close_fd(local_peer_fd);
+                    local_session_ready = false;
+                }
+                static_cast<void>(code);
+                return;
+            }
+#endif
             if (auto* slot = find(id); slot != nullptr && slot->peer != nullptr) {
                 enet_peer_disconnect_later(slot->peer, static_cast<std::uint32_t>(code));
             }
@@ -498,8 +792,56 @@ namespace simnet
 
     TransportResult TransportServer::start(TransportServerSettings const& settings)
     {
-        if (impl_ == nullptr || impl_->host != nullptr) {
+        if (impl_ == nullptr || impl_->host != nullptr
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+            || impl_->local_listen_fd >= 0
+#endif
+        ) {
             return fail(TransportErrorCode::AlreadyStarted, "transport server is already started");
+        }
+        impl_->active_backend = settings.backend;
+        impl_->settings = settings;
+        impl_->counters = {};
+        impl_->peers.clear();
+        impl_->next_peer_id = 1;
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        impl_->local_session_ready = false;
+        impl_->local_inbound.clear();
+#endif
+        if (settings.backend == TransportBackend::LocalIpc) {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+            if (settings.local_ipc_path.empty()) {
+                return fail(TransportErrorCode::InvalidAddress, "local IPC path is required");
+            }
+            auto address = sockaddr_un {};
+            if (!make_unix_address(settings.local_ipc_path, address)) {
+                return fail(TransportErrorCode::InvalidAddress, "invalid local IPC path");
+            }
+            impl_->local_listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+            if (impl_->local_listen_fd < 0) {
+                return fail(TransportErrorCode::BackendError, "failed to create local IPC server socket", static_cast<std::uint32_t>(errno));
+            }
+            unlink(settings.local_ipc_path.c_str());
+            if (bind(impl_->local_listen_fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+                auto const error = errno;
+                close_fd(impl_->local_listen_fd);
+                return fail(TransportErrorCode::InvalidAddress, "failed to bind local IPC socket", static_cast<std::uint32_t>(error));
+            }
+            if (listen(impl_->local_listen_fd, 1) != 0) {
+                auto const error = errno;
+                close_fd(impl_->local_listen_fd);
+                unlink(settings.local_ipc_path.c_str());
+                return fail(TransportErrorCode::BackendError, "failed to listen on local IPC socket", static_cast<std::uint32_t>(error));
+            }
+            if (!set_nonblocking(impl_->local_listen_fd)) {
+                close_fd(impl_->local_listen_fd);
+                unlink(settings.local_ipc_path.c_str());
+                return fail(TransportErrorCode::BackendError, "failed to make local IPC server socket non-blocking", static_cast<std::uint32_t>(errno));
+            }
+            return ok();
+#else
+            return fail(TransportErrorCode::UnsupportedBackend, "local IPC backend is not available in this build");
+#endif
         }
         if (settings.backend != TransportBackend::ENet) {
             return fail(TransportErrorCode::UnsupportedBackend, "requested transport server backend is not implemented");
@@ -520,10 +862,6 @@ namespace simnet
         if (impl_->host == nullptr) {
             return fail(TransportErrorCode::BackendError, "failed to create ENet server host");
         }
-        impl_->settings = settings;
-        impl_->counters = {};
-        impl_->peers.clear();
-        impl_->next_peer_id = 1;
         return ok();
     }
 
@@ -536,16 +874,143 @@ namespace simnet
             enet_host_destroy(impl_->host);
             impl_->host = nullptr;
         }
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        close_fd(impl_->local_peer_fd);
+        close_fd(impl_->local_listen_fd);
+        if (impl_->active_backend == TransportBackend::LocalIpc && !impl_->settings.local_ipc_path.empty()) {
+            unlink(impl_->settings.local_ipc_path.c_str());
+        }
+        impl_->local_session_ready = false;
+        impl_->local_inbound.clear();
+#endif
         impl_->peers.clear();
     }
 
     bool TransportServer::is_running() const noexcept
     {
-        return impl_ != nullptr && impl_->host != nullptr;
+        return impl_ != nullptr && (impl_->host != nullptr
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+            || impl_->local_listen_fd >= 0
+#endif
+        );
     }
 
     TransportResult TransportServer::poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
     {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        if (impl_ != nullptr && impl_->active_backend == TransportBackend::LocalIpc) {
+            if (impl_->local_listen_fd < 0) {
+                return fail(TransportErrorCode::NotStarted, "transport server is not started");
+            }
+
+            auto fds = std::array<pollfd, 2> {};
+            nfds_t count = 1;
+            fds[0] = { .fd = impl_->local_listen_fd, .events = POLLIN, .revents = 0 };
+            if (impl_->local_peer_fd >= 0) {
+                fds[1] = { .fd = impl_->local_peer_fd, .events = POLLIN, .revents = 0 };
+                count = 2;
+            }
+
+            auto const poll_result = ::poll(fds.data(), count, static_cast<int>(timeout_ms));
+            if (poll_result < 0) {
+                if (errno == EINTR) {
+                    return ok();
+                }
+                return fail(TransportErrorCode::BackendError, "local IPC server poll failed", static_cast<std::uint32_t>(errno));
+            }
+            if (poll_result == 0) {
+                return ok();
+            }
+
+            if ((fds[0].revents & POLLIN) != 0) {
+                auto const accepted = accept(impl_->local_listen_fd, nullptr, nullptr);
+                if (accepted >= 0) {
+                    if (impl_->local_peer_fd >= 0) {
+                        close(accepted);
+                    } else if (!set_nonblocking(accepted)) {
+                        auto const error = errno;
+                        close(accepted);
+                        return fail(TransportErrorCode::BackendError, "failed to make local IPC peer non-blocking", static_cast<std::uint32_t>(error));
+                    } else {
+                        impl_->local_peer_fd = accepted;
+                        impl_->local_session_ready = false;
+                        impl_->local_inbound.clear();
+                        out_events.push_back(PeerConnected { .peer = server_peer_id });
+                    }
+                } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                    return fail(TransportErrorCode::BackendError, "local IPC accept failed", static_cast<std::uint32_t>(errno));
+                }
+            }
+
+            if (impl_->local_peer_fd >= 0 && (count == 2 && (fds[1].revents & (POLLIN | POLLHUP | POLLERR)) != 0)) {
+                auto disconnected = false;
+                auto read_result = read_available(impl_->local_peer_fd, impl_->local_inbound, disconnected);
+                if (!read_result.ok) {
+                    close_fd(impl_->local_peer_fd);
+                    impl_->local_session_ready = false;
+                    return read_result;
+                }
+                if (disconnected) {
+                    close_fd(impl_->local_peer_fd);
+                    impl_->local_session_ready = false;
+                    ++impl_->counters.disconnects;
+                    out_events.push_back(PeerDisconnected {
+                        .peer = server_peer_id,
+                        .code = DisconnectCode::None,
+                        .native_reason = 0,
+                    });
+                    return ok();
+                }
+
+                for (;;) {
+                    auto frame_error = ok();
+                    auto frame = try_decode_local_frame(impl_->local_inbound, impl_->settings.limits, frame_error);
+                    if (!frame.has_value()) {
+                        if (!frame_error.ok) {
+                            close_fd(impl_->local_peer_fd);
+                            impl_->local_session_ready = false;
+                            return frame_error;
+                        }
+                        break;
+                    }
+                    add_receive_stats(impl_->counters, frame->lane, frame->payload.size());
+                    if (frame->lane == Lane::Control) {
+                        auto message = SessionMessage {};
+                        if (!decode_session_message(frame->payload.data(), frame->payload.size(), message)
+                            || message.kind != SessionMessageKind::ClientHello) {
+                            out_events.push_back(TransportErrorEvent { .message = "invalid client session message" });
+                            close_fd(impl_->local_peer_fd);
+                            impl_->local_session_ready = false;
+                        } else {
+                            impl_->handle_local_client_hello(message, out_events);
+                        }
+                    } else if (frame->lane == Lane::Input) {
+                        auto message = SessionMessage {};
+                        if (!impl_->local_session_ready
+                            || !decode_session_message(frame->payload.data(), frame->payload.size(), message)
+                            || message.kind != SessionMessageKind::SnapshotAck) {
+                            out_events.push_back(TransportErrorEvent { .message = "invalid snapshot ACK message" });
+                            close_fd(impl_->local_peer_fd);
+                            impl_->local_session_ready = false;
+                        } else {
+                            out_events.push_back(SnapshotAckReceived {
+                                .peer = server_peer_id,
+                                .ack = message.snapshot_ack,
+                            });
+                        }
+                    } else if (impl_->local_session_ready) {
+                        out_events.push_back(ReceivedPacket {
+                            .peer = server_peer_id,
+                            .lane = frame->lane,
+                            .delivery = frame->delivery,
+                            .payload = std::move(frame->payload),
+                        });
+                    }
+                }
+            }
+            return ok();
+        }
+#endif
         if (impl_ == nullptr || impl_->host == nullptr) {
             return fail(TransportErrorCode::NotStarted, "transport server is not started");
         }
@@ -634,6 +1099,27 @@ namespace simnet
 
     TransportResult TransportServer::send(SendPacket const& packet)
     {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        if (impl_ != nullptr && impl_->active_backend == TransportBackend::LocalIpc) {
+            if (impl_->local_peer_fd < 0) {
+                return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
+            }
+            if (packet.peer != server_peer_id) {
+                return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
+            }
+            if (!impl_->local_session_ready) {
+                return fail(TransportErrorCode::PeerNotReady, "transport peer session is not ready");
+            }
+            return send_local_frame(
+                impl_->local_peer_fd,
+                impl_->counters,
+                impl_->settings.limits,
+                packet.lane,
+                packet.delivery,
+                packet.payload
+            );
+        }
+#endif
         if (impl_ == nullptr || impl_->host == nullptr) {
             return fail(TransportErrorCode::NotStarted, "transport server is not started");
         }
@@ -670,12 +1156,18 @@ namespace simnet
 
     struct TransportClient::Impl
     {
+        TransportBackend active_backend { TransportBackend::ENet };
         ENetHost* host {};
         ENetPeer* server {};
         TransportClientSettings settings {};
         TransportStats counters {};
         bool transport_connected {};
         bool session_ready {};
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        int local_fd { -1 };
+        bool local_connected_event_pending {};
+        std::vector<Byte> local_inbound;
+#endif
 
         [[nodiscard]] TransportResult send_session(
             SessionMessage const& message,
@@ -683,6 +1175,19 @@ namespace simnet
         )
         {
             auto bytes = encode_session_message(message);
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+            if (active_backend == TransportBackend::LocalIpc) {
+                return send_local_frame(
+                    local_fd,
+                    counters,
+                    { .max_payload_bytes = settings.limits.max_payload_bytes,
+                      .size_policy = SendSizePolicy::AllowBackendFragmentation },
+                    lane,
+                    Delivery::ReliableSequenced,
+                    bytes
+                );
+            }
+#endif
             return send_to_peer(
                 server,
                 counters,
@@ -717,8 +1222,59 @@ namespace simnet
 
     TransportResult TransportClient::connect(TransportClientSettings const& settings)
     {
-        if (impl_ == nullptr || impl_->host != nullptr) {
+        if (impl_ == nullptr || impl_->host != nullptr
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+            || impl_->local_fd >= 0
+#endif
+        ) {
             return fail(TransportErrorCode::AlreadyStarted, "transport client is already connected or connecting");
+        }
+        impl_->active_backend = settings.backend;
+        impl_->settings = settings;
+        impl_->counters = {};
+        impl_->transport_connected = false;
+        impl_->session_ready = false;
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        impl_->local_connected_event_pending = false;
+        impl_->local_inbound.clear();
+#endif
+        if (settings.backend == TransportBackend::LocalIpc) {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+            if (settings.local_ipc_path.empty()) {
+                return fail(TransportErrorCode::InvalidAddress, "local IPC path is required");
+            }
+            auto address = sockaddr_un {};
+            if (!make_unix_address(settings.local_ipc_path, address)) {
+                return fail(TransportErrorCode::InvalidAddress, "invalid local IPC path");
+            }
+            impl_->local_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+            if (impl_->local_fd < 0) {
+                return fail(TransportErrorCode::BackendError, "failed to create local IPC client socket", static_cast<std::uint32_t>(errno));
+            }
+            if (::connect(impl_->local_fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+                auto const error = errno;
+                close_fd(impl_->local_fd);
+                return fail(TransportErrorCode::ConnectionFailed, "failed to connect local IPC socket", static_cast<std::uint32_t>(error));
+            }
+            if (!set_nonblocking(impl_->local_fd)) {
+                close_fd(impl_->local_fd);
+                return fail(TransportErrorCode::BackendError, "failed to make local IPC client socket non-blocking", static_cast<std::uint32_t>(errno));
+            }
+            impl_->transport_connected = true;
+            impl_->local_connected_event_pending = true;
+            auto sent = impl_->send_session({
+                .kind = SessionMessageKind::ClientHello,
+                .identity = impl_->settings.identity,
+            });
+            if (!sent.ok) {
+                close_fd(impl_->local_fd);
+                impl_->transport_connected = false;
+                return sent;
+            }
+            return ok();
+#else
+            return fail(TransportErrorCode::UnsupportedBackend, "local IPC backend is not available in this build");
+#endif
         }
         if (settings.backend != TransportBackend::ENet) {
             return fail(TransportErrorCode::UnsupportedBackend, "requested transport client backend is not implemented");
@@ -747,8 +1303,6 @@ namespace simnet
             return fail(TransportErrorCode::ConnectionFailed, "failed to create ENet server peer");
         }
         set_peer_id(impl_->server, server_peer_id);
-        impl_->settings = settings;
-        impl_->counters = {};
         impl_->transport_connected = false;
         impl_->session_ready = false;
         return ok();
@@ -756,6 +1310,17 @@ namespace simnet
 
     void TransportClient::disconnect(DisconnectCode code) noexcept
     {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        if (impl_ != nullptr && impl_->active_backend == TransportBackend::LocalIpc) {
+            close_fd(impl_->local_fd);
+            impl_->transport_connected = false;
+            impl_->session_ready = false;
+            impl_->local_connected_event_pending = false;
+            impl_->local_inbound.clear();
+            static_cast<void>(code);
+            return;
+        }
+#endif
         if (impl_ != nullptr && impl_->server != nullptr) {
             auto* disconnecting_peer = impl_->server;
             enet_peer_disconnect(disconnecting_peer, static_cast<std::uint32_t>(code));
@@ -803,6 +1368,97 @@ namespace simnet
 
     TransportResult TransportClient::poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
     {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        if (impl_ != nullptr && impl_->active_backend == TransportBackend::LocalIpc) {
+            if (impl_->local_fd < 0) {
+                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+            }
+            if (impl_->local_connected_event_pending) {
+                impl_->local_connected_event_pending = false;
+                out_events.push_back(PeerConnected { .peer = server_peer_id });
+            }
+
+            auto poll_fd = pollfd { .fd = impl_->local_fd, .events = POLLIN, .revents = 0 };
+            auto const poll_result = ::poll(&poll_fd, 1, static_cast<int>(timeout_ms));
+            if (poll_result < 0) {
+                if (errno == EINTR) {
+                    return ok();
+                }
+                return fail(TransportErrorCode::BackendError, "local IPC client poll failed", static_cast<std::uint32_t>(errno));
+            }
+            if (poll_result == 0) {
+                return ok();
+            }
+
+            if ((poll_fd.revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+                auto disconnected = false;
+                auto read_result = read_available(impl_->local_fd, impl_->local_inbound, disconnected);
+                if (!read_result.ok) {
+                    close_fd(impl_->local_fd);
+                    impl_->transport_connected = false;
+                    impl_->session_ready = false;
+                    return read_result;
+                }
+                if (disconnected) {
+                    close_fd(impl_->local_fd);
+                    impl_->transport_connected = false;
+                    impl_->session_ready = false;
+                    ++impl_->counters.disconnects;
+                    out_events.push_back(PeerDisconnected {
+                        .peer = server_peer_id,
+                        .code = DisconnectCode::None,
+                        .native_reason = 0,
+                    });
+                    return ok();
+                }
+
+                for (;;) {
+                    auto frame_error = ok();
+                    auto frame = try_decode_local_frame(impl_->local_inbound, impl_->settings.limits, frame_error);
+                    if (!frame.has_value()) {
+                        if (!frame_error.ok) {
+                            close_fd(impl_->local_fd);
+                            impl_->transport_connected = false;
+                            impl_->session_ready = false;
+                            return frame_error;
+                        }
+                        break;
+                    }
+                    add_receive_stats(impl_->counters, frame->lane, frame->payload.size());
+                    if (frame->lane == Lane::Control) {
+                        auto message = SessionMessage {};
+                        if (!decode_session_message(frame->payload.data(), frame->payload.size(), message)) {
+                            out_events.push_back(TransportErrorEvent { .message = "invalid server session message" });
+                        } else if (message.kind == SessionMessageKind::ServerAccept) {
+                            if (!impl_->session_ready) {
+                                impl_->session_ready = true;
+                                out_events.push_back(PeerSessionReady { .peer = server_peer_id });
+                            }
+                        } else if (message.kind == SessionMessageKind::ServerReject) {
+                            out_events.push_back(TransportErrorEvent { .message = "server rejected transport session" });
+                            out_events.push_back(PeerDisconnected {
+                                .peer = server_peer_id,
+                                .code = message.reject_code,
+                                .native_reason = static_cast<std::uint32_t>(message.reject_code),
+                            });
+                            ++impl_->counters.disconnects;
+                            close_fd(impl_->local_fd);
+                            impl_->transport_connected = false;
+                            impl_->session_ready = false;
+                        }
+                    } else if (impl_->session_ready) {
+                        out_events.push_back(ReceivedPacket {
+                            .peer = server_peer_id,
+                            .lane = frame->lane,
+                            .delivery = frame->delivery,
+                            .payload = std::move(frame->payload),
+                        });
+                    }
+                }
+            }
+            return ok();
+        }
+#endif
         if (impl_ == nullptr || impl_->host == nullptr) {
             return fail(TransportErrorCode::NotStarted, "transport client is not connected");
         }
@@ -892,6 +1548,24 @@ namespace simnet
         std::span<Byte const> payload
     )
     {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        if (impl_ != nullptr && impl_->active_backend == TransportBackend::LocalIpc) {
+            if (impl_->local_fd < 0) {
+                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+            }
+            if (!impl_->session_ready) {
+                return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
+            }
+            return send_local_frame(
+                impl_->local_fd,
+                impl_->counters,
+                impl_->settings.limits,
+                lane,
+                delivery,
+                payload
+            );
+        }
+#endif
         if (impl_ == nullptr || impl_->host == nullptr || impl_->server == nullptr) {
             return fail(TransportErrorCode::NotStarted, "transport client is not connected");
         }
@@ -903,6 +1577,20 @@ namespace simnet
 
     TransportResult TransportClient::send_snapshot_ack(SnapshotAck const& ack)
     {
+#if defined(SIMNET_ENABLE_LOCAL_IPC)
+        if (impl_ != nullptr && impl_->active_backend == TransportBackend::LocalIpc) {
+            if (impl_->local_fd < 0) {
+                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+            }
+            if (!impl_->session_ready) {
+                return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
+            }
+            return impl_->send_session({
+                .kind = SessionMessageKind::SnapshotAck,
+                .snapshot_ack = ack,
+            }, Lane::Input);
+        }
+#endif
         if (impl_ == nullptr || impl_->host == nullptr || impl_->server == nullptr) {
             return fail(TransportErrorCode::NotStarted, "transport client is not connected");
         }

@@ -16,6 +16,7 @@ export namespace simnet
     {
         TransportBackend backend { TransportBackend::ENet };
         std::string bind_address {};
+        std::string local_ipc_path {};
         std::uint16_t port {};
         std::uint32_t max_peers { 32 };
         SessionIdentity expected_identity {};
