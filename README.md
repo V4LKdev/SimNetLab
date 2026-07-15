@@ -72,8 +72,14 @@ cmake --build --preset debug --target Server Client
 Additional validation executables can be built with:
 
 ```sh
-cmake --build --preset debug --target PipelineLab TransportSmoke
+cmake --build --preset debug --target PipelineLab TransportSmoke ServerSmoke
 ```
+
+`Server` is a long-running fixed-step runtime. Optional bounded-run arguments
+are `--max-ticks`, `--max-frames`, `--max-runtime-ms`,
+`--max-frame-delta-ms`, and `--max-steps-per-frame`. Limits default to zero
+(disabled). `ServerSmoke` temporarily preserves the legacy five-tick paired
+replication scenario while the runtime path gains equivalent process coverage.
 
 Build directories:
 
@@ -95,6 +101,7 @@ cmake --preset debug \
 Project Structure
 
 <b> simnet_core </b> - fundamental math, time, byte, and identifier types <br/>
+<b> simnet_runtime </b> - steady-clock frame planning, run limits, runtime counters, and stop state <br/>
 <b> simnet_config </b> - typed runtime configuration and compatibility fingerprints <br/>
 <b> simnet_snapshot </b> - canonical world snapshots and client snapshot patches <br/>
 <b> simnet_synthetic </b> - deterministic synthetic snapshot generation <br/>

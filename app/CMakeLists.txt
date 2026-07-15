@@ -1,5 +1,18 @@
-add_executable(Server server_main.cpp)
+add_executable(Server server_main.cpp server_runtime.cpp)
 target_link_libraries(Server
+    PRIVATE
+        simnet_config
+        simnet_game_server
+        simnet_pipeline
+        simnet_runtime
+        simnet_telemetry
+        simnet_transport
+)
+simnet_configure_target(Server)
+
+# Temporary legacy paired smoke runner. Remove after equivalent runtime process coverage exists.
+add_executable(ServerSmoke server_smoke_main.cpp)
+target_link_libraries(ServerSmoke
     PRIVATE
         simnet_config
         simnet_game_server
@@ -7,7 +20,7 @@ target_link_libraries(Server
         simnet_telemetry
         simnet_transport
 )
-simnet_configure_target(Server)
+simnet_configure_target(ServerSmoke)
 
 add_executable(PipelineLab pipeline_lab_main.cpp)
 target_link_libraries(PipelineLab
