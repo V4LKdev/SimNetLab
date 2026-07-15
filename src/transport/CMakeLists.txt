@@ -28,3 +28,7 @@ if (SIMNET_ENABLE_ENET)
 endif ()
 
 simnet_configure_target(simnet_transport)
+
+add_executable(TransportSmoke src/transport_smoke.cpp)
+target_link_libraries(TransportSmoke PRIVATE simnet_transport)
+simnet_configure_target(TransportSmoke)

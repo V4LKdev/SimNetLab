@@ -48,6 +48,9 @@ export namespace simnet
         std::string host { "127.0.0.1" };
         std::uint16_t port { 7777 };
         std::uint32_t max_clients { 8 };
+        std::uint32_t max_payload_bytes { 1200 };
+        std::string send_size_policy { "enforce_limit" };
+        std::string snapshot_delivery { "reliable_sequenced" };
     };
 
     /// Visualization settings.

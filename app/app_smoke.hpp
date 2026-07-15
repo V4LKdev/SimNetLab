@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdexcept>
+#include <string>
+
 namespace simnet::app
 {
     inline constexpr std::uint32_t application_protocol_version = 1;
@@ -32,6 +35,42 @@ namespace simnet::app
             .compatibility_fingerprint = fingerprint_network_compatibility(shared_config).value,
             .pipeline_decode_signature = pipeline_decode_signature(pipeline),
             .capabilities = 0,
+        };
+    }
+
+    [[nodiscard]] inline SendSizePolicy transport_send_size_policy(TransportConfig const& config)
+    {
+        if (config.send_size_policy == "enforce_limit") {
+            return SendSizePolicy::EnforceLimit;
+        }
+        if (config.send_size_policy == "allow_backend_fragmentation") {
+            return SendSizePolicy::AllowBackendFragmentation;
+        }
+        throw std::runtime_error("unsupported transport send size policy: " + config.send_size_policy);
+    }
+
+    [[nodiscard]] inline Delivery snapshot_delivery(TransportConfig const& config)
+    {
+        if (config.snapshot_delivery == "reliable_sequenced") {
+            return Delivery::ReliableSequenced;
+        }
+        if (config.snapshot_delivery == "unreliable_sequenced") {
+            return Delivery::UnreliableSequenced;
+        }
+        if (config.snapshot_delivery == "unreliable_unsequenced") {
+            return Delivery::UnreliableUnsequenced;
+        }
+        if (config.snapshot_delivery == "unreliable_fragmented") {
+            return Delivery::UnreliableFragmented;
+        }
+        throw std::runtime_error("unsupported snapshot delivery mode: " + config.snapshot_delivery);
+    }
+
+    [[nodiscard]] inline TransportLimits transport_limits(TransportConfig const& config)
+    {
+        return {
+            .max_payload_bytes = config.max_payload_bytes,
+            .size_policy = transport_send_size_policy(config),
         };
     }
 }

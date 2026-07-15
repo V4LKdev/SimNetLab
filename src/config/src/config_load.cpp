@@ -4,6 +4,7 @@ module;
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -118,6 +119,16 @@ namespace
         }
     }
 
+    void validate_one_of(char const* name, std::string_view value, std::initializer_list<std::string_view> allowed)
+    {
+        for (auto const option : allowed) {
+            if (value == option) {
+                return;
+            }
+        }
+        throw std::runtime_error(std::string { "invalid config field '" } + name + "': unsupported value");
+    }
+
     void apply_run(Json const& json, simnet::RunConfig& config)
     {
         read_optional(json, "seed", config.seed);
@@ -161,11 +172,28 @@ namespace
         read_optional(json, "host", config.host);
         read_optional(json, "port", config.port);
         read_optional(json, "max_clients", config.max_clients);
+        read_optional(json, "max_payload_bytes", config.max_payload_bytes);
+        read_optional(json, "send_size_policy", config.send_size_policy);
+        read_optional(json, "snapshot_delivery", config.snapshot_delivery);
 
         if (config.port == 0) {
             throw std::runtime_error("invalid config field 'transport.port': expected non-zero port");
         }
         validate_non_zero("transport.max_clients", config.max_clients);
+        validate_non_zero("transport.max_payload_bytes", config.max_payload_bytes);
+        validate_one_of(
+            "transport.send_size_policy",
+            config.send_size_policy,
+            { "enforce_limit", "allow_backend_fragmentation" });
+        validate_one_of(
+            "transport.snapshot_delivery",
+            config.snapshot_delivery,
+            {
+                "reliable_sequenced",
+                "unreliable_sequenced",
+                "unreliable_unsequenced",
+                "unreliable_fragmented",
+            });
     }
 
     void apply_render(Json const& json, simnet::RenderConfig& config)
@@ -299,6 +327,9 @@ namespace
         hash_string(hash, transport.host);
         hash_bytes(hash, transport.port);
         hash_bytes(hash, transport.max_clients);
+        hash_bytes(hash, transport.max_payload_bytes);
+        hash_string(hash, transport.send_size_policy);
+        hash_string(hash, transport.snapshot_delivery);
         hash_bytes(hash, telemetry.tracy_enabled);
         hash_bytes(hash, telemetry.console_log_enabled);
         hash_bytes(hash, telemetry.file_log_enabled);

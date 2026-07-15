@@ -71,6 +71,8 @@ Client disconnect performs a bounded graceful ENet disconnect before destroying 
 
 ACK messages use a fixed field-by-field wire format on the Input lane. Phase 4 sends them reliably for deterministic smoke verification. Future cumulative runtime ACK traffic may use unreliable sequenced delivery. Transport validates only the wire envelope. Apps own sequence-history and baseline semantics.
 
+The Server app now uses acknowledged `newest_applied_snapshot` values to promote retained snapshots as delta baselines. That baseline selection remains app replication state, not transport state.
+
 ## Threading
 
 One thread owns each `TransportServer` or `TransportClient`. All `start`/`connect`, `poll`, `send`, and `disconnect` calls must happen from that owner thread.
@@ -79,4 +81,8 @@ There is no background networking thread, no callbacks, and no hidden synchroniz
 
 ## Future Work
 
-Delta baseline selection from snapshot ACKs remains future work. IPC and shared-memory backends are also future work and must preserve the same byte/session contract.
+Kept smoke coverage lives in the `TransportSmoke` executable. It verifies local session readiness, identity rejection, and send-size enforcement without importing config, telemetry, pipeline, or game modules.
+
+Server and Client map their config to `TransportLimits` and snapshot delivery mode at the app boundary. Reliable sequenced snapshots remain the default deterministic smoke path; unreliable sequenced snapshots can be selected for experiments.
+
+IPC and shared-memory backends are future work and must preserve the same byte/session contract.
