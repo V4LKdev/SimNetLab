@@ -14,6 +14,7 @@ export namespace simnet
 {
     struct TransportServerSettings
     {
+        TransportBackend backend { TransportBackend::ENet };
         std::string bind_address {};
         std::uint16_t port {};
         std::uint32_t max_peers { 32 };

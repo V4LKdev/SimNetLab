@@ -187,6 +187,36 @@ namespace
         server.stop();
         return true;
     }
+
+    [[nodiscard]] bool unsupported_backend_smoke()
+    {
+        auto server = simnet::TransportServer {};
+        auto result = server.start({
+            .backend = simnet::TransportBackend::LocalIpc,
+            .bind_address = "127.0.0.1",
+            .port = smoke_port,
+            .max_peers = 1U,
+            .expected_identity = identity(),
+        });
+        if (result.ok || result.error.code != simnet::TransportErrorCode::UnsupportedBackend) {
+            std::cerr << "unsupported server backend was not rejected\n";
+            return false;
+        }
+
+        auto client = simnet::TransportClient {};
+        result = client.connect({
+            .backend = simnet::TransportBackend::LocalIpc,
+            .server_address = "127.0.0.1",
+            .server_port = smoke_port,
+            .identity = identity(),
+        });
+        if (result.ok || result.error.code != simnet::TransportErrorCode::UnsupportedBackend) {
+            std::cerr << "unsupported client backend was not rejected\n";
+            return false;
+        }
+
+        return true;
+    }
 }
 
 int main()
@@ -195,6 +225,9 @@ int main()
         return 1;
     }
     if (!mismatched_session_smoke()) {
+        return 1;
+    }
+    if (!unsupported_backend_smoke()) {
         return 1;
     }
 

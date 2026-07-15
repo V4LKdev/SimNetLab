@@ -169,6 +169,7 @@ namespace
 
     void apply_transport(Json const& json, simnet::TransportConfig& config)
     {
+        read_optional(json, "backend", config.backend);
         read_optional(json, "host", config.host);
         read_optional(json, "port", config.port);
         read_optional(json, "max_clients", config.max_clients);
@@ -176,6 +177,7 @@ namespace
         read_optional(json, "send_size_policy", config.send_size_policy);
         read_optional(json, "snapshot_delivery", config.snapshot_delivery);
 
+        validate_one_of("transport.backend", config.backend, { "enet", "local_ipc" });
         if (config.port == 0) {
             throw std::runtime_error("invalid config field 'transport.port': expected non-zero port");
         }
@@ -324,6 +326,7 @@ namespace
     void hash_transport_and_telemetry(std::uint64_t& hash, simnet::TransportConfig const& transport,
         simnet::TelemetryConfig const& telemetry) noexcept
     {
+        hash_string(hash, transport.backend);
         hash_string(hash, transport.host);
         hash_bytes(hash, transport.port);
         hash_bytes(hash, transport.max_clients);

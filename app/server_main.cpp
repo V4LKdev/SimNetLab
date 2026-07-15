@@ -391,6 +391,7 @@ int main()
 
         auto const network_fingerprint = simnet::fingerprint_network_compatibility(shared_config);
         auto const runtime_fingerprint = simnet::fingerprint_runtime_config(shared_config, server_config);
+        auto const transport_backend = simnet::app::transport_backend(server_config.transport);
 
         simnet::log(simnet::LogCategory::Config, simnet::LogLevel::Info,
             "server network fingerprint: " + std::to_string(network_fingerprint.value));
@@ -401,6 +402,7 @@ int main()
         auto const session_identity = simnet::app::make_session_identity(shared_config, pipeline);
         auto transport = simnet::TransportServer {};
         auto const transport_start = transport.start({
+            .backend = transport_backend,
             .bind_address = server_config.transport.host,
             .port = server_config.transport.port,
             .max_peers = server_config.transport.max_clients,

@@ -501,6 +501,9 @@ namespace simnet
         if (impl_ == nullptr || impl_->host != nullptr) {
             return fail(TransportErrorCode::AlreadyStarted, "transport server is already started");
         }
+        if (settings.backend != TransportBackend::ENet) {
+            return fail(TransportErrorCode::UnsupportedBackend, "requested transport server backend is not implemented");
+        }
         if (auto ready = require_enet(); !ready.ok) {
             return ready;
         }
@@ -716,6 +719,9 @@ namespace simnet
     {
         if (impl_ == nullptr || impl_->host != nullptr) {
             return fail(TransportErrorCode::AlreadyStarted, "transport client is already connected or connecting");
+        }
+        if (settings.backend != TransportBackend::ENet) {
+            return fail(TransportErrorCode::UnsupportedBackend, "requested transport client backend is not implemented");
         }
         if (auto ready = require_enet(); !ready.ok) {
             return ready;
