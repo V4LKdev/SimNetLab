@@ -29,6 +29,17 @@ namespace
         simnet::SnapshotAck value {};
     };
 
+    [[nodiscard]] std::string snapshot_kind_name(simnet::SnapshotKind kind)
+    {
+        switch (kind) {
+        case simnet::SnapshotKind::FullReplace:
+            return "FullReplace";
+        case simnet::SnapshotKind::Patch:
+            return "Patch";
+        }
+        return "Unknown";
+    }
+
     [[nodiscard]] bool record_received_snapshot(
         SnapshotAckTracker& tracker,
         simnet::SequenceId sequence
@@ -135,6 +146,7 @@ namespace
         auto decode_state = simnet::ClientReplicationState {};
         auto pipeline_scratch = simnet::PipelineScratch {};
         auto ack_tracker = SnapshotAckTracker {};
+        auto latest_applied_sequence = simnet::SequenceId {};
         auto events = std::vector<simnet::TransportEvent> {};
         auto const deadline = std::chrono::steady_clock::now() + handshake_timeout;
 
@@ -159,7 +171,10 @@ namespace
                         pipeline,
                         decode_state,
                         pipeline_scratch,
-                        { .bytes = packet->payload }
+                        {
+                            .bytes = packet->payload,
+                            .applied_baseline_sequence = latest_applied_sequence,
+                        }
                     );
                     if (!decoded.report.valid) {
                         simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Error,
@@ -178,6 +193,7 @@ namespace
                             "client snapshot apply failed: " + applied.error);
                         return false;
                     }
+                    latest_applied_sequence = decoded.report.sequence;
                     ack_tracker.value.newest_applied_snapshot = decoded.report.sequence;
                     auto const ack_sent = transport.send_snapshot_ack(ack_tracker.value);
                     if (!ack_sent.ok) {
@@ -189,8 +205,9 @@ namespace
                     simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
                         "client snapshot applied tick=" + std::to_string(applied.tick)
                             + " sequence=" + std::to_string(decoded.report.sequence)
+                            + " kind=" + snapshot_kind_name(decoded.report.snapshot_kind)
+                            + " baseline=" + std::to_string(decoded.report.baseline_sequence)
                             + " bytes=" + std::to_string(decoded.report.packet_bytes)
-                            + " kind=" + std::to_string(static_cast<std::uint8_t>(applied.kind))
                             + " upserts=" + std::to_string(applied.upsert_count)
                             + " deletes=" + std::to_string(applied.delete_count)
                             + " entities=" + std::to_string(applied.final_entities));
@@ -203,7 +220,8 @@ namespace
                     if (applied.tick == simnet::app::smoke_final_tick) {
                         auto const& clock = world.get<simnet::ClientReplicationClock>();
                         auto const& index = world.get<simnet::ClientReplicationIndex>();
-                        auto const final_state_valid = decoded.patch.kind == simnet::SnapshotKind::FullReplace
+                        auto const final_state_valid =
+                            latest_applied_sequence == simnet::app::smoke_final_sequence
                             && clock.latest_tick == simnet::app::smoke_final_tick
                             && index.size() == simnet::app::smoke_boid_count
                             && ack_tracker.value.newest_received_snapshot == simnet::app::smoke_final_sequence

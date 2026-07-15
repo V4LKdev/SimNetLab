@@ -33,12 +33,20 @@ namespace
         std::optional<simnet::PeerId> ready_peer {};
     };
 
+    struct RetainedSnapshot
+    {
+        simnet::SequenceId sequence {};
+        simnet::WorldSnapshot snapshot {};
+        bool valid {};
+    };
+
     struct OutboundPeerState
     {
         simnet::PeerId peer {};
         simnet::ClientReplicationState pipeline_state {};
-        simnet::SequenceId latest_emitted_sequence {};
         simnet::SnapshotAck latest_ack {};
+        RetainedSnapshot acknowledged_baseline {};
+        RetainedSnapshot last_emitted {};
     };
 
     enum class TransportServiceResult
@@ -115,6 +123,17 @@ namespace
         return "Unknown";
     }
 
+    [[nodiscard]] std::string snapshot_kind_name(simnet::SnapshotKind kind)
+    {
+        switch (kind) {
+        case simnet::SnapshotKind::FullReplace:
+            return "FullReplace";
+        case simnet::SnapshotKind::Patch:
+            return "Patch";
+        }
+        return "Unknown";
+    }
+
     void log_encode_report(simnet::EncodeOutput const& output)
     {
         auto const& report = output.report;
@@ -132,10 +151,13 @@ namespace
                 + " entities=" + std::to_string(report.input_entities)
                 + " result=packet"
                 + " sequence=" + std::to_string(report.sequence)
+                + " kind=" + snapshot_kind_name(report.snapshot_kind)
+                + " baseline=" + std::to_string(report.baseline_sequence)
                 + " bytes=" + std::to_string(report.packet_bytes)
                 + " selected=" + std::to_string(report.selected_entities)
                 + " upserts=" + std::to_string(report.upsert_count)
                 + " deletes=" + std::to_string(report.delete_count)
+                + " delta=" + (report.delta ? std::string { "true" } : std::string { "false" })
                 + " budget_exceeded=" + (report.budget_exceeded ? std::string { "true" } : std::string { "false" }));
     }
 
@@ -210,6 +232,32 @@ namespace
         };
     }
 
+    void promote_acknowledged_baseline_if_retained(OutboundPeerState& peer_state)
+    {
+        auto const applied_sequence = peer_state.latest_ack.newest_applied_snapshot;
+        if (!peer_state.last_emitted.valid || applied_sequence != peer_state.last_emitted.sequence) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+                "server snapshot ACK did not promote baseline applied="
+                    + std::to_string(applied_sequence)
+                    + " retained="
+                    + (peer_state.last_emitted.valid
+                            ? std::to_string(peer_state.last_emitted.sequence)
+                            : std::string { "none" })
+                    + " current_baseline="
+                    + (peer_state.acknowledged_baseline.valid
+                            ? std::to_string(peer_state.acknowledged_baseline.sequence)
+                            : std::string { "none" }));
+            return;
+        }
+
+        peer_state.acknowledged_baseline.sequence = peer_state.last_emitted.sequence;
+        peer_state.acknowledged_baseline.snapshot = peer_state.last_emitted.snapshot;
+        peer_state.acknowledged_baseline.valid = true;
+        simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
+            "server promoted acknowledged baseline sequence="
+                + std::to_string(peer_state.acknowledged_baseline.sequence));
+    }
+
     [[nodiscard]] TransportServiceResult service_transport(
         simnet::TransportServer& transport,
         OutboundPeerState& peer_state,
@@ -241,7 +289,9 @@ namespace
                 auto const valid = value->peer == peer_state.peer
                     && ack.newest_received_snapshot != 0
                     && ack.newest_applied_snapshot <= ack.newest_received_snapshot
-                    && ack.newest_received_snapshot <= peer_state.latest_emitted_sequence
+                    && peer_state.last_emitted.valid
+                    && ack.newest_received_snapshot <= peer_state.last_emitted.sequence
+                    && ack.newest_applied_snapshot <= peer_state.last_emitted.sequence
                     && ack.newest_received_snapshot >= peer_state.latest_ack.newest_received_snapshot
                     && ack.newest_applied_snapshot >= peer_state.latest_ack.newest_applied_snapshot
                     && history_does_not_regress
@@ -257,6 +307,7 @@ namespace
                         + " received=" + std::to_string(ack.newest_received_snapshot)
                         + " mask=" + std::to_string(ack.received_mask)
                         + " applied=" + std::to_string(ack.newest_applied_snapshot));
+                promote_acknowledged_baseline_if_retained(peer_state);
             } else if (auto const* value = std::get_if<simnet::TransportErrorEvent>(&event)) {
                 simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                     "server transport error: " + value->message);
@@ -275,7 +326,7 @@ namespace
         OutboundPeerState& peer_state
     )
     {
-        auto const final_sequence = peer_state.latest_emitted_sequence;
+        auto const final_sequence = peer_state.last_emitted.sequence;
         auto const deadline = std::chrono::steady_clock::now() + final_ack_timeout;
         while (std::chrono::steady_clock::now() < deadline) {
             if (peer_state.latest_ack.newest_received_snapshot == final_sequence
@@ -304,6 +355,25 @@ namespace
         simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
             "server final snapshot ACK timed out");
         return false;
+    }
+
+    [[nodiscard]] bool service_ack_window(
+        simnet::TransportServer& transport,
+        OutboundPeerState& peer_state,
+        simnet::SequenceId emitted_sequence
+    )
+    {
+        auto const deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(150);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (peer_state.latest_ack.newest_applied_snapshot >= emitted_sequence) {
+                return true;
+            }
+            auto const service = service_transport(transport, peer_state, 10);
+            if (service != TransportServiceResult::Ready) {
+                return false;
+            }
+        }
+        return true;
     }
 }
 
@@ -384,7 +454,15 @@ int main()
                 pipeline,
                 peer_state.has_value() ? peer_state->pipeline_state : candidate_pipeline_state,
                 pipeline_scratch,
-                { .snapshot = &snapshot }
+                {
+                    .snapshot = &snapshot,
+                    .baseline_snapshot = peer_state.has_value() && peer_state->acknowledged_baseline.valid
+                        ? &peer_state->acknowledged_baseline.snapshot
+                        : nullptr,
+                    .baseline_sequence = peer_state.has_value() && peer_state->acknowledged_baseline.valid
+                        ? peer_state->acknowledged_baseline.sequence
+                        : 0U,
+                }
             );
             log_encode_report(encode_output);
 
@@ -406,15 +484,25 @@ int main()
                 simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
                     "server snapshot sent tick=" + std::to_string(encode_output.report.tick)
                         + " sequence=" + std::to_string(encode_output.report.sequence)
+                        + " kind=" + snapshot_kind_name(encode_output.report.snapshot_kind)
+                        + " baseline=" + std::to_string(encode_output.report.baseline_sequence)
+                        + " delta=" + (encode_output.report.delta ? std::string { "true" } : std::string { "false" })
                         + " bytes=" + std::to_string(encode_output.report.packet_bytes));
-                peer_state->latest_emitted_sequence = encode_output.report.sequence;
+                peer_state->last_emitted.sequence = encode_output.report.sequence;
+                peer_state->last_emitted.snapshot = snapshot;
+                peer_state->last_emitted.valid = true;
+                if (!service_ack_window(transport, *peer_state, encode_output.report.sequence)) {
+                    transport.stop();
+                    simnet::shutdown_telemetry();
+                    return 1;
+                }
             }
             if (peer_state.has_value()) {
                 auto const service = service_transport(transport, *peer_state, 10);
                 if (service == TransportServiceResult::Failed
                     || (service == TransportServiceResult::Disconnected
                         && peer_state->latest_ack.newest_applied_snapshot
-                            != peer_state->latest_emitted_sequence)) {
+                            != peer_state->last_emitted.sequence)) {
                     transport.stop();
                     simnet::shutdown_telemetry();
                     return 1;
