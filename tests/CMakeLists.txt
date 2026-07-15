@@ -4,6 +4,7 @@ add_executable(SimNetTests
     core_time_tests.cpp
     pipeline_delta_tests.cpp
     replication_smoke_tests.cpp
+    runtime_tests.cpp
 )
 
 target_link_libraries(SimNetTests
@@ -12,6 +13,7 @@ target_link_libraries(SimNetTests
         simnet_game_client
         simnet_game_server
         simnet_pipeline
+        simnet_runtime
         simnet_snapshot
         simnet_transport
         Catch2::Catch2WithMain

@@ -45,6 +45,7 @@ include(SimNetTarget)
 include(CTest)
 
 add_subdirectory(src/core)
+add_subdirectory(src/runtime)
 add_subdirectory(src/config)
 add_subdirectory(src/snapshot)
 add_subdirectory(src/synthetic)
