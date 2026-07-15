@@ -1,0 +1,28 @@
+find_package(Catch2 CONFIG REQUIRED)
+
+add_executable(SimNetTests
+    core_time_tests.cpp
+    pipeline_delta_tests.cpp
+    replication_smoke_tests.cpp
+)
+
+target_link_libraries(SimNetTests
+    PRIVATE
+        simnet_core
+        simnet_game_client
+        simnet_game_server
+        simnet_pipeline
+        simnet_snapshot
+        simnet_transport
+        Catch2::Catch2WithMain
+)
+
+simnet_configure_target(SimNetTests)
+
+include(Catch)
+catch_discover_tests(SimNetTests
+    TEST_PREFIX "simnet."
+    PROPERTIES
+        LABELS "safety-net"
+        TIMEOUT 10
+)

@@ -39,3 +39,11 @@ if (SIMNET_ENABLE_LOCAL_IPC AND UNIX AND NOT APPLE)
     target_compile_definitions(TransportSmoke PRIVATE SIMNET_ENABLE_LOCAL_IPC=1)
 endif ()
 simnet_configure_target(TransportSmoke)
+
+if (BUILD_TESTING)
+    add_test(NAME transport_smoke COMMAND TransportSmoke)
+    set_tests_properties(transport_smoke PROPERTIES
+        LABELS "transport;safety-net"
+        TIMEOUT 15
+    )
+endif ()
