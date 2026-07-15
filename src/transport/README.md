@@ -96,7 +96,7 @@ There is no background networking thread, no callbacks, and no hidden synchroniz
 
 ## Future Work
 
-Kept smoke coverage lives in the `TransportSmoke` executable. It verifies local session readiness, identity rejection, send-size enforcement, unavailable-backend rejection, and LocalIpc behavior when compiled in, without importing config, telemetry, pipeline, or game modules.
+Transport integration coverage lives under `tests/`. It verifies local session readiness, identity rejection, send-size enforcement, unavailable-backend rejection, and LocalIpc behavior when compiled in, without importing config, telemetry, pipeline, or game modules.
 
 Server and Client map their config to `TransportLimits` and snapshot delivery mode at the app boundary. Reliable sequenced snapshots remain the default deterministic smoke path; unreliable sequenced snapshots can be selected for experiments.
 

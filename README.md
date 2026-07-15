@@ -72,7 +72,7 @@ cmake --build --preset debug --target Server Client
 Additional validation executables can be built with:
 
 ```sh
-cmake --build --preset debug --target PipelineLab TransportSmoke ServerSmoke
+cmake --build --preset debug --target PipelineLab ServerSmoke
 ```
 
 `Server` is a long-running fixed-step runtime. Optional bounded-run arguments
@@ -80,6 +80,8 @@ are `--max-ticks`, `--max-frames`, `--max-runtime-ms`,
 `--max-frame-delta-ms`, and `--max-steps-per-frame`. Limits default to zero
 (disabled). `ServerSmoke` temporarily preserves the legacy five-tick paired
 replication scenario while the runtime path gains equivalent process coverage.
+Transport integration coverage is discovered through CTest with the rest of
+the test suite.
 
 Build directories:
 

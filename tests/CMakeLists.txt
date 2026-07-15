@@ -5,6 +5,7 @@ add_executable(SimNetTests
     pipeline_delta_tests.cpp
     replication_smoke_tests.cpp
     runtime_tests.cpp
+    transport_tests.cpp
 )
 
 target_link_libraries(SimNetTests
@@ -20,6 +21,10 @@ target_link_libraries(SimNetTests
 )
 
 simnet_configure_target(SimNetTests)
+
+if (SIMNET_ENABLE_LOCAL_IPC AND UNIX AND NOT APPLE)
+    target_compile_definitions(SimNetTests PRIVATE SIMNET_ENABLE_LOCAL_IPC=1)
+endif ()
 
 include(Catch)
 catch_discover_tests(SimNetTests
