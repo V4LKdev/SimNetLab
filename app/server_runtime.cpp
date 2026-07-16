@@ -364,16 +364,21 @@ namespace
             return true;
         }
 
+        auto const delta_enabled = simnet::has_all_flags(
+            pipeline.techniques,
+            simnet::PipelineTechniqueFlags::Delta
+        );
+        auto const use_baseline = delta_enabled && peer->acknowledged_baseline.has_value();
         auto const encoded = simnet::encode_snapshot(
             pipeline,
             peer->pipeline_state,
             scratch,
             {
                 .snapshot = &snapshot,
-                .baseline_snapshot = peer->acknowledged_baseline.has_value()
+                .baseline_snapshot = use_baseline
                     ? &peer->acknowledged_baseline->snapshot
                     : nullptr,
-                .baseline_sequence = peer->acknowledged_baseline.has_value()
+                .baseline_sequence = use_baseline
                     ? peer->acknowledged_baseline->sequence
                     : 0U,
             }

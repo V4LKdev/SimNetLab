@@ -22,8 +22,21 @@ target_link_libraries(ServerSmoke
 )
 simnet_configure_target(ServerSmoke)
 
-add_executable(Client client_main.cpp)
+add_executable(Client client_main.cpp client_runtime.cpp)
 target_link_libraries(Client
+    PRIVATE
+        simnet_config
+        simnet_game_client
+        simnet_pipeline
+        simnet_runtime
+        simnet_telemetry
+        simnet_transport
+)
+simnet_configure_target(Client)
+
+# Temporary legacy paired smoke runner. Remove after equivalent runtime process coverage exists.
+add_executable(ClientSmoke client_smoke_main.cpp)
+target_link_libraries(ClientSmoke
     PRIVATE
         simnet_config
         simnet_game_client
@@ -31,4 +44,4 @@ target_link_libraries(Client
         simnet_telemetry
         simnet_transport
 )
-simnet_configure_target(Client)
+simnet_configure_target(ClientSmoke)

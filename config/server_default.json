@@ -7,7 +7,7 @@
     "port": 7777,
     "max_clients": 8,
     "max_payload_bytes": 1200,
-    "send_size_policy": "enforce_limit",
+    "send_size_policy": "allow_backend_fragmentation",
     "snapshot_delivery": "reliable_sequenced"
   },
   "telemetry": {
