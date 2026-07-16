@@ -72,7 +72,7 @@ cmake --build --preset debug --target Server Client
 Additional validation executables can be built with:
 
 ```sh
-cmake --build --preset debug --target PipelineLab ServerSmoke
+cmake --build --preset debug --target ServerSmoke
 ```
 
 `Server` is a long-running fixed-step runtime. Optional bounded-run arguments
