@@ -368,6 +368,9 @@ namespace simnet::app
             auto const options = parse_options(argc, argv);
             auto const shared = load_shared_config(default_shared_config_path());
             auto const local = load_server_config(default_server_config_path());
+            if (local.transport.max_clients > 1U) {
+                throw std::runtime_error("server currently supports one client");
+            }
             auto telemetry = TelemetryLifetime { local.telemetry };
             auto signals = SignalHandlers {};
             auto const pipeline = make_snapshot_pipeline(shared, local.transport);

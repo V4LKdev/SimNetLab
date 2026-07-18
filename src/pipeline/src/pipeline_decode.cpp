@@ -69,7 +69,7 @@ namespace simnet
         PipelineScratch& scratch,
         DecodeInput const& input)
     {
-        pipeline_validate::require_raw_snapshot(pipeline);
+        pipeline_validate::require_supported_pipeline_definition(pipeline);
         pipeline_validate::require_quantization_settings(pipeline);
         static_cast<void>(scratch);   // reserved for future use
 

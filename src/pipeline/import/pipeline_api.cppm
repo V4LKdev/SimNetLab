@@ -10,8 +10,11 @@ import :messages;
 
 export namespace simnet
 {
-    /// Builds a default raw snapshot pipeline definition.
+    /// Builds a default snapshot pipeline definition.
     [[nodiscard]] PipelineDefinition make_snapshot_pipeline(PacketBudget budget = {});
+
+    /// Validates a supported pipeline definition and its settings.
+    void validate_pipeline_definition(PipelineDefinition const& pipeline);
 
     /// Computes the canonical decode-representation signature for the given pipeline.
     [[nodiscard]] std::uint64_t pipeline_decode_signature(

@@ -129,6 +129,15 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
     CHECK(decoded.patch.deletes == std::vector<simnet::EntityNetId> { 3 });
 }
 
+TEST_CASE("pipeline validation rejects unsupported technique combinations", "[pipeline]")
+{
+    auto pipeline = simnet::make_snapshot_pipeline();
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Incremental;
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
+
+    REQUIRE_THROWS(simnet::validate_pipeline_definition(pipeline));
+}
+
 TEST_CASE("incremental pipeline advances cursor only on scheduled emissions", "[pipeline][incremental]")
 {
     auto pipeline = simnet::make_snapshot_pipeline();

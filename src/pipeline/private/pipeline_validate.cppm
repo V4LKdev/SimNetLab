@@ -16,7 +16,7 @@ import simnet.snapshot;
 namespace simnet::pipeline_validate
 {
     /// Ensures the pipeline definition uses a supported technique combination.
-    void require_raw_snapshot(PipelineDefinition const& pipeline)
+    void require_supported_pipeline_definition(PipelineDefinition const& pipeline)
     {
         auto constexpr supported_techniques = static_cast<std::uint32_t>(
             PipelineTechniqueFlags::SendInterval
@@ -29,16 +29,16 @@ namespace simnet::pipeline_validate
         auto const requested = static_cast<std::uint32_t>(pipeline.techniques);
         auto const unsupported = requested & ~supported_techniques;
         if (unsupported != 0U) {
-            throw std::runtime_error("raw snapshot does not support requested techniques");
+            throw std::runtime_error("pipeline does not support requested techniques");
         }
 
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental)
             && has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {
-            throw std::runtime_error("raw snapshot quantization does not support incremental packets yet");
+            throw std::runtime_error("pipeline does not support combining incremental and quantization");
         }
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental)
             && has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta)) {
-            throw std::runtime_error("raw snapshot does not support combining incremental and delta selection");
+            throw std::runtime_error("pipeline does not support combining incremental and delta selection");
         }
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading)
             && !has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {

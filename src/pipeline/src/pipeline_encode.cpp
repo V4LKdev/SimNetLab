@@ -84,6 +84,14 @@ namespace simnet
         return pipeline_signature::make_pipeline_decode_signature(definition);
     }
 
+    void validate_pipeline_definition(PipelineDefinition const& pipeline)
+    {
+        pipeline_validate::require_supported_pipeline_definition(pipeline);
+        pipeline_validate::require_send_interval_settings(pipeline);
+        pipeline_validate::require_incremental_settings(pipeline);
+        pipeline_validate::require_quantization_settings(pipeline);
+    }
+
     EncodeOutput encode_snapshot(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
@@ -92,10 +100,7 @@ namespace simnet
     {
         // --- Validation ---
 
-        pipeline_validate::require_raw_snapshot(pipeline);
-        pipeline_validate::require_send_interval_settings(pipeline);
-        pipeline_validate::require_incremental_settings(pipeline);
-        pipeline_validate::require_quantization_settings(pipeline);
+        validate_pipeline_definition(pipeline);
         pipeline_validate::require_snapshot(input.snapshot, "encode input snapshot");
 
         bool const delta_enabled = pipeline_validate::is_delta(pipeline);

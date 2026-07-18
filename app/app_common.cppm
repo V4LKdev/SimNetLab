@@ -169,6 +169,19 @@ namespace simnet::app
         TransportConfig const& transport
     )
     {
+        if (shared.pipeline.enable_aoi) {
+            throw std::runtime_error("area of interest pipeline selection is not supported");
+        }
+        if (shared.pipeline.enable_compression) {
+            throw std::runtime_error("compression pipeline selection is not supported");
+        }
+        if (shared.pipeline.position_bits != 16U) {
+            throw std::runtime_error("pipeline position_bits must be 16 until variable-width encoding is implemented");
+        }
+        if (shared.pipeline.heading_bits != 16U) {
+            throw std::runtime_error("pipeline heading_bits must be 16 until variable-width encoding is implemented");
+        }
+
         auto pipeline = simnet::make_snapshot_pipeline({
             .max_packet_bytes = transport.max_payload_bytes,
         });
@@ -182,6 +195,7 @@ namespace simnet::app
         if (shared.pipeline.enable_delta) {
             pipeline.techniques |= PipelineTechniqueFlags::Delta;
         }
+        validate_pipeline_definition(pipeline);
         return pipeline;
     }
 
