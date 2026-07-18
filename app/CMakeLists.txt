@@ -1,4 +1,5 @@
 add_executable(Server server_main.cpp server_runtime.cpp)
+target_sources(Server PRIVATE FILE_SET CXX_MODULES FILES app_common.cppm)
 target_link_libraries(Server
     PRIVATE
         simnet_config
@@ -11,6 +12,7 @@ target_link_libraries(Server
 simnet_configure_target(Server)
 
 add_executable(Client client_main.cpp client_runtime.cpp)
+target_sources(Client PRIVATE FILE_SET CXX_MODULES FILES app_common.cppm)
 target_link_libraries(Client
     PRIVATE
         simnet_config

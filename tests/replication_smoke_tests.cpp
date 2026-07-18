@@ -72,7 +72,7 @@ namespace
 
 TEST_CASE("five-tick replication smoke contract remains intact", "[replication][smoke]")
 {
-    auto pipeline = simnet::make_raw_snapshot_pipeline();
+    auto pipeline = simnet::make_snapshot_pipeline();
     pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
@@ -163,7 +163,7 @@ TEST_CASE("five-tick replication smoke contract remains intact", "[replication][
 
 TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replication]")
 {
-    auto pipeline = simnet::make_raw_snapshot_pipeline();
+    auto pipeline = simnet::make_snapshot_pipeline();
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
     auto encode_state = simnet::ClientReplicationState {};
     auto decode_state = simnet::ClientReplicationState {};

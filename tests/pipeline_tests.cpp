@@ -44,7 +44,7 @@ namespace
 
 TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][delta]")
 {
-    auto pipeline = simnet::make_raw_snapshot_pipeline();
+    auto pipeline = simnet::make_snapshot_pipeline();
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
 
     auto const baseline = make_snapshot(0, {
@@ -131,7 +131,7 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
 
 TEST_CASE("incremental pipeline advances cursor only on scheduled emissions", "[pipeline][incremental]")
 {
-    auto pipeline = simnet::make_raw_snapshot_pipeline();
+    auto pipeline = simnet::make_snapshot_pipeline();
     pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Incremental;
     pipeline.send_interval.interval_ticks = 2;
@@ -193,7 +193,7 @@ TEST_CASE("incremental pipeline advances cursor only on scheduled emissions", "[
 
 TEST_CASE("quantized octahedral bit-packed snapshots round-trip", "[pipeline][quantized][bitpacked]")
 {
-    auto pipeline = simnet::make_raw_snapshot_pipeline();
+    auto pipeline = simnet::make_snapshot_pipeline();
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::BitPacking;

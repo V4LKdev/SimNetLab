@@ -1,13 +1,10 @@
 #include "client_runtime.hpp"
 
-#include <charconv>
 #include <chrono>
-#include <csignal>
 #include <cstdint>
 #include <exception>
 #include <flecs.h>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -17,6 +14,7 @@
 #include <simnet/telemetry_trace.hpp>
 
 import simnet.config;
+import simnet.app_common;
 import simnet.core;
 import simnet.game_client;
 import simnet.pipeline;
@@ -27,47 +25,6 @@ import simnet.transport;
 
 namespace
 {
-    constexpr std::uint32_t application_protocol_version = 1;
-    volatile std::sig_atomic_t signal_stop_requested = 0;
-
-    extern "C" void request_signal_stop(int)
-    {
-        signal_stop_requested = 1;
-    }
-
-    struct SignalHandlers
-    {
-        SignalHandlers()
-            : interrupt(std::signal(SIGINT, request_signal_stop)),
-              terminate(std::signal(SIGTERM, request_signal_stop))
-        {
-        }
-
-        ~SignalHandlers()
-        {
-            std::signal(SIGINT, interrupt);
-            std::signal(SIGTERM, terminate);
-        }
-
-        using Handler = void (*)(int);
-        Handler interrupt;
-        Handler terminate;
-    };
-
-    struct TelemetryLifetime
-    {
-        explicit TelemetryLifetime(simnet::TelemetryConfig const& config)
-        {
-            simnet::initialize_telemetry(config);
-        }
-
-        ~TelemetryLifetime()
-        {
-            simnet::flush_telemetry();
-            simnet::shutdown_telemetry();
-        }
-    };
-
     struct ClientOptions
     {
         std::uint64_t max_frames {};
@@ -80,107 +37,28 @@ namespace
         simnet::SnapshotAck value {};
     };
 
-    template<typename Value>
-    [[nodiscard]] Value parse_unsigned(std::string_view text, std::string_view option)
-    {
-        auto value = Value {};
-        auto const result = std::from_chars(text.data(), text.data() + text.size(), value);
-        if (result.ec != std::errc {} || result.ptr != text.data() + text.size()) {
-            throw std::runtime_error("invalid value for " + std::string { option });
-        }
-        return value;
-    }
-
-    [[nodiscard]] std::string_view next_value(
-        int& index,
-        int argc,
-        char** argv,
-        std::string_view option
-    )
-    {
-        if (++index >= argc) {
-            throw std::runtime_error("missing value for " + std::string { option });
-        }
-        return argv[index];
-    }
-
-    [[nodiscard]] simnet::NS milliseconds_option(
-        int& index,
-        int argc,
-        char** argv,
-        std::string_view option
-    )
-    {
-        auto const value = parse_unsigned<std::uint64_t>(next_value(index, argc, argv, option), option);
-        if (value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
-            throw std::runtime_error("value out of range for " + std::string { option });
-        }
-        return std::chrono::milliseconds { static_cast<std::int64_t>(value) };
-    }
-
     [[nodiscard]] ClientOptions parse_options(int argc, char** argv)
     {
         auto options = ClientOptions {};
         for (auto index = 1; index < argc; ++index) {
             auto const option = std::string_view { argv[index] };
             if (option == "--max-frames") {
-                options.max_frames =
-                    parse_unsigned<std::uint64_t>(next_value(index, argc, argv, option), option);
+                options.max_frames = simnet::app::parse_unsigned<std::uint64_t>(
+                    simnet::app::next_option_value(index, argc, argv, option),
+                    option
+                );
             } else if (option == "--max-ticks") {
-                options.max_ticks =
-                    parse_unsigned<simnet::Tick>(next_value(index, argc, argv, option), option);
+                options.max_ticks = simnet::app::parse_unsigned<simnet::Tick>(
+                    simnet::app::next_option_value(index, argc, argv, option),
+                    option
+                );
             } else if (option == "--max-runtime-ms") {
-                options.max_runtime = milliseconds_option(index, argc, argv, option);
+                options.max_runtime = simnet::app::milliseconds_option(index, argc, argv, option);
             } else {
                 throw std::runtime_error("unknown client option: " + std::string { option });
             }
         }
         return options;
-    }
-
-    [[nodiscard]] simnet::SendSizePolicy send_size_policy(simnet::TransportConfig const& config)
-    {
-        if (config.send_size_policy == "enforce_limit") {
-            return simnet::SendSizePolicy::EnforceLimit;
-        }
-        if (config.send_size_policy == "allow_backend_fragmentation") {
-            return simnet::SendSizePolicy::AllowBackendFragmentation;
-        }
-        throw std::runtime_error("unsupported send size policy: " + config.send_size_policy);
-    }
-
-    [[nodiscard]] simnet::PipelineDefinition make_pipeline(
-        simnet::SharedConfig const& shared,
-        simnet::TransportConfig const& transport
-    )
-    {
-        auto pipeline = simnet::make_raw_snapshot_pipeline({
-            .max_packet_bytes = transport.max_payload_bytes,
-        });
-        if (shared.pipeline.enable_incremental) {
-            pipeline.techniques |= simnet::PipelineTechniqueFlags::Incremental;
-        }
-        if (shared.pipeline.enable_quantization) {
-            pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
-            pipeline.quantization.position_bounds = simnet::make_centered_bounds(shared.simulation.world_half);
-        }
-        if (shared.pipeline.enable_delta) {
-            pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
-        }
-        return pipeline;
-    }
-
-    [[nodiscard]] simnet::SessionIdentity session_identity(
-        simnet::SharedConfig const& shared,
-        simnet::PipelineDefinition const& pipeline
-    )
-    {
-        return {
-            .application_protocol_version = application_protocol_version,
-            .compatibility_fingerprint = simnet::fingerprint_network_compatibility(shared).value,
-            .pipeline_decode_signature = simnet::pipeline_decode_signature(pipeline),
-            .capabilities = 0,
-        };
     }
 
     [[nodiscard]] bool record_received_snapshot(
@@ -273,22 +151,6 @@ namespace
         return true;
     }
 
-    [[nodiscard]] std::string_view shutdown_reason_name(simnet::ShutdownReason reason)
-    {
-        using enum simnet::ShutdownReason;
-        switch (reason) {
-        case None: return "none";
-        case Requested: return "requested";
-        case Signal: return "signal";
-        case FrameLimit: return "frame_limit";
-        case TickLimit: return "tick_limit";
-        case RuntimeLimit: return "runtime_limit";
-        case WindowClosed: return "window_closed";
-        case TransportDisconnected: return "transport_disconnected";
-        case FatalError: return "fatal_error";
-        }
-        return "unknown";
-    }
 }
 
 namespace simnet::app
@@ -301,16 +163,16 @@ namespace simnet::app
             auto const local = load_client_config(default_client_config_path());
             auto telemetry = TelemetryLifetime { local.telemetry };
             auto signals = SignalHandlers {};
-            auto const pipeline = make_pipeline(shared, local.transport);
+            auto const pipeline = make_snapshot_pipeline(shared, local.transport);
 
             auto transport = TransportClient {};
             auto const connected = transport.connect({
                 .server_address = local.transport.host,
                 .server_port = local.transport.port,
-                .identity = session_identity(shared, pipeline),
+                .identity = make_session_identity(shared, pipeline),
                 .limits = {
                     .max_payload_bytes = local.transport.max_payload_bytes,
-                    .size_policy = send_size_policy(local.transport),
+                    .size_policy = transport_send_size_policy(local.transport),
                 },
             });
             if (!connected.ok) {
@@ -340,7 +202,7 @@ namespace simnet::app
 
             log(LogCategory::Simulation, LogLevel::Info, "client runtime started");
             while (!stop.requested()) {
-                if (signal_stop_requested != 0) {
+                if (signal_stop_requested()) {
                     static_cast<void>(stop.request(ShutdownReason::Signal));
                     break;
                 }

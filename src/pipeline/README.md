@@ -16,7 +16,7 @@
 - `EncodeReport`, `DecodeReport` - detailed per-call metrics for telemetry and debugging.
 
 ### simnet.pipeline:api
-- `make_raw_snapshot_pipeline` - factory returning a default `PipelineDefinition`.
+- `make_snapshot_pipeline` - factory returning a default `PipelineDefinition`.
 - `pipeline_decode_signature` - canonical hash for receiver-side compatibility checks.
 - `encode_snapshot` - converts a `WorldSnapshot` into an `EncodedPacket`, respecting technique flags.
 - `decode_packet` - converts raw bytes into a `ClientSnapshotPatch`, rejecting invalid or incompatible packets.

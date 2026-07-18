@@ -11,7 +11,7 @@ import :messages;
 export namespace simnet
 {
     /// Builds a default raw snapshot pipeline definition.
-    [[nodiscard]] PipelineDefinition make_raw_snapshot_pipeline(PacketBudget budget = {});
+    [[nodiscard]] PipelineDefinition make_snapshot_pipeline(PacketBudget budget = {});
 
     /// Computes the canonical decode-representation signature for the given pipeline.
     [[nodiscard]] std::uint64_t pipeline_decode_signature(

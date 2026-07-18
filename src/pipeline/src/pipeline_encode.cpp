@@ -71,7 +71,7 @@ namespace
 
 namespace simnet
 {
-    PipelineDefinition make_raw_snapshot_pipeline(PacketBudget budget)
+    PipelineDefinition make_snapshot_pipeline(PacketBudget budget)
     {
         return {
             .techniques = PipelineTechniqueFlags::None,

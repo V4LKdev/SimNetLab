@@ -28,7 +28,7 @@ export import :messages;
 
 /**
  * @par simnet.pipeline:api
- * Public encode/decode entry points: `make_raw_snapshot_pipeline`,
+ * Public encode/decode entry points: `make_snapshot_pipeline`,
  * `pipeline_decode_signature`, `encode_snapshot`, `decode_packet`.
  */
 export import :api;
