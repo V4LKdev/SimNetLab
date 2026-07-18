@@ -305,7 +305,7 @@ namespace simnet
 
         grid.occupied_cells.clear();
         grid.occupied_cells.reserve(scratch.entries.size());
-        grid.entries = scratch.entries;
+        grid.entries.swap(scratch.entries);
 
         auto max_cell_occupancy = std::uint32_t {};
         auto begin = std::uint32_t {};

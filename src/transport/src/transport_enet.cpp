@@ -193,6 +193,7 @@ public:
     settings_ = settings;
     counters_ = {};
     peers_.clear();
+    expired_peer_ids_.clear();
     next_peer_id_ = 1;
 
     if (auto ready = require_enet(); !ready.ok) {
@@ -201,6 +202,7 @@ public:
     if (settings.port == 0 || settings.max_peers == 0) {
       return fail(TransportErrorCode::InvalidAddress, "server transport port and max_peers must be non-zero");
     }
+    expired_peer_ids_.reserve(settings.max_peers);
 
     auto address = ENetAddress{.host = ENET_HOST_ANY, .port = settings.port};
     if (!settings.bind_address.empty() && !set_enet_address_host(address, settings.bind_address)) {
@@ -417,7 +419,7 @@ private:
 
   void expire_pending_sessions(std::vector<TransportEvent> &out_events) {
     auto const now = std::chrono::steady_clock::now();
-    auto expired = std::vector<PeerId>{};
+    expired_peer_ids_.clear();
     for (auto const &slot : peers_) {
       if (!slot.session_ready && now - slot.connected_at >= handshake_timeout) {
         enet_peer_disconnect_now(slot.peer, static_cast<std::uint32_t>(DisconnectCode::Timeout));
@@ -428,12 +430,14 @@ private:
             .code = DisconnectCode::Timeout,
             .native_reason = static_cast<std::uint32_t>(DisconnectCode::Timeout),
         });
-        expired.push_back(slot.id);
+        expired_peer_ids_.push_back(slot.id);
       }
     }
     peers_.erase(std::remove_if(
                      peers_.begin(), peers_.end(),
-                     [&expired](PeerSlot const &slot) { return std::ranges::find(expired, slot.id) != expired.end(); }),
+                     [this](PeerSlot const &slot) {
+                       return std::ranges::find(expired_peer_ids_, slot.id) != expired_peer_ids_.end();
+                     }),
                  peers_.end());
   }
 
@@ -441,6 +445,7 @@ private:
   TransportServerSettings settings_{};
   TransportStats counters_{};
   std::vector<PeerSlot> peers_;
+  std::vector<PeerId> expired_peer_ids_;
   PeerId next_peer_id_{1};
 };
 

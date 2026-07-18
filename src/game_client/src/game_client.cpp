@@ -173,8 +173,7 @@ namespace simnet
             return report;
         }
 
-        auto old_entities = index.entities;
-        for (auto const entity_id : old_entities) {
+        for (auto const entity_id : index.entities) {
             delete_entity_if_alive(world, entity_id);
         }
 

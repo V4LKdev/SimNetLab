@@ -144,7 +144,7 @@ namespace
             return false;
         }
 
-        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Debug,
             "client snapshot applied tick=" + std::to_string(applied.tick)
                 + " sequence=" + std::to_string(decoded.report.sequence)
                 + " entities=" + std::to_string(applied.final_entities));
