@@ -1,4 +1,4 @@
-/// @brief Public benchmarking helpers module.
+/// @brief Placeholder benchmarking module.
 export module benchmarking;
 
 import simnet.config;

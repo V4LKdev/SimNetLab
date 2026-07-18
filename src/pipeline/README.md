@@ -1,54 +1,31 @@
-@defgroup pipeline simnet.pipeline
-@brief Snapshot replication pipeline.
+# simnet_pipeline
 
-## Exported Types
+`simnet_pipeline` selects snapshot data, transforms it, encodes packet bytes, and decodes them into `ClientSnapshotPatch` values. It does not depend on transport, Flecs, configuration, telemetry, rendering, or client storage.
 
-### simnet.pipeline:types
-- `PipelineTechniqueFlags` - bitmask of optional techniques: `SendInterval`, `Incremental`, `Quantization`, `OctHeading`, `Delta`, `BitPacking`, and reserved flags (`Aoi`, `Lod`, `Compression`). Future flags: `DeadReckoning`, `DirtyFlags`, `LeaderFollower`.
-- `PipelineDefinition` - immutable configuration combining technique flags and per-technique settings.
-- `ClientReplicationState` - per-client mutable state (sequence numbers, incremental cursor).
-- `PipelineScratch` - reusable buffers for encode/decode, owned by the caller to avoid allocations on the hot path.
-- `EncodeResultKind` and `EncodeSkipReason` - encode result metadata.
+## Public API
 
-### simnet.pipeline:messages
-- `EncodedPacket` - fully encoded output with tick, sequence, and raw `Byte` vector.
-- `EncodeInput` / `EncodeOutput`, `DecodeInput` / `DecodeOutput` - request/response envelopes.
-- `EncodeReport`, `DecodeReport` - detailed per-call metrics for telemetry and debugging.
+- `PipelineDefinition` describes the enabled techniques and their settings.
+- `ClientReplicationState` holds per-client sequence and incremental cursor state.
+- `PipelineScratch` owns reusable encode and decode buffers.
+- `make_snapshot_pipeline` creates a default definition.
+- `validate_pipeline_definition` rejects unsupported technique combinations and invalid settings.
+- `encode_snapshot` produces a packet or a skipped result.
+- `decode_packet` validates bytes and returns a patch or an error report.
+- `pipeline_decode_signature` identifies the receiver-side representation.
 
-### simnet.pipeline:api
-- `make_snapshot_pipeline` - factory returning a default `PipelineDefinition`.
-- `pipeline_decode_signature` - canonical hash for receiver-side compatibility checks.
-- `encode_snapshot` - converts a `WorldSnapshot` into an `EncodedPacket`, respecting technique flags.
-- `decode_packet` - converts raw bytes into a `ClientSnapshotPatch`, rejecting invalid or incompatible packets.
+Each concurrent caller needs its own `ClientReplicationState` and `PipelineScratch`.
 
-## Technique Reference
+## Supported techniques
 
-### Send Interval
-When enabled, encoding only emits packets on ticks matching `(tick + phase) % interval == 0`. Skipped ticks return `EncodeResultKind::Skipped` with reason `SendInterval` and do not consume sequence numbers.
+`SendInterval` skips selected ticks without consuming a sequence number. `Incremental` emits round-robin upsert-only patches. `Quantization` encodes positions within configured bounds. `OctHeading` requires quantization and encodes a heading as two octahedral components. `Delta` emits a baseline-relative patch when the caller supplies a retained acknowledged baseline. Without one, encoding emits `FullReplace`. `Delta` cannot be combined with `Incremental`.
 
-### Incremental
-Emits upsert-only `Patch` packets using a round-robin cursor over the entity list. Missing entities are treated as unchanged. Delete operations are not yet supported. Removed entities require a future `FullReplace` resync.
+`BitPacking` requires quantization and octahedral headings. The current record layout totals 120 bits, which is also 15 bytes in the byte-aligned representation. It is retained for technique evaluation even though it currently does not reduce record size.
 
-### Quantization
-Stores positions as three 16-bit unsigned values within configurable `Aabb3f` bounds (`QuantizationSettings`). Headings are stored as three 16-bit signed normalized components.
+`Aoi`, `Lod`, and `Compression` are retained public vocabulary for planned work. They are not supported by the current pipeline validator.
 
-### Oct Heading
-Stores headings as two octahedral 16-bit components, reducing per-entity heading size from 12 bytes (or 6 bytes quantized) to 4 bytes. **Requires `Quantization`.** Works with both byte-aligned records and the `BitPacking` technique.
+## Contracts
 
-### Delta
-Emits `Patch` packets containing only entities that changed relative to a baseline snapshot. Requires a baseline snapshot and non-zero baseline sequence from the caller. Falls back to `FullReplace` when no baseline is provided. Decode rejects delta packets whose baseline sequence differs from the receiver's last applied sequence. **Incompatible with `Incremental`.** Delta works with quantization, oct heading, and `BitPacking`.
-
-### Bit Packing
-A technique flag (`PipelineTechniqueFlags::BitPacking`) that stores records in a continuous bit stream, currently at 15 bytes per entity. In the current implementation it **requires both `Quantization` and `OctHeading`**.
-
-### Reserved Flags
-`Aoi`, `Lod`, and `Compression` are defined in `PipelineTechniqueFlags` but not yet implemented. Their settings structs will be added to `PipelineDefinition` once the corresponding selection or post-processing passes are written.
-
-## Important Notes
-
-- Sequence `0` is reserved. `ClientReplicationState::next_sequence` starts at `1`. Encode throws if sequence would wrap to `0`.
-- `PacketBudget::max_packet_bytes` is a soft target. Oversized packets still emit and only set `budget_exceeded = true` in the report.
-- `PipelineScratch` must be reused across calls to avoid repeated allocations. Its internal vectors are cleared and refilled by encode/decode.
-- All public encode and decode functions are thread-safe when each thread supplies its own `ClientReplicationState` and `PipelineScratch`.
-- The private wire header contains a magic value (`SNPL`), protocol/schema versions, and a decode signature. Decode rejects packets with mismatched magic, versions, signature, or out-of-order/stale sequences.
-- The module owns the packet encoding contracts and reports, but not transport, ECS, rendering, or client-side storage.
+- Sequence zero is reserved. Encoding fails if allocation would wrap to zero.
+- Packet budgets are soft reporting targets. Transport owns actual send limits.
+- `PipelineScratch` should be reused across calls to avoid recurring allocations.
+- The private wire header carries a magic value, protocol and schema versions, and a decode signature. Decode rejects mismatches and stale sequences.

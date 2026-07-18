@@ -1,39 +1,36 @@
 # SimNetLab
 
-SimNetLab is a work-in-progress C++23 research project for evaluating network replication techniques in a deterministic,
-server-authoritative ECS simulation.
+SimNetLab is a C++23 bachelor research project for evaluating snapshot replication techniques in a server-authoritative ECS simulation.
 
-The project uses a Flecs-based boid simulation as its test environment and separates simulation, snapshot generation,
-replication pipelines, transport, telemetry, and rendering into independent modules.
+The finished foundation separates core vocabulary, fixed-step runtime planning, configuration, snapshots, pipeline encoding, ENet transport, telemetry, and Flecs game contracts. Server and Client are the composition boundary.
 
-## Current Features
+## Current capability
 
-- Server-authoritative Flecs simulation
-- Server and client applications
-- ENet transport
-- Connection handshake and snapshot acknowledgements
-- Full and partial snapshot replication
-- Send-interval control
-- Incremental entity selection
-- Position quantization
-- Octahedral heading encoding
-- Bit-packed record encoding
-- Acknowledged-snapshot delta baselines
-- Pipeline validation and wire-format signatures
-- Synthetic snapshot generation
-- Logging, metrics, and optional Tracy profiling
-- Optional Raylib visualization
+- ENet-only transport with session handshake, bounded payload policy, and SnapshotAck messages
+- Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
+- One authoritative server peer and one client peer
+- Full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
+- Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
+- 1,000-entity Server to Client replication in the bounded runtime path
 
-Area-of-interest filtering, LOD, compression, and automated benchmarking are planned or currently under development.
+The Server currently advances the authoritative boid state but does not yet implement the intended boid behavior model.
 
-## Tested Requirements
+## Planned work
+
+Area of interest, LOD, compression, visualization, benchmarking, spatial integration, metrics export, and Tracy instrumentation remain planned. Render and benchmarking targets are retained as placeholders for that work.
+
+`Aoi`, `Lod`, and `Compression` remain declared pipeline vocabulary. They are not implemented and a selected unsupported pipeline option is rejected during app startup.
+
+BitPacking is retained as an evaluated technique. The current quantized octahedral record is already 120 bits, so bit packing produces the same 15-byte record size while adding packing work.
+
+## Requirements
 
 - Linux
 - CMake 4.3 or newer
 - Ninja
 - Git
 - A C++23 compiler with C++ module support
-- Raylib development package
+- Raylib development package when the render placeholder target is enabled
 
 Other dependencies are managed through the vcpkg submodule.
 
@@ -45,79 +42,40 @@ cd SimNetLab
 ./bootstrap.sh
 ```
 
-The bootstrap script initializes vcpkg, configures the debug preset, and builds the Server and Client targets.
+The bootstrap script initializes vcpkg, configures the Debug preset, and builds Server and Client.
 
-Another preset can be selected explicitly:
+To select another preset:
 
 ```sh
 ./bootstrap.sh relWithDebInfo
 ./bootstrap.sh release
-Manual Build
 ```
 
-Available configure and build presets:
-
-```sh
-cmake --list-presets
-```
-
-Configure and build:
+## Build and test
 
 ```sh
 cmake --preset debug
 cmake --build --preset debug --target Server Client
+ctest --test-dir build/debug --output-on-failure
 ```
 
-`Server` is a long-running fixed-step runtime. Optional bounded-run arguments
-are `--max-ticks`, `--max-frames`, `--max-runtime-ms`,
-`--max-frame-delta-ms`, and `--max-steps-per-frame`. Limits default to zero
-(disabled). `Client` continuously receives, applies, and acknowledges snapshots;
-its optional bounds are `--max-ticks`, `--max-frames`, and `--max-runtime-ms`.
-Replication and transport integration coverage is discovered through CTest
-with the rest of the test suite.
+Server accepts `--max-ticks`, `--max-frames`, `--max-runtime-ms`, `--max-frame-delta-ms`, and `--max-steps-per-frame`. Client accepts `--max-ticks`, `--max-frames`, and `--max-runtime-ms`. A zero limit is disabled.
 
-Build directories:
+## Project structure
 
-build/debug build/relWithDebInfo build/release Build Options
+- `simnet_core`: dependency-free math, time, bytes, and identifiers
+- `simnet_runtime`: frame planning, run limits, counters, and stop state
+- `simnet_config`: JSON configuration and compatibility fingerprints
+- `simnet_snapshot`: replicated world snapshots and client patches
+- `simnet_synthetic`: deterministic snapshot generation
+- `simnet_telemetry`: logging, metrics storage, and profiling hooks
+- `simnet_spatial`: sparse uniform-grid queries
+- `simnet_game_shared`: shared Flecs contracts
+- `simnet_game_server`: authoritative extraction
+- `simnet_game_client`: client patch application
+- `simnet_pipeline`: snapshot selection, transformation, encoding, and decoding
+- `simnet_transport`: ENet transport and session protocol
+- `simnet_render`: visualization placeholder
+- `simnet_benchmarking`: benchmarking placeholder
 
-Important CMake options include:
-
-SIMNET_WARNINGS_AS_ERRORS SIMNET_ENABLE_ASAN SIMNET_ENABLE_UBSAN SIMNET_ENABLE_TRACY SIMNET_ENABLE_RENDER
-SIMNET_ENABLE_BENCHMARKING
-
-Example:
-
-```sh
-cmake --preset debug \
--DSIMNET_ENABLE_TRACY=ON \
--DSIMNET_WARNINGS_AS_ERRORS=ON
-```
-
-Project Structure
-
-<b> simnet_core </b> - fundamental math, time, byte, and identifier types <br/>
-<b> simnet_runtime </b> - steady-clock frame planning, run limits, runtime counters, and stop state <br/>
-<b> simnet_config </b> - typed runtime configuration and compatibility fingerprints <br/>
-<b> simnet_snapshot </b> - canonical world snapshots and client snapshot patches <br/>
-<b> simnet_synthetic </b> - deterministic synthetic snapshot generation <br/>
-<b> simnet_telemetry </b> - logging, metrics, and profiling hooks <br/>
-<b> simnet_spatial </b> - spatial query structures <br/>
-<b> simnet_game_shared </b> - shared Flecs components and contracts <br/>
-<b> simnet_game_server </b> - authoritative simulation <br/>
-<b> simnet_game_client </b> - replicated client world <br/>
-<b> simnet_pipeline </b> - snapshot selection, transformation, encoding, and decoding <br/>
-<b> simnet_transport </b> - ENet transport and session protocol <br/>
-<b> simnet_render </b> - optional Raylib visualization <br/>
-<b> simnet_benchmarking </b> - benchmarking infrastructure under development <br/>
-
-Default runtime configuration is stored in:
-
-```
-config/shared_default.json 
-config/server_default.json 
-config/client_default.json Status
-```
-
-SimNetLab is under active development as part of a bachelor research project. 
-Interfaces, techniques, configuration, and
-build requirements may change as the implementation and evaluation progress.
+Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`.

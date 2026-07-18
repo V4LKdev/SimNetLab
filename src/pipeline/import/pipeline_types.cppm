@@ -22,16 +22,11 @@ export namespace simnet
         Incremental = 1U << 1U,     /// partial round-robin upserts.
         Quantization = 1U << 2U,    /// position and heading quantisation.
         OctHeading = 1U << 3U,      /// octahedral heading quantization.
-        Delta = 1U << 4U,           /// XOR delta from baseline.
-        Aoi = 1U << 5U,             /// area-of-interest filtering. (Reserved)
-        Lod = 1U << 6U,             /// level-of-detail priorities. (Reserved)
-        Compression = 1U << 7U,     /// full-payload compression. (Reserved)
+        Delta = 1U << 4U,           /// baseline-relative patch selection.
+        Aoi = 1U << 5U,             /// unsupported area-of-interest filtering.
+        Lod = 1U << 6U,             /// unsupported level-of-detail priorities.
+        Compression = 1U << 7U,     /// unsupported full-payload compression.
         BitPacking = 1U << 8U,      /// bit-packed record layout.
-
-        // Future flags:
-        // DeadReckoning // error-based correction sends
-        // DirtyFlags // send only changed entities (or assumption based from a straight linear motion)
-        // LeaderFollower // deterministic follower groups (major simulation work)
     };
 
     /// Result kind for an encode call.
@@ -46,8 +41,6 @@ export namespace simnet
     {
         None,
         SendInterval
-        // Future reasons:
-        // Aoi, Lod, etc.
     };
 
     /// Combines pipeline technique flags.

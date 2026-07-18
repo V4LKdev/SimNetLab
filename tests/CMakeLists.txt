@@ -3,7 +3,7 @@ find_package(Catch2 CONFIG REQUIRED)
 add_executable(SimNetTests
     core_time_tests.cpp
     pipeline_tests.cpp
-    replication_smoke_tests.cpp
+    replication_tests.cpp
     runtime_tests.cpp
     transport_tests.cpp
 )

@@ -1,4 +1,4 @@
-/// @brief Public visualization module.
+/// @brief Placeholder visualization module.
 export module render;
 
 import simnet.config;

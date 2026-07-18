@@ -180,7 +180,7 @@ namespace simnet
 
         if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
             || payload_byte_count + pipeline_wire::header_bytes > std::numeric_limits<std::uint32_t>::max()) {
-            throw std::runtime_error("encoded raw snapshot packet exceeds uint32 byte range");
+            throw std::runtime_error("encoded snapshot packet exceeds uint32 byte range");
         }
         std::uint32_t const payload_bytes = static_cast<std::uint32_t>(payload_byte_count);
 

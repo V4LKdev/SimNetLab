@@ -1,57 +1,15 @@
 # simnet_transport
 
-`simnet_transport` moves opaque byte payloads between peers and owns the small SimNet session handshake.
+`simnet_transport` moves opaque bytes between ENet peers and owns the SimNet session handshake. Apps provide session identity and map configuration at their boundary.
 
-It does not understand config files, telemetry, pipeline packets, snapshots, Flecs worlds, rendering, benchmarking, or gameplay data. Apps compute compatibility values and pass them in as opaque `SessionIdentity` fields.
-
-Allowed dependencies:
+It does not depend on config, telemetry, pipeline, snapshots, game modules, Flecs, rendering, benchmarking, or gameplay data.
 
 ```txt
 public:  simnet_core
 private: ENet
 ```
 
-Forbidden dependencies include config, telemetry, pipeline, snapshot, game modules, synthetic data, spatial indexing, render, Flecs, and Raylib.
-
-## Backend
-
-ENet is the transport implementation. App configuration is mapped at the app
-boundary, keeping transport independent from config parsing.
-
-## Lanes
-
-Three lanes map directly to ENet channels:
-
-```txt
-Control  -> channel 0
-Snapshot -> channel 1
-Input    -> channel 2
-```
-
-Control is used for handshake messages and uses reliable sequenced delivery internally. Snapshot carries opaque app payloads. Input is reserved for semantic `SnapshotAck` messages in this phase. Future client input can extend the private session protocol.
-
-## Delivery
-
-The public API exposes the relevant delivery modes:
-
-```txt
-ReliableSequenced
-UnreliableSequenced
-UnreliableUnsequenced
-UnreliableFragmented
-```
-
-These modes map directly to ENet packet flags.
-
-## Send Size Policy
-
-`TransportLimits` are real send-time behavior, separate from the pipeline's soft packet budget.
-
-`EnforceLimit` rejects oversized sends before reaching ENet and increments `oversize_drops`. `AllowBackendFragmentation` passes the payload to ENet.
-
-## Session Handshake
-
-ENet connection is not the same as SimNet session readiness.
+## Session lifecycle
 
 ```txt
 ENet connect
@@ -60,37 +18,22 @@ ENet connect
 -> PeerSessionReady
 ```
 
-`PeerConnected` means the ENet connection exists. `PeerSessionReady` means the SimNet session identity matched and app payloads may be sent.
+`PeerConnected` reports an ENet connection. `PeerSessionReady` reports a matching SimNet session identity and permits app payloads. Duplicate hello messages after readiness are protocol errors. Identity mismatches identify the first mismatching field.
 
-Duplicate `ClientHello` after readiness is treated as a protocol error and disconnects the peer with `ProtocolMismatch`.
+## Lanes and delivery
 
-Identity mismatches report a specific disconnect code for the first mismatching field: application protocol, compatible config, pipeline decode signature, then capabilities.
+`Control`, `Snapshot`, and `Input` map to ENet channels 0, 1, and 2. Control carries the handshake. Snapshot carries opaque app bytes. Input carries `SnapshotAck` messages and remains available for later client input.
 
-`poll` appends events to the caller-owned event vector. If ENet reports a service error after earlier events were appended, those events remain available and `poll` returns `BackendError`.
+The API supports reliable sequenced, unreliable sequenced, unreliable unsequenced, and unreliable fragmented delivery. App configuration selects snapshot delivery. Current default snapshots use reliable sequenced delivery.
 
-Client disconnect performs a bounded graceful ENet disconnect before destroying its host. It never starts a background worker or waits without a deadline.
+`TransportLimits` applies real send-time limits. `EnforceLimit` rejects oversized payloads before ENet. `AllowBackendFragmentation` passes them to ENet while preserving the hard reassembly limit.
 
-For ENet, `PeerStats::waiting_bytes` reports `ENetPeer::totalWaitingData`: bytes received and buffered by ENet
-while awaiting application dispatch. It is not the cumulative `outgoingDataTotal` throttle-epoch counter.
+## Snapshot acknowledgements
 
-## Snapshot Acknowledgements
-
-`SnapshotAck` reports the newest snapshot sequence decoded by the client, a 32-bit history mask, and the newest sequence applied to client state. These are semantic replication acknowledgements, not ENet reliability acknowledgements.
-
-ACK messages use a fixed field-by-field wire format on the Input lane. Phase 4 sends them reliably for deterministic smoke verification. Future cumulative runtime ACK traffic may use unreliable sequenced delivery. Transport validates only the wire envelope. Apps own sequence-history and baseline semantics.
-
-The Server app now uses acknowledged `newest_applied_snapshot` values to promote retained snapshots as delta baselines. That baseline selection remains app replication state, not transport state.
+`SnapshotAck` reports the newest decoded sequence, a 32-bit receipt history, and the newest applied sequence. It is a replication acknowledgement, not an ENet reliability acknowledgement. The wire format is fixed field by field on the Input lane. Transport validates the envelope. The Server app owns history retention and delta-baseline selection.
 
 ## Threading
 
-One thread owns each `TransportServer` or `TransportClient`. All `start`/`connect`, `poll`, `send`, and `disconnect` calls must happen from that owner thread.
+One owner thread uses each `TransportServer` or `TransportClient`. All lifecycle, poll, send, and disconnect calls stay on that thread. There are no background networking threads, callbacks, or hidden synchronization.
 
-There is no background networking thread, no callbacks, and no hidden synchronization.
-
-## Future Work
-
-Transport integration coverage lives under `tests/`. It verifies ENet session
-readiness, identity rejection, send-size enforcement, and reconnect behavior
-without importing config, telemetry, pipeline, or game modules.
-
-Server and Client map their config to `TransportLimits` and snapshot delivery mode at the app boundary. Reliable sequenced snapshots remain the default deterministic smoke path; unreliable sequenced snapshots can be selected for experiments.
+Transport integration coverage is under `tests/` and verifies handshake readiness, identity rejection, send limits, acknowledgements, disconnects, and reconnects.

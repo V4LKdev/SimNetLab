@@ -18,7 +18,7 @@ namespace
 {
     constexpr auto boid_count = std::uint32_t { 10 };
 
-    [[nodiscard]] simnet::BoidState smoke_boid(
+    [[nodiscard]] simnet::BoidState test_boid(
         simnet::EntityNetId id,
         std::uint32_t index,
         simnet::Tick tick
@@ -37,7 +37,7 @@ namespace
     {
         for (std::uint32_t index = 0; index < boid_count; ++index) {
             auto const id = static_cast<simnet::EntityNetId>(index + 1U);
-            static_cast<void>(simnet::upsert_authoritative_boid(world, smoke_boid(id, index, tick)));
+            static_cast<void>(simnet::upsert_authoritative_boid(world, test_boid(id, index, tick)));
         }
         if (tick == 2) {
             static_cast<void>(simnet::delete_authoritative_boid(world, boid_count));
@@ -70,7 +70,7 @@ namespace
     }
 }
 
-TEST_CASE("five-tick replication smoke contract remains intact", "[replication][smoke]")
+TEST_CASE("five-tick replication contract remains intact", "[replication]")
 {
     auto pipeline = simnet::make_snapshot_pipeline();
     pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;

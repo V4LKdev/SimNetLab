@@ -71,7 +71,7 @@ namespace simnet
     {
         pipeline_validate::require_supported_pipeline_definition(pipeline);
         pipeline_validate::require_quantization_settings(pipeline);
-        static_cast<void>(scratch);   // reserved for future use
+        static_cast<void>(scratch);
 
         ByteSpan const bytes = input.bytes;
 

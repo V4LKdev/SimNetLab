@@ -15,12 +15,12 @@ import simnet.transport;
 namespace {
 constexpr auto poll_timeout = std::chrono::seconds(2);
 
-[[nodiscard]] std::uint64_t smoke_token() {
+[[nodiscard]] std::uint64_t test_token() {
   static auto const token = static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
   return token;
 }
 
-[[nodiscard]] std::uint16_t smoke_port() { return static_cast<std::uint16_t>(20000U + smoke_token() % 20000U); }
+[[nodiscard]] std::uint16_t test_port() { return static_cast<std::uint16_t>(20000U + test_token() % 20000U); }
 
 [[nodiscard]] simnet::SessionIdentity identity(std::uint32_t protocol = 1) {
   return {
@@ -90,11 +90,11 @@ struct HandshakeResult {
   return false;
 }
 
-struct SmokeSettings {
-  std::uint16_t port{smoke_port()};
+struct TransportTestSettings {
+  std::uint16_t port{test_port()};
 };
 
-[[nodiscard]] simnet::TransportServerSettings server_settings(SmokeSettings const &settings,
+[[nodiscard]] simnet::TransportServerSettings server_settings(TransportTestSettings const &settings,
                                                               simnet::SessionIdentity expected_identity = identity()) {
   return {
       .bind_address = "127.0.0.1",
@@ -104,7 +104,7 @@ struct SmokeSettings {
   };
 }
 
-[[nodiscard]] simnet::TransportClientSettings client_settings(SmokeSettings const &settings,
+[[nodiscard]] simnet::TransportClientSettings client_settings(TransportTestSettings const &settings,
                                                               simnet::SessionIdentity client_identity = identity()) {
   return {
       .server_address = "127.0.0.1",
@@ -113,7 +113,7 @@ struct SmokeSettings {
   };
 }
 
-[[nodiscard]] bool matching_session_smoke(SmokeSettings const &settings) {
+[[nodiscard]] bool matching_session_test(TransportTestSettings const &settings) {
   auto server = simnet::TransportServer{};
   auto client = simnet::TransportClient{};
   auto limits = simnet::TransportLimits{
@@ -230,7 +230,7 @@ struct SmokeSettings {
   return true;
 }
 
-[[nodiscard]] bool mismatched_session_smoke(SmokeSettings const &settings,
+[[nodiscard]] bool mismatched_session_test(TransportTestSettings const &settings,
                                             simnet::SessionIdentity mismatched_identity = identity(2U)) {
   auto server = simnet::TransportServer{};
   auto client = simnet::TransportClient{};
@@ -262,7 +262,7 @@ struct SmokeSettings {
   return true;
 }
 
-[[nodiscard]] bool reconnect_smoke(SmokeSettings const &settings) {
+[[nodiscard]] bool reconnect_test(TransportTestSettings const &settings) {
   auto server = simnet::TransportServer{};
   auto client = simnet::TransportClient{};
   auto result = server.start(server_settings(settings));
@@ -317,7 +317,7 @@ struct SmokeSettings {
   return true;
 }
 
-[[nodiscard]] bool receive_limit_smoke(SmokeSettings const &settings) {
+[[nodiscard]] bool receive_limit_test(TransportTestSettings const &settings) {
   auto server = simnet::TransportServer{};
   auto client = simnet::TransportClient{};
   auto server_config = server_settings(settings);
@@ -391,27 +391,27 @@ struct SmokeSettings {
 } // namespace
 
 TEST_CASE("ENet session handshake and transport contract", "[transport][enet][integration]") {
-  auto const enet = SmokeSettings{};
-  REQUIRE(matching_session_smoke(enet));
+  auto const enet = TransportTestSettings{};
+  REQUIRE(matching_session_test(enet));
 }
 
 TEST_CASE("ENet rejects incompatible session identities", "[transport][enet][integration]") {
-  auto const enet = SmokeSettings{};
-  REQUIRE(mismatched_session_smoke(enet));
+  auto const enet = TransportTestSettings{};
+  REQUIRE(mismatched_session_test(enet));
 
   auto fingerprint_mismatch = identity();
   fingerprint_mismatch.compatibility_fingerprint ^= 1U;
-  REQUIRE(mismatched_session_smoke(enet, fingerprint_mismatch));
+  REQUIRE(mismatched_session_test(enet, fingerprint_mismatch));
 
   auto signature_mismatch = identity();
   signature_mismatch.pipeline_decode_signature ^= 1U;
-  REQUIRE(mismatched_session_smoke(enet, signature_mismatch));
+  REQUIRE(mismatched_session_test(enet, signature_mismatch));
 }
 
 TEST_CASE("ENet disconnects and reconnects", "[transport][enet][integration]") {
-  REQUIRE(reconnect_smoke(SmokeSettings{}));
+  REQUIRE(reconnect_test(TransportTestSettings{}));
 }
 
 TEST_CASE("ENet enforces receive limits", "[transport][enet][integration]") {
-  REQUIRE(receive_limit_smoke(SmokeSettings{}));
+  REQUIRE(receive_limit_test(TransportTestSettings{}));
 }

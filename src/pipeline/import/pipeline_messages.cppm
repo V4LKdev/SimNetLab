@@ -45,7 +45,7 @@ export namespace simnet
 
         std::uint32_t packet_bytes      {}; /// full size including header
         std::uint32_t payload_bytes     {}; /// body size before any compression
-        std::uint32_t uncompressed_bytes{}; /// placeholder for future decompressed size
+        std::uint32_t uncompressed_bytes{}; /// equals final_bytes until compression exists
         std::uint32_t final_bytes       {}; /// final size after all processing
     };
 
