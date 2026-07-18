@@ -69,21 +69,13 @@ cmake --preset debug
 cmake --build --preset debug --target Server Client
 ```
 
-Additional validation executables can be built with:
-
-```sh
-cmake --build --preset debug --target ServerSmoke ClientSmoke
-```
-
 `Server` is a long-running fixed-step runtime. Optional bounded-run arguments
 are `--max-ticks`, `--max-frames`, `--max-runtime-ms`,
 `--max-frame-delta-ms`, and `--max-steps-per-frame`. Limits default to zero
 (disabled). `Client` continuously receives, applies, and acknowledges snapshots;
 its optional bounds are `--max-ticks`, `--max-frames`, and `--max-runtime-ms`.
-`ServerSmoke` and `ClientSmoke` temporarily preserve the legacy five-tick paired
-replication scenario while the runtime path gains equivalent process coverage.
-Transport integration coverage is discovered through CTest with the rest of
-the test suite.
+Replication and transport integration coverage is discovered through CTest
+with the rest of the test suite.
 
 Build directories:
 
