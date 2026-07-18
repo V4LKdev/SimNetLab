@@ -94,7 +94,8 @@ namespace
         simnet::PeerId peer {};
         simnet::ClientReplicationState pipeline_state {};
         simnet::SnapshotAck latest_ack {};
-        std::optional<RetainedSnapshot> acknowledged_baseline {};
+        simnet::SequenceId newest_emitted_sequence {};
+        std::optional<simnet::SequenceId> acknowledged_baseline_sequence {};
         std::deque<RetainedSnapshot> retained_snapshots {};
     };
 
@@ -265,23 +266,57 @@ namespace
             && ack.newest_applied_snapshot <= ack.newest_received_snapshot
             && ack.newest_received_snapshot >= peer.latest_ack.newest_received_snapshot
             && ack.newest_applied_snapshot >= peer.latest_ack.newest_applied_snapshot
-            && !peer.retained_snapshots.empty()
-            && ack.newest_received_snapshot <= peer.retained_snapshots.back().sequence;
+            && ack.newest_received_snapshot <= peer.newest_emitted_sequence;
+    }
+
+    [[nodiscard]] auto find_retained_snapshot(
+        PeerRuntimeState& peer,
+        simnet::SequenceId sequence
+    )
+    {
+        return std::find_if(
+            peer.retained_snapshots.begin(),
+            peer.retained_snapshots.end(),
+            [sequence](RetainedSnapshot const& snapshot) {
+                return snapshot.sequence == sequence;
+            }
+        );
+    }
+
+    void invalidate_baseline(PeerRuntimeState& peer)
+    {
+        peer.acknowledged_baseline_sequence.reset();
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Warn,
+            "acknowledged snapshot no longer retained; next packet uses FullReplace");
+        simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+            "delta unavailable; using FullReplace");
+    }
+
+    void trim_retained_snapshots(PeerRuntimeState& peer)
+    {
+        while (peer.retained_snapshots.size() > retained_snapshot_limit) {
+            auto const evicted_sequence = peer.retained_snapshots.front().sequence;
+            peer.retained_snapshots.pop_front();
+            if (peer.acknowledged_baseline_sequence == evicted_sequence) {
+                invalidate_baseline(peer);
+            }
+        }
     }
 
     void apply_ack(PeerRuntimeState& peer, simnet::SnapshotAck const& ack)
     {
         peer.latest_ack = ack;
-        auto const retained = std::find_if(
-            peer.retained_snapshots.begin(),
-            peer.retained_snapshots.end(),
-            [ack](RetainedSnapshot const& snapshot) {
-                return snapshot.sequence == ack.newest_applied_snapshot;
-            }
-        );
+        auto const retained = find_retained_snapshot(peer, ack.newest_applied_snapshot);
         if (retained != peer.retained_snapshots.end()) {
-            peer.acknowledged_baseline = *retained;
+            auto const needs_promotion_log = !peer.acknowledged_baseline_sequence.has_value();
+            peer.acknowledged_baseline_sequence = retained->sequence;
             peer.retained_snapshots.erase(peer.retained_snapshots.begin(), retained);
+            if (needs_promotion_log) {
+                simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
+                    "baseline promoted sequence=" + std::to_string(ack.newest_applied_snapshot));
+            }
+        } else {
+            invalidate_baseline(peer);
         }
     }
 
@@ -289,7 +324,8 @@ namespace
         simnet::TransportServer& transport,
         std::optional<PeerRuntimeState>& peer,
         std::vector<simnet::TransportEvent>& events,
-        std::uint32_t timeout_ms
+        std::uint32_t timeout_ms,
+        bool delta_enabled
     )
     {
         events.clear();
@@ -315,7 +351,11 @@ namespace
                 }
             } else if (auto const* received = std::get_if<simnet::SnapshotAckReceived>(&event)) {
                 if (peer.has_value() && received->peer == peer->peer && valid_ack(*peer, received->ack)) {
-                    apply_ack(*peer, received->ack);
+                    if (delta_enabled) {
+                        apply_ack(*peer, received->ack);
+                    } else {
+                        peer->latest_ack = received->ack;
+                    }
                 } else {
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Warn,
                         "server ignored invalid snapshot ACK");
@@ -357,7 +397,14 @@ namespace
             pipeline.techniques,
             simnet::PipelineTechniqueFlags::Delta
         );
-        auto const use_baseline = delta_enabled && peer->acknowledged_baseline.has_value();
+        auto baseline = peer->retained_snapshots.end();
+        if (delta_enabled && peer->acknowledged_baseline_sequence.has_value()) {
+            baseline = find_retained_snapshot(*peer, *peer->acknowledged_baseline_sequence);
+            if (baseline == peer->retained_snapshots.end()) {
+                invalidate_baseline(*peer);
+            }
+        }
+        auto const use_baseline = baseline != peer->retained_snapshots.end();
         auto const encoded = simnet::encode_snapshot(
             pipeline,
             peer->pipeline_state,
@@ -365,10 +412,10 @@ namespace
             {
                 .snapshot = &snapshot,
                 .baseline_snapshot = use_baseline
-                    ? &peer->acknowledged_baseline->snapshot
+                    ? &baseline->snapshot
                     : nullptr,
                 .baseline_sequence = use_baseline
-                    ? peer->acknowledged_baseline->sequence
+                    ? baseline->sequence
                     : 0U,
             }
         );
@@ -391,9 +438,8 @@ namespace
             .sequence = encoded.packet.sequence,
             .snapshot = std::move(snapshot),
         });
-        if (peer->retained_snapshots.size() > retained_snapshot_limit) {
-            peer->retained_snapshots.pop_front();
-        }
+        peer->newest_emitted_sequence = encoded.packet.sequence;
+        trim_retained_snapshots(*peer);
         return true;
     }
 
@@ -503,6 +549,10 @@ namespace simnet::app
             auto events = std::vector<TransportEvent> {};
             auto scratch = PipelineScratch {};
             auto const delivery = snapshot_delivery(local.transport);
+            auto const delta_enabled = has_all_flags(
+                pipeline.techniques,
+                PipelineTechniqueFlags::Delta
+            );
 
             log(LogCategory::Simulation, LogLevel::Info,
                 "server runtime started entities=" + std::to_string(shared.simulation.initial_boid_count));
@@ -512,7 +562,7 @@ namespace simnet::app
                     static_cast<void>(stop.request(ShutdownReason::Signal));
                     break;
                 }
-                if (!poll_transport(transport, peer, events, 1)) {
+                if (!poll_transport(transport, peer, events, 1, delta_enabled)) {
                     static_cast<void>(stop.request(ShutdownReason::FatalError));
                     break;
                 }
