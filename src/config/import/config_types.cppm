@@ -45,9 +45,7 @@ export namespace simnet
     /// Network transport settings.
     struct TransportConfig
     {
-        std::string backend { "enet" };
         std::string host { "127.0.0.1" };
-        std::string local_ipc_path { "/tmp/simnet_transport.sock" };
         std::uint16_t port { 7777 };
         std::uint32_t max_clients { 8 };
         std::uint32_t max_payload_bytes { 1200 };

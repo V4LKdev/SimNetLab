@@ -4,8 +4,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <variant>
@@ -23,10 +21,6 @@ constexpr auto poll_timeout = std::chrono::seconds(2);
 }
 
 [[nodiscard]] std::uint16_t smoke_port() { return static_cast<std::uint16_t>(20000U + smoke_token() % 20000U); }
-
-[[nodiscard]] std::string smoke_ipc_path() {
-  return "/tmp/simnet_transport_smoke_" + std::to_string(smoke_token()) + ".sock";
-}
 
 [[nodiscard]] simnet::SessionIdentity identity(std::uint32_t protocol = 1) {
   return {
@@ -97,17 +91,13 @@ struct HandshakeResult {
 }
 
 struct SmokeSettings {
-  simnet::TransportBackend backend{simnet::TransportBackend::ENet};
   std::uint16_t port{smoke_port()};
-  std::string ipc_path{smoke_ipc_path()};
 };
 
 [[nodiscard]] simnet::TransportServerSettings server_settings(SmokeSettings const &settings,
                                                               simnet::SessionIdentity expected_identity = identity()) {
   return {
-      .backend = settings.backend,
       .bind_address = "127.0.0.1",
-      .local_ipc_path = settings.ipc_path,
       .port = settings.port,
       .max_peers = 1U,
       .expected_identity = expected_identity,
@@ -117,9 +107,7 @@ struct SmokeSettings {
 [[nodiscard]] simnet::TransportClientSettings client_settings(SmokeSettings const &settings,
                                                               simnet::SessionIdentity client_identity = identity()) {
   return {
-      .backend = settings.backend,
       .server_address = "127.0.0.1",
-      .local_ipc_path = settings.ipc_path,
       .server_port = settings.port,
       .identity = client_identity,
   };
@@ -197,19 +185,6 @@ struct SmokeSettings {
   if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidDelivery) {
     std::cerr << "invalid delivery send was not rejected\n";
     return false;
-  }
-
-  if (settings.backend == simnet::TransportBackend::LocalIpc) {
-    result = server.send({
-        .peer = handshake.server_peer,
-        .lane = simnet::Lane::Snapshot,
-        .delivery = simnet::Delivery::UnreliableSequenced,
-        .payload = small_payload,
-    });
-    if (result.ok || result.error.code != simnet::TransportErrorCode::UnsupportedDelivery) {
-      std::cerr << "local IPC unreliable send did not fail with UnsupportedDelivery\n";
-      return false;
-    }
   }
 
   auto const expected_ack = simnet::SnapshotAck{
@@ -413,61 +388,6 @@ struct SmokeSettings {
   return true;
 }
 
-#if defined(SIMNET_ENABLE_LOCAL_IPC)
-[[nodiscard]] bool local_ipc_path_collision_smoke() {
-  auto const path = smoke_ipc_path() + ".collision";
-  {
-    auto file = std::ofstream(path);
-    file << "must not be unlinked by transport";
-  }
-
-  auto server = simnet::TransportServer{};
-  auto const result = server.start({
-      .backend = simnet::TransportBackend::LocalIpc,
-      .local_ipc_path = path,
-      .max_peers = 1U,
-      .expected_identity = identity(),
-  });
-  auto const preserved = std::filesystem::is_regular_file(path);
-  std::filesystem::remove(path);
-  if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidAddress || !preserved) {
-    std::cerr << "local IPC path collision was not rejected safely\n";
-    return false;
-  }
-  return true;
-}
-#endif
-
-#if !defined(SIMNET_ENABLE_LOCAL_IPC)
-[[nodiscard]] bool unsupported_backend_smoke() {
-  auto server = simnet::TransportServer{};
-  auto result = server.start({
-      .backend = simnet::TransportBackend::LocalIpc,
-      .bind_address = "127.0.0.1",
-      .port = smoke_port(),
-      .max_peers = 1U,
-      .expected_identity = identity(),
-  });
-  if (result.ok || result.error.code != simnet::TransportErrorCode::UnsupportedBackend) {
-    std::cerr << "unsupported server backend was not rejected\n";
-    return false;
-  }
-
-  auto client = simnet::TransportClient{};
-  result = client.connect({
-      .backend = simnet::TransportBackend::LocalIpc,
-      .server_address = "127.0.0.1",
-      .server_port = smoke_port(),
-      .identity = identity(),
-  });
-  if (result.ok || result.error.code != simnet::TransportErrorCode::UnsupportedBackend) {
-    std::cerr << "unsupported client backend was not rejected\n";
-    return false;
-  }
-
-  return true;
-}
-#endif
 } // namespace
 
 TEST_CASE("ENet session handshake and transport contract", "[transport][enet][integration]") {
@@ -495,57 +415,3 @@ TEST_CASE("ENet disconnects and reconnects", "[transport][enet][integration]") {
 TEST_CASE("ENet enforces receive limits", "[transport][enet][integration]") {
   REQUIRE(receive_limit_smoke(SmokeSettings{}));
 }
-
-#if defined(SIMNET_ENABLE_LOCAL_IPC)
-TEST_CASE("LocalIpc session handshake and transport contract", "[transport][local_ipc][integration]") {
-  auto const local_ipc = SmokeSettings{
-      .backend = simnet::TransportBackend::LocalIpc,
-      .port = static_cast<std::uint16_t>(smoke_port() + 1U),
-      .ipc_path = smoke_ipc_path(),
-  };
-  REQUIRE(matching_session_smoke(local_ipc));
-}
-
-TEST_CASE("LocalIpc rejects incompatible session identities", "[transport][local_ipc][integration]") {
-  auto const local_ipc = SmokeSettings{
-      .backend = simnet::TransportBackend::LocalIpc,
-      .port = static_cast<std::uint16_t>(smoke_port() + 1U),
-      .ipc_path = smoke_ipc_path(),
-  };
-  REQUIRE(mismatched_session_smoke(local_ipc));
-
-  auto fingerprint_mismatch = identity();
-  fingerprint_mismatch.compatibility_fingerprint ^= 1U;
-  REQUIRE(mismatched_session_smoke(local_ipc, fingerprint_mismatch));
-
-  auto signature_mismatch = identity();
-  signature_mismatch.pipeline_decode_signature ^= 1U;
-  REQUIRE(mismatched_session_smoke(local_ipc, signature_mismatch));
-}
-
-TEST_CASE("LocalIpc disconnects and reconnects", "[transport][local_ipc][integration]") {
-  auto const local_ipc = SmokeSettings{
-      .backend = simnet::TransportBackend::LocalIpc,
-      .port = static_cast<std::uint16_t>(smoke_port() + 1U),
-      .ipc_path = smoke_ipc_path(),
-  };
-  REQUIRE(reconnect_smoke(local_ipc));
-}
-
-TEST_CASE("LocalIpc enforces receive limits", "[transport][local_ipc][integration]") {
-  auto const local_ipc = SmokeSettings{
-      .backend = simnet::TransportBackend::LocalIpc,
-      .port = static_cast<std::uint16_t>(smoke_port() + 1U),
-      .ipc_path = smoke_ipc_path(),
-  };
-  REQUIRE(receive_limit_smoke(local_ipc));
-}
-
-TEST_CASE("LocalIpc preserves colliding filesystem paths", "[transport][local_ipc][integration]") {
-  REQUIRE(local_ipc_path_collision_smoke());
-}
-#else
-TEST_CASE("Unavailable LocalIpc backend rejects use", "[transport][local_ipc][integration]") {
-  REQUIRE(unsupported_backend_smoke());
-}
-#endif

@@ -138,17 +138,6 @@ namespace
         return options;
     }
 
-    [[nodiscard]] simnet::TransportBackend transport_backend(simnet::TransportConfig const& config)
-    {
-        if (config.backend == "enet") {
-            return simnet::TransportBackend::ENet;
-        }
-        if (config.backend == "local_ipc") {
-            return simnet::TransportBackend::LocalIpc;
-        }
-        throw std::runtime_error("unsupported transport backend: " + config.backend);
-    }
-
     [[nodiscard]] simnet::SendSizePolicy send_size_policy(simnet::TransportConfig const& config)
     {
         if (config.send_size_policy == "enforce_limit") {
@@ -316,9 +305,7 @@ namespace simnet::app
 
             auto transport = TransportClient {};
             auto const connected = transport.connect({
-                .backend = transport_backend(local.transport),
                 .server_address = local.transport.host,
-                .local_ipc_path = local.transport.local_ipc_path,
                 .server_port = local.transport.port,
                 .identity = session_identity(shared, pipeline),
                 .limits = {

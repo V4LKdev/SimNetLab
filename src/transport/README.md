@@ -13,18 +13,10 @@ private: ENet
 
 Forbidden dependencies include config, telemetry, pipeline, snapshot, game modules, synthetic data, spatial indexing, render, Flecs, and Raylib.
 
-## Backends
+## Backend
 
-The public settings carry an explicit backend choice:
-
-```txt
-ENet      -> implemented reference backend
-LocalIpc  -> Linux/POSIX Unix-domain socket backend
-```
-
-Selecting an unavailable backend returns `UnsupportedBackend`; it must not silently fall back to ENet. The app config maps backend strings at the app boundary, keeping transport independent from config parsing.
-
-`SIMNET_ENABLE_LOCAL_IPC` builds the Unix-domain socket backend on Linux/POSIX. It defaults on for Linux and off elsewhere. Windows named pipes and shared memory are intentionally not implemented yet.
+ENet is the transport implementation. App configuration is mapped at the app
+boundary, keeping transport independent from config parsing.
 
 ## Lanes
 
@@ -49,15 +41,13 @@ UnreliableUnsequenced
 UnreliableFragmented
 ```
 
-If a future backend cannot support one honestly, it should reject that send mode instead of silently faking semantics.
-
-`LocalIpc` is reliable stream IPC. It supports `ReliableSequenced` and rejects unreliable delivery modes with `UnsupportedDelivery`.
+These modes map directly to ENet packet flags.
 
 ## Send Size Policy
 
 `TransportLimits` are real send-time behavior, separate from the pipeline's soft packet budget.
 
-`EnforceLimit` rejects oversized sends before reaching the backend and increments `oversize_drops`. `AllowBackendFragmentation` passes the payload to the backend.
+`EnforceLimit` rejects oversized sends before reaching ENet and increments `oversize_drops`. `AllowBackendFragmentation` passes the payload to ENet.
 
 ## Session Handshake
 
@@ -70,15 +60,18 @@ ENet connect
 -> PeerSessionReady
 ```
 
-`PeerConnected` means the backend connection exists. `PeerSessionReady` means the SimNet session identity matched and app payloads may be sent.
+`PeerConnected` means the ENet connection exists. `PeerSessionReady` means the SimNet session identity matched and app payloads may be sent.
 
 Duplicate `ClientHello` after readiness is treated as a protocol error and disconnects the peer with `ProtocolMismatch`.
 
 Identity mismatches report a specific disconnect code for the first mismatching field: application protocol, compatible config, pipeline decode signature, then capabilities.
 
-`poll` appends events to the caller-owned event vector. If ENet reports a backend service error after earlier events were appended, those events remain available and `poll` returns `BackendError`.
+`poll` appends events to the caller-owned event vector. If ENet reports a service error after earlier events were appended, those events remain available and `poll` returns `BackendError`.
 
 Client disconnect performs a bounded graceful ENet disconnect before destroying its host. It never starts a background worker or waits without a deadline.
+
+For ENet, `PeerStats::waiting_bytes` reports `ENetPeer::totalWaitingData`: bytes received and buffered by ENet
+while awaiting application dispatch. It is not the cumulative `outgoingDataTotal` throttle-epoch counter.
 
 ## Snapshot Acknowledgements
 
@@ -92,12 +85,12 @@ The Server app now uses acknowledged `newest_applied_snapshot` values to promote
 
 One thread owns each `TransportServer` or `TransportClient`. All `start`/`connect`, `poll`, `send`, and `disconnect` calls must happen from that owner thread.
 
-There is no background networking thread, no callbacks, and no hidden synchronization in this first backend.
+There is no background networking thread, no callbacks, and no hidden synchronization.
 
 ## Future Work
 
-Transport integration coverage lives under `tests/`. It verifies local session readiness, identity rejection, send-size enforcement, unavailable-backend rejection, and LocalIpc behavior when compiled in, without importing config, telemetry, pipeline, or game modules.
+Transport integration coverage lives under `tests/`. It verifies ENet session
+readiness, identity rejection, send-size enforcement, and reconnect behavior
+without importing config, telemetry, pipeline, or game modules.
 
 Server and Client map their config to `TransportLimits` and snapshot delivery mode at the app boundary. Reliable sequenced snapshots remain the default deterministic smoke path; unreliable sequenced snapshots can be selected for experiments.
-
-Shared-memory backends are future work and must preserve the same byte/session contract.

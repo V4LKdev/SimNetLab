@@ -10,8 +10,7 @@ replication pipelines, transport, telemetry, and rendering into independent modu
 
 - Server-authoritative Flecs simulation
 - Server and client applications
-- ENet transport backend
-- Linux local IPC transport backend
+- ENet transport
 - Connection handshake and snapshot acknowledgements
 - Full and partial snapshot replication
 - Send-interval control
@@ -84,7 +83,7 @@ build/debug build/relWithDebInfo build/release Build Options
 Important CMake options include:
 
 SIMNET_WARNINGS_AS_ERRORS SIMNET_ENABLE_ASAN SIMNET_ENABLE_UBSAN SIMNET_ENABLE_TRACY SIMNET_ENABLE_RENDER
-SIMNET_ENABLE_BENCHMARKING SIMNET_ENABLE_ENET SIMNET_ENABLE_LOCAL_IPC
+SIMNET_ENABLE_BENCHMARKING
 
 Example:
 
@@ -107,7 +106,7 @@ Project Structure
 <b> simnet_game_server </b> - authoritative simulation <br/>
 <b> simnet_game_client </b> - replicated client world <br/>
 <b> simnet_pipeline </b> - snapshot selection, transformation, encoding, and decoding <br/>
-<b> simnet_transport </b> - transport abstraction, ENet, and local IPC <br/>
+<b> simnet_transport </b> - ENet transport and session protocol <br/>
 <b> simnet_render </b> - optional Raylib visualization <br/>
 <b> simnet_benchmarking </b> - benchmarking infrastructure under development <br/>
 

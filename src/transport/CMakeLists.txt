@@ -11,9 +11,12 @@ target_sources(simnet_transport
             import/transport_client.cppm
     PRIVATE
         FILE_SET transport_private_modules TYPE CXX_MODULES
-        BASE_DIRS src
+        BASE_DIRS private
         FILES
-            src/transport_enet.cpp
+            private/transport_protocol.cppm
+    PRIVATE
+        src/transport_protocol.cpp
+        src/transport_enet.cpp
 )
 
 target_link_libraries(simnet_transport
@@ -21,14 +24,7 @@ target_link_libraries(simnet_transport
         simnet_core
 )
 
-if (SIMNET_ENABLE_ENET)
-    find_package(unofficial-enet CONFIG REQUIRED)
-    target_compile_definitions(simnet_transport PRIVATE SIMNET_ENABLE_ENET=1)
-    target_link_libraries(simnet_transport PRIVATE unofficial::enet::enet)
-endif ()
-
-if (SIMNET_ENABLE_LOCAL_IPC AND UNIX AND NOT APPLE)
-    target_compile_definitions(simnet_transport PRIVATE SIMNET_ENABLE_LOCAL_IPC=1)
-endif ()
+find_package(unofficial-enet CONFIG REQUIRED)
+target_link_libraries(simnet_transport PRIVATE unofficial::enet::enet)
 
 simnet_configure_target(simnet_transport)

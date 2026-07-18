@@ -8,7 +8,7 @@ module;
 #include <variant>
 #include <vector>
 
-/// @brief Backend-neutral transport contracts.
+/// @brief ENet transport contracts.
 export module simnet.transport:types;
 
 import simnet.core;
@@ -20,12 +20,6 @@ export namespace simnet
         Control = 0,
         Snapshot = 1,
         Input = 2
-    };
-
-    enum class TransportBackend : std::uint8_t
-    {
-        ENet,
-        LocalIpc
     };
 
     enum class Delivery : std::uint8_t
@@ -66,9 +60,7 @@ export namespace simnet
         PeerNotReady,
         InvalidLane,
         InvalidDelivery,
-        UnsupportedDelivery,
         PayloadTooLarge,
-        UnsupportedBackend,
         BackendError
     };
 

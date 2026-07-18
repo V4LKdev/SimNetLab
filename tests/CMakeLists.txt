@@ -22,10 +22,6 @@ target_link_libraries(SimNetTests
 
 simnet_configure_target(SimNetTests)
 
-if (SIMNET_ENABLE_LOCAL_IPC AND UNIX AND NOT APPLE)
-    target_compile_definitions(SimNetTests PRIVATE SIMNET_ENABLE_LOCAL_IPC=1)
-endif ()
-
 include(Catch)
 catch_discover_tests(SimNetTests
     TEST_PREFIX "simnet."
