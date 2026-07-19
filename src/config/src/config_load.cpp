@@ -1,10 +1,12 @@
 module;
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -41,6 +43,41 @@ namespace
             hash ^= static_cast<unsigned char>(character);
             hash *= fnv_prime;
         }
+    }
+
+    void hash_canonical_byte(std::uint64_t& hash, std::uint8_t value) noexcept
+    {
+        hash ^= value;
+        hash *= fnv_prime;
+    }
+
+    void hash_canonical_u32(std::uint64_t& hash, std::uint32_t value) noexcept
+    {
+        for (auto shift = 24; shift >= 0; shift -= 8) {
+            hash_canonical_byte(hash, static_cast<std::uint8_t>(value >> shift));
+        }
+    }
+
+    void hash_canonical_u64(std::uint64_t& hash, std::uint64_t value) noexcept
+    {
+        for (auto shift = 56; shift >= 0; shift -= 8) {
+            hash_canonical_byte(hash, static_cast<std::uint8_t>(value >> shift));
+        }
+    }
+
+    void hash_canonical_bool(std::uint64_t& hash, bool value) noexcept
+    {
+        hash_canonical_byte(hash, value ? 1U : 0U);
+    }
+
+    void hash_canonical_float(std::uint64_t& hash, float value) noexcept
+    {
+        hash_canonical_u32(hash, std::bit_cast<std::uint32_t>(value));
+    }
+
+    void hash_canonical_double(std::uint64_t& hash, double value) noexcept
+    {
+        hash_canonical_u64(hash, std::bit_cast<std::uint64_t>(value));
     }
 
     template <typename Value>
@@ -313,9 +350,9 @@ namespace
         return config;
     }
 
-    void hash_shared(std::uint64_t& hash, simnet::SharedConfig const& config) noexcept
+    void hash_shared_native(std::uint64_t& hash, simnet::SharedConfig const& config) noexcept
     {
-        // Network compatibility is based only on shared deterministic settings.
+        // Runtime trace fingerprints preserve their existing native representation.
         hash_bytes(hash, config.run.seed);
         hash_bytes(hash, config.simulation.tick_rate_hz);
         hash_bytes(hash, config.simulation.world_half);
@@ -329,6 +366,26 @@ namespace
         hash_bytes(hash, config.pipeline.enable_compression);
         hash_bytes(hash, config.pipeline.position_bits);
         hash_bytes(hash, config.pipeline.heading_bits);
+    }
+
+    void hash_network_compatibility(std::uint64_t& hash, simnet::SharedConfig const& config) noexcept
+    {
+        // Handshake compatibility must not depend on host byte order or bool layout.
+        static_assert(std::numeric_limits<float>::is_iec559);
+        static_assert(std::numeric_limits<double>::is_iec559);
+        hash_canonical_u64(hash, config.run.seed);
+        hash_canonical_double(hash, config.simulation.tick_rate_hz);
+        hash_canonical_float(hash, config.simulation.world_half);
+        hash_canonical_u32(hash, config.simulation.initial_boid_count);
+        hash_canonical_float(hash, config.spatial.cell_size);
+        hash_canonical_u32(hash, config.spatial.max_neighbors);
+        hash_canonical_bool(hash, config.pipeline.enable_aoi);
+        hash_canonical_bool(hash, config.pipeline.enable_incremental);
+        hash_canonical_bool(hash, config.pipeline.enable_quantization);
+        hash_canonical_bool(hash, config.pipeline.enable_delta);
+        hash_canonical_bool(hash, config.pipeline.enable_compression);
+        hash_canonical_byte(hash, config.pipeline.position_bits);
+        hash_canonical_byte(hash, config.pipeline.heading_bits);
     }
 
     void hash_transport_and_telemetry(std::uint64_t& hash, simnet::TransportConfig const& transport,
@@ -400,7 +457,7 @@ namespace simnet
     {
         auto hash = fnv_offset_basis;
 
-        hash_shared(hash, shared);
+        hash_shared_native(hash, shared);
         hash_bytes(hash, local.headless);
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
         hash_bytes(hash, local.benchmark.enabled);
@@ -417,7 +474,7 @@ namespace simnet
     {
         auto hash = fnv_offset_basis;
 
-        hash_shared(hash, shared);
+        hash_shared_native(hash, shared);
         hash_bytes(hash, local.headless);
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
         hash_bytes(hash, local.render.enabled);
@@ -428,7 +485,7 @@ namespace simnet
     ConfigFingerprint fingerprint_network_compatibility(SharedConfig const& config) noexcept
     {
         auto hash = fnv_offset_basis;
-        hash_shared(hash, config);
+        hash_network_compatibility(hash, config);
         return { .value = hash };
     }
 }

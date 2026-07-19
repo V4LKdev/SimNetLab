@@ -1,6 +1,7 @@
 find_package(Catch2 CONFIG REQUIRED)
 
 add_executable(SimNetTests
+    config_tests.cpp
     core_time_tests.cpp
     pipeline_tests.cpp
     replication_tests.cpp
@@ -11,6 +12,7 @@ add_executable(SimNetTests
 target_link_libraries(SimNetTests
     PRIVATE
         simnet_core
+        simnet_config
         simnet_game_client
         simnet_game_server
         simnet_pipeline

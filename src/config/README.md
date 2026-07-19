@@ -13,3 +13,5 @@ Shared configuration currently controls world bounds, initial entity count, and 
 The current application runtime supports one server peer and one client peer. Server configuration values above one client are rejected during startup.
 
 Render, benchmark, spatial, telemetry export, Tracy, area-of-interest, LOD, and compression configuration vocabulary is retained for planned work. Unsupported pipeline selections are rejected during app startup instead of being ignored.
+
+Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.
