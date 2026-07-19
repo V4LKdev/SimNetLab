@@ -12,12 +12,13 @@ The finished foundation separates core vocabulary, fixed-step runtime planning, 
 - Full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - 1,000-entity Server to Client replication in the bounded runtime path
+- Optional Server overview visualization with instanced directional entities
 
 The Server currently advances the authoritative boid state but does not yet implement the intended boid behavior model.
 
 ## Planned work
 
-Area of interest, LOD, compression, visualization, benchmarking, spatial integration, metrics export, and Tracy instrumentation remain planned. Render and benchmarking targets are retained as placeholders for that work.
+Area of interest, LOD, compression, Client visualization, entity selection, benchmarking, spatial integration, metrics export, and Tracy instrumentation remain planned. The Server overview viewer is available when local visualization is enabled.
 
 `Aoi`, `Lod`, and `Compression` remain declared pipeline vocabulary. They are not implemented and a selected unsupported pipeline option is rejected during app startup.
 
@@ -30,7 +31,7 @@ BitPacking is retained as an evaluated technique. The current quantized octahedr
 - Ninja
 - Git
 - A C++23 compiler with C++ module support
-- Raylib development package when the render placeholder target is enabled
+- Raylib development package when render support is enabled
 
 Other dependencies are managed through the vcpkg submodule.
 
@@ -75,7 +76,7 @@ Server accepts `--max-ticks`, `--max-frames`, `--max-runtime-ms`, `--max-frame-d
 - `simnet_game_client`: client patch application
 - `simnet_pipeline`: snapshot selection, transformation, encoding, and decoding
 - `simnet_transport`: ENet transport and session protocol
-- `simnet_render`: visualization placeholder
+- `simnet_render`: generic core-only Raylib viewer
 - `simnet_benchmarking`: benchmarking placeholder
 
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`.
