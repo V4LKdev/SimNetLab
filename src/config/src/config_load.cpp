@@ -243,14 +243,30 @@ namespace
             });
     }
 
-    void apply_render(Json const& json, simnet::RenderConfig& config)
+    void apply_visualization(Json const& json, simnet::VisualizationConfig& config)
     {
         read_optional(json, "enabled", config.enabled);
-        read_optional(json, "width", config.width);
-        read_optional(json, "height", config.height);
+        read_optional(json, "window_width", config.window_width);
+        read_optional(json, "window_height", config.window_height);
+        read_optional(json, "panel_width", config.panel_width);
+        read_optional(json, "target_fps", config.target_fps);
+        read_optional(json, "entity_scale", config.entity_scale);
+        read_optional(json, "picking_radius", config.picking_radius);
 
-        if (config.width == 0 || config.height == 0) {
-            throw std::runtime_error("invalid render dimensions: expected non-zero width and height");
+        if (config.window_width == 0 || config.window_height == 0) {
+            throw std::runtime_error("invalid visualization dimensions: expected non-zero width and height");
+        }
+        if (config.panel_width >= config.window_width) {
+            throw std::runtime_error("invalid visualization panel_width: expected less than window_width");
+        }
+        if (config.target_fps == 0) {
+            throw std::runtime_error("invalid visualization target_fps: expected non-zero value");
+        }
+        if (config.entity_scale <= 0.0F) {
+            throw std::runtime_error("invalid visualization entity_scale: expected positive value");
+        }
+        if (config.picking_radius <= 0.0F) {
+            throw std::runtime_error("invalid visualization picking_radius: expected positive value");
         }
     }
 
@@ -315,9 +331,11 @@ namespace
         // Server-local config owns transport, telemetry, and benchmark knobs.
         auto config = simnet::default_server_config();
 
-        read_optional(json, "headless", config.headless);
         if (auto const* section = optional_object(json, "transport")) {
             apply_transport(*section, config.transport);
+        }
+        if (auto const* section = optional_object(json, "visualization")) {
+            apply_visualization(*section, config.visualization);
         }
         if (auto const* section = optional_object(json, "telemetry")) {
             apply_telemetry(*section, config.telemetry);
@@ -336,12 +354,11 @@ namespace
         // Client-local config owns transport, telemetry, and rendering knobs.
         auto config = simnet::default_client_config();
 
-        read_optional(json, "headless", config.headless);
         if (auto const* section = optional_object(json, "transport")) {
             apply_transport(*section, config.transport);
         }
-        if (auto const* section = optional_object(json, "render")) {
-            apply_render(*section, config.render);
+        if (auto const* section = optional_object(json, "visualization")) {
+            apply_visualization(*section, config.visualization);
         }
         if (auto const* section = optional_object(json, "telemetry")) {
             apply_telemetry(*section, config.telemetry);
@@ -404,6 +421,17 @@ namespace
         hash_bytes(hash, telemetry.metrics_csv_enabled);
         hash_bytes(hash, telemetry.metrics_json_enabled);
     }
+
+    void hash_visualization(std::uint64_t& hash, simnet::VisualizationConfig const& visualization) noexcept
+    {
+        hash_bytes(hash, visualization.enabled);
+        hash_bytes(hash, visualization.window_width);
+        hash_bytes(hash, visualization.window_height);
+        hash_bytes(hash, visualization.panel_width);
+        hash_bytes(hash, visualization.target_fps);
+        hash_bytes(hash, visualization.entity_scale);
+        hash_bytes(hash, visualization.picking_radius);
+    }
 }
 
 namespace simnet
@@ -458,8 +486,8 @@ namespace simnet
         auto hash = fnv_offset_basis;
 
         hash_shared_native(hash, shared);
-        hash_bytes(hash, local.headless);
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
+        hash_visualization(hash, local.visualization);
         hash_bytes(hash, local.benchmark.enabled);
         hash_bytes(hash, local.benchmark.repetitions);
         hash_bytes(hash, local.benchmark.load_ramp.enabled);
@@ -475,9 +503,8 @@ namespace simnet
         auto hash = fnv_offset_basis;
 
         hash_shared_native(hash, shared);
-        hash_bytes(hash, local.headless);
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
-        hash_bytes(hash, local.render.enabled);
+        hash_visualization(hash, local.visualization);
 
         return { .value = hash };
     }

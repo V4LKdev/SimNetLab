@@ -1,5 +1,4 @@
 {
-  "headless": false,
   "transport": {
     "host": "127.0.0.1",
     "port": 7777,
@@ -8,10 +7,14 @@
     "send_size_policy": "allow_backend_fragmentation",
     "snapshot_delivery": "reliable_sequenced"
   },
-  "render": {
-    "enabled": true,
-    "width": 1280,
-    "height": 720
+  "visualization": {
+    "enabled": false,
+    "window_width": 1800,
+    "window_height": 1080,
+    "panel_width": 360,
+    "target_fps": 60,
+    "entity_scale": 1.0,
+    "picking_radius": 1.0
   },
   "telemetry": {
     "tracy_enabled": false,

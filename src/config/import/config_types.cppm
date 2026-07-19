@@ -53,12 +53,16 @@ export namespace simnet
         std::string snapshot_delivery { "reliable_sequenced" };
     };
 
-    /// Visualization settings.
-    struct RenderConfig
+    /// Local visualization settings.
+    struct VisualizationConfig
     {
-        bool enabled { true };
-        std::uint32_t width { 1280 };
-        std::uint32_t height { 720 };
+        bool enabled {};
+        std::uint32_t window_width { 1800 };
+        std::uint32_t window_height { 1080 };
+        std::uint32_t panel_width { 360 };
+        std::uint32_t target_fps { 60 };
+        float entity_scale { 1.0F };
+        float picking_radius { 1.0F };
     };
 
     /// Logging and profiling settings.
@@ -102,8 +106,8 @@ export namespace simnet
     /// Server-local runtime configuration.
     struct ServerConfig
     {
-        bool headless { true };
         TransportConfig transport {};
+        VisualizationConfig visualization {};
         TelemetryConfig telemetry {};
         BenchmarkScenarioConfig benchmark {};
     };
@@ -111,9 +115,8 @@ export namespace simnet
     /// Client-local runtime configuration.
     struct ClientConfig
     {
-        bool headless { false };
         TransportConfig transport {};
-        RenderConfig render {};
+        VisualizationConfig visualization {};
         TelemetryConfig telemetry {};
     };
 
