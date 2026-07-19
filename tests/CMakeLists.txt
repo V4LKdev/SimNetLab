@@ -9,6 +9,10 @@ add_executable(SimNetTests
     transport_tests.cpp
 )
 
+if (SIMNET_ENABLE_RENDER)
+    target_sources(SimNetTests PRIVATE render_tests.cpp)
+endif ()
+
 target_link_libraries(SimNetTests
     PRIVATE
         simnet_core
@@ -21,6 +25,10 @@ target_link_libraries(SimNetTests
         simnet_transport
         Catch2::Catch2WithMain
 )
+
+if (SIMNET_ENABLE_RENDER)
+    target_link_libraries(SimNetTests PRIVATE simnet_render)
+endif ()
 
 simnet_configure_target(SimNetTests)
 

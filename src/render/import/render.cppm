@@ -1,0 +1,31 @@
+module;
+
+#include <memory>
+
+/// @brief Core-only visualization viewer API.
+export module simnet.render;
+
+export import :types;
+
+export namespace simnet
+{
+    class Viewer
+    {
+    public:
+        explicit Viewer(ViewerConfig config = {});
+        ~Viewer();
+
+        Viewer(Viewer const&) = delete;
+        Viewer& operator=(Viewer const&) = delete;
+        Viewer(Viewer&&) noexcept;
+        Viewer& operator=(Viewer&&) noexcept;
+
+        /// All RenderEntityView spans must remain valid for this call.
+        [[nodiscard]] ViewerResult draw(RenderFrame const& frame);
+        void set_view_mode(ViewMode mode);
+
+    private:
+        class Impl;
+        std::unique_ptr<Impl> impl_;
+    };
+}
