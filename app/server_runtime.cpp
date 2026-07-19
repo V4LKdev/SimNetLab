@@ -27,6 +27,9 @@ import simnet.runtime;
 import simnet.snapshot;
 import simnet.telemetry;
 import simnet.transport;
+#if defined(SIMNET_ENABLE_RENDER)
+import simnet.render;
+#endif
 
 namespace
 {
@@ -107,6 +110,46 @@ namespace
         }
         throw std::runtime_error("unsupported snapshot delivery: " + config.snapshot_delivery);
     }
+
+#if defined(SIMNET_ENABLE_RENDER)
+    [[nodiscard]] simnet::ViewerConfig viewer_config(simnet::VisualizationConfig const& config)
+    {
+        return {
+            .window_width = config.window_width,
+            .window_height = config.window_height,
+            .panel_width = config.panel_width,
+            .target_frame_rate = config.target_fps,
+            .entity_scale = config.entity_scale,
+            .picking_radius = config.picking_radius,
+            .title = "SimNet Server",
+        };
+    }
+
+    [[nodiscard]] simnet::RenderFrame render_frame(
+        simnet::WorldSnapshot const& snapshot,
+        simnet::SharedConfig const& config,
+        simnet::NS frame_delta,
+        bool paused
+    )
+    {
+        return {
+            .entities = {
+                .ids = snapshot.ids,
+                .positions = snapshot.positions,
+                .headings = snapshot.headings,
+                .hues = snapshot.hues,
+            },
+            .info = {
+                .tick = snapshot.tick,
+                .world_bounds = simnet::make_centered_bounds(config.simulation.world_half),
+                .frame_delta = frame_delta,
+                .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
+                .simulation_paused = paused,
+                .capabilities = { .can_pause_simulation = true },
+            },
+        };
+    }
+#endif
 
     [[nodiscard]] simnet::BoidState initial_boid(std::uint32_t index, float world_half)
     {
@@ -423,6 +466,15 @@ namespace simnet::app
                 pipeline.techniques,
                 PipelineTechniqueFlags::Delta
             );
+#if defined(SIMNET_ENABLE_RENDER)
+            auto viewer = std::optional<Viewer> {};
+            auto render_snapshot = WorldSnapshot {};
+            auto render_snapshot_ready = false;
+            auto simulation_paused = false;
+            if (local.visualization.enabled) {
+                viewer.emplace(viewer_config(local.visualization));
+            }
+#endif
 
             log(LogCategory::Simulation, LogLevel::Info,
                 "server runtime started entities=" + std::to_string(shared.simulation.initial_boid_count));
@@ -437,7 +489,20 @@ namespace simnet::app
                     break;
                 }
 
-                auto const frame = plan_runtime_frame(clock, stats, sample_frame_delta(timer), settings);
+                auto const frame_delta = sample_frame_delta(timer);
+                auto frame = RuntimeFramePlan {};
+#if defined(SIMNET_ENABLE_RENDER)
+                if (simulation_paused) {
+                    ++stats.frames;
+                    stats.raw_time += frame_delta;
+                    stats.accepted_time += frame_delta;
+                    clock.accumulator = NS {};
+                } else {
+                    frame = plan_runtime_frame(clock, stats, frame_delta, settings);
+                }
+#else
+                frame = plan_runtime_frame(clock, stats, frame_delta, settings);
+#endif
                 for (std::uint16_t offset = 0; offset < frame.step_count; ++offset) {
                     if (!run_tick(
                             world,
@@ -459,6 +524,35 @@ namespace simnet::app
                     log(LogCategory::Core, LogLevel::Warn,
                         "server dropped simulation time ns=" + std::to_string(frame.dropped_time.count()));
                 }
+#if defined(SIMNET_ENABLE_RENDER)
+                if (viewer.has_value()) {
+                    if (!render_snapshot_ready || frame.step_count != 0U) {
+                        auto const extracted = extract_world_snapshot(world, stats.ticks, render_snapshot);
+                        if (!extracted.valid) {
+                            log(LogCategory::Simulation, LogLevel::Error,
+                                "render snapshot extraction failed: " + extracted.error);
+                            static_cast<void>(stop.request(ShutdownReason::FatalError));
+                        } else {
+                            render_snapshot_ready = true;
+                        }
+                    }
+                    if (!stop.requested() && render_snapshot_ready) {
+                        auto const viewer_result = viewer->draw(
+                            render_frame(render_snapshot, shared, frame_delta, simulation_paused)
+                        );
+                        if (viewer_result.close_requested) {
+                            static_cast<void>(stop.request(ShutdownReason::WindowClosed));
+                        }
+                        if (viewer_result.toggle_simulation_pause_requested) {
+                            simulation_paused = !simulation_paused;
+                            clock.accumulator = NS {};
+                            log(LogCategory::Simulation, LogLevel::Info,
+                                simulation_paused ? "server simulation paused by viewer"
+                                                  : "server simulation resumed by viewer");
+                        }
+                    }
+                }
+#endif
                 auto const limit = reached_runtime_limit(settings, stats);
                 if (limit != ShutdownReason::None) {
                     static_cast<void>(stop.request(limit));
