@@ -242,8 +242,16 @@ namespace simnet::app
                             break;
                         }
                     } else if (auto const* disconnected = std::get_if<PeerDisconnected>(&event)) {
-                        log(LogCategory::Transport, LogLevel::Info,
-                            "client disconnected peer=" + std::to_string(disconnected->peer));
+                        if (!session_ready) {
+                            auto const reason = disconnected->code == DisconnectCode::Timeout
+                                ? "client connection or session handshake timed out"
+                                : "client disconnected before session readiness";
+                            log(LogCategory::Transport, LogLevel::Error,
+                                std::string { reason } + " peer=" + std::to_string(disconnected->peer));
+                        } else {
+                            log(LogCategory::Transport, LogLevel::Info,
+                                "client disconnected peer=" + std::to_string(disconnected->peer));
+                        }
                         static_cast<void>(stop.request(
                             session_ready ? ShutdownReason::TransportDisconnected
                                           : ShutdownReason::FatalError

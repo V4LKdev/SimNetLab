@@ -473,6 +473,8 @@ namespace simnet::app
             auto simulation_paused = false;
             if (local.visualization.enabled) {
                 viewer.emplace(viewer_config(local.visualization));
+                // Viewer startup is not simulation time and must not create an initial catch-up frame.
+                reset_frame_timer(timer);
             }
 #endif
 

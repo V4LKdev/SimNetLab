@@ -17,6 +17,8 @@ module;
 #include <raymath.h>
 #include <rlgl.h>
 
+#include "../assets/jetbrains_mono_regular.hpp"
+
 module simnet.render;
 
 namespace
@@ -221,10 +223,24 @@ namespace simnet
             if (viewer_active) {
                 throw std::runtime_error("only one Viewer may be active per process");
             }
+            SetTraceLogLevel(LOG_WARNING);
             InitWindow(static_cast<int>(config_.window_width), static_cast<int>(config_.window_height), config_.title.c_str());
             if (!IsWindowReady()) {
                 throw std::runtime_error("failed to create viewer window");
             }
+            font_ = LoadFontFromMemory(
+                ".ttf",
+                JetBrainsMono_Regular_ttf,
+                static_cast<int>(JetBrainsMono_Regular_ttf_len),
+                32,
+                nullptr,
+                0
+            );
+            if (font_.texture.id == 0) {
+                CloseWindow();
+                throw std::runtime_error("failed to load viewer font");
+            }
+            SetTextureFilter(font_.texture, TEXTURE_FILTER_BILINEAR);
             SetTargetFPS(static_cast<int>(config_.target_frame_rate));
             scene_ = LoadRenderTexture(scene_rect_.width, scene_rect_.height);
             if (scene_.texture.id == 0) {
@@ -256,6 +272,9 @@ namespace simnet
             }
             if (scene_.texture.id != 0) {
                 UnloadRenderTexture(scene_);
+            }
+            if (font_.texture.id != 0) {
+                UnloadFont(font_);
             }
             if (IsWindowReady()) {
                 CloseWindow();
@@ -490,7 +509,7 @@ namespace simnet
                 static_cast<int>(config_.window_height), Color { 75, 88, 108, 255 });
             auto y = 18.0F;
             auto text = [&](char const* value, int size = 18, Color color = RAYWHITE) {
-                DrawText(value, 16, static_cast<int>(y), size, color);
+                DrawTextEx(font_, value, Vector2 { 16.0F, y }, static_cast<float>(size), 1.0F, color);
                 y += static_cast<float>(size + 7);
             };
             auto section = [&](char const* value) {
@@ -552,7 +571,7 @@ namespace simnet
                 auto const rect = Rectangle { 16.0F, button_y, width - 32.0F, button_height };
                 DrawRectangleRec(rect, active ? Color { 51, 102, 145, 255 } : Color { 45, 54, 68, 255 });
                 DrawRectangleLinesEx(rect, 1.0F, Color { 91, 113, 140, 255 });
-                DrawText(label, 24, static_cast<int>(button_y + 5.0F), 16, RAYWHITE);
+                DrawTextEx(font_, label, Vector2 { 24.0F, button_y + 5.0F }, 16.0F, 1.0F, RAYWHITE);
                 button_y += button_height + 8.0F;
             };
             button(show_bounds_ ? "Hide bounds" : "Show bounds", show_bounds_);
@@ -567,6 +586,7 @@ namespace simnet
         ViewerConfig config_;
         SceneRect scene_rect_ {};
         RenderTexture2D scene_ {};
+        Font font_ {};
         Mesh mesh_ {};
         Model model_ {};
         Shader shader_ {};
