@@ -159,6 +159,17 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     auto const& client_index = client_world.get<simnet::ClientReplicationIndex>();
     CHECK(client_clock.latest_tick == 4);
     CHECK(client_index.size() == boid_count);
+
+    auto extracted_client_snapshot = simnet::WorldSnapshot {};
+    auto const client_extraction = simnet::extract_client_world_snapshot(
+        client_world,
+        client_clock.latest_tick,
+        extracted_client_snapshot
+    );
+    REQUIRE(client_extraction.valid);
+    CHECK(client_extraction.entity_count == boid_count);
+    CHECK(extracted_client_snapshot.tick == 4);
+    CHECK(extracted_client_snapshot.ids == client_index.ids);
 }
 
 TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replication]")

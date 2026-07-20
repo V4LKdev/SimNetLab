@@ -2,12 +2,14 @@ module;
 
 #include <cstdint>
 #include <flecs.h>
+#include <string>
 #include <utility>
 #include <vector>
 
 module simnet.game_client;
 
 import :apply;
+import :snapshot;
 import simnet.game_shared;
 import simnet.snapshot;
 
@@ -78,6 +80,12 @@ namespace simnet
         {
             index.ids.push_back(id);
             index.entities.push_back(entity_id);
+        }
+
+        void reset_failed_snapshot(WorldSnapshot& snapshot, Tick tick)
+        {
+            snapshot.clear();
+            snapshot.tick = tick;
         }
     }
 
@@ -191,6 +199,68 @@ namespace simnet
         world.modified<ClientReplicationClock>();
 
         report.final_entities = static_cast<std::uint32_t>(index.size());
+        return report;
+    }
+
+    ClientSnapshotExtractionReport extract_client_world_snapshot(
+        flecs::world const& world,
+        Tick tick,
+        WorldSnapshot& out_snapshot
+    )
+    {
+        auto report = ClientSnapshotExtractionReport { .tick = tick };
+        auto const& index = world.get<ClientReplicationIndex>();
+        if (index.ids.size() != index.entities.size()) {
+            reset_failed_snapshot(out_snapshot, tick);
+            report.valid = false;
+            report.error = "client replication index sizes do not match";
+            return report;
+        }
+
+        out_snapshot.clear();
+        out_snapshot.tick = tick;
+        out_snapshot.reserve(index.size());
+        for (auto index_position = std::size_t {}; index_position < index.size(); ++index_position) {
+            auto const entity_id = index.entities[index_position];
+            if (entity_id == 0 || !ecs_is_alive(world.c_ptr(), entity_id)) {
+                reset_failed_snapshot(out_snapshot, tick);
+                report.valid = false;
+                report.error = "client replication index references a dead entity";
+                return report;
+            }
+
+            auto const entity = flecs::entity { world, entity_id };
+            if (!entity.has<BoidTag>() || !entity.has<NetIdentity>() || !entity.has<Position>()
+                || !entity.has<Heading>() || !entity.has<Hue>()) {
+                reset_failed_snapshot(out_snapshot, tick);
+                report.valid = false;
+                report.error = "client replicated entity is missing required components";
+                return report;
+            }
+
+            auto const& identity = entity.get<NetIdentity>();
+            if (identity.id != index.ids[index_position]) {
+                reset_failed_snapshot(out_snapshot, tick);
+                report.valid = false;
+                report.error = "client replication index identity does not match entity";
+                return report;
+            }
+
+            out_snapshot.ids.push_back(identity.id);
+            out_snapshot.positions.push_back(entity.get<Position>().value);
+            out_snapshot.headings.push_back(entity.get<Heading>().value);
+            out_snapshot.hues.push_back(entity.get<Hue>().value);
+        }
+
+        auto const validation = validate_world_snapshot(out_snapshot);
+        if (!validation.valid) {
+            reset_failed_snapshot(out_snapshot, tick);
+            report.valid = false;
+            report.error = validation.message;
+            return report;
+        }
+
+        report.entity_count = static_cast<std::uint32_t>(out_snapshot.size());
         return report;
     }
 }
