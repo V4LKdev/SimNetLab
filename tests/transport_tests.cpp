@@ -225,6 +225,75 @@ struct TransportTestSettings {
     return false;
   }
 
+  auto const client_control = std::array<simnet::Byte, 2>{simnet::Byte{1U}, simnet::Byte{1U}};
+  auto control_sent = client.send_application_control(client_control);
+  if (!control_sent.ok) {
+    std::cerr << "client application-control send failed: " << control_sent.error.message << '\n';
+    return false;
+  }
+  {
+    auto events = std::vector<simnet::TransportEvent>{};
+    auto const poll = client.poll(events, 0);
+    if (!poll.ok) {
+      std::cerr << "client application-control service poll failed: " << poll.error.message << '\n';
+      return false;
+    }
+  }
+  auto client_control_seen = false;
+  auto const control_deadline = std::chrono::steady_clock::now() + poll_timeout;
+  while (!client_control_seen && std::chrono::steady_clock::now() < control_deadline) {
+    auto events = std::vector<simnet::TransportEvent>{};
+    auto poll = server.poll(events, 10);
+    if (!poll.ok) {
+      std::cerr << "server application-control poll failed: " << poll.error.message << '\n';
+      return false;
+    }
+    for (auto const &event : events) {
+      if (auto const *control = std::get_if<simnet::ReceivedApplicationControl>(&event)) {
+        client_control_seen = control->peer == handshake.server_peer
+            && control->payload == std::vector<simnet::Byte>{client_control.begin(), client_control.end()};
+      }
+    }
+  }
+  if (!client_control_seen) {
+    std::cerr << "client application-control payload was not received intact\n";
+    return false;
+  }
+
+  auto const server_control = std::array<simnet::Byte, 2>{simnet::Byte{2U}, simnet::Byte{0U}};
+  control_sent = server.send_application_control(handshake.server_peer, server_control);
+  if (!control_sent.ok) {
+    std::cerr << "server application-control send failed: " << control_sent.error.message << '\n';
+    return false;
+  }
+  {
+    auto events = std::vector<simnet::TransportEvent>{};
+    auto const poll = server.poll(events, 0);
+    if (!poll.ok) {
+      std::cerr << "server application-control service poll failed: " << poll.error.message << '\n';
+      return false;
+    }
+  }
+  auto server_control_seen = false;
+  while (!server_control_seen && std::chrono::steady_clock::now() < control_deadline) {
+    auto events = std::vector<simnet::TransportEvent>{};
+    auto poll = client.poll(events, 10);
+    if (!poll.ok) {
+      std::cerr << "client application-control poll failed: " << poll.error.message << '\n';
+      return false;
+    }
+    for (auto const &event : events) {
+      if (auto const *control = std::get_if<simnet::ReceivedApplicationControl>(&event)) {
+        server_control_seen = control->peer == 1U
+            && control->payload == std::vector<simnet::Byte>{server_control.begin(), server_control.end()};
+      }
+    }
+  }
+  if (!server_control_seen) {
+    std::cerr << "server application-control payload was not received intact\n";
+    return false;
+  }
+
   client.disconnect(simnet::DisconnectCode::None);
   server.stop();
   return true;

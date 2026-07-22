@@ -11,7 +11,7 @@ import :protocol;
 namespace simnet::transport_protocol {
 namespace {
 constexpr std::uint32_t session_magic = 0x534E5453U;
-constexpr std::uint16_t session_version = 2;
+constexpr std::uint16_t session_version = 3;
 constexpr std::uint32_t session_header_bytes = 11;
 } // namespace
 
@@ -137,6 +137,8 @@ std::vector<Byte> encode_session_message(SessionMessage const &message) {
     write_u32(payload, message.snapshot_ack.newest_received_snapshot);
     write_u32(payload, message.snapshot_ack.received_mask);
     write_u32(payload, message.snapshot_ack.newest_applied_snapshot);
+  } else if (message.kind == SessionMessageKind::ApplicationControl) {
+    payload = message.application_control;
   }
 
   auto bytes = std::vector<Byte>{};
@@ -185,6 +187,13 @@ bool decode_session_message(Byte const *data, std::size_t size, SessionMessage &
     return payload_size == 12U && read_u32(data, size, offset, message.snapshot_ack.newest_received_snapshot) &&
            read_u32(data, size, offset, message.snapshot_ack.received_mask) &&
            read_u32(data, size, offset, message.snapshot_ack.newest_applied_snapshot);
+  }
+  if (message.kind == SessionMessageKind::ApplicationControl) {
+    if (payload_size > max_application_control_bytes) {
+      return false;
+    }
+    message.application_control.assign(data + offset, data + offset + payload_size);
+    return true;
   }
   return false;
 }

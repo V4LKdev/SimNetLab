@@ -138,6 +138,13 @@ export namespace simnet
         SnapshotAck ack {};
     };
 
+    /// Opaque reliable application-control payload received after session readiness.
+    struct ReceivedApplicationControl
+    {
+        PeerId peer {};
+        std::vector<Byte> payload;
+    };
+
     struct TransportErrorEvent
     {
         std::string message {};
@@ -148,6 +155,7 @@ export namespace simnet
         PeerSessionReady,
         PeerDisconnected,
         SnapshotAckReceived,
+        ReceivedApplicationControl,
         ReceivedPacket,
         TransportErrorEvent
     >;

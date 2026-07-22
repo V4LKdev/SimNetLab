@@ -11,15 +11,24 @@ import :types;
 namespace simnet::transport_protocol {
 inline constexpr std::uint8_t channel_count = 3;
 inline constexpr std::size_t max_session_message_bytes = 35;
+inline constexpr std::size_t max_application_control_bytes = 256;
+inline constexpr std::size_t max_control_message_bytes = 11 + max_application_control_bytes;
 inline constexpr std::size_t max_reassembled_payload_bytes = 16U * 1024U * 1024U;
 
-enum class SessionMessageKind : std::uint8_t { ClientHello = 1, ServerAccept = 2, ServerReject = 3, SnapshotAck = 4 };
+enum class SessionMessageKind : std::uint8_t {
+  ClientHello = 1,
+  ServerAccept = 2,
+  ServerReject = 3,
+  SnapshotAck = 4,
+  ApplicationControl = 5
+};
 
 struct SessionMessage {
   SessionMessageKind kind{};
   SessionIdentity identity{};
   DisconnectCode reject_code{};
   SnapshotAck snapshot_ack{};
+  std::vector<Byte> application_control{};
 };
 
 [[nodiscard]] DisconnectCode identity_mismatch(SessionIdentity const &actual, SessionIdentity const &expected) noexcept;

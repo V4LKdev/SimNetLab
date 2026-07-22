@@ -52,6 +52,9 @@ export namespace simnet
         /// Sends a semantic snapshot acknowledgement on the reserved Input lane.
         [[nodiscard]] TransportResult send_snapshot_ack(SnapshotAck const& ack);
 
+        /// Sends a bounded opaque application-control payload on the reliable Control lane.
+        [[nodiscard]] TransportResult send_application_control(std::span<Byte const> payload);
+
         [[nodiscard]] TransportStats stats() const;
         [[nodiscard]] PeerStats server_stats() const;
 

@@ -288,6 +288,23 @@ public:
     return send_to_peer(slot->peer, counters_, settings_.limits, packet.lane, packet.delivery, packet.payload);
   }
 
+  TransportResult send_application_control(PeerId peer, std::span<Byte const> payload) {
+    auto *slot = find(peer);
+    if (slot == nullptr) {
+      return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
+    }
+    if (!slot->session_ready) {
+      return fail(TransportErrorCode::PeerNotReady, "transport peer session is not ready");
+    }
+    if (payload.size() > max_application_control_bytes) {
+      return fail(TransportErrorCode::PayloadTooLarge, "application-control payload exceeds transport limit");
+    }
+    return send_session(slot->peer, {
+                                        .kind = SessionMessageKind::ApplicationControl,
+                                        .application_control = {payload.begin(), payload.end()},
+                                    });
+  }
+
   void disconnect(PeerId peer, DisconnectCode code) noexcept {
     if (auto *slot = find(peer); slot != nullptr && slot->peer != nullptr) {
       auto const safe_code = valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
@@ -366,9 +383,11 @@ private:
       });
       return;
     }
-    auto const protocol_packet = lane == Lane::Control || lane == Lane::Input;
-    auto const size_allowed = protocol_packet ? event.packet->dataLength <= max_session_message_bytes
-                                              : payload_size_allowed(event.packet->dataLength, settings_.limits);
+    auto const size_allowed = lane == Lane::Control
+        ? event.packet->dataLength <= max_control_message_bytes
+        : lane == Lane::Input
+            ? event.packet->dataLength <= max_session_message_bytes
+            : payload_size_allowed(event.packet->dataLength, settings_.limits);
     if (!size_allowed) {
       ++counters_.oversize_drops;
       out_events.push_back(TransportErrorEvent{.message = "received ENet packet exceeds transport receive limit"});
@@ -381,14 +400,30 @@ private:
     if (slot != nullptr && lane == Lane::Control) {
       auto message = SessionMessage{};
       auto const *data = reinterpret_cast<Byte const *>(event.packet->data);
-      if (!decode_session_message(data, event.packet->dataLength, message) ||
-          message.kind != SessionMessageKind::ClientHello) {
+      if (!decode_session_message(data, event.packet->dataLength, message)) {
         out_events.push_back(TransportErrorEvent{
             .message = "invalid client session message",
         });
         disconnect(peer, DisconnectCode::ProtocolMismatch);
+      } else if (!slot->session_ready) {
+        if (message.kind != SessionMessageKind::ClientHello) {
+          out_events.push_back(TransportErrorEvent{
+              .message = "application control received before session readiness",
+          });
+          disconnect(peer, DisconnectCode::ProtocolMismatch);
+        } else {
+          handle_client_hello(*slot, message, out_events);
+        }
+      } else if (message.kind == SessionMessageKind::ApplicationControl) {
+        out_events.push_back(ReceivedApplicationControl{
+            .peer = peer,
+            .payload = std::move(message.application_control),
+        });
       } else {
-        handle_client_hello(*slot, message, out_events);
+        out_events.push_back(TransportErrorEvent{
+            .message = "invalid client control message after session readiness",
+        });
+        disconnect(peer, DisconnectCode::ProtocolMismatch);
       }
     } else if (slot != nullptr && lane == Lane::Input) {
       auto message = SessionMessage{};
@@ -610,6 +645,22 @@ public:
         Lane::Input);
   }
 
+  TransportResult send_application_control(std::span<Byte const> payload) {
+    if (host_ == nullptr || server_ == nullptr) {
+      return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+    }
+    if (!session_ready_) {
+      return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
+    }
+    if (payload.size() > max_application_control_bytes) {
+      return fail(TransportErrorCode::PayloadTooLarge, "application-control payload exceeds transport limit");
+    }
+    return send_session({
+        .kind = SessionMessageKind::ApplicationControl,
+        .application_control = {payload.begin(), payload.end()},
+    });
+  }
+
   TransportStats stats() const { return counters_; }
 
   PeerStats server_stats() const { return make_peer_stats(server_); }
@@ -633,8 +684,11 @@ private:
       });
       return;
     }
-    auto const size_allowed = lane == Lane::Control ? event.packet->dataLength <= max_session_message_bytes
-                                                    : payload_size_allowed(event.packet->dataLength, settings_.limits);
+    auto const size_allowed = lane == Lane::Control
+        ? event.packet->dataLength <= max_control_message_bytes
+        : lane == Lane::Input
+            ? event.packet->dataLength <= max_session_message_bytes
+            : payload_size_allowed(event.packet->dataLength, settings_.limits);
     if (!size_allowed) {
       ++counters_.oversize_drops;
       out_events.push_back(TransportErrorEvent{.message = "received ENet packet exceeds transport receive limit"});
@@ -677,6 +731,19 @@ private:
         });
         ++counters_.disconnects;
         enet_peer_disconnect_now(event.peer, static_cast<std::uint32_t>(message.reject_code));
+        server_ = nullptr;
+        transport_connected_ = false;
+        session_ready_ = false;
+      } else if (message.kind == SessionMessageKind::ApplicationControl && session_ready_) {
+        out_events.push_back(ReceivedApplicationControl{
+            .peer = server_peer_id,
+            .payload = std::move(message.application_control),
+        });
+      } else {
+        out_events.push_back(TransportErrorEvent{
+            .message = "invalid server control message",
+        });
+        enet_peer_disconnect_now(event.peer, static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch));
         server_ = nullptr;
         transport_connected_ = false;
         session_ready_ = false;
@@ -766,6 +833,13 @@ TransportResult TransportServer::send(SendPacket const &packet) {
   return impl_->send(packet);
 }
 
+TransportResult TransportServer::send_application_control(PeerId peer, std::span<Byte const> payload) {
+  if (impl_ == nullptr) {
+    return fail(TransportErrorCode::NotStarted, "transport server is not started");
+  }
+  return impl_->send_application_control(peer, payload);
+}
+
 void TransportServer::disconnect(PeerId peer, DisconnectCode code) noexcept {
   if (impl_ != nullptr) {
     impl_->disconnect(peer, code);
@@ -832,6 +906,13 @@ TransportResult TransportClient::send_snapshot_ack(SnapshotAck const &ack) {
     return fail(TransportErrorCode::NotStarted, "transport client is not connected");
   }
   return impl_->send_snapshot_ack(ack);
+}
+
+TransportResult TransportClient::send_application_control(std::span<Byte const> payload) {
+  if (impl_ == nullptr) {
+    return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+  }
+  return impl_->send_application_control(payload);
 }
 
 TransportStats TransportClient::stats() const { return impl_ == nullptr ? TransportStats{} : impl_->stats(); }
