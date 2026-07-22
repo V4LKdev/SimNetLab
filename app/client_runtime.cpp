@@ -5,6 +5,7 @@
 #include <exception>
 #include <flecs.h>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -22,6 +23,9 @@ import simnet.runtime;
 import simnet.snapshot;
 import simnet.telemetry;
 import simnet.transport;
+#if defined(SIMNET_ENABLE_RENDER)
+import simnet.render;
+#endif
 
 namespace
 {
@@ -36,6 +40,48 @@ namespace
     {
         simnet::SnapshotAck value {};
     };
+
+#if defined(SIMNET_ENABLE_RENDER)
+    [[nodiscard]] simnet::ViewerConfig viewer_config(simnet::VisualizationConfig const& config)
+    {
+        return {
+            .window_width = config.window_width,
+            .window_height = config.window_height,
+            .panel_width = config.panel_width,
+            .target_frame_rate = config.target_fps,
+            .entity_scale = config.entity_scale,
+            .picking_radius = config.picking_radius,
+            .title = "SimNet Client",
+        };
+    }
+
+    [[nodiscard]] simnet::RenderFrame render_frame(
+        simnet::WorldSnapshot const& snapshot,
+        simnet::SharedConfig const& config,
+        simnet::NS frame_delta,
+        std::optional<simnet::SequenceId> sequence,
+        bool session_ready
+    )
+    {
+        return {
+            .entities = {
+                .ids = snapshot.ids,
+                .positions = snapshot.positions,
+                .headings = snapshot.headings,
+                .hues = snapshot.hues,
+            },
+            .info = {
+                .tick = snapshot.tick,
+                .snapshot_sequence = sequence,
+                .session_ready = session_ready,
+                .world_bounds = simnet::make_centered_bounds(config.simulation.world_half),
+                .frame_delta = frame_delta,
+                .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
+                .capabilities = { .can_pause_simulation = false },
+            },
+        };
+    }
+#endif
 
     [[nodiscard]] ClientOptions parse_options(int argc, char** argv)
     {
@@ -188,6 +234,13 @@ namespace simnet::app
             };
             auto world = flecs::world {};
             register_client_game(world);
+#if defined(SIMNET_ENABLE_RENDER)
+            auto viewer = std::optional<Viewer> {};
+            auto render_snapshot = WorldSnapshot {};
+            if (local.visualization.enabled) {
+                viewer.emplace(viewer_config(local.visualization));
+            }
+#endif
 
             auto stats = RuntimeStats {};
             auto timer = RuntimeFrameTimer {};
@@ -264,6 +317,27 @@ namespace simnet::app
                         break;
                     }
                 }
+
+#if defined(SIMNET_ENABLE_RENDER)
+                if (!stop.requested() && viewer.has_value()) {
+                    auto const extracted = extract_client_world_snapshot(world, stats.ticks, render_snapshot);
+                    if (!extracted.valid) {
+                        log(LogCategory::Simulation, LogLevel::Error,
+                            "client render snapshot extraction failed: " + extracted.error);
+                        static_cast<void>(stop.request(ShutdownReason::FatalError));
+                    } else {
+                        auto const sequence = latest_applied_sequence == 0
+                            ? std::optional<SequenceId> {}
+                            : std::optional<SequenceId> { latest_applied_sequence };
+                        auto const viewer_result = viewer->draw(
+                            render_frame(render_snapshot, shared, delta, sequence, session_ready)
+                        );
+                        if (viewer_result.close_requested) {
+                            static_cast<void>(stop.request(ShutdownReason::WindowClosed));
+                        }
+                    }
+                }
+#endif
 
                 if (!stop.requested()) {
                     auto const limit = reached_runtime_limit(settings, stats);

@@ -26,4 +26,8 @@ target_link_libraries(Client
         simnet_telemetry
         simnet_transport
 )
+if (SIMNET_ENABLE_RENDER)
+    target_link_libraries(Client PRIVATE simnet_render)
+    target_compile_definitions(Client PRIVATE SIMNET_ENABLE_RENDER=1)
+endif ()
 simnet_configure_target(Client)
