@@ -12,13 +12,13 @@ The finished foundation separates core vocabulary, fixed-step runtime planning, 
 - Full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - 1,000-entity Server to Client replication in the bounded runtime path
-- Optional Server overview visualization with instanced directional entities
+- Optional Server and Client overview visualization with instanced directional entities
 
 The Server currently advances the authoritative boid state but does not yet implement the intended boid behavior model.
 
 ## Planned work
 
-Area of interest, LOD, compression, Client visualization, entity selection, benchmarking, spatial integration, metrics export, and Tracy instrumentation remain planned. The Server overview viewer is available when local visualization is enabled.
+Area of interest, LOD, compression, entity selection, benchmarking, spatial integration, metrics export, and Tracy instrumentation remain planned. Server and Client overview viewers are available when local visualization is enabled.
 
 `Aoi`, `Lod`, and `Compression` remain declared pipeline vocabulary. They are not implemented and a selected unsupported pipeline option is rejected during app startup.
 
@@ -73,7 +73,7 @@ Server accepts `--max-ticks`, `--max-frames`, `--max-runtime-ms`, `--max-frame-d
 - `simnet_spatial`: sparse uniform-grid queries
 - `simnet_game_shared`: shared Flecs contracts
 - `simnet_game_server`: authoritative extraction
-- `simnet_game_client`: client patch application
+- `simnet_game_client`: client patch application and replicated-world extraction
 - `simnet_pipeline`: snapshot selection, transformation, encoding, and decoding
 - `simnet_transport`: ENet transport and session protocol
 - `simnet_render`: generic core-only Raylib viewer
