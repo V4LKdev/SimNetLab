@@ -42,6 +42,34 @@ namespace
         simnet::SnapshotAck value {};
     };
 
+    enum class ClientConnectionState : std::uint8_t
+    {
+        Connecting,
+        SessionReady,
+        Disconnected
+    };
+
+    enum class ClientStopCause : std::uint8_t
+    {
+        None,
+        ConnectionTimeout,
+        RemoteShutdown,
+        ConnectionLost,
+        ProtocolError
+    };
+
+    [[nodiscard]] std::string_view client_stop_cause_name(ClientStopCause cause) noexcept
+    {
+        switch (cause) {
+        case ClientStopCause::None: return "none";
+        case ClientStopCause::ConnectionTimeout: return "connection_timeout";
+        case ClientStopCause::RemoteShutdown: return "remote_shutdown";
+        case ClientStopCause::ConnectionLost: return "connection_lost";
+        case ClientStopCause::ProtocolError: return "protocol_error";
+        }
+        return "unknown";
+    }
+
 #if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] simnet::ViewerConfig viewer_config(simnet::VisualizationConfig const& config)
     {
@@ -278,7 +306,8 @@ namespace simnet::app
             auto scratch = PipelineScratch {};
             auto latest_applied_sequence = SequenceId {};
             auto ack_tracker = SnapshotAckTracker {};
-            auto session_ready = false;
+            auto connection_state = ClientConnectionState::Connecting;
+            auto stop_cause = ClientStopCause::None;
             auto authoritative_pause_state = false;
             auto pause_state_received = false;
 
@@ -299,18 +328,19 @@ namespace simnet::app
                 if (!polled.ok) {
                     log(LogCategory::Transport, LogLevel::Error,
                         "client transport poll failed: " + polled.error.message);
+                    stop_cause = ClientStopCause::ProtocolError;
                     static_cast<void>(stop.request(ShutdownReason::FatalError));
                     break;
                 }
 
                 for (auto const& event : events) {
                     if (auto const* ready = std::get_if<PeerSessionReady>(&event)) {
-                        session_ready = true;
+                        connection_state = ClientConnectionState::SessionReady;
                         pause_state_received = false;
                         log(LogCategory::Transport, LogLevel::Info,
                             "client session ready peer=" + std::to_string(ready->peer));
                     } else if (auto const* packet = std::get_if<ReceivedPacket>(&event)) {
-                        if (!session_ready || !apply_packet(
+                        if (connection_state != ClientConnectionState::SessionReady || !apply_packet(
                                 *packet,
                                 pipeline,
                                 decode_state,
@@ -321,37 +351,52 @@ namespace simnet::app
                                 transport,
                                 stats
                             )) {
+                            stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
                             break;
                         }
                     } else if (auto const* control = std::get_if<ReceivedApplicationControl>(&event)) {
-                        if (!session_ready || !apply_application_control(
+                        if (connection_state != ClientConnectionState::SessionReady || !apply_application_control(
                                 *control,
                                 authoritative_pause_state,
                                 pause_state_received
                             )) {
+                            stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
                             break;
                         }
                     } else if (auto const* disconnected = std::get_if<PeerDisconnected>(&event)) {
-                        if (!session_ready) {
-                            auto const reason = disconnected->code == DisconnectCode::Timeout
-                                ? "client connection or session handshake timed out"
-                                : "client disconnected before session readiness";
+                        auto const was_session_ready = connection_state == ClientConnectionState::SessionReady;
+                        connection_state = ClientConnectionState::Disconnected;
+                        if (!was_session_ready && disconnected->code == DisconnectCode::Timeout) {
+                            stop_cause = ClientStopCause::ConnectionTimeout;
                             log(LogCategory::Transport, LogLevel::Error,
-                                std::string { reason } + " peer=" + std::to_string(disconnected->peer));
-                        } else {
+                                "client connection or session handshake timed out peer="
+                                    + std::to_string(disconnected->peer));
+                        } else if (was_session_ready && disconnected->code == DisconnectCode::None) {
+                            stop_cause = ClientStopCause::RemoteShutdown;
                             log(LogCategory::Transport, LogLevel::Info,
-                                "client disconnected peer=" + std::to_string(disconnected->peer));
+                                "client received remote shutdown peer=" + std::to_string(disconnected->peer));
+                        } else if (was_session_ready) {
+                            stop_cause = ClientStopCause::ConnectionLost;
+                            log(LogCategory::Transport, LogLevel::Error,
+                                "client connection lost peer=" + std::to_string(disconnected->peer));
+                        } else {
+                            stop_cause = ClientStopCause::ProtocolError;
+                            log(LogCategory::Transport, LogLevel::Error,
+                                "client disconnected before session readiness peer="
+                                    + std::to_string(disconnected->peer));
                         }
                         static_cast<void>(stop.request(
-                            session_ready ? ShutdownReason::TransportDisconnected
-                                          : ShutdownReason::FatalError
+                            stop_cause == ClientStopCause::RemoteShutdown
+                                ? ShutdownReason::TransportDisconnected
+                                : ShutdownReason::FatalError
                         ));
                         break;
                     } else if (auto const* error = std::get_if<TransportErrorEvent>(&event)) {
                         log(LogCategory::Transport, LogLevel::Error,
                             "client transport error: " + error->message);
+                        stop_cause = ClientStopCause::ProtocolError;
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;
                     }
@@ -363,6 +408,7 @@ namespace simnet::app
                     if (!extracted.valid) {
                         log(LogCategory::Simulation, LogLevel::Error,
                             "client render snapshot extraction failed: " + extracted.error);
+                        stop_cause = ClientStopCause::ProtocolError;
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                     } else {
                         auto const sequence = latest_applied_sequence == 0
@@ -374,7 +420,7 @@ namespace simnet::app
                                 shared,
                                 delta,
                                 sequence,
-                                session_ready,
+                                connection_state == ClientConnectionState::SessionReady,
                                 pause_state_received
                                     ? std::optional<bool> { authoritative_pause_state }
                                     : std::optional<bool> {}
@@ -392,6 +438,7 @@ namespace simnet::app
                             if (!sent.ok) {
                                 log(LogCategory::Transport, LogLevel::Error,
                                     "client pause request send failed: " + sent.error.message);
+                                stop_cause = ClientStopCause::ProtocolError;
                                 static_cast<void>(stop.request(ShutdownReason::FatalError));
                             }
                         }
@@ -411,6 +458,7 @@ namespace simnet::app
             transport.disconnect(DisconnectCode::None);
             log(LogCategory::Simulation, LogLevel::Info,
                 "client runtime stopped reason=" + std::string { shutdown_reason_name(stop.reason()) }
+                    + " cause=" + std::string { client_stop_cause_name(stop_cause) }
                     + " frames=" + std::to_string(stats.frames)
                     + " ticks=" + std::to_string(stats.ticks)
                     + " runtime_ns=" + std::to_string(stats.raw_time.count()));
