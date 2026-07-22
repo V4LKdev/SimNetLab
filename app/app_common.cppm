@@ -87,7 +87,7 @@ export namespace simnet::app
 
 namespace
 {
-    constexpr std::uint32_t application_protocol_version = 1;
+    constexpr std::uint32_t application_protocol_version = 2;
     volatile std::sig_atomic_t signal_stop_latch = 0;
 
     extern "C" void request_signal_stop(int)
