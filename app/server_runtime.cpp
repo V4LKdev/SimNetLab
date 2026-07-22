@@ -19,6 +19,7 @@
 
 import simnet.config;
 import simnet.app_common;
+import simnet.app_protocol;
 import simnet.core;
 import simnet.game_server;
 import simnet.game_shared;
@@ -247,12 +248,37 @@ namespace
         }
     }
 
+    [[nodiscard]] bool send_pause_state(
+        simnet::TransportServer& transport,
+        std::optional<PeerRuntimeState> const& peer,
+        bool paused
+    )
+    {
+        if (!peer.has_value()) {
+            return true;
+        }
+
+        auto const bytes = simnet::app::encode_app_message({
+            .kind = simnet::app::AppMessageKind::PauseState,
+            .paused = paused,
+        });
+        auto const sent = transport.send_application_control(peer->peer, bytes);
+        if (!sent.ok) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                "server pause-state send failed: " + sent.error.message);
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool poll_transport(
         simnet::TransportServer& transport,
         std::optional<PeerRuntimeState>& peer,
         std::vector<simnet::TransportEvent>& events,
         std::uint32_t timeout_ms,
-        bool delta_enabled
+        bool delta_enabled,
+        bool& simulation_paused,
+        bool& pause_state_changed
     )
     {
         events.clear();
@@ -271,6 +297,9 @@ namespace
                     peer = PeerRuntimeState { .peer = ready->peer };
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
                         "server session ready peer=" + std::to_string(ready->peer));
+                    if (!send_pause_state(transport, peer, simulation_paused)) {
+                        return false;
+                    }
                 }
             } else if (auto const* disconnected = std::get_if<simnet::PeerDisconnected>(&event)) {
                 if (peer.has_value() && peer->peer == disconnected->peer) {
@@ -286,6 +315,26 @@ namespace
                 } else {
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Warn,
                         "server ignored invalid snapshot ACK");
+                }
+            } else if (auto const* control = std::get_if<simnet::ReceivedApplicationControl>(&event)) {
+                auto message = simnet::app::AppMessage {};
+                if (!peer.has_value() || control->peer != peer->peer
+                    || !simnet::app::decode_app_message(control->payload, message)
+                    || message.kind != simnet::app::AppMessageKind::PauseSetRequest) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "server received invalid application-control message");
+                    transport.disconnect(control->peer, simnet::DisconnectCode::ProtocolMismatch);
+                    return false;
+                }
+
+                pause_state_changed = pause_state_changed || simulation_paused != message.paused;
+                simulation_paused = message.paused;
+                if (pause_state_changed) {
+                    simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+                        simulation_paused ? "server simulation paused by client" : "server simulation resumed by client");
+                }
+                if (!send_pause_state(transport, peer, simulation_paused)) {
+                    return false;
                 }
             } else if (auto const* error = std::get_if<simnet::TransportErrorEvent>(&event)) {
                 simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
@@ -466,11 +515,11 @@ namespace simnet::app
                 pipeline.techniques,
                 PipelineTechniqueFlags::Delta
             );
+            auto simulation_paused = false;
 #if defined(SIMNET_ENABLE_RENDER)
             auto viewer = std::optional<Viewer> {};
             auto render_snapshot = WorldSnapshot {};
             auto render_snapshot_ready = false;
-            auto simulation_paused = false;
             if (local.visualization.enabled) {
                 viewer.emplace(viewer_config(local.visualization));
                 // Viewer startup is not simulation time and must not create an initial catch-up frame.
@@ -486,14 +535,25 @@ namespace simnet::app
                     static_cast<void>(stop.request(ShutdownReason::Signal));
                     break;
                 }
-                if (!poll_transport(transport, peer, events, 1, delta_enabled)) {
+                auto pause_state_changed = false;
+                if (!poll_transport(
+                        transport,
+                        peer,
+                        events,
+                        1,
+                        delta_enabled,
+                        simulation_paused,
+                        pause_state_changed
+                    )) {
                     static_cast<void>(stop.request(ShutdownReason::FatalError));
                     break;
+                }
+                if (pause_state_changed) {
+                    clock.accumulator = NS {};
                 }
 
                 auto const frame_delta = sample_frame_delta(timer);
                 auto frame = RuntimeFramePlan {};
-#if defined(SIMNET_ENABLE_RENDER)
                 if (simulation_paused) {
                     ++stats.frames;
                     stats.raw_time += frame_delta;
@@ -502,9 +562,6 @@ namespace simnet::app
                 } else {
                     frame = plan_runtime_frame(clock, stats, frame_delta, settings);
                 }
-#else
-                frame = plan_runtime_frame(clock, stats, frame_delta, settings);
-#endif
                 for (std::uint16_t offset = 0; offset < frame.step_count; ++offset) {
                     if (!run_tick(
                             world,
@@ -551,6 +608,9 @@ namespace simnet::app
                             log(LogCategory::Simulation, LogLevel::Info,
                                 simulation_paused ? "server simulation paused by viewer"
                                                   : "server simulation resumed by viewer");
+                            if (!send_pause_state(transport, peer, simulation_paused)) {
+                                static_cast<void>(stop.request(ShutdownReason::FatalError));
+                            }
                         }
                     }
                 }

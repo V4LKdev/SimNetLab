@@ -523,7 +523,11 @@ namespace simnet
             section("Application");
             std::snprintf(line, sizeof(line), "mode Overview");
             text(line);
-            text(frame.info.simulation_paused ? "simulation paused" : "simulation running");
+            if (frame.info.simulation_paused.has_value()) {
+                text(*frame.info.simulation_paused ? "simulation paused" : "simulation running");
+            } else {
+                text("simulation state unavailable");
+            }
             if (frame.info.session_ready.has_value()) {
                 text(*frame.info.session_ready ? "session ready" : "session unavailable");
             }
@@ -578,7 +582,7 @@ namespace simnet
             button(show_axes_ ? "Hide axes" : "Show axes", show_axes_);
             button("Reset camera", false);
             if (frame.info.capabilities.can_pause_simulation) {
-                button(frame.info.simulation_paused ? "Resume simulation" : "Pause simulation", false);
+                button(*frame.info.simulation_paused ? "Resume simulation" : "Pause simulation", false);
             }
             static_cast<void>(result);
         }

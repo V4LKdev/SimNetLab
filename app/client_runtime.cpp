@@ -16,6 +16,7 @@
 
 import simnet.config;
 import simnet.app_common;
+import simnet.app_protocol;
 import simnet.core;
 import simnet.game_client;
 import simnet.pipeline;
@@ -60,7 +61,8 @@ namespace
         simnet::SharedConfig const& config,
         simnet::NS frame_delta,
         std::optional<simnet::SequenceId> sequence,
-        bool session_ready
+        bool session_ready,
+        std::optional<bool> simulation_paused
     )
     {
         return {
@@ -77,7 +79,8 @@ namespace
                 .world_bounds = simnet::make_centered_bounds(config.simulation.world_half),
                 .frame_delta = frame_delta,
                 .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
-                .capabilities = { .can_pause_simulation = false },
+                .simulation_paused = simulation_paused,
+                .capabilities = { .can_pause_simulation = session_ready && simulation_paused.has_value() },
             },
         };
     }
@@ -197,6 +200,30 @@ namespace
         return true;
     }
 
+    [[nodiscard]] bool apply_application_control(
+        simnet::ReceivedApplicationControl const& control,
+        bool& simulation_paused,
+        bool& pause_state_received
+    )
+    {
+        auto message = simnet::app::AppMessage {};
+        if (!simnet::app::decode_app_message(control.payload, message)
+            || message.kind != simnet::app::AppMessageKind::PauseState) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                "client received invalid application-control message");
+            return false;
+        }
+
+        auto const changed = !pause_state_received || simulation_paused != message.paused;
+        simulation_paused = message.paused;
+        pause_state_received = true;
+        if (changed) {
+            simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+                simulation_paused ? "client received authoritative pause state" : "client received authoritative resume state");
+        }
+        return true;
+    }
+
 }
 
 namespace simnet::app
@@ -252,6 +279,8 @@ namespace simnet::app
             auto latest_applied_sequence = SequenceId {};
             auto ack_tracker = SnapshotAckTracker {};
             auto session_ready = false;
+            auto authoritative_pause_state = false;
+            auto pause_state_received = false;
 
             log(LogCategory::Simulation, LogLevel::Info, "client runtime started");
             while (!stop.requested()) {
@@ -277,6 +306,7 @@ namespace simnet::app
                 for (auto const& event : events) {
                     if (auto const* ready = std::get_if<PeerSessionReady>(&event)) {
                         session_ready = true;
+                        pause_state_received = false;
                         log(LogCategory::Transport, LogLevel::Info,
                             "client session ready peer=" + std::to_string(ready->peer));
                     } else if (auto const* packet = std::get_if<ReceivedPacket>(&event)) {
@@ -290,6 +320,15 @@ namespace simnet::app
                                 world,
                                 transport,
                                 stats
+                            )) {
+                            static_cast<void>(stop.request(ShutdownReason::FatalError));
+                            break;
+                        }
+                    } else if (auto const* control = std::get_if<ReceivedApplicationControl>(&event)) {
+                        if (!session_ready || !apply_application_control(
+                                *control,
+                                authoritative_pause_state,
+                                pause_state_received
                             )) {
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
                             break;
@@ -330,10 +369,31 @@ namespace simnet::app
                             ? std::optional<SequenceId> {}
                             : std::optional<SequenceId> { latest_applied_sequence };
                         auto const viewer_result = viewer->draw(
-                            render_frame(render_snapshot, shared, delta, sequence, session_ready)
+                            render_frame(
+                                render_snapshot,
+                                shared,
+                                delta,
+                                sequence,
+                                session_ready,
+                                pause_state_received
+                                    ? std::optional<bool> { authoritative_pause_state }
+                                    : std::optional<bool> {}
+                            )
                         );
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
+                        }
+                        if (viewer_result.toggle_simulation_pause_requested && pause_state_received) {
+                            auto const bytes = app::encode_app_message({
+                                .kind = app::AppMessageKind::PauseSetRequest,
+                                .paused = !authoritative_pause_state,
+                            });
+                            auto const sent = transport.send_application_control(bytes);
+                            if (!sent.ok) {
+                                log(LogCategory::Transport, LogLevel::Error,
+                                    "client pause request send failed: " + sent.error.message);
+                                static_cast<void>(stop.request(ShutdownReason::FatalError));
+                            }
                         }
                     }
                 }

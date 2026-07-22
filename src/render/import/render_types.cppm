@@ -54,7 +54,7 @@ export namespace simnet
         Aabb3f world_bounds {};
         NS frame_delta {};
         std::optional<double> fixed_tick_rate_hz {};
-        bool simulation_paused {};
+        std::optional<bool> simulation_paused {};
         ViewerCapabilities capabilities {};
     };
 
