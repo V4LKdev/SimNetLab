@@ -60,7 +60,14 @@ cmake --build --preset debug --target Server Client
 ctest --test-dir build/debug --output-on-failure
 ```
 
-Server accepts `--max-ticks`, `--max-frames`, `--max-runtime-ms`, `--max-frame-delta-ms`, and `--max-steps-per-frame`. Client accepts `--max-ticks`, `--max-frames`, and `--max-runtime-ms`. A zero limit is disabled.
+Server accepts `--config PATH`, `--max-ticks`, `--max-frames`, `--max-runtime-ms`, `--max-frame-delta-ms`, and `--max-steps-per-frame`. Client accepts `--config PATH`, `--max-ticks`, `--max-frames`, and `--max-runtime-ms`. A zero limit is disabled.
+
+The default profiles are headless. To start the visual development profiles from the repository root:
+
+```sh
+build/debug/app/Server --config config/server_visual.json
+build/debug/app/Client --config config/client_visual.json
+```
 
 ## Project structure
 
@@ -79,4 +86,4 @@ Server accepts `--max-ticks`, `--max-frames`, `--max-runtime-ms`, `--max-frame-d
 - `simnet_render`: generic core-only Raylib viewer
 - `simnet_benchmarking`: benchmarking placeholder
 
-Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`.
+Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration.

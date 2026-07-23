@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <deque>
 #include <exception>
+#include <filesystem>
 #include <flecs.h>
 #include <iostream>
 #include <optional>
@@ -38,6 +39,7 @@ namespace
 
     struct ServerOptions
     {
+        std::optional<std::filesystem::path> config_path {};
         std::uint64_t max_frames {};
         simnet::Tick max_ticks {};
         simnet::NS max_runtime {};
@@ -66,7 +68,11 @@ namespace
         auto options = ServerOptions {};
         for (auto index = 1; index < argc; ++index) {
             auto const option = std::string_view { argv[index] };
-            if (option == "--max-frames") {
+            if (option == "--config") {
+                options.config_path = std::filesystem::path {
+                    simnet::app::next_option_value(index, argc, argv, option)
+                };
+            } else if (option == "--max-frames") {
                 options.max_frames =
                     simnet::app::parse_unsigned<std::uint64_t>(
                         simnet::app::next_option_value(index, argc, argv, option),
@@ -487,7 +493,7 @@ namespace simnet::app
         try {
             auto const options = parse_options(argc, argv);
             auto const shared = load_shared_config(default_shared_config_path());
-            auto const local = load_server_config(default_server_config_path());
+            auto const local = load_server_config(options.config_path.value_or(default_server_config_path()));
             if (local.transport.max_clients > 1U) {
                 throw std::runtime_error("server currently supports one client");
             }
