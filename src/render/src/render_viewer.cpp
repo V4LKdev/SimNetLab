@@ -285,10 +285,10 @@ namespace simnet
         [[nodiscard]] ViewerResult draw(RenderFrame const& frame)
         {
             auto result = ViewerResult {};
-            result.view_mode = mode_;
             auto stats = RenderStats {};
             auto const input_start = Clock::now();
-            update_camera(frame.info, result);
+            update_camera(frame, result);
+            update_selection(frame.entities, result);
             update_controls(frame.info, result);
             stats.input_cpu_time = elapsed_ns(input_start);
 
@@ -319,19 +319,61 @@ namespace simnet
             EndDrawing();
 
             result.close_requested = WindowShouldClose();
+            result.view_mode = mode_;
+            result.selected_entity = selected_entity_;
             result.stats = stats;
             return result;
         }
 
         void set_view_mode(ViewMode mode) noexcept
         {
-            mode_ = mode;
+            mode_ = mode == ViewMode::EntityDetail && !selected_entity_.has_value()
+                ? ViewMode::Overview
+                : mode;
         }
 
     private:
-        void update_camera(RenderFrameInfo const& info, ViewerResult& result)
+        struct SelectedEntity
         {
-            auto const bounds = info.world_bounds;
+            EntityNetId id {};
+            Vec3f position {};
+            Vec3f heading {};
+            std::uint8_t hue {};
+        };
+
+        [[nodiscard]] std::optional<SelectedEntity> find_selected_entity(RenderEntityView const& entities) const
+        {
+            if (!selected_entity_.has_value() || !entities.valid()) {
+                return std::nullopt;
+            }
+            for (std::size_t index = 0; index < entities.size(); ++index) {
+                if (entities.ids[index] == *selected_entity_
+                    && finite(entities.positions[index])
+                    && finite(entities.headings[index])) {
+                    return SelectedEntity {
+                        .id = entities.ids[index],
+                        .position = entities.positions[index],
+                        .heading = entities.headings[index],
+                        .hue = entities.hues[index],
+                    };
+                }
+            }
+            return std::nullopt;
+        }
+
+        void clear_selection(ViewerResult& result)
+        {
+            if (selected_entity_.has_value()) {
+                selected_entity_.reset();
+                result.selected_entity_changed = true;
+            }
+            selected_entity_frame_.reset();
+            mode_ = ViewMode::Overview;
+        }
+
+        void update_camera(RenderFrame const& frame, ViewerResult& result)
+        {
+            auto const bounds = frame.info.world_bounds;
             auto const center = Vec3f {
                 .x = (bounds.min.x + bounds.max.x) * 0.5F,
                 .y = (bounds.min.y + bounds.max.y) * 0.5F,
@@ -343,12 +385,16 @@ namespace simnet
                 std::abs(bounds.max.z - bounds.min.z),
                 1.0F,
             });
-            target_ = to_raylib(center);
             min_distance_ = std::max(minimum_distance, extent * 0.05F);
             max_distance_ = std::max(min_distance_ * 2.0F, extent * 4.0F);
             if (!camera_initialized_) {
-                reset_camera();
+                reset_overview_camera(center);
                 camera_initialized_ = true;
+            }
+
+            selected_entity_frame_ = find_selected_entity(frame.entities);
+            if (selected_entity_.has_value() && !selected_entity_frame_.has_value()) {
+                clear_selection(result);
             }
 
             auto const mouse = GetMousePosition();
@@ -356,38 +402,151 @@ namespace simnet
                 && mouse.x < static_cast<float>(scene_rect_.x + scene_rect_.width)
                 && mouse.y >= 0.0F
                 && mouse.y < static_cast<float>(scene_rect_.height);
-            if (mode_ == ViewMode::Overview && in_scene && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+            if ((mode_ == ViewMode::Overview || mode_ == ViewMode::EntityDetail)
+                && in_scene && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
                 auto const delta = GetMouseDelta();
-                yaw_ -= delta.x * 0.006F;
-                pitch_ = std::clamp(pitch_ + delta.y * 0.006F, min_pitch, max_pitch);
+                auto& yaw = mode_ == ViewMode::EntityDetail ? detail_yaw_ : overview_yaw_;
+                auto& pitch = mode_ == ViewMode::EntityDetail ? detail_pitch_ : overview_pitch_;
+                yaw -= delta.x * 0.006F;
+                pitch = std::clamp(pitch + delta.y * 0.006F, min_pitch, max_pitch);
             }
-            if (mode_ == ViewMode::Overview && in_scene) {
+            if ((mode_ == ViewMode::Overview || mode_ == ViewMode::EntityDetail) && in_scene) {
                 auto const wheel = GetMouseWheelMove();
                 if (wheel != 0.0F) {
-                    distance_ = std::clamp(distance_ * (1.0F - wheel * 0.1F), min_distance_, max_distance_);
+                    auto& distance = mode_ == ViewMode::EntityDetail ? detail_distance_ : overview_distance_;
+                    auto const minimum = mode_ == ViewMode::EntityDetail ? detail_min_distance_ : min_distance_;
+                    auto const maximum = mode_ == ViewMode::EntityDetail ? detail_max_distance_ : max_distance_;
+                    distance = std::clamp(distance * (1.0F - wheel * 0.1F), minimum, maximum);
                 }
             }
             if (IsKeyPressed(KEY_R)) {
-                reset_camera();
+                if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
+                    reset_detail_camera(extent);
+                } else {
+                    reset_overview_camera(center);
+                }
             }
-            if (mode_ != ViewMode::Overview) {
-                mode_ = ViewMode::Overview;
-                result.view_mode = mode_;
+            if (IsKeyPressed(KEY_ESCAPE) && mode_ == ViewMode::EntityDetail) {
+                clear_selection(result);
             }
-            auto const cosine_pitch = std::cos(pitch_);
+            if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
+                target_ = to_raylib(selected_entity_frame_->position);
+                detail_min_distance_ = std::max(0.5F, config_.entity_scale * 1.5F);
+                detail_max_distance_ = std::max(detail_min_distance_ * 4.0F, extent * 0.5F);
+                if (detail_distance_ <= 0.0F) {
+                    reset_detail_camera(extent);
+                }
+                update_camera_position(detail_yaw_, detail_pitch_, detail_distance_);
+            } else {
+                target_ = to_raylib(center);
+                update_camera_position(overview_yaw_, overview_pitch_, overview_distance_);
+            }
+        }
+
+        void update_camera_position(float yaw, float pitch, float distance) noexcept
+        {
+            auto const cosine_pitch = std::cos(pitch);
             camera_.target = target_;
             camera_.position = {
-                target_.x + distance_ * cosine_pitch * std::sin(yaw_),
-                target_.y + distance_ * std::sin(pitch_),
-                target_.z + distance_ * cosine_pitch * std::cos(yaw_),
+                target_.x + distance * cosine_pitch * std::sin(yaw),
+                target_.y + distance * std::sin(pitch),
+                target_.z + distance * cosine_pitch * std::cos(yaw),
             };
         }
 
-        void reset_camera()
+        void reset_overview_camera(Vec3f center) noexcept
         {
-            yaw_ = pi * 0.25F;
-            pitch_ = pi / 6.0F;
-            distance_ = std::clamp(max_distance_ * 0.45F, min_distance_, max_distance_);
+            target_ = to_raylib(center);
+            overview_yaw_ = pi * 0.25F;
+            overview_pitch_ = pi / 6.0F;
+            overview_distance_ = std::clamp(max_distance_ * 0.45F, min_distance_, max_distance_);
+        }
+
+        void reset_detail_camera(float world_extent) noexcept
+        {
+            detail_yaw_ = pi * 0.25F;
+            detail_pitch_ = pi / 6.0F;
+            detail_distance_ = std::clamp(
+                std::max(config_.entity_scale * 10.0F, world_extent * 0.03F),
+                detail_min_distance_,
+                detail_max_distance_
+            );
+        }
+
+        [[nodiscard]] bool mouse_in_scene(Vector2 mouse) const noexcept
+        {
+            return mouse.x >= static_cast<float>(scene_rect_.x)
+                && mouse.x < static_cast<float>(scene_rect_.x + scene_rect_.width)
+                && mouse.y >= static_cast<float>(scene_rect_.y)
+                && mouse.y < static_cast<float>(scene_rect_.y + scene_rect_.height);
+        }
+
+        [[nodiscard]] static std::optional<float> ray_sphere_hit_distance(
+            Ray ray,
+            Vector3 center,
+            float radius
+        ) noexcept
+        {
+            auto const offset = Vector3Subtract(ray.position, center);
+            auto const projection = Vector3DotProduct(offset, ray.direction);
+            auto const discriminant = projection * projection
+                - (Vector3DotProduct(offset, offset) - radius * radius);
+            if (discriminant < 0.0F) {
+                return std::nullopt;
+            }
+            auto const root = std::sqrt(discriminant);
+            auto const near_distance = -projection - root;
+            auto const far_distance = -projection + root;
+            if (near_distance >= 0.0F) {
+                return near_distance;
+            }
+            if (far_distance >= 0.0F) {
+                return far_distance;
+            }
+            return std::nullopt;
+        }
+
+        void update_selection(RenderEntityView const& entities, ViewerResult& result)
+        {
+            auto const mouse = GetMousePosition();
+            if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || !mouse_in_scene(mouse) || !entities.valid()) {
+                return;
+            }
+            auto const scene_mouse = Vector2 {
+                mouse.x - static_cast<float>(scene_rect_.x),
+                mouse.y - static_cast<float>(scene_rect_.y),
+            };
+            auto const ray = GetScreenToWorldRayEx(scene_mouse, camera_, scene_rect_.width, scene_rect_.height);
+            auto nearest_distance = std::numeric_limits<float>::infinity();
+            auto hit = std::optional<SelectedEntity> {};
+            for (std::size_t index = 0; index < entities.size(); ++index) {
+                auto const position = entities.positions[index];
+                auto const heading = entities.headings[index];
+                if (!finite(position) || !finite(heading)) {
+                    continue;
+                }
+                auto const distance = ray_sphere_hit_distance(ray, to_raylib(position), config_.picking_radius);
+                if (distance.has_value() && *distance < nearest_distance) {
+                    nearest_distance = *distance;
+                    hit = SelectedEntity {
+                        .id = entities.ids[index],
+                        .position = position,
+                        .heading = heading,
+                        .hue = entities.hues[index],
+                    };
+                }
+            }
+            if (!hit.has_value()) {
+                clear_selection(result);
+                return;
+            }
+            if (selected_entity_ != hit->id) {
+                result.selected_entity_changed = true;
+            }
+            selected_entity_ = hit->id;
+            selected_entity_frame_ = hit;
+            mode_ = ViewMode::EntityDetail;
+            detail_distance_ = 0.0F;
         }
 
         void update_controls(RenderFrameInfo const& info, ViewerResult& result)
@@ -397,7 +556,10 @@ namespace simnet
                 return;
             }
             auto constexpr button_height = 26.0F;
-            auto const button_y = static_cast<float>(config_.window_height) - 5.0F * (button_height + 8.0F) - 18.0F;
+            auto const button_count = 3.0F
+                + (selected_entity_.has_value() ? 1.0F : 0.0F)
+                + (info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
+            auto const button_y = static_cast<float>(config_.window_height) - button_count * (button_height + 8.0F) - 18.0F;
             auto const button_at = [&](int index) {
                 return Rectangle { 16.0F, button_y + static_cast<float>(index) * (button_height + 8.0F),
                     static_cast<float>(config_.panel_width) - 32.0F, button_height };
@@ -407,8 +569,16 @@ namespace simnet
             } else if (CheckCollisionPointRec(mouse, button_at(1))) {
                 show_axes_ = !show_axes_;
             } else if (CheckCollisionPointRec(mouse, button_at(2))) {
-                reset_camera();
-            } else if (info.capabilities.can_pause_simulation && CheckCollisionPointRec(mouse, button_at(3))) {
+                if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
+                    reset_detail_camera(max_distance_ * 0.25F);
+                } else {
+                    auto const center = Vec3f { target_.x, target_.y, target_.z };
+                    reset_overview_camera(center);
+                }
+            } else if (selected_entity_.has_value() && CheckCollisionPointRec(mouse, button_at(3))) {
+                clear_selection(result);
+            } else if (info.capabilities.can_pause_simulation
+                && CheckCollisionPointRec(mouse, button_at(selected_entity_.has_value() ? 4 : 3))) {
                 result.toggle_simulation_pause_requested = true;
             }
         }
@@ -496,6 +666,11 @@ namespace simnet
                 }
                 stats.draw_calls = fallback_instances_.empty() ? 0U : static_cast<std::uint32_t>(fallback_instances_.size());
             }
+            if (selected_entity_frame_.has_value()) {
+                auto const radius = std::max(config_.picking_radius, config_.entity_scale * 1.5F);
+                DrawSphereWires(to_raylib(selected_entity_frame_->position), radius, 8, 12, YELLOW);
+                ++stats.draw_calls;
+            }
             EndMode3D();
             EndTextureMode();
         }
@@ -508,20 +683,28 @@ namespace simnet
             DrawLine(static_cast<int>(config_.panel_width) - 1, 0, static_cast<int>(config_.panel_width) - 1,
                 static_cast<int>(config_.window_height), Color { 75, 88, 108, 255 });
             auto y = 18.0F;
-            auto text = [&](char const* value, int size = 15, Color color = RAYWHITE) {
+            auto text = [&](char const* value, int size = 13, Color color = RAYWHITE) {
                 DrawTextEx(font_, value, Vector2 { 16.0F, y }, static_cast<float>(size), 1.0F, color);
-                y += static_cast<float>(size + 7);
+                y += static_cast<float>(size + 4);
             };
             auto section = [&](char const* value) {
-                y += 8.0F;
+                y += 4.0F;
                 DrawLine(16, static_cast<int>(y), static_cast<int>(width) - 16, static_cast<int>(y), Color { 68, 82, 102, 255 });
-                y += 10.0F;
-                text(value, 16, Color { 133, 186, 235, 255 });
+                y += 6.0F;
+                text(value, 14, Color { 133, 186, 235, 255 });
             };
             char line[192] {};
-            text(config_.title.c_str(), 24);
+            text(config_.title.c_str(), 21);
             section("Application");
-            std::snprintf(line, sizeof(line), "mode Overview");
+            auto const mode_name = [](ViewMode mode) {
+                switch (mode) {
+                case ViewMode::Overview: return "Overview";
+                case ViewMode::EntityDetail: return "Entity detail";
+                case ViewMode::Game: return "Game";
+                }
+                return "Unknown";
+            };
+            std::snprintf(line, sizeof(line), "mode %s", mode_name(mode_));
             text(line);
             if (!valid_entities) {
                 text("invalid entity view", 15, ORANGE);
@@ -615,14 +798,55 @@ namespace simnet
             text(line);
             std::snprintf(line, sizeof(line), "target %.1f %.1f %.1f", camera_.target.x, camera_.target.y, camera_.target.z);
             text(line);
-            std::snprintf(line, sizeof(line), "distance %.1f", distance_);
+            auto const active_distance = mode_ == ViewMode::EntityDetail ? detail_distance_ : overview_distance_;
+            std::snprintf(line, sizeof(line), "distance %.1f", active_distance);
             text(line);
             text("Right drag orbit");
             text("Wheel zoom");
             text("R reset");
 
+            if (selected_entity_frame_.has_value()) {
+                section("Selected Entity");
+                auto const& selected = *selected_entity_frame_;
+                std::snprintf(line, sizeof(line), "id %u hue %u", selected.id, selected.hue);
+                text(line);
+                std::snprintf(line, sizeof(line), "position %.2f %.2f %.2f", selected.position.x, selected.position.y, selected.position.z);
+                text(line);
+                std::snprintf(line, sizeof(line), "heading %.2f %.2f %.2f", selected.heading.x, selected.heading.y, selected.heading.z);
+                text(line);
+                if (frame.selected_details.has_value() && frame.selected_details->id == selected.id) {
+                    auto const& details = *frame.selected_details;
+                    if (details.velocity.has_value()) {
+                        std::snprintf(line, sizeof(line), "velocity %.2f %.2f %.2f", details.velocity->x, details.velocity->y, details.velocity->z);
+                        text(line);
+                    }
+                    if (details.acceleration.has_value()) {
+                        std::snprintf(line, sizeof(line), "acceleration %.2f %.2f %.2f", details.acceleration->x, details.acceleration->y, details.acceleration->z);
+                        text(line);
+                    }
+                    if (details.speed.has_value()) {
+                        std::snprintf(line, sizeof(line), "speed %.2f", *details.speed);
+                        text(line);
+                    }
+                    if (details.last_update_tick.has_value()) {
+                        std::snprintf(line, sizeof(line), "update tick %llu", static_cast<unsigned long long>(*details.last_update_tick));
+                        text(line);
+                    }
+                    if (details.last_update_sequence.has_value()) {
+                        std::snprintf(line, sizeof(line), "update sequence %u", *details.last_update_sequence);
+                        text(line);
+                    }
+                    if (details.replicated.has_value()) {
+                        text(*details.replicated ? "replicated" : "authoritative");
+                    }
+                }
+            }
+
             auto constexpr button_height = 26.0F;
-            auto button_y = static_cast<float>(config_.window_height) - 5.0F * (button_height + 8.0F) - 18.0F;
+            auto const button_count = 3.0F
+                + (selected_entity_.has_value() ? 1.0F : 0.0F)
+                + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
+            auto button_y = static_cast<float>(config_.window_height) - button_count * (button_height + 8.0F) - 18.0F;
             auto button = [&](char const* label, bool active) {
                 auto const rect = Rectangle { 16.0F, button_y, width - 32.0F, button_height };
                 DrawRectangleRec(rect, active ? Color { 51, 102, 145, 255 } : Color { 45, 54, 68, 255 });
@@ -633,8 +857,11 @@ namespace simnet
             button(show_bounds_ ? "Hide bounds" : "Show bounds", show_bounds_);
             button(show_axes_ ? "Hide axes" : "Show axes", show_axes_);
             button("Reset camera", false);
+            if (selected_entity_.has_value()) {
+                button("Return to overview", false);
+            }
             if (frame.info.capabilities.can_pause_simulation) {
-                button(*frame.info.simulation_paused ? "Resume simulation" : "Pause simulation", false);
+                button(frame.info.simulation_paused.value_or(false) ? "Resume simulation" : "Pause simulation", false);
             }
             static_cast<void>(result);
         }
@@ -653,11 +880,18 @@ namespace simnet
         bool camera_initialized_ {};
         bool show_bounds_ { true };
         bool show_axes_ { true };
-        float yaw_ { pi * 0.25F };
-        float pitch_ { pi / 6.0F };
-        float distance_ { 10.0F };
+        float overview_yaw_ { pi * 0.25F };
+        float overview_pitch_ { pi / 6.0F };
+        float overview_distance_ { 10.0F };
+        float detail_yaw_ { pi * 0.25F };
+        float detail_pitch_ { pi / 6.0F };
+        float detail_distance_ {};
         float min_distance_ { minimum_distance };
         float max_distance_ { 100.0F };
+        float detail_min_distance_ { minimum_distance };
+        float detail_max_distance_ { 100.0F };
+        std::optional<EntityNetId> selected_entity_ {};
+        std::optional<SelectedEntity> selected_entity_frame_ {};
         std::array<std::vector<Matrix>, hue_bucket_count> transform_buckets_;
         std::vector<FallbackInstance> fallback_instances_;
     };

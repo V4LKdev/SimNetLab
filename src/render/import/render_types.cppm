@@ -81,10 +81,23 @@ export namespace simnet
         std::optional<RenderReplicationInfo> replication {};
     };
 
+    /// Optional producer-owned facts for the currently selected entity.
+    struct SelectedEntityDetails
+    {
+        EntityNetId id {};
+        std::optional<Vec3f> velocity {};
+        std::optional<Vec3f> acceleration {};
+        std::optional<float> speed {};
+        std::optional<Tick> last_update_tick {};
+        std::optional<SequenceId> last_update_sequence {};
+        std::optional<bool> replicated {};
+    };
+
     struct RenderFrame
     {
         RenderEntityView entities {};
         RenderFrameInfo info {};
+        std::optional<SelectedEntityDetails> selected_details {};
     };
 
     struct PlayerViewInput
