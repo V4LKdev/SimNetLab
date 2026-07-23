@@ -287,6 +287,7 @@ namespace simnet
             auto result = ViewerResult {};
             auto stats = RenderStats {};
             auto const input_start = Clock::now();
+            update_panel_input();
             update_camera(frame, result);
             update_selection(frame.entities, result);
             update_controls(frame.info, result);
@@ -316,6 +317,7 @@ namespace simnet
                 Vector2 { static_cast<float>(scene_rect_.x), static_cast<float>(scene_rect_.y) },
                 WHITE
             );
+            draw_help_overlay();
             EndDrawing();
 
             result.close_requested = WindowShouldClose();
@@ -333,6 +335,13 @@ namespace simnet
         }
 
     private:
+        enum class PanelPage : std::uint8_t
+        {
+            Overview,
+            Network,
+            Entity
+        };
+
         struct SelectedEntity
         {
             EntityNetId id {};
@@ -361,9 +370,14 @@ namespace simnet
             return std::nullopt;
         }
 
-        void clear_selection(ViewerResult& result)
+        void clear_selection(ViewerResult& result, bool preserve_navigation_anchor = false)
         {
             if (selected_entity_.has_value()) {
+                if (preserve_navigation_anchor) {
+                    navigation_anchor_ = selected_entity_;
+                } else {
+                    navigation_anchor_.reset();
+                }
                 selected_entity_.reset();
                 result.selected_entity_changed = true;
             }
@@ -394,7 +408,7 @@ namespace simnet
 
             selected_entity_frame_ = find_selected_entity(frame.entities);
             if (selected_entity_.has_value() && !selected_entity_frame_.has_value()) {
-                clear_selection(result);
+                clear_selection(result, true);
             }
 
             auto const mouse = GetMousePosition();
@@ -508,6 +522,14 @@ namespace simnet
 
         void update_selection(RenderEntityView const& entities, ViewerResult& result)
         {
+            if (IsKeyPressed(KEY_LEFT_BRACKET)) {
+                select_adjacent_entity(entities, -1, result);
+                return;
+            }
+            if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
+                select_adjacent_entity(entities, 1, result);
+                return;
+            }
             auto const mouse = GetMousePosition();
             if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || !mouse_in_scene(mouse) || !entities.valid()) {
                 return;
@@ -537,16 +559,75 @@ namespace simnet
                 }
             }
             if (!hit.has_value()) {
-                clear_selection(result);
                 return;
             }
-            if (selected_entity_ != hit->id) {
+            select_entity(*hit, result);
+        }
+
+        void select_entity(SelectedEntity selected, ViewerResult& result)
+        {
+            if (selected_entity_ != selected.id) {
                 result.selected_entity_changed = true;
             }
-            selected_entity_ = hit->id;
-            selected_entity_frame_ = hit;
+            selected_entity_ = selected.id;
+            selected_entity_frame_ = selected;
+            navigation_anchor_.reset();
             mode_ = ViewMode::EntityDetail;
             detail_distance_ = 0.0F;
+        }
+
+        void select_adjacent_entity(RenderEntityView const& entities, int direction, ViewerResult& result)
+        {
+            if (!entities.valid()) {
+                return;
+            }
+            auto const anchor = selected_entity_.has_value() ? selected_entity_ : navigation_anchor_;
+            auto candidate = std::optional<SelectedEntity> {};
+            auto wrapped = std::optional<SelectedEntity> {};
+            for (std::size_t index = 0; index < entities.size(); ++index) {
+                auto const position = entities.positions[index];
+                auto const heading = entities.headings[index];
+                if (!finite(position) || !finite(heading)) {
+                    continue;
+                }
+                auto const current = SelectedEntity {
+                    .id = entities.ids[index],
+                    .position = position,
+                    .heading = heading,
+                    .hue = entities.hues[index],
+                };
+                if (!wrapped.has_value()
+                    || (direction > 0 && current.id < wrapped->id)
+                    || (direction < 0 && current.id > wrapped->id)) {
+                    wrapped = current;
+                }
+                if (anchor.has_value()
+                    && ((direction > 0 && current.id > *anchor) || (direction < 0 && current.id < *anchor))
+                    && (!candidate.has_value()
+                        || (direction > 0 && current.id < candidate->id)
+                        || (direction < 0 && current.id > candidate->id))) {
+                    candidate = current;
+                }
+            }
+            if (candidate.has_value()) {
+                select_entity(*candidate, result);
+            } else if (wrapped.has_value()) {
+                select_entity(*wrapped, result);
+            }
+        }
+
+        void update_panel_input() noexcept
+        {
+            if (IsKeyPressed(KEY_F1)) {
+                page_ = PanelPage::Overview;
+            } else if (IsKeyPressed(KEY_F2)) {
+                page_ = PanelPage::Network;
+            } else if (IsKeyPressed(KEY_F3)) {
+                page_ = PanelPage::Entity;
+            }
+            if (IsKeyPressed(KEY_H) || IsKeyPressed(KEY_SLASH)) {
+                show_help_ = !show_help_;
+            }
         }
 
         void update_controls(RenderFrameInfo const& info, ViewerResult& result)
@@ -556,14 +637,26 @@ namespace simnet
                 return;
             }
             auto constexpr button_height = 26.0F;
-            auto const button_count = 3.0F
-                + (selected_entity_.has_value() ? 1.0F : 0.0F)
-                + (info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
+            if (page_ == PanelPage::Network) {
+                return;
+            }
+            auto const button_count = page_ == PanelPage::Entity
+                ? (selected_entity_.has_value() ? 1.0F : 0.0F)
+                : 3.0F + (info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
+            if (button_count == 0.0F) {
+                return;
+            }
             auto const button_y = static_cast<float>(config_.window_height) - button_count * (button_height + 8.0F) - 18.0F;
             auto const button_at = [&](int index) {
                 return Rectangle { 16.0F, button_y + static_cast<float>(index) * (button_height + 8.0F),
                     static_cast<float>(config_.panel_width) - 32.0F, button_height };
             };
+            if (page_ == PanelPage::Entity) {
+                if (selected_entity_.has_value() && CheckCollisionPointRec(mouse, button_at(0))) {
+                    clear_selection(result);
+                }
+                return;
+            }
             if (CheckCollisionPointRec(mouse, button_at(0))) {
                 show_bounds_ = !show_bounds_;
             } else if (CheckCollisionPointRec(mouse, button_at(1))) {
@@ -575,10 +668,8 @@ namespace simnet
                     auto const center = Vec3f { target_.x, target_.y, target_.z };
                     reset_overview_camera(center);
                 }
-            } else if (selected_entity_.has_value() && CheckCollisionPointRec(mouse, button_at(3))) {
-                clear_selection(result);
             } else if (info.capabilities.can_pause_simulation
-                && CheckCollisionPointRec(mouse, button_at(selected_entity_.has_value() ? 4 : 3))) {
+                && CheckCollisionPointRec(mouse, button_at(3))) {
                 result.toggle_simulation_pause_requested = true;
             }
         }
@@ -683,19 +774,18 @@ namespace simnet
             DrawLine(static_cast<int>(config_.panel_width) - 1, 0, static_cast<int>(config_.panel_width) - 1,
                 static_cast<int>(config_.window_height), Color { 75, 88, 108, 255 });
             auto y = 18.0F;
-            auto text = [&](char const* value, int size = 13, Color color = RAYWHITE) {
+            auto text = [&](char const* value, int size = 15, Color color = RAYWHITE) {
                 DrawTextEx(font_, value, Vector2 { 16.0F, y }, static_cast<float>(size), 1.0F, color);
-                y += static_cast<float>(size + 4);
+                y += static_cast<float>(size + 7);
             };
             auto section = [&](char const* value) {
-                y += 4.0F;
+                y += 8.0F;
                 DrawLine(16, static_cast<int>(y), static_cast<int>(width) - 16, static_cast<int>(y), Color { 68, 82, 102, 255 });
-                y += 6.0F;
-                text(value, 14, Color { 133, 186, 235, 255 });
+                y += 10.0F;
+                text(value, 16, Color { 133, 186, 235, 255 });
             };
             char line[192] {};
             text(config_.title.c_str(), 21);
-            section("Application");
             auto const mode_name = [](ViewMode mode) {
                 switch (mode) {
                 case ViewMode::Overview: return "Overview";
@@ -704,166 +794,213 @@ namespace simnet
                 }
                 return "Unknown";
             };
-            std::snprintf(line, sizeof(line), "mode %s", mode_name(mode_));
-            text(line);
-            if (!valid_entities) {
-                text("invalid entity view", 15, ORANGE);
-            }
-            section("Connection");
-            if (frame.info.connection.has_value()) {
-                std::snprintf(
-                    line,
-                    sizeof(line),
-                    "state %.*s",
-                    static_cast<int>(frame.info.connection->state.size()),
-                    frame.info.connection->state.data()
-                );
-                text(line);
-                if (frame.info.connection->peer.has_value()) {
-                    std::snprintf(line, sizeof(line), "peer %u", *frame.info.connection->peer);
-                    text(line);
+            auto const page_name = [](PanelPage page) {
+                switch (page) {
+                case PanelPage::Overview: return "F1 Overview";
+                case PanelPage::Network: return "F2 Network";
+                case PanelPage::Entity: return "F3 Entity";
                 }
-            } else {
-                text("state unavailable");
-            }
-            if (frame.info.session_ready.has_value()) {
-                text(*frame.info.session_ready ? "session ready" : "session not ready");
-            }
-            section("Replication");
-            if (frame.info.replication.has_value()) {
-                auto const& replication = *frame.info.replication;
-                auto sequence = [&](char const* label, std::optional<SequenceId> value) {
-                    if (value.has_value()) {
-                        std::snprintf(line, sizeof(line), "%s %u", label, *value);
-                        text(line);
-                    }
-                };
-                sequence("emitted", replication.latest_emitted_sequence);
-                sequence("received", replication.latest_received_sequence);
-                sequence("applied", replication.latest_applied_sequence);
-                sequence("baseline", replication.acknowledged_baseline_sequence);
-                if (replication.latest_snapshot_tick.has_value()) {
-                    std::snprintf(
-                        line,
-                        sizeof(line),
-                        "snapshot tick %llu",
-                        static_cast<unsigned long long>(*replication.latest_snapshot_tick)
-                    );
-                    text(line);
-                }
-                if (replication.retained_snapshot_count.has_value()) {
-                    std::snprintf(line, sizeof(line), "retained %u", *replication.retained_snapshot_count);
-                    text(line);
-                }
-                sequence("oldest", replication.oldest_retained_sequence);
-                sequence("newest", replication.newest_retained_sequence);
-            } else {
-                text("replication unavailable");
-            }
-            section("Simulation");
-            if (frame.info.simulation_paused.has_value()) {
-                text(*frame.info.simulation_paused ? "simulation paused" : "simulation running");
-            } else {
-                text("simulation state unavailable");
-            }
-            std::snprintf(line, sizeof(line), "entities %zu", valid_entities ? frame.entities.size() : 0U);
-            text(line);
-            std::snprintf(line, sizeof(line), "skipped %u", stats.skipped_entity_count);
-            text(line);
-            std::snprintf(line, sizeof(line), "tick %llu", static_cast<unsigned long long>(frame.info.tick));
-            text(line);
-            if (frame.info.snapshot_sequence.has_value()) {
-                std::snprintf(line, sizeof(line), "sequence %u", *frame.info.snapshot_sequence);
-                text(line);
-            }
-            if (frame.info.fixed_tick_rate_hz.has_value()) {
-                std::snprintf(line, sizeof(line), "fixed rate %.1f Hz", *frame.info.fixed_tick_rate_hz);
-                text(line);
-            }
-            section("Rendering");
-            std::snprintf(line, sizeof(line), "FPS %d", GetFPS());
-            text(line);
-            std::snprintf(line, sizeof(line), "frame %.2f ms", static_cast<double>(frame.info.frame_delta.count()) / 1'000'000.0);
-            text(line);
-            std::snprintf(line, sizeof(line), "prepare %.2f ms", static_cast<double>(stats.preparation_cpu_time.count()) / 1'000'000.0);
-            text(line);
-            std::snprintf(line, sizeof(line), "scene %.2f ms", static_cast<double>(stats.scene_submit_cpu_time.count()) / 1'000'000.0);
-            text(line);
-            std::snprintf(line, sizeof(line), "instances %u calls %u", stats.instance_count, stats.draw_calls);
-            text(line);
-            std::snprintf(line, sizeof(line), "hue buckets %u", stats.active_hue_buckets);
-            text(line);
-            section("Camera");
-            std::snprintf(line, sizeof(line), "pos %.1f %.1f %.1f", camera_.position.x, camera_.position.y, camera_.position.z);
-            text(line);
-            std::snprintf(line, sizeof(line), "target %.1f %.1f %.1f", camera_.target.x, camera_.target.y, camera_.target.z);
-            text(line);
-            auto const active_distance = mode_ == ViewMode::EntityDetail ? detail_distance_ : overview_distance_;
-            std::snprintf(line, sizeof(line), "distance %.1f", active_distance);
-            text(line);
-            text("Right drag orbit");
-            text("Wheel zoom");
-            text("R reset");
-
-            if (selected_entity_frame_.has_value()) {
-                section("Selected Entity");
-                auto const& selected = *selected_entity_frame_;
-                std::snprintf(line, sizeof(line), "id %u hue %u", selected.id, selected.hue);
-                text(line);
-                std::snprintf(line, sizeof(line), "position %.2f %.2f %.2f", selected.position.x, selected.position.y, selected.position.z);
-                text(line);
-                std::snprintf(line, sizeof(line), "heading %.2f %.2f %.2f", selected.heading.x, selected.heading.y, selected.heading.z);
-                text(line);
-                if (frame.selected_details.has_value() && frame.selected_details->id == selected.id) {
-                    auto const& details = *frame.selected_details;
-                    if (details.velocity.has_value()) {
-                        std::snprintf(line, sizeof(line), "velocity %.2f %.2f %.2f", details.velocity->x, details.velocity->y, details.velocity->z);
-                        text(line);
-                    }
-                    if (details.acceleration.has_value()) {
-                        std::snprintf(line, sizeof(line), "acceleration %.2f %.2f %.2f", details.acceleration->x, details.acceleration->y, details.acceleration->z);
-                        text(line);
-                    }
-                    if (details.speed.has_value()) {
-                        std::snprintf(line, sizeof(line), "speed %.2f", *details.speed);
-                        text(line);
-                    }
-                    if (details.last_update_tick.has_value()) {
-                        std::snprintf(line, sizeof(line), "update tick %llu", static_cast<unsigned long long>(*details.last_update_tick));
-                        text(line);
-                    }
-                    if (details.last_update_sequence.has_value()) {
-                        std::snprintf(line, sizeof(line), "update sequence %u", *details.last_update_sequence);
-                        text(line);
-                    }
-                    if (details.replicated.has_value()) {
-                        text(*details.replicated ? "replicated" : "authoritative");
-                    }
-                }
-            }
-
-            auto constexpr button_height = 26.0F;
-            auto const button_count = 3.0F
-                + (selected_entity_.has_value() ? 1.0F : 0.0F)
-                + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
-            auto button_y = static_cast<float>(config_.window_height) - button_count * (button_height + 8.0F) - 18.0F;
-            auto button = [&](char const* label, bool active) {
+                return "Unknown";
+            };
+            text(page_name(page_), 16, Color { 133, 186, 235, 255 });
+            auto button = [&](float& button_y, char const* label, bool active) {
+                auto constexpr button_height = 26.0F;
                 auto const rect = Rectangle { 16.0F, button_y, width - 32.0F, button_height };
                 DrawRectangleRec(rect, active ? Color { 51, 102, 145, 255 } : Color { 45, 54, 68, 255 });
                 DrawRectangleLinesEx(rect, 1.0F, Color { 91, 113, 140, 255 });
                 DrawTextEx(font_, label, Vector2 { 24.0F, button_y + 5.0F }, 16.0F, 1.0F, RAYWHITE);
                 button_y += button_height + 8.0F;
             };
-            button(show_bounds_ ? "Hide bounds" : "Show bounds", show_bounds_);
-            button(show_axes_ ? "Hide axes" : "Show axes", show_axes_);
-            button("Reset camera", false);
-            if (selected_entity_.has_value()) {
-                button("Return to overview", false);
-            }
-            if (frame.info.capabilities.can_pause_simulation) {
-                button(frame.info.simulation_paused.value_or(false) ? "Resume simulation" : "Pause simulation", false);
+            if (page_ == PanelPage::Overview) {
+                section("Application");
+                std::snprintf(line, sizeof(line), "mode %s", mode_name(mode_));
+                text(line);
+                if (frame.info.simulation_paused.has_value()) {
+                    text(*frame.info.simulation_paused ? "simulation paused" : "simulation running");
+                } else {
+                    text("simulation state unavailable");
+                }
+                section("World");
+                std::snprintf(line, sizeof(line), "tick %llu", static_cast<unsigned long long>(frame.info.tick));
+                text(line);
+                std::snprintf(line, sizeof(line), "entities %zu", valid_entities ? frame.entities.size() : 0U);
+                text(line);
+                std::snprintf(line, sizeof(line), "skipped %u", stats.skipped_entity_count);
+                text(line);
+                if (frame.info.fixed_tick_rate_hz.has_value()) {
+                    std::snprintf(line, sizeof(line), "fixed rate %.1f Hz", *frame.info.fixed_tick_rate_hz);
+                    text(line);
+                }
+                if (!valid_entities) {
+                    text("invalid entity view", 15, ORANGE);
+                }
+                section("Rendering");
+                std::snprintf(line, sizeof(line), "FPS %d", GetFPS());
+                text(line);
+                std::snprintf(line, sizeof(line), "frame %.2f ms", static_cast<double>(frame.info.frame_delta.count()) / 1'000'000.0);
+                text(line);
+                std::snprintf(line, sizeof(line), "input %.2f ms", static_cast<double>(stats.input_cpu_time.count()) / 1'000'000.0);
+                text(line);
+                std::snprintf(line, sizeof(line), "prepare %.2f ms", static_cast<double>(stats.preparation_cpu_time.count()) / 1'000'000.0);
+                text(line);
+                std::snprintf(line, sizeof(line), "scene %.2f ms", static_cast<double>(stats.scene_submit_cpu_time.count()) / 1'000'000.0);
+                text(line);
+                std::snprintf(line, sizeof(line), "panel %.2f ms", static_cast<double>(stats.panel_cpu_time.count()) / 1'000'000.0);
+                text(line);
+                std::snprintf(line, sizeof(line), "instances %u calls %u", stats.instance_count, stats.draw_calls);
+                text(line);
+                std::snprintf(line, sizeof(line), "hue buckets %u", stats.active_hue_buckets);
+                text(line);
+                section("Camera");
+                std::snprintf(line, sizeof(line), "position %.1f %.1f %.1f", camera_.position.x, camera_.position.y, camera_.position.z);
+                text(line);
+                std::snprintf(line, sizeof(line), "target %.1f %.1f %.1f", camera_.target.x, camera_.target.y, camera_.target.z);
+                text(line);
+                auto const active_distance = mode_ == ViewMode::EntityDetail ? detail_distance_ : overview_distance_;
+                std::snprintf(line, sizeof(line), "distance %.1f", active_distance);
+                text(line);
+
+                auto constexpr button_height = 26.0F;
+                auto const button_count = 3.0F + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
+                auto button_y = static_cast<float>(config_.window_height) - button_count * (button_height + 8.0F) - 18.0F;
+                button(button_y, show_bounds_ ? "Hide bounds" : "Show bounds", show_bounds_);
+                button(button_y, show_axes_ ? "Hide axes" : "Show axes", show_axes_);
+                button(button_y, "Reset camera", false);
+                if (frame.info.capabilities.can_pause_simulation) {
+                    button(button_y, frame.info.simulation_paused.value_or(false) ? "Resume simulation" : "Pause simulation", false);
+                }
+            } else if (page_ == PanelPage::Network) {
+                section("Connection");
+                if (frame.info.connection.has_value()) {
+                    std::snprintf(line, sizeof(line), "state %.*s", static_cast<int>(frame.info.connection->state.size()), frame.info.connection->state.data());
+                    text(line);
+                    if (frame.info.connection->peer.has_value()) {
+                        std::snprintf(line, sizeof(line), "peer %u", *frame.info.connection->peer);
+                        text(line);
+                    }
+                } else {
+                    text("connection unavailable");
+                }
+                if (frame.info.session_ready.has_value()) {
+                    text(*frame.info.session_ready ? "session ready" : "session not ready");
+                }
+                section("Replication");
+                if (frame.info.replication.has_value()) {
+                    auto const& replication = *frame.info.replication;
+                    auto sequence = [&](char const* label, std::optional<SequenceId> value) {
+                        if (value.has_value()) {
+                            std::snprintf(line, sizeof(line), "%s %u", label, *value);
+                            text(line);
+                        }
+                    };
+                    sequence("emitted", replication.latest_emitted_sequence);
+                    sequence("received", replication.latest_received_sequence);
+                    sequence("applied", replication.latest_applied_sequence);
+                    sequence("baseline", replication.acknowledged_baseline_sequence);
+                    if (replication.latest_snapshot_tick.has_value()) {
+                        std::snprintf(line, sizeof(line), "snapshot tick %llu", static_cast<unsigned long long>(*replication.latest_snapshot_tick));
+                        text(line);
+                    }
+                    if (replication.retained_snapshot_count.has_value()) {
+                        std::snprintf(line, sizeof(line), "retained %u", *replication.retained_snapshot_count);
+                        text(line);
+                    }
+                    sequence("oldest", replication.oldest_retained_sequence);
+                    sequence("newest", replication.newest_retained_sequence);
+                } else {
+                    text("replication unavailable");
+                }
+                section("Simulation");
+                if (frame.info.simulation_paused.has_value()) {
+                    text(*frame.info.simulation_paused ? "authoritative pause" : "authoritative running");
+                } else {
+                    text("simulation state unavailable");
+                }
+            } else {
+                section("Selected Entity");
+                if (!selected_entity_frame_.has_value()) {
+                    text("Left click an entity to select it");
+                    text("Use [ and ] to cycle visible IDs");
+                } else {
+                    auto const& selected = *selected_entity_frame_;
+                    std::snprintf(line, sizeof(line), "id %u", selected.id);
+                    text(line);
+                    std::snprintf(line, sizeof(line), "position %.2f %.2f %.2f", selected.position.x, selected.position.y, selected.position.z);
+                    text(line);
+                    std::snprintf(line, sizeof(line), "heading %.2f %.2f %.2f", selected.heading.x, selected.heading.y, selected.heading.z);
+                    text(line);
+                    std::snprintf(line, sizeof(line), "hue %u", selected.hue);
+                    text(line);
+                    if (frame.selected_details.has_value() && frame.selected_details->id == selected.id) {
+                        auto const& details = *frame.selected_details;
+                        if (details.velocity.has_value()) {
+                            std::snprintf(line, sizeof(line), "velocity %.2f %.2f %.2f", details.velocity->x, details.velocity->y, details.velocity->z);
+                            text(line);
+                        }
+                        if (details.acceleration.has_value()) {
+                            std::snprintf(line, sizeof(line), "acceleration %.2f %.2f %.2f", details.acceleration->x, details.acceleration->y, details.acceleration->z);
+                            text(line);
+                        }
+                        if (details.speed.has_value()) {
+                            std::snprintf(line, sizeof(line), "speed %.2f", *details.speed);
+                            text(line);
+                        }
+                        if (details.last_update_tick.has_value()) {
+                            std::snprintf(line, sizeof(line), "update tick %llu", static_cast<unsigned long long>(*details.last_update_tick));
+                            text(line);
+                        }
+                        if (details.last_update_sequence.has_value()) {
+                            std::snprintf(line, sizeof(line), "update sequence %u", *details.last_update_sequence);
+                            text(line);
+                        }
+                        if (details.replicated.has_value()) {
+                            text(*details.replicated ? "replicated" : "authoritative");
+                        }
+                    }
+                }
+                if (selected_entity_.has_value()) {
+                    auto constexpr button_height = 26.0F;
+                    auto button_y = static_cast<float>(config_.window_height) - (button_height + 8.0F) - 18.0F;
+                    button(button_y, "Return to overview", false);
+                }
             }
             static_cast<void>(result);
+        }
+
+        void draw_help_overlay() const
+        {
+            auto const hint_position = Vector2 {
+                static_cast<float>(scene_rect_.x + scene_rect_.width - 150),
+                18.0F,
+            };
+            DrawTextEx(font_, "H or ? Help", hint_position, 15.0F, 1.0F, Color { 180, 198, 220, 255 });
+            if (!show_help_) {
+                return;
+            }
+            auto const rect = Rectangle {
+                static_cast<float>(scene_rect_.x + 36),
+                48.0F,
+                420.0F,
+                300.0F,
+            };
+            DrawRectangleRec(rect, Color { 20, 25, 33, 245 });
+            DrawRectangleLinesEx(rect, 1.0F, Color { 91, 113, 140, 255 });
+            auto y = rect.y + 18.0F;
+            auto line = [&](char const* value, int size = 15, Color color = RAYWHITE) {
+                DrawTextEx(font_, value, Vector2 { rect.x + 16.0F, y }, static_cast<float>(size), 1.0F, color);
+                y += static_cast<float>(size + 7);
+            };
+            line("Viewer controls", 18, Color { 133, 186, 235, 255 });
+            line("F1       Overview panel");
+            line("F2       Network panel");
+            line("F3       Entity panel");
+            line("Left click entity  Select");
+            line("[ / ]    Previous or next entity");
+            line("Right drag  Orbit");
+            line("Wheel     Zoom");
+            line("R         Reset camera");
+            line("Escape    Clear selection and overview");
+            line("H or ?    Close help");
         }
 
         ViewerConfig config_;
@@ -880,6 +1017,8 @@ namespace simnet
         bool camera_initialized_ {};
         bool show_bounds_ { true };
         bool show_axes_ { true };
+        bool show_help_ {};
+        PanelPage page_ { PanelPage::Overview };
         float overview_yaw_ { pi * 0.25F };
         float overview_pitch_ { pi / 6.0F };
         float overview_distance_ { 10.0F };
@@ -891,6 +1030,7 @@ namespace simnet
         float detail_min_distance_ { minimum_distance };
         float detail_max_distance_ { 100.0F };
         std::optional<EntityNetId> selected_entity_ {};
+        std::optional<EntityNetId> navigation_anchor_ {};
         std::optional<SelectedEntity> selected_entity_frame_ {};
         std::array<std::vector<Matrix>, hue_bucket_count> transform_buckets_;
         std::vector<FallbackInstance> fallback_instances_;
