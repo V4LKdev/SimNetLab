@@ -6,6 +6,7 @@ module;
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 
 /// @brief Generic visualization data contracts.
 export module simnet.render:types;
@@ -46,6 +47,26 @@ export namespace simnet
         bool can_pause_simulation {};
     };
 
+    /// Non-owning application connection facts valid for the duration of Viewer::draw().
+    struct RenderConnectionInfo
+    {
+        std::string_view state {};
+        std::optional<PeerId> peer {};
+    };
+
+    /// Optional replication facts supplied by an application that owns them.
+    struct RenderReplicationInfo
+    {
+        std::optional<SequenceId> latest_emitted_sequence {};
+        std::optional<SequenceId> latest_received_sequence {};
+        std::optional<SequenceId> latest_applied_sequence {};
+        std::optional<SequenceId> acknowledged_baseline_sequence {};
+        std::optional<Tick> latest_snapshot_tick {};
+        std::optional<std::uint32_t> retained_snapshot_count {};
+        std::optional<SequenceId> oldest_retained_sequence {};
+        std::optional<SequenceId> newest_retained_sequence {};
+    };
+
     struct RenderFrameInfo
     {
         Tick tick {};
@@ -56,6 +77,8 @@ export namespace simnet
         std::optional<double> fixed_tick_rate_hz {};
         std::optional<bool> simulation_paused {};
         ViewerCapabilities capabilities {};
+        std::optional<RenderConnectionInfo> connection {};
+        std::optional<RenderReplicationInfo> replication {};
     };
 
     struct RenderFrame

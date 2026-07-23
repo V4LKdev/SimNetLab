@@ -130,9 +130,35 @@ namespace
         simnet::WorldSnapshot const& snapshot,
         simnet::SharedConfig const& config,
         simnet::NS frame_delta,
-        bool paused
+        bool paused,
+        std::optional<PeerRuntimeState> const& peer
     )
     {
+        auto connection = simnet::RenderConnectionInfo {
+            .state = peer.has_value() ? "session ready" : "waiting for client",
+        };
+        auto replication = std::optional<simnet::RenderReplicationInfo> {};
+        if (peer.has_value()) {
+            connection.peer = peer->peer;
+            auto details = simnet::RenderReplicationInfo {};
+            if (peer->newest_emitted_sequence != 0) {
+                details.latest_emitted_sequence = peer->newest_emitted_sequence;
+            }
+            if (peer->latest_ack.newest_received_snapshot != 0) {
+                details.latest_received_sequence = peer->latest_ack.newest_received_snapshot;
+            }
+            if (peer->latest_ack.newest_applied_snapshot != 0) {
+                details.latest_applied_sequence = peer->latest_ack.newest_applied_snapshot;
+            }
+            details.acknowledged_baseline_sequence = peer->acknowledged_baseline_sequence;
+            details.retained_snapshot_count = static_cast<std::uint32_t>(peer->retained_snapshots.size());
+            if (!peer->retained_snapshots.empty()) {
+                details.oldest_retained_sequence = peer->retained_snapshots.front().sequence;
+                details.newest_retained_sequence = peer->retained_snapshots.back().sequence;
+                details.latest_snapshot_tick = peer->retained_snapshots.back().snapshot.tick;
+            }
+            replication = std::move(details);
+        }
         return {
             .entities = {
                 .ids = snapshot.ids,
@@ -147,6 +173,8 @@ namespace
                 .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
                 .simulation_paused = paused,
                 .capabilities = { .can_pause_simulation = true },
+                .connection = connection,
+                .replication = std::move(replication),
             },
         };
     }
@@ -597,7 +625,7 @@ namespace simnet::app
                     }
                     if (!stop.requested() && render_snapshot_ready) {
                         auto const viewer_result = viewer->draw(
-                            render_frame(render_snapshot, shared, frame_delta, simulation_paused)
+                            render_frame(render_snapshot, shared, frame_delta, simulation_paused, peer)
                         );
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));

@@ -70,6 +70,16 @@ namespace
         return "unknown";
     }
 
+    [[nodiscard]] std::string_view client_connection_state_name(ClientConnectionState state) noexcept
+    {
+        switch (state) {
+        case ClientConnectionState::Connecting: return "connecting";
+        case ClientConnectionState::SessionReady: return "session ready";
+        case ClientConnectionState::Disconnected: return "disconnected";
+        }
+        return "unknown";
+    }
+
 #if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] simnet::ViewerConfig viewer_config(simnet::VisualizationConfig const& config)
     {
@@ -90,9 +100,23 @@ namespace
         simnet::NS frame_delta,
         std::optional<simnet::SequenceId> sequence,
         bool session_ready,
-        std::optional<bool> simulation_paused
+        std::optional<bool> simulation_paused,
+        ClientConnectionState connection_state,
+        std::optional<simnet::PeerId> peer,
+        simnet::SnapshotAck const& ack
     )
     {
+        auto replication = std::optional<simnet::RenderReplicationInfo> {};
+        if (ack.newest_received_snapshot != 0 || ack.newest_applied_snapshot != 0) {
+            replication = simnet::RenderReplicationInfo {
+                .latest_received_sequence = ack.newest_received_snapshot != 0
+                    ? std::optional<simnet::SequenceId> { ack.newest_received_snapshot }
+                    : std::optional<simnet::SequenceId> {},
+                .latest_applied_sequence = ack.newest_applied_snapshot != 0
+                    ? std::optional<simnet::SequenceId> { ack.newest_applied_snapshot }
+                    : std::optional<simnet::SequenceId> {},
+            };
+        }
         return {
             .entities = {
                 .ids = snapshot.ids,
@@ -109,6 +133,13 @@ namespace
                 .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
                 .simulation_paused = simulation_paused,
                 .capabilities = { .can_pause_simulation = session_ready && simulation_paused.has_value() },
+                .connection = std::optional<simnet::RenderConnectionInfo> {
+                    simnet::RenderConnectionInfo {
+                        .state = client_connection_state_name(connection_state),
+                        .peer = peer,
+                    }
+                },
+                .replication = std::move(replication),
             },
         };
     }
@@ -308,6 +339,7 @@ namespace simnet::app
             auto ack_tracker = SnapshotAckTracker {};
             auto connection_state = ClientConnectionState::Connecting;
             auto stop_cause = ClientStopCause::None;
+            auto server_peer = std::optional<PeerId> {};
             auto authoritative_pause_state = false;
             auto pause_state_received = false;
 
@@ -336,6 +368,7 @@ namespace simnet::app
                 for (auto const& event : events) {
                     if (auto const* ready = std::get_if<PeerSessionReady>(&event)) {
                         connection_state = ClientConnectionState::SessionReady;
+                        server_peer = ready->peer;
                         pause_state_received = false;
                         log(LogCategory::Transport, LogLevel::Info,
                             "client session ready peer=" + std::to_string(ready->peer));
@@ -423,7 +456,10 @@ namespace simnet::app
                                 connection_state == ClientConnectionState::SessionReady,
                                 pause_state_received
                                     ? std::optional<bool> { authoritative_pause_state }
-                                    : std::optional<bool> {}
+                                    : std::optional<bool> {},
+                                connection_state,
+                                server_peer,
+                                ack_tracker.value
                             )
                         );
                         if (viewer_result.close_requested) {

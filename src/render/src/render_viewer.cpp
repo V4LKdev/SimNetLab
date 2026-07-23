@@ -508,7 +508,7 @@ namespace simnet
             DrawLine(static_cast<int>(config_.panel_width) - 1, 0, static_cast<int>(config_.panel_width) - 1,
                 static_cast<int>(config_.window_height), Color { 75, 88, 108, 255 });
             auto y = 18.0F;
-            auto text = [&](char const* value, int size = 18, Color color = RAYWHITE) {
+            auto text = [&](char const* value, int size = 15, Color color = RAYWHITE) {
                 DrawTextEx(font_, value, Vector2 { 16.0F, y }, static_cast<float>(size), 1.0F, color);
                 y += static_cast<float>(size + 7);
             };
@@ -523,18 +523,66 @@ namespace simnet
             section("Application");
             std::snprintf(line, sizeof(line), "mode Overview");
             text(line);
+            if (!valid_entities) {
+                text("invalid entity view", 15, ORANGE);
+            }
+            section("Connection");
+            if (frame.info.connection.has_value()) {
+                std::snprintf(
+                    line,
+                    sizeof(line),
+                    "state %.*s",
+                    static_cast<int>(frame.info.connection->state.size()),
+                    frame.info.connection->state.data()
+                );
+                text(line);
+                if (frame.info.connection->peer.has_value()) {
+                    std::snprintf(line, sizeof(line), "peer %u", *frame.info.connection->peer);
+                    text(line);
+                }
+            } else {
+                text("state unavailable");
+            }
+            if (frame.info.session_ready.has_value()) {
+                text(*frame.info.session_ready ? "session ready" : "session not ready");
+            }
+            section("Replication");
+            if (frame.info.replication.has_value()) {
+                auto const& replication = *frame.info.replication;
+                auto sequence = [&](char const* label, std::optional<SequenceId> value) {
+                    if (value.has_value()) {
+                        std::snprintf(line, sizeof(line), "%s %u", label, *value);
+                        text(line);
+                    }
+                };
+                sequence("emitted", replication.latest_emitted_sequence);
+                sequence("received", replication.latest_received_sequence);
+                sequence("applied", replication.latest_applied_sequence);
+                sequence("baseline", replication.acknowledged_baseline_sequence);
+                if (replication.latest_snapshot_tick.has_value()) {
+                    std::snprintf(
+                        line,
+                        sizeof(line),
+                        "snapshot tick %llu",
+                        static_cast<unsigned long long>(*replication.latest_snapshot_tick)
+                    );
+                    text(line);
+                }
+                if (replication.retained_snapshot_count.has_value()) {
+                    std::snprintf(line, sizeof(line), "retained %u", *replication.retained_snapshot_count);
+                    text(line);
+                }
+                sequence("oldest", replication.oldest_retained_sequence);
+                sequence("newest", replication.newest_retained_sequence);
+            } else {
+                text("replication unavailable");
+            }
+            section("Simulation");
             if (frame.info.simulation_paused.has_value()) {
                 text(*frame.info.simulation_paused ? "simulation paused" : "simulation running");
             } else {
                 text("simulation state unavailable");
             }
-            if (frame.info.session_ready.has_value()) {
-                text(*frame.info.session_ready ? "session ready" : "session unavailable");
-            }
-            if (!valid_entities) {
-                text("invalid entity view", 18, ORANGE);
-            }
-            section("World");
             std::snprintf(line, sizeof(line), "entities %zu", valid_entities ? frame.entities.size() : 0U);
             text(line);
             std::snprintf(line, sizeof(line), "skipped %u", stats.skipped_entity_count);
@@ -543,6 +591,10 @@ namespace simnet
             text(line);
             if (frame.info.snapshot_sequence.has_value()) {
                 std::snprintf(line, sizeof(line), "sequence %u", *frame.info.snapshot_sequence);
+                text(line);
+            }
+            if (frame.info.fixed_tick_rate_hz.has_value()) {
+                std::snprintf(line, sizeof(line), "fixed rate %.1f Hz", *frame.info.fixed_tick_rate_hz);
                 text(line);
             }
             section("Rendering");
