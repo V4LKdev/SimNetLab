@@ -12,13 +12,13 @@ The finished foundation separates core vocabulary, fixed-step runtime planning, 
 - Full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - 1,000-entity Server to Client replication in the bounded runtime path
-- Optional Server and Client overview visualization with instanced directional entities and authoritative remote pause
+- Optional Server and Client visualization with instanced directional entities, entity detail selection, and authoritative remote pause
 
 The Server currently advances the authoritative boid state but does not yet implement the intended boid behavior model.
 
 ## Planned work
 
-Area of interest, LOD, compression, entity selection, benchmarking, spatial integration, metrics export, and Tracy instrumentation remain planned. Server and Client overview viewers are available when local visualization is enabled.
+Area of interest, LOD, compression, benchmarking, spatial integration, metrics export, and Tracy instrumentation remain planned. Server and Client viewers are available when local visualization is enabled.
 
 `Aoi`, `Lod`, and `Compression` remain declared pipeline vocabulary. They are not implemented and a selected unsupported pipeline option is rejected during app startup.
 
