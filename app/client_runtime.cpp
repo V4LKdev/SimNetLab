@@ -70,6 +70,7 @@ namespace
         return "unknown";
     }
 
+#if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] std::string_view client_connection_state_name(ClientConnectionState state) noexcept
     {
         switch (state) {
@@ -79,6 +80,7 @@ namespace
         }
         return "unknown";
     }
+#endif
 
 #if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] simnet::ViewerConfig viewer_config(simnet::VisualizationConfig const& config)
