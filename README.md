@@ -12,7 +12,7 @@ The finished foundation separates core vocabulary, fixed-step runtime planning, 
 - Full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - 1,000-entity Server to Client replication in the bounded runtime path
-- Optional Server and Client visualization with instanced directional entities, entity detail selection, and authoritative remote pause
+- Optional Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, and authoritative remote pause
 
 The Server currently advances the authoritative boid state but does not yet implement the intended boid behavior model.
 
