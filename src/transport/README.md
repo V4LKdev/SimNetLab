@@ -22,7 +22,9 @@ ENet connect
 
 ## Lanes and delivery
 
-`Control`, `Snapshot`, and `Input` map to ENet channels 0, 1, and 2. Control carries the handshake. Snapshot carries opaque app bytes. Input carries `SnapshotAck` messages and remains available for later client input.
+`Control`, `Snapshot`, and `Input` map to ENet channels 0, 1, and 2. Control carries the handshake and bounded reliable opaque application-control payloads after session readiness. Snapshot carries opaque app bytes. Input carries `SnapshotAck` messages and remains available for later client input.
+
+`send_application_control` and `ReceivedApplicationControl` preserve the application payload without interpreting it. Application message schemas belong at the app boundary.
 
 The API supports reliable sequenced, unreliable sequenced, unreliable unsequenced, and unreliable fragmented delivery. App configuration selects snapshot delivery. Current default snapshots use reliable sequenced delivery.
 

@@ -6,13 +6,13 @@ The finished foundation separates core vocabulary, fixed-step runtime planning, 
 
 ## Current capability
 
-- ENet-only transport with session handshake, bounded payload policy, and SnapshotAck messages
+- ENet-only transport with session handshake, bounded payload policy, SnapshotAck messages, and reliable opaque application control
 - Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
 - One authoritative server peer and one client peer
 - Full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - 1,000-entity Server to Client replication in the bounded runtime path
-- Optional Server and Client overview visualization with instanced directional entities
+- Optional Server and Client overview visualization with instanced directional entities and authoritative remote pause
 
 The Server currently advances the authoritative boid state but does not yet implement the intended boid behavior model.
 
