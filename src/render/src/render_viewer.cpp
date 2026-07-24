@@ -440,7 +440,7 @@ namespace simnet
                     reset_overview_camera(center);
                 }
             }
-            if (IsKeyPressed(KEY_ESCAPE) && mode_ == ViewMode::EntityDetail) {
+            if (IsKeyPressed(KEY_BACKSPACE) && mode_ == ViewMode::EntityDetail) {
                 clear_selection(result);
             }
             if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
@@ -999,7 +999,7 @@ namespace simnet
             line("Right drag  Orbit");
             line("Wheel     Zoom");
             line("R         Reset camera");
-            line("Escape    Clear selection and overview");
+            line("Backspace Clear selection and overview");
             line("H or ?    Close help");
         }
 
