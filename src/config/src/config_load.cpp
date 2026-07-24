@@ -252,6 +252,7 @@ namespace
         read_optional(json, "target_fps", config.target_fps);
         read_optional(json, "entity_scale", config.entity_scale);
         read_optional(json, "picking_radius", config.picking_radius);
+        read_optional(json, "entity_mesh_path", config.entity_mesh_path);
 
         if (config.window_width == 0 || config.window_height == 0) {
             throw std::runtime_error("invalid visualization dimensions: expected non-zero width and height");
@@ -431,6 +432,7 @@ namespace
         hash_bytes(hash, visualization.target_fps);
         hash_bytes(hash, visualization.entity_scale);
         hash_bytes(hash, visualization.picking_radius);
+        hash_string(hash, visualization.entity_mesh_path);
     }
 }
 

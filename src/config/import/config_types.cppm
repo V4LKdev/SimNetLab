@@ -63,6 +63,7 @@ export namespace simnet
         std::uint32_t target_fps { 60 };
         float entity_scale { 1.0F };
         float picking_radius { 1.0F };
+        std::string entity_mesh_path {};
     };
 
     /// Logging and profiling settings.

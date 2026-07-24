@@ -140,6 +140,7 @@ export namespace simnet
         std::uint32_t target_frame_rate { 60 };
         float entity_scale { 1.0F };
         float picking_radius { 1.0F };
+        std::string entity_mesh_path {};
         std::string title { "SimNet" };
     };
 }

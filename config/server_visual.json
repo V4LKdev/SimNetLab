@@ -14,7 +14,8 @@
     "panel_width": 360,
     "target_fps": 60,
     "entity_scale": 1.0,
-    "picking_radius": 1.0
+    "picking_radius": 1.0,
+    "entity_mesh_path": ""
   },
   "telemetry": {
     "tracy_enabled": false,

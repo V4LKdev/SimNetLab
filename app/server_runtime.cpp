@@ -128,6 +128,7 @@ namespace
             .target_frame_rate = config.target_fps,
             .entity_scale = config.entity_scale,
             .picking_radius = config.picking_radius,
+            .entity_mesh_path = config.entity_mesh_path,
             .title = "SimNet Server",
         };
     }

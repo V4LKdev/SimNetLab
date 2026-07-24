@@ -6,6 +6,7 @@ module;
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -39,12 +40,6 @@ namespace
         int y {};
         int width {};
         int height {};
-    };
-
-    struct FallbackInstance
-    {
-        Vector3 position {};
-        Color color {};
     };
 
     [[nodiscard]] simnet::NS elapsed_ns(Clock::time_point start) noexcept
@@ -172,6 +167,15 @@ namespace
         return mesh;
     }
 
+    [[nodiscard]] Matrix mesh_correction(std::string const& path) noexcept
+    {
+        if (std::filesystem::path { path }.filename() == "boid.obj") {
+            // The reference boid uses local -Z as forward and centimeter-sized coordinates.
+            return MatrixMultiply(MatrixRotateY(pi), MatrixScale(0.05F, 0.05F, 0.05F));
+        }
+        return MatrixIdentity();
+    }
+
     constexpr char const* instancing_vertex_shader = R"glsl(
 #version 330
 in vec3 vertexPosition;
@@ -247,14 +251,22 @@ namespace simnet
                 CloseWindow();
                 throw std::runtime_error("failed to create viewer scene render texture");
             }
-            mesh_ = make_directional_mesh();
-            model_ = LoadModelFromMesh(mesh_);
+            load_entity_model();
             shader_ = LoadShaderFromMemory(instancing_vertex_shader, instancing_fragment_shader);
-            instancing_available_ = shader_.id != 0 && model_.meshCount > 0 && model_.materialCount > 0;
+            instancing_available_ = shader_.id != 0
+                && model_.meshCount > 0
+                && model_.materialCount > 0
+                && model_.meshes != nullptr
+                && model_.materials != nullptr
+                && model_.meshMaterial != nullptr;
             if (instancing_available_) {
                 shader_.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(shader_, "mvp");
                 shader_.locs[SHADER_LOC_COLOR_DIFFUSE] = GetShaderLocation(shader_, "colDiffuse");
-                model_.materials[0].shader = shader_;
+                for (int index = 0; index < model_.materialCount; ++index) {
+                    model_.materials[index].shader = shader_;
+                }
+            } else {
+                TraceLog(LOG_WARNING, "SimNet viewer instanced entity drawing is unavailable");
             }
             camera_.up = { 0.0F, 1.0F, 0.0F };
             camera_.fovy = 55.0F;
@@ -335,6 +347,29 @@ namespace simnet
         }
 
     private:
+        void load_entity_model()
+        {
+            model_correction_ = MatrixIdentity();
+            if (!config_.entity_mesh_path.empty()) {
+                model_ = LoadModel(config_.entity_mesh_path.c_str());
+                if (model_.meshCount > 0
+                    && model_.materialCount > 0
+                    && model_.meshes != nullptr
+                    && model_.materials != nullptr
+                    && model_.meshMaterial != nullptr) {
+                    model_correction_ = mesh_correction(config_.entity_mesh_path);
+                    return;
+                }
+                if (model_.meshCount > 0) {
+                    UnloadModel(model_);
+                    model_ = {};
+                }
+                TraceLog(LOG_WARNING, "SimNet viewer mesh load failed, using procedural wedge");
+            }
+            mesh_ = make_directional_mesh();
+            model_ = LoadModelFromMesh(mesh_);
+        }
+
         enum class PanelPage : std::uint8_t
         {
             Overview,
@@ -679,7 +714,6 @@ namespace simnet
             for (auto& bucket : transform_buckets_) {
                 bucket.clear();
             }
-            fallback_instances_.clear();
         }
 
         void prepare_instances(RenderEntityView const& entities, RenderStats& stats)
@@ -691,10 +725,6 @@ namespace simnet
                     bucket.reserve(per_bucket);
                 }
             }
-            if (!instancing_available_ && fallback_instances_.capacity() < entities.size()) {
-                fallback_instances_.reserve(entities.size());
-            }
-
             for (std::size_t index = 0; index < entities.size(); ++index) {
                 auto const position = entities.positions[index];
                 auto const heading = entities.headings[index];
@@ -702,13 +732,9 @@ namespace simnet
                     ++stats.skipped_entity_count;
                     continue;
                 }
-                auto const color = hue_color(entities.hues[index]);
                 transform_buckets_[hue_bucket(entities.hues[index])].push_back(
-                    entity_transform(position, heading, config_.entity_scale)
+                    MatrixMultiply(model_correction_, entity_transform(position, heading, config_.entity_scale))
                 );
-                if (!instancing_available_) {
-                    fallback_instances_.push_back({ .position = to_raylib(position), .color = color });
-                }
                 ++stats.instance_count;
             }
         }
@@ -744,18 +770,19 @@ namespace simnet
                     if (bucket.empty()) {
                         continue;
                     }
-                    model_.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = hue_color(
-                        static_cast<std::uint8_t>(index * 256U / hue_bucket_count)
-                    );
-                    DrawMeshInstanced(model_.meshes[0], model_.materials[0], bucket.data(), static_cast<int>(bucket.size()));
-                    ++stats.draw_calls;
+                    auto const color = hue_color(static_cast<std::uint8_t>(index * 256U / hue_bucket_count));
+                    for (int mesh_index = 0; mesh_index < model_.meshCount; ++mesh_index) {
+                        auto const material_index = model_.meshMaterial[mesh_index];
+                        if (material_index < 0 || material_index >= model_.materialCount) {
+                            continue;
+                        }
+                        auto& material = model_.materials[material_index];
+                        material.maps[MATERIAL_MAP_DIFFUSE].color = color;
+                        DrawMeshInstanced(model_.meshes[mesh_index], material, bucket.data(), static_cast<int>(bucket.size()));
+                        ++stats.draw_calls;
+                    }
                     ++stats.active_hue_buckets;
                 }
-            } else {
-                for (auto const& instance : fallback_instances_) {
-                    DrawCube(instance.position, config_.entity_scale, config_.entity_scale, config_.entity_scale, instance.color);
-                }
-                stats.draw_calls = fallback_instances_.empty() ? 0U : static_cast<std::uint32_t>(fallback_instances_.size());
             }
             if (selected_entity_frame_.has_value()) {
                 auto const radius = std::max(config_.picking_radius, config_.entity_scale * 1.5F);
@@ -1009,6 +1036,7 @@ namespace simnet
         Font font_ {};
         Mesh mesh_ {};
         Model model_ {};
+        Matrix model_correction_ {};
         Shader shader_ {};
         Camera3D camera_ {};
         Vector3 target_ {};
@@ -1033,7 +1061,6 @@ namespace simnet
         std::optional<EntityNetId> navigation_anchor_ {};
         std::optional<SelectedEntity> selected_entity_frame_ {};
         std::array<std::vector<Matrix>, hue_bucket_count> transform_buckets_;
-        std::vector<FallbackInstance> fallback_instances_;
     };
 
     Viewer::Viewer(ViewerConfig config)
