@@ -774,18 +774,18 @@ namespace simnet
             DrawLine(static_cast<int>(config_.panel_width) - 1, 0, static_cast<int>(config_.panel_width) - 1,
                 static_cast<int>(config_.window_height), Color { 75, 88, 108, 255 });
             auto y = 18.0F;
-            auto text = [&](char const* value, int size = 15, Color color = RAYWHITE) {
+            auto text = [&](char const* value, int size = 16, Color color = RAYWHITE) {
                 DrawTextEx(font_, value, Vector2 { 16.0F, y }, static_cast<float>(size), 1.0F, color);
-                y += static_cast<float>(size + 7);
+                y += static_cast<float>(size + 8);
             };
             auto section = [&](char const* value) {
                 y += 8.0F;
                 DrawLine(16, static_cast<int>(y), static_cast<int>(width) - 16, static_cast<int>(y), Color { 68, 82, 102, 255 });
                 y += 10.0F;
-                text(value, 16, Color { 133, 186, 235, 255 });
+                text(value, 17, Color { 133, 186, 235, 255 });
             };
             char line[192] {};
-            text(config_.title.c_str(), 21);
+            text(config_.title.c_str(), 23);
             auto const mode_name = [](ViewMode mode) {
                 switch (mode) {
                 case ViewMode::Overview: return "Overview";
@@ -802,7 +802,7 @@ namespace simnet
                 }
                 return "Unknown";
             };
-            text(page_name(page_), 16, Color { 133, 186, 235, 255 });
+            text(page_name(page_), 17, Color { 133, 186, 235, 255 });
             auto button = [&](float& button_y, char const* label, bool active) {
                 auto constexpr button_height = 26.0F;
                 auto const rect = Rectangle { 16.0F, button_y, width - 32.0F, button_height };
