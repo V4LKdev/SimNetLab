@@ -451,8 +451,8 @@ namespace simnet
                 mode_ = mode_ == ViewMode::Observer ? ViewMode::Overview : ViewMode::Observer;
             }
             if (frame.observer.has_value()) {
-                result.debug_observer_yaw_axis = (IsKeyDown(KEY_RIGHT) ? 1.0F : 0.0F)
-                    - (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F);
+                result.debug_observer_yaw_axis = (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F)
+                    - (IsKeyDown(KEY_RIGHT) ? 1.0F : 0.0F);
                 result.debug_observer_pitch_axis = (IsKeyDown(KEY_UP) ? 1.0F : 0.0F)
                     - (IsKeyDown(KEY_DOWN) ? 1.0F : 0.0F);
             }
