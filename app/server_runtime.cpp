@@ -73,6 +73,14 @@ namespace
         simnet::WorldSnapshot snapshot {};
     };
 
+    struct CurrentSnapshotState
+    {
+        simnet::WorldSnapshot snapshot {};
+        simnet::Tick extracted_tick {};
+        bool valid {};
+        bool dirty { true };
+    };
+
     struct PeerRuntimeState
     {
         simnet::PeerId peer {};
@@ -372,15 +380,69 @@ namespace
             "delta unavailable; using FullReplace");
     }
 
-    void trim_retained_snapshots(PeerRuntimeState& peer)
+    void copy_snapshot_reusing_capacity(
+        simnet::WorldSnapshot const& source,
+        simnet::WorldSnapshot& destination
+    )
     {
-        while (peer.retained_snapshots.size() > retained_snapshot_limit) {
-            auto const evicted_sequence = peer.retained_snapshots.front().sequence;
+        destination.tick = source.tick;
+        destination.ids.resize(source.ids.size());
+        destination.positions.resize(source.positions.size());
+        destination.headings.resize(source.headings.size());
+        destination.hues.resize(source.hues.size());
+        std::copy(source.ids.begin(), source.ids.end(), destination.ids.begin());
+        std::copy(source.positions.begin(), source.positions.end(), destination.positions.begin());
+        std::copy(source.headings.begin(), source.headings.end(), destination.headings.begin());
+        std::copy(source.hues.begin(), source.hues.end(), destination.hues.begin());
+    }
+
+    void retain_snapshot(
+        PeerRuntimeState& peer,
+        simnet::SequenceId sequence,
+        simnet::WorldSnapshot const& snapshot
+    )
+    {
+        auto retained = RetainedSnapshot {};
+        if (peer.retained_snapshots.size() >= retained_snapshot_limit) {
+            retained = std::move(peer.retained_snapshots.front());
             peer.retained_snapshots.pop_front();
-            if (peer.acknowledged_baseline_sequence == evicted_sequence) {
+            if (peer.acknowledged_baseline_sequence == retained.sequence) {
                 invalidate_baseline(peer);
             }
         }
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("server.retained_snapshot_copy", simnet::LogCategory::Snapshot);
+            copy_snapshot_reusing_capacity(snapshot, retained.snapshot);
+        }
+        retained.sequence = sequence;
+        peer.retained_snapshots.push_back(std::move(retained));
+        SIMNET_TRACE_PLOT("server.retained_snapshot_count", static_cast<double>(peer.retained_snapshots.size()));
+    }
+
+    [[nodiscard]] simnet::ServerSnapshotExtractionReport ensure_current_snapshot(
+        flecs::world const& world,
+        simnet::Tick tick,
+        CurrentSnapshotState& state
+    )
+    {
+        if (state.valid && !state.dirty) {
+            return {
+                .tick = state.extracted_tick,
+                .entity_count = static_cast<std::uint32_t>(state.snapshot.size()),
+            };
+        }
+
+        SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_step.snapshot_demand", simnet::LogCategory::Snapshot);
+        auto const report = simnet::extract_world_snapshot(world, tick, state.snapshot);
+        if (!report.valid) {
+            state.valid = false;
+            state.dirty = true;
+            return report;
+        }
+        state.extracted_tick = tick;
+        state.valid = true;
+        state.dirty = false;
+        return report;
     }
 
     void apply_ack(PeerRuntimeState& peer, simnet::SnapshotAck const& ack)
@@ -506,24 +568,22 @@ namespace
         simnet::Delivery delivery,
         simnet::TransportServer& transport,
         std::optional<PeerRuntimeState>& peer,
-        simnet::PipelineScratch& scratch
+        simnet::PipelineScratch& scratch,
+        CurrentSnapshotState& snapshot_state
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
         advance_world(world, fixed_dt, world_half);
-        auto snapshot = simnet::WorldSnapshot {};
-        auto extraction = simnet::ServerSnapshotExtractionReport {};
-        {
-            SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_step.snapshot_demand", simnet::LogCategory::Snapshot);
-            extraction = simnet::extract_world_snapshot(world, tick, snapshot);
+        snapshot_state.dirty = true;
+        if (!peer.has_value()) {
+            return true;
         }
+
+        auto const extraction = ensure_current_snapshot(world, tick, snapshot_state);
         if (!extraction.valid) {
             simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Error,
                 "snapshot extraction failed: " + extraction.error);
             return false;
-        }
-        if (!peer.has_value()) {
-            return true;
         }
 
         auto const delta_enabled = simnet::has_all_flags(
@@ -546,7 +606,7 @@ namespace
                 peer->pipeline_state,
                 scratch,
                 {
-                    .snapshot = &snapshot,
+                    .snapshot = &snapshot_state.snapshot,
                     .baseline_snapshot = use_baseline
                         ? &baseline->snapshot
                         : nullptr,
@@ -575,12 +635,8 @@ namespace
             return false;
         }
 
-        peer->retained_snapshots.push_back({
-            .sequence = encoded.packet.sequence,
-            .snapshot = std::move(snapshot),
-        });
+        retain_snapshot(*peer, encoded.packet.sequence, snapshot_state.snapshot);
         peer->newest_emitted_sequence = encoded.packet.sequence;
-        trim_retained_snapshots(*peer);
         return true;
     }
 
@@ -727,10 +783,10 @@ namespace simnet::app
                 PipelineTechniqueFlags::Delta
             );
             auto simulation_paused = false;
+            auto current_snapshot = CurrentSnapshotState {};
 #if defined(SIMNET_ENABLE_RENDER)
-            auto render_snapshot = WorldSnapshot {};
-            auto render_snapshot_ready = false;
             auto spatial_render = SpatialRenderStorage {};
+            auto spatial_snapshot_tick = std::optional<Tick> {};
             if (viewer.has_value()) {
                 // Viewer startup is not simulation time and must not create an initial catch-up frame.
                 reset_frame_timer(timer);
@@ -787,7 +843,8 @@ namespace simnet::app
                             delivery,
                             transport,
                             peer,
-                            scratch
+                            scratch,
+                            current_snapshot
                         )) {
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;
@@ -800,34 +857,29 @@ namespace simnet::app
                 }
 #if defined(SIMNET_ENABLE_RENDER)
                 if (viewer.has_value()) {
-                    if (!render_snapshot_ready || frame.step_count != 0U) {
-                        auto extracted = ServerSnapshotExtractionReport {};
-                        {
-                            SIMNET_TRACE_SCOPE_CATEGORY("server.render_snapshot_extraction", LogCategory::Snapshot);
-                            extracted = extract_world_snapshot(world, stats.ticks, render_snapshot);
-                        }
-                        if (!extracted.valid) {
-                            log(LogCategory::Simulation, LogLevel::Error,
-                                "render snapshot extraction failed: " + extracted.error);
-                            static_cast<void>(stop.request(ShutdownReason::FatalError));
-                        } else {
-                            render_snapshot_ready = true;
-                            rebuild_spatial_render_view(
-                                spatial_render,
-                                render_snapshot,
-                                shared,
-                                debug_observer.position,
-                                local.visualization.max_visible_spatial_cells
-                            );
-                        }
+                    auto const extracted = ensure_current_snapshot(world, stats.ticks, current_snapshot);
+                    if (!extracted.valid) {
+                        log(LogCategory::Simulation, LogLevel::Error,
+                            "render snapshot extraction failed: " + extracted.error);
+                        static_cast<void>(stop.request(ShutdownReason::FatalError));
+                    } else if (!spatial_snapshot_tick.has_value()
+                        || *spatial_snapshot_tick != current_snapshot.extracted_tick) {
+                        spatial_snapshot_tick = current_snapshot.extracted_tick;
+                        rebuild_spatial_render_view(
+                            spatial_render,
+                            current_snapshot.snapshot,
+                            shared,
+                            debug_observer.position,
+                            local.visualization.max_visible_spatial_cells
+                        );
                     }
-                    if (!stop.requested() && render_snapshot_ready) {
+                    if (!stop.requested() && current_snapshot.valid) {
                         auto viewer_result = ViewerResult {};
                         {
                             SIMNET_TRACE_SCOPE_CATEGORY("server.viewer_draw", LogCategory::Render);
                             viewer_result = viewer->draw(
                                 render_frame(
-                                    render_snapshot,
+                                    current_snapshot.snapshot,
                                     shared,
                                     frame_delta,
                                     simulation_paused,
