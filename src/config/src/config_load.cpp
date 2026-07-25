@@ -286,7 +286,6 @@ namespace
 
     void apply_telemetry(Json const& json, simnet::TelemetryConfig& config)
     {
-        read_optional(json, "tracy_enabled", config.tracy_enabled);
         read_optional(json, "console_log_enabled", config.console_log_enabled);
         read_optional(json, "file_log_enabled", config.file_log_enabled);
         read_optional(json, "log_directory", config.log_directory);
@@ -428,7 +427,6 @@ namespace
         hash_bytes(hash, transport.max_payload_bytes);
         hash_string(hash, transport.send_size_policy);
         hash_string(hash, transport.snapshot_delivery);
-        hash_bytes(hash, telemetry.tracy_enabled);
         hash_bytes(hash, telemetry.console_log_enabled);
         hash_bytes(hash, telemetry.file_log_enabled);
         hash_string(hash, telemetry.min_level);

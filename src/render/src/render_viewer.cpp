@@ -18,9 +18,13 @@ module;
 #include <raymath.h>
 #include <rlgl.h>
 
+#include <simnet/telemetry_trace.hpp>
+
 #include "../assets/jetbrains_mono_regular.hpp"
 
 module simnet.render;
+
+import simnet.telemetry;
 
 namespace
 {
@@ -302,32 +306,45 @@ namespace simnet
 
         [[nodiscard]] ViewerResult draw(RenderFrame const& frame)
         {
+            SIMNET_TRACE_SCOPE_CATEGORY("render.viewer_frame", simnet::LogCategory::Render);
             auto result = ViewerResult {};
             auto stats = RenderStats {};
             auto const input_start = Clock::now();
-            update_panel_input();
-            update_camera(frame, result);
-            update_selection(frame.entities, result);
-            update_controls(frame, result);
+            {
+                SIMNET_TRACE_SCOPE_CATEGORY("render.input", simnet::LogCategory::Render);
+                update_panel_input();
+                update_camera(frame, result);
+                update_selection(frame.entities, result);
+                update_controls(frame, result);
+            }
             stats.input_cpu_time = elapsed_ns(input_start);
 
             bool const valid_entities = frame.entities.valid();
             auto const preparation_start = Clock::now();
-            if (valid_entities) {
-                prepare_instances(frame.entities, stats);
-            } else {
-                clear_instances();
+            {
+                SIMNET_TRACE_SCOPE_CATEGORY("render.instance_preparation", simnet::LogCategory::Render);
+                if (valid_entities) {
+                    prepare_instances(frame.entities, stats);
+                } else {
+                    clear_instances();
+                }
             }
             stats.preparation_cpu_time = elapsed_ns(preparation_start);
 
             auto const scene_start = Clock::now();
-            draw_scene(frame, stats);
+            {
+                SIMNET_TRACE_SCOPE_CATEGORY("render.scene_submission", simnet::LogCategory::Render);
+                draw_scene(frame, stats);
+            }
             stats.scene_submit_cpu_time = elapsed_ns(scene_start);
 
             BeginDrawing();
             ClearBackground(Color { 18, 21, 27, 255 });
             auto const panel_start = Clock::now();
-            draw_panel(frame, valid_entities, stats, result);
+            {
+                SIMNET_TRACE_SCOPE_CATEGORY("render.panel", simnet::LogCategory::Render);
+                draw_panel(frame, valid_entities, stats, result);
+            }
             stats.panel_cpu_time = elapsed_ns(panel_start);
             DrawTextureRec(
                 scene_.texture,
@@ -342,6 +359,13 @@ namespace simnet
             result.view_mode = mode_;
             result.selected_entity = selected_entity_;
             result.stats = stats;
+            SIMNET_TRACE_PLOT("render.instances", static_cast<double>(stats.instance_count));
+            SIMNET_TRACE_PLOT("render.skipped_entities", static_cast<double>(stats.skipped_entity_count));
+            SIMNET_TRACE_PLOT("render.draw_calls", static_cast<double>(stats.draw_calls));
+            SIMNET_TRACE_PLOT("render.active_hue_buckets", static_cast<double>(stats.active_hue_buckets));
+            if (frame.spatial.has_value()) {
+                SIMNET_TRACE_PLOT("render.displayed_spatial_cells", static_cast<double>(frame.spatial->cells.size()));
+            }
             return result;
         }
 
@@ -782,6 +806,7 @@ namespace simnet
 
         void draw_observer(ObserverView const& observer, RenderStats& stats)
         {
+            SIMNET_TRACE_SCOPE_CATEGORY("render.observer_geometry", simnet::LogCategory::Render);
             auto const position = to_raylib(observer.position);
             auto const forward = normalized_or_forward(observer.forward);
             auto const direction_end = to_raylib(observer.position + forward * observer.interest_radius);
@@ -824,6 +849,7 @@ namespace simnet
 
         void draw_spatial_cells(SpatialDebugView const& spatial, RenderStats& stats)
         {
+            SIMNET_TRACE_SCOPE_CATEGORY("render.spatial_geometry", simnet::LogCategory::Render);
             for (auto const& cell : spatial.cells) {
                 auto const intensity = static_cast<unsigned char>(std::min(220U, 55U + cell.entity_count * 12U));
                 DrawBoundingBox(
@@ -953,6 +979,16 @@ namespace simnet
                     text(*frame.info.simulation_paused ? "simulation paused" : "simulation running");
                 } else {
                     text("simulation state unavailable");
+                }
+                if (!frame.info.status_message.empty()) {
+                    std::snprintf(
+                        line,
+                        sizeof(line),
+                        "%.*s",
+                        static_cast<int>(frame.info.status_message.size()),
+                        frame.info.status_message.data()
+                    );
+                    text(line, 15, Color { 247, 184, 74, 255 });
                 }
                 section("World");
                 std::snprintf(line, sizeof(line), "tick %llu", static_cast<unsigned long long>(frame.info.tick));

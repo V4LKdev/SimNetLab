@@ -21,7 +21,6 @@
     "entity_mesh_path": ""
   },
   "telemetry": {
-    "tracy_enabled": false,
     "console_log_enabled": true,
     "file_log_enabled": true,
     "log_directory": "logs",

@@ -72,7 +72,6 @@ export namespace simnet
     /// Logging and profiling settings.
     struct TelemetryConfig
     {
-        bool tracy_enabled { false };
         bool console_log_enabled { true };
         bool file_log_enabled { true };
         std::string log_directory { "logs" };

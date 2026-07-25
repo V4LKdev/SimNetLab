@@ -22,3 +22,5 @@ Applications can also supply bounded occupied-cell data through `SpatialDebugVie
 Left click in the scene viewport performs a nearest-hit ray-to-sphere selection using the configured picking radius. The Viewer stores the stable `EntityNetId`, not a frame-local array index. A hit enters Entity Detail mode with an independent orbit camera and a wire highlight. Empty scene clicks preserve the current selection. `Backspace` or Return to overview clears it. If the selected ID is absent from a later valid frame, the Viewer clears it and returns to Overview. `[` and `]` select the previous and next valid visible IDs with wrapping. Optional `SelectedEntityDetails` are shown only when their ID matches the current selection.
 
 The viewer returns user intent and aggregate CPU timings. It does not own simulation, pause state, transport, snapshots, Flecs, telemetry, or configuration loading.
+
+The public render API remains telemetry independent. Its private implementation emits aggregate Tracy zones and plots through `simnet_telemetry` when the build enables Tracy. It does not trace per entity or per cell.

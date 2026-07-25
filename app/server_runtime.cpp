@@ -294,11 +294,13 @@ namespace
 
     void initialize_world(flecs::world& world, simnet::SharedConfig const& config)
     {
+        SIMNET_TRACE_SCOPE_CATEGORY("server.initialize_world", simnet::LogCategory::Simulation);
         for (std::uint32_t index = 0; index < config.simulation.initial_boid_count; ++index) {
             static_cast<void>(
                 simnet::upsert_authoritative_boid(world, initial_boid(index, config.simulation.world_half))
             );
         }
+        SIMNET_TRACE_PLOT("server.initialized_entities", static_cast<double>(config.simulation.initial_boid_count));
     }
 
     void advance_world(flecs::world& world, simnet::NS fixed_dt, float world_half)
@@ -483,9 +485,14 @@ namespace
         simnet::PipelineScratch& scratch
     )
     {
+        SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
         advance_world(world, fixed_dt, world_half);
         auto snapshot = simnet::WorldSnapshot {};
-        auto const extraction = simnet::extract_world_snapshot(world, tick, snapshot);
+        auto extraction = simnet::ServerSnapshotExtractionReport {};
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_extraction", simnet::LogCategory::Snapshot);
+            extraction = simnet::extract_world_snapshot(world, tick, snapshot);
+        }
         if (!extraction.valid) {
             simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Error,
                 "snapshot extraction failed: " + extraction.error);
@@ -507,29 +514,37 @@ namespace
             }
         }
         auto const use_baseline = baseline != peer->retained_snapshots.end();
-        auto const encoded = simnet::encode_snapshot(
-            pipeline,
-            peer->pipeline_state,
-            scratch,
-            {
-                .snapshot = &snapshot,
-                .baseline_snapshot = use_baseline
-                    ? &baseline->snapshot
-                    : nullptr,
-                .baseline_sequence = use_baseline
-                    ? baseline->sequence
-                    : 0U,
-            }
-        );
+        auto encoded = simnet::EncodeOutput {};
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_encode", simnet::LogCategory::Pipeline);
+            encoded = simnet::encode_snapshot(
+                pipeline,
+                peer->pipeline_state,
+                scratch,
+                {
+                    .snapshot = &snapshot,
+                    .baseline_snapshot = use_baseline
+                        ? &baseline->snapshot
+                        : nullptr,
+                    .baseline_sequence = use_baseline
+                        ? baseline->sequence
+                        : 0U,
+                }
+            );
+        }
         if (encoded.kind == simnet::EncodeResultKind::Skipped) {
             return true;
         }
-        auto const sent = transport.send({
-            .peer = peer->peer,
-            .lane = simnet::Lane::Snapshot,
-            .delivery = delivery,
-            .payload = encoded.packet.bytes,
-        });
+        auto sent = simnet::TransportResult {};
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_send", simnet::LogCategory::Transport);
+            sent = transport.send({
+                .peer = peer->peer,
+                .lane = simnet::Lane::Snapshot,
+                .delivery = delivery,
+                .payload = encoded.packet.bytes,
+            });
+        }
         if (!sent.ok) {
             simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                 "snapshot send failed: " + sent.error.message);
@@ -592,6 +607,11 @@ namespace simnet::app
                 throw std::runtime_error("server currently supports one client");
             }
             auto telemetry = TelemetryLifetime { local.telemetry };
+#if defined(SIMNET_ENABLE_TRACY)
+            log(LogCategory::Telemetry, LogLevel::Info, "Tracy instrumentation compiled in");
+#else
+            log(LogCategory::Telemetry, LogLevel::Info, "Tracy instrumentation not compiled in");
+#endif
             auto signals = SignalHandlers {};
             auto const pipeline = make_snapshot_pipeline(shared, local.transport);
 
@@ -627,9 +647,42 @@ namespace simnet::app
                 throw std::runtime_error("invalid fixed-step runtime settings");
             }
 
+#if defined(SIMNET_ENABLE_RENDER)
+            auto viewer = std::optional<Viewer> {};
+            auto debug_observer = app::DebugObserverState {
+                .position = {},
+                .interest_radius = local.visualization.debug_observer_interest_radius,
+                .vertical_fov_degrees = local.visualization.debug_observer_vertical_fov_degrees,
+            };
+            if (local.visualization.enabled) {
+                viewer.emplace(viewer_config(local.visualization));
+                static_cast<void>(viewer->draw({
+                    .info = {
+                        .world_bounds = make_centered_bounds(shared.simulation.world_half),
+                        .fixed_tick_rate_hz = shared.simulation.tick_rate_hz,
+                        .status_message = "Initializing authoritative world",
+                    },
+                    .observer = ObserverView {
+                        .position = debug_observer.position,
+                        .forward = app::debug_observer_forward(debug_observer),
+                        .interest_radius = debug_observer.interest_radius,
+                        .vertical_fov_degrees = debug_observer.vertical_fov_degrees,
+                    },
+                }));
+            }
+#endif
+
             auto world = flecs::world {};
             register_server_game(world);
+            auto const initialization_start = std::chrono::steady_clock::now();
+            log(LogCategory::Simulation, LogLevel::Info,
+                "initializing authoritative world entities=" + std::to_string(shared.simulation.initial_boid_count));
             initialize_world(world, shared);
+            auto const initialization_elapsed = std::chrono::duration_cast<NS>(
+                std::chrono::steady_clock::now() - initialization_start
+            );
+            log(LogCategory::Simulation, LogLevel::Info,
+                "authoritative world initialized elapsed_ns=" + std::to_string(initialization_elapsed.count()));
 
             auto stats = RuntimeStats {};
             auto timer = RuntimeFrameTimer {};
@@ -645,17 +698,10 @@ namespace simnet::app
             );
             auto simulation_paused = false;
 #if defined(SIMNET_ENABLE_RENDER)
-            auto viewer = std::optional<Viewer> {};
             auto render_snapshot = WorldSnapshot {};
             auto render_snapshot_ready = false;
             auto spatial_render = SpatialRenderStorage {};
-            auto debug_observer = app::DebugObserverState {
-                .position = {},
-                .interest_radius = local.visualization.debug_observer_interest_radius,
-                .vertical_fov_degrees = local.visualization.debug_observer_vertical_fov_degrees,
-            };
-            if (local.visualization.enabled) {
-                viewer.emplace(viewer_config(local.visualization));
+            if (viewer.has_value()) {
                 // Viewer startup is not simulation time and must not create an initial catch-up frame.
                 reset_frame_timer(timer);
             }
@@ -670,7 +716,10 @@ namespace simnet::app
                     break;
                 }
                 auto pause_state_changed = false;
-                if (!poll_transport(
+                auto transport_ok = false;
+                {
+                    SIMNET_TRACE_SCOPE_CATEGORY("server.transport_poll", LogCategory::Transport);
+                    transport_ok = poll_transport(
                         transport,
                         peer,
                         events,
@@ -678,7 +727,9 @@ namespace simnet::app
                         delta_enabled,
                         simulation_paused,
                         pause_state_changed
-                    )) {
+                    );
+                }
+                if (!transport_ok) {
                     static_cast<void>(stop.request(ShutdownReason::FatalError));
                     break;
                 }
@@ -720,7 +771,11 @@ namespace simnet::app
 #if defined(SIMNET_ENABLE_RENDER)
                 if (viewer.has_value()) {
                     if (!render_snapshot_ready || frame.step_count != 0U) {
-                        auto const extracted = extract_world_snapshot(world, stats.ticks, render_snapshot);
+                        auto extracted = ServerSnapshotExtractionReport {};
+                        {
+                            SIMNET_TRACE_SCOPE_CATEGORY("server.render_snapshot_extraction", LogCategory::Snapshot);
+                            extracted = extract_world_snapshot(world, stats.ticks, render_snapshot);
+                        }
                         if (!extracted.valid) {
                             log(LogCategory::Simulation, LogLevel::Error,
                                 "render snapshot extraction failed: " + extracted.error);
@@ -737,17 +792,21 @@ namespace simnet::app
                         }
                     }
                     if (!stop.requested() && render_snapshot_ready) {
-                        auto const viewer_result = viewer->draw(
-                            render_frame(
-                                render_snapshot,
-                                shared,
-                                frame_delta,
-                                simulation_paused,
-                                peer,
-                                debug_observer,
-                                spatial_render
-                            )
-                        );
+                        auto viewer_result = ViewerResult {};
+                        {
+                            SIMNET_TRACE_SCOPE_CATEGORY("server.viewer_draw", LogCategory::Render);
+                            viewer_result = viewer->draw(
+                                render_frame(
+                                    render_snapshot,
+                                    shared,
+                                    frame_delta,
+                                    simulation_paused,
+                                    peer,
+                                    debug_observer,
+                                    spatial_render
+                                )
+                            );
+                        }
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }
@@ -775,6 +834,7 @@ namespace simnet::app
                     static_cast<void>(stop.request(limit));
                 }
                 SIMNET_TRACE_PLOT("server.runtime.steps", static_cast<double>(frame.step_count));
+                SIMNET_TRACE_PLOT("server.runtime.entities", static_cast<double>(shared.simulation.initial_boid_count));
                 SIMNET_TRACE_FRAME("server");
             }
 

@@ -18,6 +18,7 @@ target_link_libraries(simnet_render
         simnet_core
     PRIVATE
         raylib
+        simnet_telemetry
 )
 
 simnet_configure_target(simnet_render)

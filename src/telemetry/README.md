@@ -11,7 +11,7 @@
 - `category_trace_color` - returns a Tracy-compatible RGBA color for each log category.
 
 ### simnet.telemetry:log
-- `initialize_telemetry` - sets up logging sinks and, if enabled, the Tracy profiler. Requires a `TelemetryConfig`.
+- `initialize_telemetry` - sets up logging sinks. Requires a `TelemetryConfig`.
 - `shutdown_telemetry` - flushes and releases all sinks. Safe to call multiple times.
 - `log` - writes a message to the active logger. Creates a default stdout logger if called before initialisation.
 - `flush_telemetry` - forces any buffered log output to be written immediately.
@@ -34,6 +34,8 @@ Include `<simnet/telemetry_trace.hpp>` to use these macros. They expand to no-op
 - `SIMNET_TRACE_FRAME(name)` - marks a frame boundary.
 
 Use `category_trace_color(...)` to obtain the recommended color for a `LogCategory` when calling `SIMNET_TRACE_SCOPE_C`.
+
+Tracy instrumentation is controlled by the CMake `SIMNET_ENABLE_TRACY` option. It is not a JSON runtime setting. Capture while the process is running. Server and Client log whether their executable includes Tracy instrumentation during startup.
 
 ## Notes
 

@@ -239,15 +239,19 @@ namespace
             return true;
         }
 
-        auto decoded = simnet::decode_packet(
-            pipeline,
-            decode_state,
-            scratch,
-            {
-                .bytes = packet.payload,
-                .applied_baseline_sequence = latest_applied_sequence,
-            }
-        );
+        auto decoded = simnet::DecodeOutput {};
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_decode", simnet::LogCategory::Pipeline);
+            decoded = simnet::decode_packet(
+                pipeline,
+                decode_state,
+                scratch,
+                {
+                    .bytes = packet.payload,
+                    .applied_baseline_sequence = latest_applied_sequence,
+                }
+            );
+        }
         if (!decoded.report.valid) {
             simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Error,
                 "client snapshot decode failed: " + decoded.report.error);
@@ -259,7 +263,11 @@ namespace
             return true;
         }
 
-        auto const applied = simnet::apply_client_snapshot_patch(world, decoded.patch);
+        auto applied = simnet::ApplyPatchReport {};
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_apply", simnet::LogCategory::Simulation);
+            applied = simnet::apply_client_snapshot_patch(world, decoded.patch);
+        }
         if (!applied.valid) {
             simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Error,
                 "client snapshot apply failed: " + applied.error);
@@ -269,7 +277,11 @@ namespace
         latest_applied_sequence = decoded.report.sequence;
         ack_tracker.value.newest_applied_snapshot = decoded.report.sequence;
         stats.ticks = applied.tick;
-        auto const sent = transport.send_snapshot_ack(ack_tracker.value);
+        auto sent = simnet::TransportResult {};
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_ack", simnet::LogCategory::Transport);
+            sent = transport.send_snapshot_ack(ack_tracker.value);
+        }
         if (!sent.ok) {
             simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                 "client snapshot ACK send failed: " + sent.error.message);
@@ -320,6 +332,11 @@ namespace simnet::app
             );
             auto const local = load_client_config(options.config_path.value_or(default_client_config_path()));
             auto telemetry = TelemetryLifetime { local.telemetry };
+#if defined(SIMNET_ENABLE_TRACY)
+            log(LogCategory::Telemetry, LogLevel::Info, "Tracy instrumentation compiled in");
+#else
+            log(LogCategory::Telemetry, LogLevel::Info, "Tracy instrumentation not compiled in");
+#endif
             auto signals = SignalHandlers {};
             auto const pipeline = make_snapshot_pipeline(shared, local.transport);
 
@@ -387,7 +404,11 @@ namespace simnet::app
                 stats.accepted_time += delta;
 
                 events.clear();
-                auto const polled = transport.poll(events, 1);
+                auto polled = TransportResult {};
+                {
+                    SIMNET_TRACE_SCOPE_CATEGORY("client.transport_poll", LogCategory::Transport);
+                    polled = transport.poll(events, 1);
+                }
                 if (!polled.ok) {
                     log(LogCategory::Transport, LogLevel::Error,
                         "client transport poll failed: " + polled.error.message);
@@ -468,7 +489,11 @@ namespace simnet::app
 
 #if defined(SIMNET_ENABLE_RENDER)
                 if (!stop.requested() && viewer.has_value()) {
-                    auto const extracted = extract_client_world_snapshot(world, stats.ticks, render_snapshot);
+                    auto extracted = ClientSnapshotExtractionReport {};
+                    {
+                        SIMNET_TRACE_SCOPE_CATEGORY("client.render_snapshot_extraction", LogCategory::Snapshot);
+                        extracted = extract_client_world_snapshot(world, stats.ticks, render_snapshot);
+                    }
                     if (!extracted.valid) {
                         log(LogCategory::Simulation, LogLevel::Error,
                             "client render snapshot extraction failed: " + extracted.error);
@@ -478,22 +503,26 @@ namespace simnet::app
                         auto const sequence = latest_applied_sequence == 0
                             ? std::optional<SequenceId> {}
                             : std::optional<SequenceId> { latest_applied_sequence };
-                        auto const viewer_result = viewer->draw(
-                            render_frame(
-                                render_snapshot,
-                                shared,
-                                delta,
-                                sequence,
-                                connection_state == ClientConnectionState::SessionReady,
-                                pause_state_received
-                                    ? std::optional<bool> { authoritative_pause_state }
-                                    : std::optional<bool> {},
-                                connection_state,
-                                server_peer,
-                                ack_tracker.value,
-                                debug_observer
-                            )
-                        );
+                        auto viewer_result = ViewerResult {};
+                        {
+                            SIMNET_TRACE_SCOPE_CATEGORY("client.viewer_draw", LogCategory::Render);
+                            viewer_result = viewer->draw(
+                                render_frame(
+                                    render_snapshot,
+                                    shared,
+                                    delta,
+                                    sequence,
+                                    connection_state == ClientConnectionState::SessionReady,
+                                    pause_state_received
+                                        ? std::optional<bool> { authoritative_pause_state }
+                                        : std::optional<bool> {},
+                                    connection_state,
+                                    server_peer,
+                                    ack_tracker.value,
+                                    debug_observer
+                                )
+                            );
+                        }
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }

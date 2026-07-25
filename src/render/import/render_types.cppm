@@ -80,6 +80,7 @@ export namespace simnet
         ViewerCapabilities capabilities {};
         std::optional<RenderConnectionInfo> connection {};
         std::optional<RenderReplicationInfo> replication {};
+        std::string_view status_message {};
     };
 
     /// Optional producer-owned facts for the currently selected entity.
