@@ -12,7 +12,7 @@ Shared configuration currently controls world bounds, initial entity count, and 
 
 The current application runtime supports one server peer and one client peer. Server configuration values above one client are rejected during startup.
 
-Visualization is local-only configuration shared by Server and Client. It controls optional window creation and does not affect network compatibility. Both applications render their current authoritative or replicated state when visualization is enabled.
+Visualization is local-only configuration shared by Server and Client. It controls optional window creation and does not affect network compatibility. Both applications render their current authoritative or replicated state when visualization is enabled. `entity_mesh_path` is an optional local OBJ path. An empty path uses the built-in directional wedge. A load failure logs one warning and uses the same instanced wedge fallback.
 
 Benchmark, spatial, telemetry export, Tracy, area-of-interest, LOD, and compression configuration vocabulary is retained for planned work. Unsupported pipeline selections are rejected during app startup instead of being ignored.
 

@@ -69,6 +69,8 @@ build/debug/app/Server --config config/server_visual.json
 build/debug/app/Client --config config/client_visual.json
 ```
 
+Set the local `visualization.entity_mesh_path` to an OBJ file to replace the procedural wedge. An empty or unavailable path keeps the instanced wedge fallback.
+
 ## Project structure
 
 - `simnet_core`: dependency-free math, time, bytes, and identifiers
