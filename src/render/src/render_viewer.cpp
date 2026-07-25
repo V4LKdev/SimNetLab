@@ -447,7 +447,7 @@ namespace simnet
                 camera_initialized_ = true;
             }
 
-            if (frame.observer.has_value() && IsKeyPressed(KEY_O)) {
+            if (frame.observer.has_value() && IsKeyPressed(KEY_F4)) {
                 mode_ = mode_ == ViewMode::Observer ? ViewMode::Overview : ViewMode::Observer;
             }
             if (frame.observer.has_value()) {
@@ -484,7 +484,7 @@ namespace simnet
                     distance = std::clamp(distance * (1.0F - wheel * 0.1F), minimum, maximum);
                 }
             }
-            if (IsKeyPressed(KEY_R)) {
+            if (IsKeyPressed(KEY_F5)) {
                 if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
                     reset_detail_camera(extent);
                 } else {
@@ -688,7 +688,7 @@ namespace simnet
             } else if (IsKeyPressed(KEY_F3)) {
                 page_ = PanelPage::Entity;
             }
-            if (IsKeyPressed(KEY_H) || IsKeyPressed(KEY_SLASH)) {
+            if (IsKeyPressed(KEY_F12)) {
                 show_help_ = !show_help_;
             }
         }
@@ -1130,7 +1130,7 @@ namespace simnet
                 static_cast<float>(scene_rect_.x + scene_rect_.width - 150),
                 18.0F,
             };
-            DrawTextEx(font_, "H or ? Help", hint_position, 15.0F, 1.0F, Color { 180, 198, 220, 255 });
+            DrawTextEx(font_, "F12 Help", hint_position, 15.0F, 1.0F, Color { 180, 198, 220, 255 });
             if (!show_help_) {
                 return;
             }
@@ -1155,11 +1155,11 @@ namespace simnet
             line("[ / ]    Previous or next entity");
             line("Right drag  Orbit");
             line("Wheel     Zoom");
-            line("R         Reset camera");
-            line("O         Toggle observer view");
+            line("F4        Toggle observer view");
+            line("F5        Reset camera");
             line("Arrows    Rotate debug observer");
             line("Backspace Clear selection and overview");
-            line("H or ?    Close help");
+            line("F12       Close help");
         }
 
         ViewerConfig config_;

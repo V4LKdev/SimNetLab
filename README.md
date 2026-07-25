@@ -89,3 +89,11 @@ Set the local `visualization.entity_mesh_path` to an OBJ file to replace the pro
 - `simnet_benchmarking`: benchmarking placeholder
 
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration.
+
+For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
+
+```sh
+build/debug/app/Server --config config/server_visual.json --shared-config config/shared_stress_100k.json
+```
+
+Use the same `--shared-config` value for Client when connecting it to a non-default Server.

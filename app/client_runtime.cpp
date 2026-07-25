@@ -34,6 +34,7 @@ namespace
     struct ClientOptions
     {
         std::optional<std::filesystem::path> config_path {};
+        std::optional<std::filesystem::path> shared_config_path {};
         std::uint64_t max_frames {};
         simnet::Tick max_ticks {};
         simnet::NS max_runtime {};
@@ -167,6 +168,10 @@ namespace
             auto const option = std::string_view { argv[index] };
             if (option == "--config") {
                 options.config_path = std::filesystem::path {
+                    simnet::app::next_option_value(index, argc, argv, option)
+                };
+            } else if (option == "--shared-config") {
+                options.shared_config_path = std::filesystem::path {
                     simnet::app::next_option_value(index, argc, argv, option)
                 };
             } else if (option == "--max-frames") {
@@ -310,7 +315,9 @@ namespace simnet::app
     {
         try {
             auto const options = parse_options(argc, argv);
-            auto const shared = load_shared_config(default_shared_config_path());
+            auto const shared = load_shared_config(
+                options.shared_config_path.value_or(default_shared_config_path())
+            );
             auto const local = load_client_config(options.config_path.value_or(default_client_config_path()));
             auto telemetry = TelemetryLifetime { local.telemetry };
             auto signals = SignalHandlers {};

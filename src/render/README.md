@@ -15,7 +15,7 @@ The viewer uses 32 persistent hue buckets and one instanced draw per non-empty b
 
 The Viewer owns three local panel pages. `F1` shows overview and rendering facts, `F2` shows optional connection and replication facts, and `F3` shows the selected entity. `H` or `?` opens the scene help overlay with the complete control list.
 
-Applications can supply a local `ObserverView` without giving the renderer any simulation or networking ownership. `O` switches between the debug orbit camera and the observer camera. Arrow keys rotate the application-owned observer in either view. The observer uses one vertical FOV, and the renderer derives the matching horizontal FOV from the 4:3 scene aspect. Overview can display its marker, forward line, interest sphere, and frustum.
+Applications can supply a local `ObserverView` without giving the renderer any simulation or networking ownership. `F4` switches between the debug orbit camera and the observer camera. Arrow keys rotate the application-owned observer in either view. The observer uses one vertical FOV, and the renderer derives the matching horizontal FOV from the 4:3 scene aspect. Overview can display its marker, forward line, interest sphere, and frustum.
 
 Applications can also supply bounded occupied-cell data through `SpatialDebugView`. The renderer draws only supplied cell bounds and never imports `simnet_spatial`. The Server currently rebuilds this view from its authoritative render snapshot and uses the configured shared spatial cell size.
 
