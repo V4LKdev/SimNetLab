@@ -16,6 +16,8 @@ target_link_libraries(simnet_game_server
         simnet_core
         simnet_snapshot
         simnet_game_shared
+    PRIVATE
+        simnet_telemetry
 )
 
 simnet_configure_target(simnet_game_server)

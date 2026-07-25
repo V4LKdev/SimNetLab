@@ -6,6 +6,7 @@
 #include <flecs.h>
 #include <optional>
 #include <utility>
+#include <vector>
 
 import simnet.core;
 import simnet.game_client;
@@ -170,6 +171,58 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     CHECK(client_extraction.entity_count == boid_count);
     CHECK(extracted_client_snapshot.tick == 4);
     CHECK(extracted_client_snapshot.ids == client_index.ids);
+}
+
+TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[replication]")
+{
+    auto world = flecs::world {};
+    simnet::register_server_game(world);
+
+    auto boids = std::vector<simnet::BoidState> {};
+    boids.push_back(test_boid(1, 0, 0));
+    boids.push_back(test_boid(2, 1, 0));
+    boids.push_back(test_boid(3, 2, 0));
+    auto const appended = simnet::append_authoritative_boids(world, boids);
+    REQUIRE(appended.success());
+    CHECK(appended.spawned_count == 3U);
+    CHECK(simnet::authoritative_boid_count(world) == 3U);
+
+    auto updated = test_boid(2, 9, 4);
+    updated.hue = 201U;
+    REQUIRE(simnet::upsert_authoritative_boid(world, updated).is_alive());
+    CHECK(simnet::authoritative_boid_count(world) == 3U);
+    REQUIRE(simnet::delete_authoritative_boid(world, 1));
+    CHECK(simnet::authoritative_boid_count(world) == 2U);
+
+    auto snapshot = simnet::WorldSnapshot {};
+    auto const extracted = simnet::extract_world_snapshot(world, 4, snapshot);
+    REQUIRE(extracted.valid);
+    CHECK(snapshot.ids == std::vector<simnet::EntityNetId> { 2, 3 });
+    CHECK(snapshot.hues[0] == 201U);
+
+    auto invalid = std::vector<simnet::BoidState> {
+        test_boid(4, 3, 4),
+        test_boid(4, 4, 4),
+    };
+    auto const rejected = simnet::append_authoritative_boids(world, invalid);
+    CHECK_FALSE(rejected.success());
+    CHECK(rejected.error == simnet::AuthoritativeSpawnError::NonAscendingIds);
+    CHECK(simnet::authoritative_boid_count(world) == 2U);
+
+    auto overlapping = std::vector<simnet::BoidState> { test_boid(3, 3, 4) };
+    auto const overlap_rejected = simnet::append_authoritative_boids(world, overlapping);
+    CHECK_FALSE(overlap_rejected.success());
+    CHECK(overlap_rejected.error == simnet::AuthoritativeSpawnError::ExistingIdOverlap);
+    CHECK(overlap_rejected.failing_index == std::optional<std::size_t> { 0U });
+    CHECK(simnet::authoritative_boid_count(world) == 2U);
+
+    auto malformed = std::vector<simnet::BoidState> { test_boid(4, 3, 4) };
+    malformed.front().heading = {};
+    auto const malformed_rejected = simnet::append_authoritative_boids(world, malformed);
+    CHECK_FALSE(malformed_rejected.success());
+    CHECK(malformed_rejected.error == simnet::AuthoritativeSpawnError::InvalidBoidState);
+    CHECK(malformed_rejected.failing_index == std::optional<std::size_t> { 0U });
+    CHECK(simnet::authoritative_boid_count(world) == 2U);
 }
 
 TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replication]")

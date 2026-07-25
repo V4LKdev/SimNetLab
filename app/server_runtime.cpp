@@ -292,15 +292,24 @@ namespace
         };
     }
 
-    void initialize_world(flecs::world& world, simnet::SharedConfig const& config)
+    [[nodiscard]] simnet::AuthoritativeSpawnReport initialize_world(
+        flecs::world& world,
+        simnet::SharedConfig const& config
+    )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.initialize_world", simnet::LogCategory::Simulation);
-        for (std::uint32_t index = 0; index < config.simulation.initial_boid_count; ++index) {
-            static_cast<void>(
-                simnet::upsert_authoritative_boid(world, initial_boid(index, config.simulation.world_half))
-            );
+        auto boids = std::vector<simnet::BoidState> {};
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("server.initial_state_generation", simnet::LogCategory::Simulation);
+            boids.reserve(config.simulation.initial_boid_count);
+            for (std::uint32_t index = 0; index < config.simulation.initial_boid_count; ++index) {
+                boids.push_back(initial_boid(index, config.simulation.world_half));
+            }
         }
-        SIMNET_TRACE_PLOT("server.initialized_entities", static_cast<double>(config.simulation.initial_boid_count));
+        auto const report = simnet::append_authoritative_boids(world, boids);
+        SIMNET_TRACE_PLOT("server.initial_requested_entities", static_cast<double>(report.requested_count));
+        SIMNET_TRACE_PLOT("server.initial_spawned_entities", static_cast<double>(report.spawned_count));
+        return report;
     }
 
     void advance_world(flecs::world& world, simnet::NS fixed_dt, float world_half)
@@ -677,7 +686,13 @@ namespace simnet::app
             auto const initialization_start = std::chrono::steady_clock::now();
             log(LogCategory::Simulation, LogLevel::Info,
                 "initializing authoritative world entities=" + std::to_string(shared.simulation.initial_boid_count));
-            initialize_world(world, shared);
+            auto const population = initialize_world(world, shared);
+            if (!population.success()) {
+                throw std::runtime_error(
+                    "authoritative world initialization failed: "
+                    + std::string { authoritative_spawn_error_name(population.error) }
+                );
+            }
             auto const initialization_elapsed = std::chrono::duration_cast<NS>(
                 std::chrono::steady_clock::now() - initialization_start
             );
