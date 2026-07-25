@@ -94,6 +94,9 @@ namespace
             .target_frame_rate = config.target_fps,
             .entity_scale = config.entity_scale,
             .picking_radius = config.picking_radius,
+            .debug_observer_interest_radius = config.debug_observer_interest_radius,
+            .debug_observer_vertical_fov_degrees = config.debug_observer_vertical_fov_degrees,
+            .max_visible_spatial_cells = config.max_visible_spatial_cells,
             .entity_mesh_path = config.entity_mesh_path,
             .title = "SimNet Client",
         };
@@ -108,7 +111,8 @@ namespace
         std::optional<bool> simulation_paused,
         ClientConnectionState connection_state,
         std::optional<simnet::PeerId> peer,
-        simnet::SnapshotAck const& ack
+        simnet::SnapshotAck const& ack,
+        simnet::app::DebugObserverState const& observer
     )
     {
         auto replication = std::optional<simnet::RenderReplicationInfo> {};
@@ -145,6 +149,12 @@ namespace
                     }
                 },
                 .replication = std::move(replication),
+            },
+            .observer = simnet::ObserverView {
+                .position = observer.position,
+                .forward = simnet::app::debug_observer_forward(observer),
+                .interest_radius = observer.interest_radius,
+                .vertical_fov_degrees = observer.vertical_fov_degrees,
             },
         };
     }
@@ -332,6 +342,11 @@ namespace simnet::app
 #if defined(SIMNET_ENABLE_RENDER)
             auto viewer = std::optional<Viewer> {};
             auto render_snapshot = WorldSnapshot {};
+            auto debug_observer = DebugObserverState {
+                .position = {},
+                .interest_radius = local.visualization.debug_observer_interest_radius,
+                .vertical_fov_degrees = local.visualization.debug_observer_vertical_fov_degrees,
+            };
             if (local.visualization.enabled) {
                 viewer.emplace(viewer_config(local.visualization));
             }
@@ -468,12 +483,19 @@ namespace simnet::app
                                     : std::optional<bool> {},
                                 connection_state,
                                 server_peer,
-                                ack_tracker.value
+                                ack_tracker.value,
+                                debug_observer
                             )
                         );
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }
+                        apply_debug_observer_rotation(
+                            debug_observer,
+                            viewer_result.debug_observer_yaw_axis,
+                            viewer_result.debug_observer_pitch_axis,
+                            delta
+                        );
                         if (viewer_result.toggle_simulation_pause_requested && pause_state_received) {
                             auto const bytes = app::encode_app_message({
                                 .kind = app::AppMessageKind::PauseSetRequest,

@@ -193,6 +193,41 @@ namespace simnet
         return { .bounds = bounds, .cell_size = cell_size };
     }
 
+    CellCoord cell_coord_from_key(SpatialGrid const& grid, CellKey key) noexcept
+    {
+        if (grid.dim_x == 0U || grid.dim_y == 0U || grid.dim_z == 0U) {
+            return {};
+        }
+        auto const plane = static_cast<CellKey>(grid.dim_x) * grid.dim_y;
+        auto const z = key / plane;
+        auto const remainder = key % plane;
+        auto const y = remainder / grid.dim_x;
+        auto const x = remainder % grid.dim_x;
+        return clamp_cell_coord(grid, {
+            .x = static_cast<std::int32_t>(x),
+            .y = static_cast<std::int32_t>(y),
+            .z = static_cast<std::int32_t>(z),
+        });
+    }
+
+    Aabb3f cell_bounds(SpatialGrid const& grid, CellCoord coord) noexcept
+    {
+        auto const clamped = clamp_cell_coord(grid, coord);
+        auto const minimum = Vec3f {
+            .x = grid.settings.bounds.min.x + static_cast<float>(clamped.x) * grid.settings.cell_size,
+            .y = grid.settings.bounds.min.y + static_cast<float>(clamped.y) * grid.settings.cell_size,
+            .z = grid.settings.bounds.min.z + static_cast<float>(clamped.z) * grid.settings.cell_size,
+        };
+        return {
+            .min = minimum,
+            .max = {
+                .x = std::min(minimum.x + grid.settings.cell_size, grid.settings.bounds.max.x),
+                .y = std::min(minimum.y + grid.settings.cell_size, grid.settings.bounds.max.y),
+                .z = std::min(minimum.z + grid.settings.cell_size, grid.settings.bounds.max.z),
+            },
+        };
+    }
+
     void resize_spatial_grid(SpatialGrid& grid, SpatialGridSettings const& settings)
     {
         validate_settings(settings);

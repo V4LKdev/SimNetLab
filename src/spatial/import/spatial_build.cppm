@@ -15,6 +15,12 @@ export namespace simnet
     /// Returns spatial grid settings for bounded world-space positions.
     [[nodiscard]] SpatialGridSettings make_spatial_grid_settings(Aabb3f bounds, float cell_size) noexcept;
 
+    /// Returns the bounded grid coordinate represented by an occupied-cell key.
+    [[nodiscard]] CellCoord cell_coord_from_key(SpatialGrid const& grid, CellKey key) noexcept;
+
+    /// Returns the world-space bounds for one bounded grid coordinate.
+    [[nodiscard]] Aabb3f cell_bounds(SpatialGrid const& grid, CellCoord coord) noexcept;
+
     /// Applies settings, computes dimensions, and clears grid contents.
     void resize_spatial_grid(SpatialGrid& grid, SpatialGridSettings const& settings);
 

@@ -31,10 +31,29 @@ import simnet.telemetry;
 import simnet.transport;
 #if defined(SIMNET_ENABLE_RENDER)
 import simnet.render;
+import simnet.spatial;
 #endif
 
 namespace
 {
+#if defined(SIMNET_ENABLE_RENDER)
+    struct SpatialRenderCandidate
+    {
+        simnet::CellKey key {};
+        simnet::Aabb3f bounds {};
+        std::uint32_t entity_count {};
+        float distance_squared {};
+    };
+
+    struct SpatialRenderStorage
+    {
+        simnet::SpatialGrid grid {};
+        simnet::SpatialGridScratch scratch {};
+        std::vector<simnet::SpatialCellView> displayed_cells {};
+        std::vector<SpatialRenderCandidate> candidates {};
+    };
+#endif
+
     constexpr std::size_t retained_snapshot_limit = 64;
 
     struct ServerOptions
@@ -128,6 +147,9 @@ namespace
             .target_frame_rate = config.target_fps,
             .entity_scale = config.entity_scale,
             .picking_radius = config.picking_radius,
+            .debug_observer_interest_radius = config.debug_observer_interest_radius,
+            .debug_observer_vertical_fov_degrees = config.debug_observer_vertical_fov_degrees,
+            .max_visible_spatial_cells = config.max_visible_spatial_cells,
             .entity_mesh_path = config.entity_mesh_path,
             .title = "SimNet Server",
         };
@@ -138,7 +160,9 @@ namespace
         simnet::SharedConfig const& config,
         simnet::NS frame_delta,
         bool paused,
-        std::optional<PeerRuntimeState> const& peer
+        std::optional<PeerRuntimeState> const& peer,
+        simnet::app::DebugObserverState const& observer,
+        SpatialRenderStorage const& spatial
     )
     {
         auto connection = simnet::RenderConnectionInfo {
@@ -183,7 +207,69 @@ namespace
                 .connection = connection,
                 .replication = std::move(replication),
             },
+            .observer = simnet::ObserverView {
+                .position = observer.position,
+                .forward = simnet::app::debug_observer_forward(observer),
+                .interest_radius = observer.interest_radius,
+                .vertical_fov_degrees = observer.vertical_fov_degrees,
+            },
+            .spatial = simnet::SpatialDebugView {
+                .cells = spatial.displayed_cells,
+                .occupied_cell_count = spatial.grid.stats.occupied_cell_count,
+                .max_cell_occupancy = spatial.grid.stats.max_cell_occupancy,
+                .average_occupied_cell_load = spatial.grid.stats.average_occupied_cell_load,
+                .display_capped = spatial.displayed_cells.size() < spatial.grid.occupied_cells.size(),
+            },
         };
+    }
+
+    void rebuild_spatial_render_view(
+        SpatialRenderStorage& storage,
+        simnet::WorldSnapshot const& snapshot,
+        simnet::SharedConfig const& config,
+        simnet::Vec3f observer_position,
+        std::uint32_t visible_cell_limit
+    )
+    {
+        auto const settings = simnet::make_spatial_grid_settings(
+            simnet::make_centered_bounds(config.simulation.world_half),
+            config.spatial.cell_size
+        );
+        if (storage.grid.settings.cell_size != settings.cell_size
+            || storage.grid.settings.bounds.min.x != settings.bounds.min.x
+            || storage.grid.settings.bounds.max.x != settings.bounds.max.x) {
+            simnet::resize_spatial_grid(storage.grid, settings);
+        }
+        simnet::prepare_spatial_grid_scratch(storage.scratch, snapshot.positions.size(), 1U);
+        simnet::build_spatial_grid_serial(storage.grid, storage.scratch, snapshot.positions);
+
+        storage.candidates.clear();
+        storage.candidates.reserve(storage.grid.occupied_cells.size());
+        for (auto const& range : storage.grid.occupied_cells) {
+            auto const bounds = simnet::cell_bounds(storage.grid, simnet::cell_coord_from_key(storage.grid, range.key));
+            auto const center = (bounds.min + bounds.max) * 0.5F;
+            storage.candidates.push_back({
+                .key = range.key,
+                .bounds = bounds,
+                .entity_count = range.count,
+                .distance_squared = simnet::length_squared(center - observer_position),
+            });
+        }
+        std::ranges::sort(storage.candidates, [](SpatialRenderCandidate const& lhs, SpatialRenderCandidate const& rhs) {
+            if (lhs.distance_squared == rhs.distance_squared) {
+                return lhs.key < rhs.key;
+            }
+            return lhs.distance_squared < rhs.distance_squared;
+        });
+        auto const display_count = std::min<std::size_t>(visible_cell_limit, storage.candidates.size());
+        storage.displayed_cells.clear();
+        storage.displayed_cells.reserve(display_count);
+        for (std::size_t index = 0; index < display_count; ++index) {
+            storage.displayed_cells.push_back({
+                .bounds = storage.candidates[index].bounds,
+                .entity_count = storage.candidates[index].entity_count,
+            });
+        }
     }
 #endif
 
@@ -555,6 +641,12 @@ namespace simnet::app
             auto viewer = std::optional<Viewer> {};
             auto render_snapshot = WorldSnapshot {};
             auto render_snapshot_ready = false;
+            auto spatial_render = SpatialRenderStorage {};
+            auto debug_observer = app::DebugObserverState {
+                .position = {},
+                .interest_radius = local.visualization.debug_observer_interest_radius,
+                .vertical_fov_degrees = local.visualization.debug_observer_vertical_fov_degrees,
+            };
             if (local.visualization.enabled) {
                 viewer.emplace(viewer_config(local.visualization));
                 // Viewer startup is not simulation time and must not create an initial catch-up frame.
@@ -628,15 +720,36 @@ namespace simnet::app
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
                         } else {
                             render_snapshot_ready = true;
+                            rebuild_spatial_render_view(
+                                spatial_render,
+                                render_snapshot,
+                                shared,
+                                debug_observer.position,
+                                local.visualization.max_visible_spatial_cells
+                            );
                         }
                     }
                     if (!stop.requested() && render_snapshot_ready) {
                         auto const viewer_result = viewer->draw(
-                            render_frame(render_snapshot, shared, frame_delta, simulation_paused, peer)
+                            render_frame(
+                                render_snapshot,
+                                shared,
+                                frame_delta,
+                                simulation_paused,
+                                peer,
+                                debug_observer,
+                                spatial_render
+                            )
                         );
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }
+                        app::apply_debug_observer_rotation(
+                            debug_observer,
+                            viewer_result.debug_observer_yaw_axis,
+                            viewer_result.debug_observer_pitch_axis,
+                            frame_delta
+                        );
                         if (viewer_result.toggle_simulation_pause_requested) {
                             simulation_paused = !simulation_paused;
                             clock.accumulator = NS {};

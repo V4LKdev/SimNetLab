@@ -19,6 +19,7 @@ export namespace simnet
     {
         Overview,
         EntityDetail,
+        Observer,
         Game
     };
 
@@ -93,11 +94,39 @@ export namespace simnet
         std::optional<bool> replicated {};
     };
 
+    /// Local debug observer supplied by the application for this draw call.
+    struct ObserverView
+    {
+        Vec3f position {};
+        Vec3f forward { .z = 1.0F };
+        float interest_radius {};
+        float vertical_fov_degrees { 60.0F };
+    };
+
+    /// One non-owning occupied-cell view supplied by an application.
+    struct SpatialCellView
+    {
+        Aabb3f bounds {};
+        std::uint32_t entity_count {};
+    };
+
+    /// Bounded spatial debug data valid for the duration of Viewer::draw().
+    struct SpatialDebugView
+    {
+        std::span<const SpatialCellView> cells {};
+        std::uint32_t occupied_cell_count {};
+        std::uint32_t max_cell_occupancy {};
+        float average_occupied_cell_load {};
+        bool display_capped {};
+    };
+
     struct RenderFrame
     {
         RenderEntityView entities {};
         RenderFrameInfo info {};
         std::optional<SelectedEntityDetails> selected_details {};
+        std::optional<ObserverView> observer {};
+        std::optional<SpatialDebugView> spatial {};
     };
 
     struct PlayerViewInput
@@ -128,6 +157,8 @@ export namespace simnet
         ViewMode view_mode { ViewMode::Overview };
         std::optional<EntityNetId> selected_entity {};
         bool selected_entity_changed {};
+        float debug_observer_yaw_axis {};
+        float debug_observer_pitch_axis {};
         PlayerViewInput player_input {};
         RenderStats stats {};
     };
@@ -140,6 +171,9 @@ export namespace simnet
         std::uint32_t target_frame_rate { 60 };
         float entity_scale { 1.0F };
         float picking_radius { 1.0F };
+        float debug_observer_interest_radius { 150.0F };
+        float debug_observer_vertical_fov_degrees { 60.0F };
+        std::uint32_t max_visible_spatial_cells { 2048 };
         std::string entity_mesh_path {};
         std::string title { "SimNet" };
     };

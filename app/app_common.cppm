@@ -1,7 +1,9 @@
 module;
 
 #include <charconv>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <limits>
@@ -20,6 +22,19 @@ import simnet.transport;
 
 export namespace simnet::app
 {
+    /// App-local observer state for visualization debugging only.
+    struct DebugObserverState
+    {
+        Vec3f position {};
+        float yaw {};
+        float pitch {};
+        float interest_radius { 150.0F };
+        float vertical_fov_degrees { 60.0F };
+    };
+
+    [[nodiscard]] Vec3f debug_observer_forward(DebugObserverState const& state) noexcept;
+    void apply_debug_observer_rotation(DebugObserverState& state, float yaw_axis, float pitch_axis, NS frame_delta) noexcept;
+
     class SignalHandlers
     {
     public:
@@ -98,6 +113,30 @@ namespace
 
 namespace simnet::app
 {
+    Vec3f debug_observer_forward(DebugObserverState const& state) noexcept
+    {
+        auto const cosine_pitch = std::cos(state.pitch);
+        return {
+            .x = cosine_pitch * std::sin(state.yaw),
+            .y = std::sin(state.pitch),
+            .z = cosine_pitch * std::cos(state.yaw),
+        };
+    }
+
+    void apply_debug_observer_rotation(
+        DebugObserverState& state,
+        float yaw_axis,
+        float pitch_axis,
+        NS frame_delta
+    ) noexcept
+    {
+        auto const seconds = std::chrono::duration<float>(frame_delta).count();
+        auto constexpr rotation_speed = 1.5F;
+        auto constexpr pitch_limit = 1.507F;
+        state.yaw += yaw_axis * rotation_speed * seconds;
+        state.pitch = std::clamp(state.pitch + pitch_axis * rotation_speed * seconds, -pitch_limit, pitch_limit);
+    }
+
     SignalHandlers::SignalHandlers()
         : interrupt_(std::signal(SIGINT, request_signal_stop)),
           terminate_(std::signal(SIGTERM, request_signal_stop))

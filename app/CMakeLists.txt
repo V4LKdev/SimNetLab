@@ -10,7 +10,7 @@ target_link_libraries(Server
         simnet_transport
 )
 if (SIMNET_ENABLE_RENDER)
-    target_link_libraries(Server PRIVATE simnet_render)
+    target_link_libraries(Server PRIVATE simnet_render simnet_spatial)
     target_compile_definitions(Server PRIVATE SIMNET_ENABLE_RENDER=1)
 endif ()
 simnet_configure_target(Server)

@@ -61,6 +61,12 @@ namespace
         if (config.entity_scale <= 0.0F || config.picking_radius <= 0.0F) {
             throw std::runtime_error("viewer entity_scale and picking_radius must be positive");
         }
+        if (config.debug_observer_interest_radius <= 0.0F
+            || config.debug_observer_vertical_fov_degrees <= 0.0F
+            || config.debug_observer_vertical_fov_degrees >= 180.0F
+            || config.max_visible_spatial_cells == 0U) {
+            throw std::runtime_error("viewer observer and spatial settings are invalid");
+        }
     }
 
     [[nodiscard]] Vector3 to_raylib(simnet::Vec3f value) noexcept
@@ -302,7 +308,7 @@ namespace simnet
             update_panel_input();
             update_camera(frame, result);
             update_selection(frame.entities, result);
-            update_controls(frame.info, result);
+            update_controls(frame, result);
             stats.input_cpu_time = elapsed_ns(input_start);
 
             bool const valid_entities = frame.entities.valid();
@@ -315,7 +321,7 @@ namespace simnet
             stats.preparation_cpu_time = elapsed_ns(preparation_start);
 
             auto const scene_start = Clock::now();
-            draw_scene(frame.info, stats);
+            draw_scene(frame, stats);
             stats.scene_submit_cpu_time = elapsed_ns(scene_start);
 
             BeginDrawing();
@@ -441,6 +447,16 @@ namespace simnet
                 camera_initialized_ = true;
             }
 
+            if (frame.observer.has_value() && IsKeyPressed(KEY_O)) {
+                mode_ = mode_ == ViewMode::Observer ? ViewMode::Overview : ViewMode::Observer;
+            }
+            if (frame.observer.has_value()) {
+                result.debug_observer_yaw_axis = (IsKeyDown(KEY_RIGHT) ? 1.0F : 0.0F)
+                    - (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F);
+                result.debug_observer_pitch_axis = (IsKeyDown(KEY_UP) ? 1.0F : 0.0F)
+                    - (IsKeyDown(KEY_DOWN) ? 1.0F : 0.0F);
+            }
+
             selected_entity_frame_ = find_selected_entity(frame.entities);
             if (selected_entity_.has_value() && !selected_entity_frame_.has_value()) {
                 clear_selection(result, true);
@@ -478,7 +494,18 @@ namespace simnet
             if (IsKeyPressed(KEY_BACKSPACE) && mode_ == ViewMode::EntityDetail) {
                 clear_selection(result);
             }
-            if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
+            if (mode_ == ViewMode::Observer && frame.observer.has_value()) {
+                auto const forward = normalized_or_forward(frame.observer->forward);
+                auto reference_up = Vec3f { .y = 1.0F };
+                if (std::abs(dot(forward, reference_up)) > 0.98F) {
+                    reference_up = { .x = 1.0F };
+                }
+                auto const right = normalized_or_forward(cross(reference_up, forward));
+                camera_.position = to_raylib(frame.observer->position);
+                camera_.target = to_raylib(frame.observer->position + forward);
+                camera_.up = to_raylib(cross(forward, right));
+                camera_.fovy = frame.observer->vertical_fov_degrees;
+            } else if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
                 target_ = to_raylib(selected_entity_frame_->position);
                 detail_min_distance_ = std::max(0.5F, config_.entity_scale * 1.5F);
                 detail_max_distance_ = std::max(detail_min_distance_ * 4.0F, extent * 0.5F);
@@ -489,6 +516,7 @@ namespace simnet
             } else {
                 target_ = to_raylib(center);
                 update_camera_position(overview_yaw_, overview_pitch_, overview_distance_);
+                camera_.fovy = 55.0F;
             }
         }
 
@@ -665,7 +693,7 @@ namespace simnet
             }
         }
 
-        void update_controls(RenderFrameInfo const& info, ViewerResult& result)
+        void update_controls(RenderFrame const& frame, ViewerResult& result)
         {
             auto const mouse = GetMousePosition();
             if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || mouse.x >= static_cast<float>(config_.panel_width)) {
@@ -677,7 +705,9 @@ namespace simnet
             }
             auto const button_count = page_ == PanelPage::Entity
                 ? (selected_entity_.has_value() ? 1.0F : 0.0F)
-                : 3.0F + (info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
+                : 3.0F + (frame.observer.has_value() ? 3.0F : 0.0F)
+                    + (frame.spatial.has_value() ? 1.0F : 0.0F)
+                    + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
             if (button_count == 0.0F) {
                 return;
             }
@@ -703,8 +733,19 @@ namespace simnet
                     auto const center = Vec3f { target_.x, target_.y, target_.z };
                     reset_overview_camera(center);
                 }
-            } else if (info.capabilities.can_pause_simulation
-                && CheckCollisionPointRec(mouse, button_at(3))) {
+            } else if (frame.observer.has_value() && CheckCollisionPointRec(mouse, button_at(3))) {
+                show_observer_ = !show_observer_;
+            } else if (frame.observer.has_value() && CheckCollisionPointRec(mouse, button_at(4))) {
+                show_observer_radius_ = !show_observer_radius_;
+            } else if (frame.observer.has_value() && CheckCollisionPointRec(mouse, button_at(5))) {
+                show_observer_frustum_ = !show_observer_frustum_;
+            } else if (frame.spatial.has_value()
+                && CheckCollisionPointRec(mouse, button_at(3 + (frame.observer.has_value() ? 3 : 0)))) {
+                show_spatial_cells_ = !show_spatial_cells_;
+            } else if (frame.info.capabilities.can_pause_simulation
+                && CheckCollisionPointRec(mouse, button_at(
+                    3 + (frame.observer.has_value() ? 3 : 0) + (frame.spatial.has_value() ? 1 : 0)
+                ))) {
                 result.toggle_simulation_pause_requested = true;
             }
         }
@@ -739,7 +780,66 @@ namespace simnet
             }
         }
 
-        void draw_scene(RenderFrameInfo const& info, RenderStats& stats)
+        void draw_observer(ObserverView const& observer, RenderStats& stats)
+        {
+            auto const position = to_raylib(observer.position);
+            auto const forward = normalized_or_forward(observer.forward);
+            auto const direction_end = to_raylib(observer.position + forward * observer.interest_radius);
+            DrawSphere(position, std::max(config_.entity_scale, 1.0F) * 1.5F, Color { 247, 184, 74, 255 });
+            DrawLine3D(position, direction_end, Color { 247, 184, 74, 255 });
+            if (show_observer_radius_) {
+                DrawSphereWires(position, observer.interest_radius, 20, 20, Color { 247, 184, 74, 110 });
+            }
+            if (show_observer_frustum_) {
+                auto reference_up = Vec3f { .y = 1.0F };
+                if (std::abs(dot(forward, reference_up)) > 0.98F) {
+                    reference_up = { .x = 1.0F };
+                }
+                auto const right = normalized_or_forward(cross(reference_up, forward));
+                auto const up = cross(forward, right);
+                auto const aspect = static_cast<float>(scene_rect_.width) / static_cast<float>(scene_rect_.height);
+                auto const vertical = observer.vertical_fov_degrees * DEG2RAD;
+                auto const vertical_half = std::tan(vertical * 0.5F) * observer.interest_radius;
+                auto const horizontal_half = vertical_half * aspect;
+                auto const center = observer.position + forward * observer.interest_radius;
+                auto const corner = [&](float horizontal, float vertical_offset) {
+                    return to_raylib(center + right * horizontal + up * vertical_offset);
+                };
+                auto const top_left = corner(-horizontal_half, vertical_half);
+                auto const top_right = corner(horizontal_half, vertical_half);
+                auto const bottom_left = corner(-horizontal_half, -vertical_half);
+                auto const bottom_right = corner(horizontal_half, -vertical_half);
+                auto const color = Color { 247, 184, 74, 150 };
+                DrawLine3D(position, top_left, color);
+                DrawLine3D(position, top_right, color);
+                DrawLine3D(position, bottom_left, color);
+                DrawLine3D(position, bottom_right, color);
+                DrawLine3D(top_left, top_right, color);
+                DrawLine3D(top_right, bottom_right, color);
+                DrawLine3D(bottom_right, bottom_left, color);
+                DrawLine3D(bottom_left, top_left, color);
+            }
+            ++stats.draw_calls;
+        }
+
+        void draw_spatial_cells(SpatialDebugView const& spatial, RenderStats& stats)
+        {
+            for (auto const& cell : spatial.cells) {
+                auto const intensity = static_cast<unsigned char>(std::min(220U, 55U + cell.entity_count * 12U));
+                DrawBoundingBox(
+                    {
+                        .min = to_raylib(cell.bounds.min),
+                        .max = to_raylib(cell.bounds.max),
+                    },
+                    Color { 85, 179, 226, intensity }
+                );
+            }
+            if (!spatial.cells.empty()) {
+                ++stats.draw_calls;
+            }
+        }
+
+        void draw_scene(RenderFrame const& frame, RenderStats& stats)
         {
             BeginTextureMode(scene_);
             ClearBackground(Color { 10, 13, 18, 255 });
@@ -749,7 +849,7 @@ namespace simnet
             rlSetMatrixModelview(MatrixLookAt(camera_.position, camera_.target, camera_.up));
 
             if (show_bounds_) {
-                auto const bounds = info.world_bounds;
+                auto const bounds = frame.info.world_bounds;
                 auto const center = Vector3 {
                     (bounds.min.x + bounds.max.x) * 0.5F,
                     (bounds.min.y + bounds.max.y) * 0.5F,
@@ -762,6 +862,12 @@ namespace simnet
                 DrawLine3D({ 0.0F, 0.0F, 0.0F }, { 10.0F, 0.0F, 0.0F }, RED);
                 DrawLine3D({ 0.0F, 0.0F, 0.0F }, { 0.0F, 10.0F, 0.0F }, GREEN);
                 DrawLine3D({ 0.0F, 0.0F, 0.0F }, { 0.0F, 0.0F, 10.0F }, BLUE);
+            }
+            if (frame.observer.has_value() && mode_ != ViewMode::Observer && show_observer_) {
+                draw_observer(*frame.observer, stats);
+            }
+            if (frame.spatial.has_value() && show_spatial_cells_) {
+                draw_spatial_cells(*frame.spatial, stats);
             }
 
             if (instancing_available_) {
@@ -817,6 +923,7 @@ namespace simnet
                 switch (mode) {
                 case ViewMode::Overview: return "Overview";
                 case ViewMode::EntityDetail: return "Entity detail";
+                case ViewMode::Observer: return "Observer";
                 case ViewMode::Game: return "Game";
                 }
                 return "Unknown";
@@ -861,6 +968,19 @@ namespace simnet
                 if (!valid_entities) {
                     text("invalid entity view", 15, ORANGE);
                 }
+                if (frame.spatial.has_value()) {
+                    auto const& spatial = *frame.spatial;
+                    section("Spatial");
+                    std::snprintf(line, sizeof(line), "occupied cells %u", spatial.occupied_cell_count);
+                    text(line);
+                    std::snprintf(line, sizeof(line), "displayed cells %zu", spatial.cells.size());
+                    text(line);
+                    text(spatial.display_capped ? "display capped yes" : "display capped no");
+                    std::snprintf(line, sizeof(line), "max occupancy %u", spatial.max_cell_occupancy);
+                    text(line);
+                    std::snprintf(line, sizeof(line), "average occupancy %.2f", spatial.average_occupied_cell_load);
+                    text(line);
+                }
                 section("Rendering");
                 std::snprintf(line, sizeof(line), "FPS %d", GetFPS());
                 text(line);
@@ -888,11 +1008,21 @@ namespace simnet
                 text(line);
 
                 auto constexpr button_height = 26.0F;
-                auto const button_count = 3.0F + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
+                auto const button_count = 3.0F + (frame.observer.has_value() ? 3.0F : 0.0F)
+                    + (frame.spatial.has_value() ? 1.0F : 0.0F)
+                    + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
                 auto button_y = static_cast<float>(config_.window_height) - button_count * (button_height + 8.0F) - 18.0F;
                 button(button_y, show_bounds_ ? "Hide bounds" : "Show bounds", show_bounds_);
                 button(button_y, show_axes_ ? "Hide axes" : "Show axes", show_axes_);
                 button(button_y, "Reset camera", false);
+                if (frame.observer.has_value()) {
+                    button(button_y, show_observer_ ? "Hide observer" : "Show observer", show_observer_);
+                    button(button_y, show_observer_radius_ ? "Hide observer radius" : "Show observer radius", show_observer_radius_);
+                    button(button_y, show_observer_frustum_ ? "Hide observer frustum" : "Show observer frustum", show_observer_frustum_);
+                }
+                if (frame.spatial.has_value()) {
+                    button(button_y, show_spatial_cells_ ? "Hide spatial cells" : "Show spatial cells", show_spatial_cells_);
+                }
                 if (frame.info.capabilities.can_pause_simulation) {
                     button(button_y, frame.info.simulation_paused.value_or(false) ? "Resume simulation" : "Pause simulation", false);
                 }
@@ -1026,6 +1156,8 @@ namespace simnet
             line("Right drag  Orbit");
             line("Wheel     Zoom");
             line("R         Reset camera");
+            line("O         Toggle observer view");
+            line("Arrows    Rotate debug observer");
             line("Backspace Clear selection and overview");
             line("H or ?    Close help");
         }
@@ -1045,6 +1177,10 @@ namespace simnet
         bool camera_initialized_ {};
         bool show_bounds_ { true };
         bool show_axes_ { true };
+        bool show_observer_ { true };
+        bool show_observer_radius_ { true };
+        bool show_observer_frustum_ { true };
+        bool show_spatial_cells_ {};
         bool show_help_ {};
         PanelPage page_ { PanelPage::Overview };
         float overview_yaw_ { pi * 0.25F };

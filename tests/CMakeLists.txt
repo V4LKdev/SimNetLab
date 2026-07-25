@@ -6,6 +6,7 @@ add_executable(SimNetTests
     pipeline_tests.cpp
     replication_tests.cpp
     runtime_tests.cpp
+    spatial_tests.cpp
     transport_tests.cpp
 )
 
@@ -22,6 +23,7 @@ target_link_libraries(SimNetTests
         simnet_pipeline
         simnet_runtime
         simnet_snapshot
+        simnet_spatial
         simnet_transport
         Catch2::Catch2WithMain
 )
