@@ -11,7 +11,7 @@ The Phase 1 viewer creates one fixed `1800 x 1080` window per process. A `360` p
 
 The viewer uses 32 persistent hue buckets and one instanced draw per non-empty bucket. It renders world bounds, optional axes, and an overview orbit camera. Right drag orbits, the wheel zooms, and `R` resets the active camera. The Server viewer can pause locally. A ready Client viewer requests an authoritative pause state and continues applying snapshots while paused.
 
-`ViewerConfig::entity_mesh_path` optionally selects an OBJ model loaded once during Viewer construction. Every mesh in a loaded model uses the same instanced hue buckets. An empty or failed path uses the procedural wedge, which points along local `+Z` with local `+Y` up. The temporary `boid.obj` reference uses local `-Z` forward and centimeter-sized coordinates, so the private loader correction rotates and scales it into this contract. The caller's `entity_scale` remains the final visual scale.
+`ViewerConfig::entity_mesh_path` optionally selects an OBJ model loaded once during Viewer construction. Every mesh in a loaded model uses the same instanced hue buckets. An empty or failed path uses the procedural wedge, which points along local `+Z` with local `+Y` up. The reference `boid.obj` already uses local `+Z` forward and centimeter-sized coordinates, so the private loader correction scales it into this contract. The caller's `entity_scale` remains the final visual scale.
 
 The Viewer owns three local panel pages. `F1` shows overview and rendering facts, `F2` shows optional connection and replication facts, and `F3` shows the selected entity. `H` or `?` opens the scene help overlay with the complete control list.
 

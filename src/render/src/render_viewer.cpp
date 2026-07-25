@@ -170,8 +170,8 @@ namespace
     [[nodiscard]] Matrix mesh_correction(std::string const& path) noexcept
     {
         if (std::filesystem::path { path }.filename() == "boid.obj") {
-            // The reference boid uses local -Z as forward and centimeter-sized coordinates.
-            return MatrixMultiply(MatrixRotateY(pi), MatrixScale(0.05F, 0.05F, 0.05F));
+            // The reference boid already uses local +Z as forward and centimeter-sized coordinates.
+            return MatrixScale(0.05F, 0.05F, 0.05F);
         }
         return MatrixIdentity();
     }
