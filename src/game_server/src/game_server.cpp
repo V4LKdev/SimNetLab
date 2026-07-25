@@ -267,62 +267,77 @@ namespace simnet
     )
     {
         auto report = ServerSnapshotExtractionReport { .tick = tick };
-        auto gathered = std::vector<BoidState> {};
-
-        {
-            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.index_read", LogCategory::Snapshot);
-            world.each(
-                [&](flecs::entity entity,
-                    NetIdentity const& identity,
-                    Position const& position,
-                    Heading const& heading,
-                    Hue const& hue) {
-                    if (!entity.has<BoidTag>()) {
-                        return;
-                    }
-                    gathered.push_back({
-                        .id = identity.id,
-                        .position = position.value,
-                        .heading = heading.value,
-                        .hue = hue.value,
-                    });
-                }
-            );
-        }
-
-        {
-            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.sort", LogCategory::Snapshot);
-            std::sort(gathered.begin(), gathered.end(), [](BoidState const& left, BoidState const& right) {
-                return left.id < right.id;
-            });
-        }
-
-        auto snapshot = WorldSnapshot {};
-        snapshot.tick = tick;
-        {
-            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.soa_write", LogCategory::Snapshot);
-            snapshot.reserve(gathered.size());
-            for (auto const& boid : gathered) {
-                snapshot.ids.push_back(boid.id);
-                snapshot.positions.push_back(boid.position);
-                snapshot.headings.push_back(boid.heading);
-                snapshot.hues.push_back(boid.hue);
-            }
-        }
-
-        auto validation = SnapshotValidationResult {};
-        {
-            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.validation", LogCategory::Snapshot);
-            validation = validate_world_snapshot(snapshot);
-        }
-        if (!validation.valid) {
+        auto const& index = world.get<AuthoritativeReplicationIndex>();
+        if (!valid_index(index)) {
             reset_failed_snapshot(out_snapshot, tick);
             report.valid = false;
-            report.error = validation.message;
+            report.error = "authoritative replication index sizes do not match";
             return report;
         }
 
-        out_snapshot = std::move(snapshot);
+        out_snapshot.clear();
+        out_snapshot.tick = tick;
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.index_read", LogCategory::Snapshot);
+            out_snapshot.reserve(index.ids.size());
+        }
+
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.soa_write", LogCategory::Snapshot);
+            for (std::size_t position = 0; position < index.ids.size(); ++position) {
+                auto const entity_id = index.entities[position];
+                if (entity_id == 0U || !ecs_is_alive(world.c_ptr(), entity_id)) {
+                    reset_failed_snapshot(out_snapshot, tick);
+                    report.valid = false;
+                    report.error = "authoritative replication index references a dead entity";
+                    return report;
+                }
+
+                auto const entity = flecs::entity { world, entity_id };
+                if (!entity.has<BoidTag>() || !entity.has<NetIdentity>() || !entity.has<Position>()
+                    || !entity.has<Heading>() || !entity.has<Hue>()) {
+                    reset_failed_snapshot(out_snapshot, tick);
+                    report.valid = false;
+                    report.error = "authoritative indexed entity is missing required components";
+                    return report;
+                }
+
+                auto const& identity = entity.get<NetIdentity>();
+                auto const& entity_position = entity.get<Position>();
+                auto const& heading = entity.get<Heading>();
+                auto const& hue = entity.get<Hue>();
+                if (identity.id == 0U || identity.id != index.ids[position]
+                    || (position != 0U && identity.id <= index.ids[position - 1U])) {
+                    reset_failed_snapshot(out_snapshot, tick);
+                    report.valid = false;
+                    report.error = "authoritative replication index identity does not match entity";
+                    return report;
+                }
+                if (!is_finite(entity_position.value)) {
+                    reset_failed_snapshot(out_snapshot, tick);
+                    report.valid = false;
+                    report.error = "world snapshot position contains a non-finite component";
+                    return report;
+                }
+                if (!is_finite(heading.value)) {
+                    reset_failed_snapshot(out_snapshot, tick);
+                    report.valid = false;
+                    report.error = "world snapshot heading contains a non-finite component";
+                    return report;
+                }
+                if (!is_normalized_heading(heading.value)) {
+                    reset_failed_snapshot(out_snapshot, tick);
+                    report.valid = false;
+                    report.error = "world snapshot heading is not normalized";
+                    return report;
+                }
+
+                out_snapshot.ids.push_back(identity.id);
+                out_snapshot.positions.push_back(entity_position.value);
+                out_snapshot.headings.push_back(heading.value);
+                out_snapshot.hues.push_back(hue.value);
+            }
+        }
         report.entity_count = static_cast<std::uint32_t>(out_snapshot.size());
         SIMNET_TRACE_PLOT("game_server.snapshot.entities", static_cast<double>(out_snapshot.size()));
         SIMNET_TRACE_PLOT("game_server.snapshot.ids_capacity", static_cast<double>(out_snapshot.ids.capacity()));

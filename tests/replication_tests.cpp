@@ -199,6 +199,20 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
     REQUIRE(extracted.valid);
     CHECK(snapshot.ids == std::vector<simnet::EntityNetId> { 2, 3 });
     CHECK(snapshot.hues[0] == 201U);
+    auto const ids_capacity = snapshot.ids.capacity();
+
+    auto updated_again = test_boid(3, 12, 5);
+    updated_again.hue = 99U;
+    REQUIRE(simnet::upsert_authoritative_boid(world, updated_again).is_alive());
+    auto const extracted_again = simnet::extract_world_snapshot(world, 5, snapshot);
+    REQUIRE(extracted_again.valid);
+    CHECK(snapshot.tick == 5U);
+    CHECK(snapshot.ids == std::vector<simnet::EntityNetId> { 2, 3 });
+    CHECK(snapshot.positions[1].x == updated_again.position.x);
+    CHECK(snapshot.positions[1].y == updated_again.position.y);
+    CHECK(snapshot.positions[1].z == updated_again.position.z);
+    CHECK(snapshot.hues[1] == 99U);
+    CHECK(snapshot.ids.capacity() >= ids_capacity);
 
     auto invalid = std::vector<simnet::BoidState> {
         test_boid(4, 3, 4),
