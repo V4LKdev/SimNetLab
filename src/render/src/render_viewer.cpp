@@ -353,7 +353,10 @@ namespace simnet
                 WHITE
             );
             draw_help_overlay();
-            EndDrawing();
+            {
+                SIMNET_TRACE_SCOPE_CATEGORY("render.present_wait", simnet::LogCategory::Render);
+                EndDrawing();
+            }
 
             result.close_requested = WindowShouldClose();
             result.view_mode = mode_;
@@ -776,6 +779,7 @@ namespace simnet
 
         void clear_instances()
         {
+            SIMNET_TRACE_SCOPE_CATEGORY("render.prepare.clear_buckets", simnet::LogCategory::Render);
             for (auto& bucket : transform_buckets_) {
                 bucket.clear();
             }
@@ -784,23 +788,29 @@ namespace simnet
         void prepare_instances(RenderEntityView const& entities, RenderStats& stats)
         {
             clear_instances();
-            auto const per_bucket = entities.size() / hue_bucket_count + 1U;
-            for (auto& bucket : transform_buckets_) {
-                if (bucket.capacity() < per_bucket) {
-                    bucket.reserve(per_bucket);
+            {
+                SIMNET_TRACE_SCOPE_CATEGORY("render.prepare.capacity_growth", simnet::LogCategory::Render);
+                auto const per_bucket = entities.size() / hue_bucket_count + 1U;
+                for (auto& bucket : transform_buckets_) {
+                    if (bucket.capacity() < per_bucket) {
+                        bucket.reserve(per_bucket);
+                    }
                 }
             }
-            for (std::size_t index = 0; index < entities.size(); ++index) {
-                auto const position = entities.positions[index];
-                auto const heading = entities.headings[index];
-                if (!finite(position) || !finite(heading)) {
-                    ++stats.skipped_entity_count;
-                    continue;
+            {
+                SIMNET_TRACE_SCOPE_CATEGORY("render.prepare.transforms", simnet::LogCategory::Render);
+                for (std::size_t index = 0; index < entities.size(); ++index) {
+                    auto const position = entities.positions[index];
+                    auto const heading = entities.headings[index];
+                    if (!finite(position) || !finite(heading)) {
+                        ++stats.skipped_entity_count;
+                        continue;
+                    }
+                    transform_buckets_[hue_bucket(entities.hues[index])].push_back(
+                        MatrixMultiply(model_correction_, entity_transform(position, heading, config_.entity_scale))
+                    );
+                    ++stats.instance_count;
                 }
-                transform_buckets_[hue_bucket(entities.hues[index])].push_back(
-                    MatrixMultiply(model_correction_, entity_transform(position, heading, config_.entity_scale))
-                );
-                ++stats.instance_count;
             }
         }
 

@@ -269,39 +269,52 @@ namespace simnet
         auto report = ServerSnapshotExtractionReport { .tick = tick };
         auto gathered = std::vector<BoidState> {};
 
-        world.each(
-            [&](flecs::entity entity,
-                NetIdentity const& identity,
-                Position const& position,
-                Heading const& heading,
-                Hue const& hue) {
-                if (!entity.has<BoidTag>()) {
-                    return;
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.index_read", LogCategory::Snapshot);
+            world.each(
+                [&](flecs::entity entity,
+                    NetIdentity const& identity,
+                    Position const& position,
+                    Heading const& heading,
+                    Hue const& hue) {
+                    if (!entity.has<BoidTag>()) {
+                        return;
+                    }
+                    gathered.push_back({
+                        .id = identity.id,
+                        .position = position.value,
+                        .heading = heading.value,
+                        .hue = hue.value,
+                    });
                 }
-                gathered.push_back({
-                    .id = identity.id,
-                    .position = position.value,
-                    .heading = heading.value,
-                    .hue = hue.value,
-                });
-            }
-        );
+            );
+        }
 
-        std::sort(gathered.begin(), gathered.end(), [](BoidState const& left, BoidState const& right) {
-            return left.id < right.id;
-        });
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.sort", LogCategory::Snapshot);
+            std::sort(gathered.begin(), gathered.end(), [](BoidState const& left, BoidState const& right) {
+                return left.id < right.id;
+            });
+        }
 
         auto snapshot = WorldSnapshot {};
         snapshot.tick = tick;
-        snapshot.reserve(gathered.size());
-        for (auto const& boid : gathered) {
-            snapshot.ids.push_back(boid.id);
-            snapshot.positions.push_back(boid.position);
-            snapshot.headings.push_back(boid.heading);
-            snapshot.hues.push_back(boid.hue);
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.soa_write", LogCategory::Snapshot);
+            snapshot.reserve(gathered.size());
+            for (auto const& boid : gathered) {
+                snapshot.ids.push_back(boid.id);
+                snapshot.positions.push_back(boid.position);
+                snapshot.headings.push_back(boid.heading);
+                snapshot.hues.push_back(boid.hue);
+            }
         }
 
-        auto const validation = validate_world_snapshot(snapshot);
+        auto validation = SnapshotValidationResult {};
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.validation", LogCategory::Snapshot);
+            validation = validate_world_snapshot(snapshot);
+        }
         if (!validation.valid) {
             reset_failed_snapshot(out_snapshot, tick);
             report.valid = false;
@@ -311,6 +324,9 @@ namespace simnet
 
         out_snapshot = std::move(snapshot);
         report.entity_count = static_cast<std::uint32_t>(out_snapshot.size());
+        SIMNET_TRACE_PLOT("game_server.snapshot.entities", static_cast<double>(out_snapshot.size()));
+        SIMNET_TRACE_PLOT("game_server.snapshot.ids_capacity", static_cast<double>(out_snapshot.ids.capacity()));
+        SIMNET_TRACE_PLOT("game_server.snapshot.positions_capacity", static_cast<double>(out_snapshot.positions.capacity()));
         return report;
     }
 }

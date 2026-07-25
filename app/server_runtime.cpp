@@ -236,45 +236,59 @@ namespace
         std::uint32_t visible_cell_limit
     )
     {
-        auto const settings = simnet::make_spatial_grid_settings(
-            simnet::make_centered_bounds(config.simulation.world_half),
-            config.spatial.cell_size
-        );
-        if (storage.grid.settings.cell_size != settings.cell_size
-            || storage.grid.settings.bounds.min.x != settings.bounds.min.x
-            || storage.grid.settings.bounds.max.x != settings.bounds.max.x) {
-            simnet::resize_spatial_grid(storage.grid, settings);
-        }
-        simnet::prepare_spatial_grid_scratch(storage.scratch, snapshot.positions.size(), 1U);
-        simnet::build_spatial_grid_serial(storage.grid, storage.scratch, snapshot.positions);
-
-        storage.candidates.clear();
-        storage.candidates.reserve(storage.grid.occupied_cells.size());
-        for (auto const& range : storage.grid.occupied_cells) {
-            auto const bounds = simnet::cell_bounds(storage.grid, simnet::cell_coord_from_key(storage.grid, range.key));
-            auto const center = (bounds.min + bounds.max) * 0.5F;
-            storage.candidates.push_back({
-                .key = range.key,
-                .bounds = bounds,
-                .entity_count = range.count,
-                .distance_squared = simnet::length_squared(center - observer_position),
-            });
-        }
-        std::ranges::sort(storage.candidates, [](SpatialRenderCandidate const& lhs, SpatialRenderCandidate const& rhs) {
-            if (lhs.distance_squared == rhs.distance_squared) {
-                return lhs.key < rhs.key;
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("spatial.build", simnet::LogCategory::Spatial);
+            auto const settings = simnet::make_spatial_grid_settings(
+                simnet::make_centered_bounds(config.simulation.world_half),
+                config.spatial.cell_size
+            );
+            if (storage.grid.settings.cell_size != settings.cell_size
+                || storage.grid.settings.bounds.min.x != settings.bounds.min.x
+                || storage.grid.settings.bounds.max.x != settings.bounds.max.x) {
+                simnet::resize_spatial_grid(storage.grid, settings);
             }
-            return lhs.distance_squared < rhs.distance_squared;
-        });
-        auto const display_count = std::min<std::size_t>(visible_cell_limit, storage.candidates.size());
-        storage.displayed_cells.clear();
-        storage.displayed_cells.reserve(display_count);
-        for (std::size_t index = 0; index < display_count; ++index) {
-            storage.displayed_cells.push_back({
-                .bounds = storage.candidates[index].bounds,
-                .entity_count = storage.candidates[index].entity_count,
+            simnet::prepare_spatial_grid_scratch(storage.scratch, snapshot.positions.size(), 1U);
+            simnet::build_spatial_grid_serial(storage.grid, storage.scratch, snapshot.positions);
+        }
+
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("spatial.display_candidates", simnet::LogCategory::Spatial);
+            storage.candidates.clear();
+            storage.candidates.reserve(storage.grid.occupied_cells.size());
+            for (auto const& range : storage.grid.occupied_cells) {
+                auto const bounds = simnet::cell_bounds(storage.grid, simnet::cell_coord_from_key(storage.grid, range.key));
+                auto const center = (bounds.min + bounds.max) * 0.5F;
+                storage.candidates.push_back({
+                    .key = range.key,
+                    .bounds = bounds,
+                    .entity_count = range.count,
+                    .distance_squared = simnet::length_squared(center - observer_position),
+                });
+            }
+        }
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("spatial.display_sort", simnet::LogCategory::Spatial);
+            std::ranges::sort(storage.candidates, [](SpatialRenderCandidate const& lhs, SpatialRenderCandidate const& rhs) {
+                if (lhs.distance_squared == rhs.distance_squared) {
+                    return lhs.key < rhs.key;
+                }
+                return lhs.distance_squared < rhs.distance_squared;
             });
         }
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("spatial.display_view", simnet::LogCategory::Spatial);
+            auto const display_count = std::min<std::size_t>(visible_cell_limit, storage.candidates.size());
+            storage.displayed_cells.clear();
+            storage.displayed_cells.reserve(display_count);
+            for (std::size_t index = 0; index < display_count; ++index) {
+                storage.displayed_cells.push_back({
+                    .bounds = storage.candidates[index].bounds,
+                    .entity_count = storage.candidates[index].entity_count,
+                });
+            }
+        }
+        SIMNET_TRACE_PLOT("spatial.occupied_cells", static_cast<double>(storage.grid.occupied_cells.size()));
+        SIMNET_TRACE_PLOT("spatial.displayed_cells", static_cast<double>(storage.displayed_cells.size()));
     }
 #endif
 
@@ -314,6 +328,7 @@ namespace
 
     void advance_world(flecs::world& world, simnet::NS fixed_dt, float world_half)
     {
+        SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_step.world_advance", simnet::LogCategory::Simulation);
         auto const seconds = std::chrono::duration<float>(fixed_dt).count();
         world.each(
             [seconds, world_half](simnet::Position& position, simnet::Heading const& heading) {
@@ -499,7 +514,7 @@ namespace
         auto snapshot = simnet::WorldSnapshot {};
         auto extraction = simnet::ServerSnapshotExtractionReport {};
         {
-            SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_extraction", simnet::LogCategory::Snapshot);
+            SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_step.snapshot_demand", simnet::LogCategory::Snapshot);
             extraction = simnet::extract_world_snapshot(world, tick, snapshot);
         }
         if (!extraction.valid) {
