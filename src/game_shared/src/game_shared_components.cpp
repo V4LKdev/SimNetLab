@@ -14,6 +14,5 @@ namespace simnet
         world.component<Position>("simnet::Position");
         world.component<Heading>("simnet::Heading");
         world.component<Hue>("simnet::Hue");
-        world.component<BoidTag>("simnet::BoidTag");
     }
 }

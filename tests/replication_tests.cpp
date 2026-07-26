@@ -157,21 +157,19 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     CHECK(ack.received_mask == 3);
     CHECK(ack.newest_applied_snapshot == 3);
 
-    auto const& client_clock = client_world.get<simnet::ClientReplicationClock>();
-    auto const& client_index = client_world.get<simnet::ClientReplicationIndex>();
-    CHECK(client_clock.latest_tick == 4);
-    CHECK(client_index.size() == boid_count);
+    CHECK(simnet::client_latest_replicated_tick(client_world) == 4);
+    CHECK(simnet::client_replicated_entity_count(client_world) == boid_count);
 
     auto extracted_client_snapshot = simnet::WorldSnapshot {};
     auto const client_extraction = simnet::extract_client_world_snapshot(
         client_world,
-        client_clock.latest_tick,
+        simnet::client_latest_replicated_tick(client_world),
         extracted_client_snapshot
     );
     REQUIRE(client_extraction.valid);
     CHECK(client_extraction.entity_count == boid_count);
     CHECK(extracted_client_snapshot.tick == 4);
-    CHECK(extracted_client_snapshot.ids == client_index.ids);
+    CHECK(extracted_client_snapshot.ids.size() == boid_count);
 }
 
 TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[replication]")

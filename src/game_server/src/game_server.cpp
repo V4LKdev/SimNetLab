@@ -74,7 +74,6 @@ namespace
         entity.set<simnet::Position>({ .value = boid.position });
         entity.set<simnet::Heading>({ .value = boid.heading });
         entity.set<simnet::Hue>({ .value = boid.hue });
-        entity.add<simnet::BoidTag>();
     }
 
     void reset_failed_snapshot(simnet::WorldSnapshot& snapshot, simnet::Tick tick)
@@ -112,7 +111,6 @@ namespace simnet
             const Position,
             const Heading,
             const Hue>()
-            .with<BoidTag>()
             .cache_kind(flecs::QueryCacheAll)
             .build();
     }
@@ -215,19 +213,17 @@ namespace simnet
             }
         }
 
-        auto ids = std::array<ecs_id_t, 5> {
+        auto ids = std::array<ecs_id_t, 4> {
             world.id<NetIdentity>(),
             world.id<Position>(),
             world.id<Heading>(),
             world.id<Hue>(),
-            world.id<BoidTag>(),
         };
-        auto data = std::array<void*, 5> {
+        auto data = std::array<void*, 4> {
             identities.data(),
             positions.data(),
             headings.data(),
             hues.data(),
-            nullptr,
         };
         auto populate = ecs_bulk_desc_t {};
         populate.count = static_cast<std::int32_t>(boids.size());

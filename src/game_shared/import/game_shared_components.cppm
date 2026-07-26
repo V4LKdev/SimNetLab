@@ -34,9 +34,6 @@ export namespace simnet
         std::uint8_t value {};
     };
 
-    /// Marker for boid entities.
-    struct BoidTag {};
-
-    /// Registers shared components and tags with a Flecs world.
+    /// Registers shared components with a Flecs world.
     void register_game_components(flecs::world& world);
 }

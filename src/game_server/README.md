@@ -24,6 +24,6 @@ Authoritative boid creation and deletion must use this module's mutation API. Sy
 
 `append_authoritative_boids` accepts only a strictly ascending batch of new IDs. Call it on the world-owning thread outside Flecs iteration and deferred mutation contexts. Active observers must not create or delete boids during the bulk call because Flecs returns transient entity IDs that SimNet copies immediately after insertion. This supports startup population and later load-ramp additions without repeated world scans.
 
-Extraction gathers authoritative boid entities with `NetIdentity`, `Position`, `Heading`, `Hue`, and `BoidTag`, sorts by `EntityNetId`, validates the resulting `WorldSnapshot`, and does not mutate the Flecs world. On extraction failure, the output snapshot is cleared and its tick is set to the requested tick.
+Extraction gathers authoritative entities with `NetIdentity`, `Position`, `Heading`, and `Hue`, sorts by `EntityNetId`, validates the resulting `WorldSnapshot`, and does not mutate the Flecs world. On extraction failure, the output snapshot is cleared and its tick is set to the requested tick.
 
 Snapshot extraction remains world-query based for now. The private sorted index is a future profiling candidate for direct ordered extraction, but that optimization is intentionally separate from authoritative population.

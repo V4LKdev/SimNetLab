@@ -17,14 +17,31 @@ namespace simnet
 {
     namespace
     {
+        struct ClientReplicationState
+        {
+            std::vector<EntityNetId> ids;
+            std::vector<flecs::entity_t> entities;
+            Tick latest_tick {};
+
+            [[nodiscard]] std::size_t size() const noexcept
+            {
+                return ids.size();
+            }
+
+            void reserve(std::size_t count)
+            {
+                ids.reserve(count);
+                entities.reserve(count);
+            }
+        };
+
         [[nodiscard]] flecs::entity make_replicated_entity(flecs::world& world, BoidState const& boid)
         {
             return world.entity()
                 .set<NetIdentity>({ .id = boid.id })
                 .set<Position>({ .value = boid.position })
                 .set<Heading>({ .value = boid.heading })
-                .set<Hue>({ .value = boid.hue })
-                .add<BoidTag>();
+                .set<Hue>({ .value = boid.hue });
         }
 
         void update_replicated_entity(flecs::world& world, flecs::entity_t entity_id, BoidState const& boid)
@@ -76,10 +93,10 @@ namespace simnet
             return upsert_index < patch.upserts.size() && patch.upserts[upsert_index].id == id;
         }
 
-        void append_entity(ClientReplicationIndex& index, EntityNetId id, flecs::entity_t entity_id)
+        void append_entity(ClientReplicationState& state, EntityNetId id, flecs::entity_t entity_id)
         {
-            index.ids.push_back(id);
-            index.entities.push_back(entity_id);
+            state.ids.push_back(id);
+            state.entities.push_back(entity_id);
         }
 
         void reset_failed_snapshot(WorldSnapshot& snapshot, Tick tick)
@@ -92,10 +109,17 @@ namespace simnet
     void register_client_game(flecs::world& world)
     {
         register_game_components(world);
-        world.component<ClientReplicationIndex>("simnet::ClientReplicationIndex");
-        world.component<ClientReplicationClock>("simnet::ClientReplicationClock");
-        world.ensure<ClientReplicationIndex>();
-        world.ensure<ClientReplicationClock>();
+        world.ensure<ClientReplicationState>();
+    }
+
+    std::size_t client_replicated_entity_count(flecs::world const& world) noexcept
+    {
+        return world.get<ClientReplicationState>().size();
+    }
+
+    Tick client_latest_replicated_tick(flecs::world const& world) noexcept
+    {
+        return world.get<ClientReplicationState>().latest_tick;
     }
 
     ApplyPatchReport apply_client_snapshot_patch(flecs::world& world, ClientSnapshotPatch const& patch)
@@ -118,87 +142,84 @@ namespace simnet
             return report;
         }
 
-        auto& index = world.ensure<ClientReplicationIndex>();
-        auto& clock = world.ensure<ClientReplicationClock>();
-        if (patch.tick < clock.latest_tick) {
+        auto& state = world.ensure<ClientReplicationState>();
+        if (patch.tick < state.latest_tick) {
             report.valid = false;
             report.error = "stale patch tick";
-            report.final_entities = static_cast<std::uint32_t>(index.size());
+            report.final_entities = static_cast<std::uint32_t>(state.size());
             return report;
         }
-        report.previous_entities = static_cast<std::uint32_t>(index.size());
+        report.previous_entities = static_cast<std::uint32_t>(state.size());
 
         if (patch.kind == SnapshotKind::Patch) {
-            auto next_index = ClientReplicationIndex {};
-            next_index.reserve(index.size() + patch.upserts.size());
+            auto next_state = ClientReplicationState {};
+            next_state.reserve(state.size() + patch.upserts.size());
 
             auto current_index = std::size_t {};
             auto upsert_index = std::size_t {};
             auto delete_index = std::size_t {};
 
-            while (current_index < index.ids.size()) {
-                auto const current_id = index.ids[current_index];
+            while (current_index < state.ids.size()) {
+                auto const current_id = state.ids[current_index];
 
                 while (upsert_before_current(patch, upsert_index, current_id)) {
                     auto const& boid = patch.upserts[upsert_index];
                     auto entity = make_replicated_entity(world, boid);
-                    append_entity(next_index, boid.id, entity.id());
+                    append_entity(next_state, boid.id, entity.id());
                     ++upsert_index;
                 }
 
                 if (delete_matches(patch, delete_index, current_id)) {
-                    delete_entity_if_alive(world, index.entities[current_index]);
+                    delete_entity_if_alive(world, state.entities[current_index]);
                     ++current_index;
                     continue;
                 }
 
                 if (upsert_matches(patch, upsert_index, current_id)) {
                     auto const& boid = patch.upserts[upsert_index];
-                    update_replicated_entity(world, index.entities[current_index], boid);
-                    append_entity(next_index, current_id, index.entities[current_index]);
+                    update_replicated_entity(world, state.entities[current_index], boid);
+                    append_entity(next_state, current_id, state.entities[current_index]);
                     ++upsert_index;
                     ++current_index;
                     continue;
                 }
 
-                append_entity(next_index, current_id, index.entities[current_index]);
+                append_entity(next_state, current_id, state.entities[current_index]);
                 ++current_index;
             }
 
             while (upsert_index < patch.upserts.size()) {
                 auto const& boid = patch.upserts[upsert_index];
                 auto entity = make_replicated_entity(world, boid);
-                append_entity(next_index, boid.id, entity.id());
+                append_entity(next_state, boid.id, entity.id());
                 ++upsert_index;
             }
 
-            index = std::move(next_index);
-            clock.latest_tick = patch.tick;
-            world.modified<ClientReplicationIndex>();
-            world.modified<ClientReplicationClock>();
+            state = std::move(next_state);
+            state.latest_tick = patch.tick;
+            world.modified<ClientReplicationState>();
 
-            report.final_entities = static_cast<std::uint32_t>(index.size());
+            report.final_entities = static_cast<std::uint32_t>(state.size());
             return report;
         }
 
-        for (auto const entity_id : index.entities) {
+        for (auto const entity_id : state.entities) {
             delete_entity_if_alive(world, entity_id);
         }
 
-        auto next_index = ClientReplicationIndex {};
-        next_index.reserve(patch.upserts.size());
+        auto next_state = ClientReplicationState {};
+        next_state.reserve(patch.upserts.size());
 
         for (auto const& boid : patch.upserts) {
             auto entity = make_replicated_entity(world, boid);
-            append_entity(next_index, boid.id, entity.id());
+            append_entity(next_state, boid.id, entity.id());
         }
 
-        index = std::move(next_index);
-        clock.latest_tick = patch.tick;
-        world.modified<ClientReplicationIndex>();
-        world.modified<ClientReplicationClock>();
+        state = std::move(next_state);
+        state.latest_tick = patch.tick;
+        world.modified<ClientReplicationState>();
 
-        report.final_entities = static_cast<std::uint32_t>(index.size());
+        report.final_entities = static_cast<std::uint32_t>(state.size());
         return report;
     }
 
@@ -209,8 +230,8 @@ namespace simnet
     )
     {
         auto report = ClientSnapshotExtractionReport { .tick = tick };
-        auto const& index = world.get<ClientReplicationIndex>();
-        if (index.ids.size() != index.entities.size()) {
+        auto const& state = world.get<ClientReplicationState>();
+        if (state.ids.size() != state.entities.size()) {
             reset_failed_snapshot(out_snapshot, tick);
             report.valid = false;
             report.error = "client replication index sizes do not match";
@@ -219,9 +240,9 @@ namespace simnet
 
         out_snapshot.clear();
         out_snapshot.tick = tick;
-        out_snapshot.reserve(index.size());
-        for (auto index_position = std::size_t {}; index_position < index.size(); ++index_position) {
-            auto const entity_id = index.entities[index_position];
+        out_snapshot.reserve(state.size());
+        for (auto index_position = std::size_t {}; index_position < state.size(); ++index_position) {
+            auto const entity_id = state.entities[index_position];
             if (entity_id == 0 || !ecs_is_alive(world.c_ptr(), entity_id)) {
                 reset_failed_snapshot(out_snapshot, tick);
                 report.valid = false;
@@ -230,7 +251,7 @@ namespace simnet
             }
 
             auto const entity = flecs::entity { world, entity_id };
-            if (!entity.has<BoidTag>() || !entity.has<NetIdentity>() || !entity.has<Position>()
+            if (!entity.has<NetIdentity>() || !entity.has<Position>()
                 || !entity.has<Heading>() || !entity.has<Hue>()) {
                 reset_failed_snapshot(out_snapshot, tick);
                 report.valid = false;
@@ -239,7 +260,7 @@ namespace simnet
             }
 
             auto const& identity = entity.get<NetIdentity>();
-            if (identity.id != index.ids[index_position]) {
+            if (identity.id != state.ids[index_position]) {
                 reset_failed_snapshot(out_snapshot, tick);
                 report.valid = false;
                 report.error = "client replication index identity does not match entity";

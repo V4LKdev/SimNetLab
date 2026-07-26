@@ -7,6 +7,7 @@ module;
 #include <limits>
 #include <span>
 #include <stdexcept>
+#include <vector>
 
 #include <simnet/telemetry_trace.hpp>
 
