@@ -16,6 +16,8 @@ target_sources(simnet_spatial
 target_link_libraries(simnet_spatial
     PUBLIC
         simnet_core
+    PRIVATE
+        simnet_telemetry
 )
 
 simnet_configure_target(simnet_spatial)

@@ -75,5 +75,6 @@ export namespace simnet
     {
         std::vector<SpatialGridWorkerScratch> workers;
         std::vector<CellEntry> entries;
+        std::vector<CellRange> occupied_cells;
     };
 }
