@@ -1,7 +1,10 @@
 #include "client_runtime.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <exception>
 #include <filesystem>
 #include <flecs.h>
@@ -44,6 +47,14 @@ namespace
     {
         simnet::SnapshotAck value {};
     };
+
+    struct RetainedClientSnapshot
+    {
+        simnet::SequenceId sequence {};
+        simnet::WorldSnapshot snapshot {};
+    };
+
+    constexpr std::size_t retained_snapshot_limit = 64;
 
     enum class ClientConnectionState : std::uint8_t
     {
@@ -221,6 +232,54 @@ namespace
         return true;
     }
 
+    [[nodiscard]] simnet::WorldSnapshot const* find_retained_snapshot(
+        std::deque<RetainedClientSnapshot> const& history,
+        simnet::SequenceId sequence
+    ) noexcept
+    {
+        auto const found = std::ranges::find(
+            history,
+            sequence,
+            &RetainedClientSnapshot::sequence
+        );
+        return found == history.end() ? nullptr : &found->snapshot;
+    }
+
+    void retain_snapshot(
+        std::deque<RetainedClientSnapshot>& history,
+        simnet::SequenceId sequence,
+        simnet::WorldSnapshot snapshot
+    )
+    {
+        if (history.size() == retained_snapshot_limit) {
+            history.pop_front();
+        }
+        history.push_back({
+            .sequence = sequence,
+            .snapshot = std::move(snapshot),
+        });
+    }
+
+    [[nodiscard]] simnet::ClientSnapshotPatch make_full_replace_patch(
+        simnet::WorldSnapshot const& snapshot
+    )
+    {
+        auto patch = simnet::ClientSnapshotPatch {
+            .tick = snapshot.tick,
+            .kind = simnet::SnapshotKind::FullReplace,
+        };
+        patch.upserts.reserve(snapshot.size());
+        for (std::size_t index = 0; index < snapshot.size(); ++index) {
+            patch.upserts.push_back({
+                .id = snapshot.ids[index],
+                .position = snapshot.positions[index],
+                .heading = snapshot.headings[index],
+                .hue = snapshot.hues[index],
+            });
+        }
+        return patch;
+    }
+
     [[nodiscard]] bool apply_packet(
         simnet::ReceivedPacket const& packet,
         simnet::PipelineDefinition const& pipeline,
@@ -228,6 +287,7 @@ namespace
         simnet::PipelineScratch& scratch,
         simnet::SequenceId& latest_applied_sequence,
         SnapshotAckTracker& ack_tracker,
+        std::deque<RetainedClientSnapshot>& snapshot_history,
         flecs::world& world,
         simnet::TransportClient& transport,
         simnet::RuntimeStats& stats
@@ -248,7 +308,6 @@ namespace
                 scratch,
                 {
                     .bytes = packet.payload,
-                    .applied_baseline_sequence = latest_applied_sequence,
                 }
             );
         }
@@ -263,10 +322,48 @@ namespace
             return true;
         }
 
+        auto const empty_baseline = simnet::WorldSnapshot {};
+        auto const* baseline = static_cast<simnet::WorldSnapshot const*>(nullptr);
+        if (decoded.report.delta) {
+            baseline = find_retained_snapshot(snapshot_history, decoded.report.baseline_sequence);
+            if (baseline == nullptr) {
+                simnet::log(simnet::LogCategory::Snapshot, simnet::LogLevel::Error,
+                    "client delta baseline is not retained sequence="
+                        + std::to_string(decoded.report.baseline_sequence));
+                return false;
+            }
+        } else if (decoded.patch.kind == simnet::SnapshotKind::Patch) {
+            baseline = snapshot_history.empty()
+                ? &empty_baseline
+                : &snapshot_history.back().snapshot;
+        }
+
+        auto reconstructed = simnet::WorldSnapshot {};
+        auto const reconstruction = simnet::reconstruct_world_snapshot(
+            baseline,
+            decoded.patch,
+            reconstructed
+        );
+        if (!reconstruction.valid) {
+            simnet::log(simnet::LogCategory::Snapshot, simnet::LogLevel::Error,
+                "client snapshot reconstruction failed: " + reconstruction.message);
+            return false;
+        }
+
+        auto const baseline_is_current = baseline != nullptr
+            && !snapshot_history.empty()
+            && baseline == &snapshot_history.back().snapshot;
+        auto replacement = simnet::ClientSnapshotPatch {};
+        auto const* patch_to_apply = &decoded.patch;
+        if (decoded.patch.kind == simnet::SnapshotKind::Patch && !baseline_is_current) {
+            replacement = make_full_replace_patch(reconstructed);
+            patch_to_apply = &replacement;
+        }
+
         auto applied = simnet::ApplyPatchReport {};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_apply", simnet::LogCategory::Simulation);
-            applied = simnet::apply_client_snapshot_patch(world, decoded.patch);
+            applied = simnet::apply_client_snapshot_patch(world, *patch_to_apply);
         }
         if (!applied.valid) {
             simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Error,
@@ -276,6 +373,11 @@ namespace
 
         latest_applied_sequence = decoded.report.sequence;
         ack_tracker.value.newest_applied_snapshot = decoded.report.sequence;
+        retain_snapshot(
+            snapshot_history,
+            decoded.report.sequence,
+            std::move(reconstructed)
+        );
         stats.ticks = applied.tick;
         auto sent = simnet::TransportResult {};
         {
@@ -385,6 +487,7 @@ namespace simnet::app
             auto scratch = PipelineScratch {};
             auto latest_applied_sequence = SequenceId {};
             auto ack_tracker = SnapshotAckTracker {};
+            auto snapshot_history = std::deque<RetainedClientSnapshot> {};
             auto connection_state = ClientConnectionState::Connecting;
             auto stop_cause = ClientStopCause::None;
             auto server_peer = std::optional<PeerId> {};
@@ -432,6 +535,7 @@ namespace simnet::app
                                 scratch,
                                 latest_applied_sequence,
                                 ack_tracker,
+                                snapshot_history,
                                 world,
                                 transport,
                                 stats

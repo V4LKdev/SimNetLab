@@ -98,35 +98,116 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
     REQUIRE(delta.report.upsert_count == 2);
     REQUIRE(delta.report.delete_count == 1);
 
-    auto const sequence_before_rejection = decode_state.latest_remote_sequence;
-    auto const rejected = simnet::decode_packet(
-        pipeline,
-        decode_state,
-        decode_scratch,
-        {
-            .bytes = delta.packet.bytes,
-            .applied_baseline_sequence = 0,
-        }
-    );
-    REQUIRE_FALSE(rejected.report.valid);
-    REQUIRE(rejected.patch.upserts.empty());
-    REQUIRE(rejected.patch.deletes.empty());
-    REQUIRE(decode_state.latest_remote_sequence == sequence_before_rejection);
-
     auto const decoded = simnet::decode_packet(
         pipeline,
         decode_state,
         decode_scratch,
-        {
-            .bytes = delta.packet.bytes,
-            .applied_baseline_sequence = full.packet.sequence,
-        }
+        { .bytes = delta.packet.bytes }
     );
     REQUIRE(decoded.report.valid);
     REQUIRE(decoded.patch.upserts.size() == 2);
     CHECK(decoded.patch.upserts[0].id == 2);
     CHECK(decoded.patch.upserts[1].id == 4);
     CHECK(decoded.patch.deletes == std::vector<simnet::EntityNetId> { 3 });
+}
+
+TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][delta][replication]")
+{
+    auto pipeline = simnet::make_snapshot_pipeline();
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
+
+    auto const baseline = make_snapshot(10, {
+        { .id = 1, .position = { 1.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 10 },
+        { .id = 2, .position = { 2.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 20 },
+    });
+    auto const tick_11 = make_snapshot(11, {
+        { .id = 1, .position = { 11.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 10 },
+        { .id = 2, .position = { 2.0F, 0.0F, 0.0F }, .heading = { 1.0F, 0.0F, 0.0F }, .hue = 20 },
+    });
+    auto tick_12 = baseline;
+    tick_12.tick = 12;
+
+    auto encode_state = simnet::ClientReplicationState {};
+    auto decode_state = simnet::ClientReplicationState {};
+    auto encode_scratch = simnet::PipelineScratch {};
+    auto decode_scratch = simnet::PipelineScratch {};
+
+    auto const full = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        encode_scratch,
+        { .snapshot = &baseline }
+    );
+    REQUIRE(full.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+
+    auto const first_delta = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        encode_scratch,
+        {
+            .snapshot = &tick_11,
+            .baseline_snapshot = &baseline,
+            .baseline_sequence = full.packet.sequence,
+        }
+    );
+    auto const second_delta = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        encode_scratch,
+        {
+            .snapshot = &tick_12,
+            .baseline_snapshot = &baseline,
+            .baseline_sequence = full.packet.sequence,
+        }
+    );
+    REQUIRE(first_delta.report.baseline_sequence == full.packet.sequence);
+    REQUIRE(second_delta.report.baseline_sequence == full.packet.sequence);
+
+    auto const decoded_full = simnet::decode_packet(
+        pipeline,
+        decode_state,
+        decode_scratch,
+        { .bytes = full.packet.bytes }
+    );
+    REQUIRE(decoded_full.report.valid);
+    auto retained_baseline = simnet::WorldSnapshot {};
+    REQUIRE(simnet::reconstruct_world_snapshot(
+        nullptr,
+        decoded_full.patch,
+        retained_baseline
+    ).valid);
+
+    auto const decoded_first = simnet::decode_packet(
+        pipeline,
+        decode_state,
+        decode_scratch,
+        { .bytes = first_delta.packet.bytes }
+    );
+    REQUIRE(decoded_first.report.valid);
+    auto reconstructed_first = simnet::WorldSnapshot {};
+    REQUIRE(simnet::reconstruct_world_snapshot(
+        &retained_baseline,
+        decoded_first.patch,
+        reconstructed_first
+    ).valid);
+    CHECK(reconstructed_first.positions[0].x == 11.0F);
+
+    auto const decoded_second = simnet::decode_packet(
+        pipeline,
+        decode_state,
+        decode_scratch,
+        { .bytes = second_delta.packet.bytes }
+    );
+    REQUIRE(decoded_second.report.valid);
+    REQUIRE(decoded_second.report.baseline_sequence == full.packet.sequence);
+    auto reconstructed_second = simnet::WorldSnapshot {};
+    REQUIRE(simnet::reconstruct_world_snapshot(
+        &retained_baseline,
+        decoded_second.patch,
+        reconstructed_second
+    ).valid);
+    CHECK(reconstructed_second.positions[0].x == 1.0F);
+    CHECK(reconstructed_second.ids == retained_baseline.ids);
 }
 
 TEST_CASE("pipeline validation rejects unsupported technique combinations", "[pipeline]")

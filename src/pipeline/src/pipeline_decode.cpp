@@ -135,8 +135,6 @@ namespace simnet
                 return invalid_packet("delta patch baseline sequence 0 is reserved");
             if (header.baseline_sequence >= header.sequence)
                 return invalid_packet("delta patch baseline must precede packet sequence");
-            if (header.baseline_sequence != input.applied_baseline_sequence)
-                return invalid_packet("delta patch baseline does not match applied baseline");
         } else {
             if (header.baseline_sequence != 0U)
                 return invalid_packet("non-delta patch baseline sequence must be 0");

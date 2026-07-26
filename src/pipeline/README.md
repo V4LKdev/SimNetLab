@@ -29,3 +29,4 @@ Each concurrent caller needs its own `ClientReplicationState` and `PipelineScrat
 - Packet budgets are soft reporting targets. Transport owns actual send limits.
 - `PipelineScratch` should be reused across calls to avoid recurring allocations.
 - The private wire header carries a magic value, protocol and schema versions, and a decode signature. Decode rejects mismatches and stale sequences.
+- Delta decoding reports the declared baseline sequence. Client storage must retain and resolve that exact reconstructed snapshot before applying the patch.

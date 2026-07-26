@@ -15,9 +15,13 @@
 - `validate_world_snapshot` - validates sizes, id ordering, finite vectors, normalized headings.
 - `validate_client_snapshot_patch` - same for patches, plus no id in both upserts and deletes.
 
+### simnet.snapshot:reconstruct
+- `reconstruct_world_snapshot` - transactionally creates a complete snapshot from a full replacement or an exact retained baseline plus a patch.
+
 ## Notes
 - Both `WorldSnapshot` and `ClientSnapshotPatch` require strictly ascending entity IDs.
 - Validation returns the first contract violation. Error messages are heap-allocated.
 - `WorldSnapshot` uses SoA layout for cache efficiency.
 - `ClientSnapshotPatch::clear` preserves the `kind` field. Tick is reset to zero.
 - Heading normalization tolerance is `0.01F` (defined in types).
+- Delta reconstruction is storage-independent. The caller owns retained snapshots and resolves the sequence declared by the decoded packet.

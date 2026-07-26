@@ -1,5 +1,5 @@
 /**
-* @defgroup snapshot simnet.snapshot
+ * @defgroup snapshot simnet.snapshot
  * @brief Public replicated state contract for one simulation tick.
  *
  * @details
@@ -26,3 +26,10 @@ export import :types;
  * upsert/delete sets.
  */
 export import :validate;
+
+/**
+ * @par simnet.snapshot:reconstruct
+ * Transactional reconstruction of complete snapshots from decoded full
+ * replacements or baseline-relative patches.
+ */
+export import :reconstruct;

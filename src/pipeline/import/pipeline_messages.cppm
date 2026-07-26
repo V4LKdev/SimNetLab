@@ -77,8 +77,7 @@ export namespace simnet
     /// Input to `decode_packet`.
     struct DecodeInput
     {
-        ByteSpan   bytes {};                         /// raw packet bytes
-        SequenceId applied_baseline_sequence {};     /// last successfully applied sequence
+        ByteSpan bytes {};                           /// raw packet bytes
     };
 
     /// Result of `encode_snapshot`.

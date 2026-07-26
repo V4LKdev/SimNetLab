@@ -137,7 +137,6 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
             decode_scratch,
             {
                 .bytes = encoded.packet.bytes,
-                .applied_baseline_sequence = ack.newest_applied_snapshot,
             }
         );
         REQUIRE(decoded.report.valid);
@@ -320,7 +319,6 @@ TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replicati
         decode_scratch,
         {
             .bytes = next_packet.packet.bytes,
-            .applied_baseline_sequence = first_packet.packet.sequence,
         }
     );
     CHECK(decoded.report.valid);
