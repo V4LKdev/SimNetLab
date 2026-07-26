@@ -1,6 +1,8 @@
 # Build outputs
 /build/
 /logs/
+/temp/
+/screenshot*.png
 
 # Local IDE/user state
 /.idea/
@@ -18,3 +20,8 @@ CMakeUserPresets.json
 *.dylib
 *.dll
 *.exe
+
+# Runtime render assets may use the same extension as MSVC object files.
+!/assets/
+!/assets/render/
+!/assets/render/*.obj
