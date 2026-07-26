@@ -104,12 +104,19 @@ namespace
     [[nodiscard]] Matrix entity_transform(simnet::Vec3f position, simnet::Vec3f heading, float scale) noexcept
     {
         auto const forward = normalized_or_forward(heading);
-        auto reference_up = simnet::Vec3f { 0.0F, 1.0F, 0.0F };
-        if (std::abs(simnet::dot(forward, reference_up)) > 0.98F) {
-            reference_up = { 1.0F, 0.0F, 0.0F };
-        }
-        auto const right = normalized_or_forward(cross(reference_up, forward));
-        auto const up = cross(forward, right);
+        auto const sign = std::copysign(1.0F, forward.z);
+        auto const a = -1.0F / (sign + forward.z);
+        auto const b = forward.x * forward.y * a;
+        auto const right = simnet::Vec3f {
+            .x = 1.0F + sign * forward.x * forward.x * a,
+            .y = sign * b,
+            .z = -sign * forward.x,
+        };
+        auto const up = simnet::Vec3f {
+            .x = b,
+            .y = sign + forward.y * forward.y * a,
+            .z = -forward.y,
+        };
 
         return {
             .m0 = right.x * scale,
@@ -184,6 +191,44 @@ namespace
             return MatrixScale(0.05F, 0.05F, 0.05F);
         }
         return MatrixIdentity();
+    }
+
+    void bake_mesh_correction(Mesh& mesh, Matrix correction)
+    {
+        if (mesh.vertices == nullptr || mesh.vertexCount <= 0) {
+            return;
+        }
+        for (auto index = 0; index < mesh.vertexCount; ++index) {
+            auto const offset = index * 3;
+            auto const corrected = Vector3Transform(
+                { mesh.vertices[offset], mesh.vertices[offset + 1], mesh.vertices[offset + 2] },
+                correction
+            );
+            mesh.vertices[offset] = corrected.x;
+            mesh.vertices[offset + 1] = corrected.y;
+            mesh.vertices[offset + 2] = corrected.z;
+        }
+        UpdateMeshBuffer(mesh, 0, mesh.vertices, mesh.vertexCount * 3 * static_cast<int>(sizeof(float)), 0);
+
+        if (mesh.normals == nullptr) {
+            return;
+        }
+        for (auto index = 0; index < mesh.vertexCount; ++index) {
+            auto const offset = index * 3;
+            auto const normal = Vector3 {
+                correction.m0 * mesh.normals[offset] + correction.m4 * mesh.normals[offset + 1]
+                    + correction.m8 * mesh.normals[offset + 2],
+                correction.m1 * mesh.normals[offset] + correction.m5 * mesh.normals[offset + 1]
+                    + correction.m9 * mesh.normals[offset + 2],
+                correction.m2 * mesh.normals[offset] + correction.m6 * mesh.normals[offset + 1]
+                    + correction.m10 * mesh.normals[offset + 2],
+            };
+            auto const corrected = Vector3Normalize(normal);
+            mesh.normals[offset] = corrected.x;
+            mesh.normals[offset + 1] = corrected.y;
+            mesh.normals[offset + 2] = corrected.z;
+        }
+        UpdateMeshBuffer(mesh, 2, mesh.normals, mesh.vertexCount * 3 * static_cast<int>(sizeof(float)), 0);
     }
 
     constexpr char const* instancing_vertex_shader = R"glsl(
@@ -382,7 +427,6 @@ namespace simnet
     private:
         void load_entity_model()
         {
-            model_correction_ = MatrixIdentity();
             if (!config_.entity_mesh_path.empty()) {
                 model_ = LoadModel(config_.entity_mesh_path.c_str());
                 if (model_.meshCount > 0
@@ -390,7 +434,10 @@ namespace simnet
                     && model_.meshes != nullptr
                     && model_.materials != nullptr
                     && model_.meshMaterial != nullptr) {
-                    model_correction_ = mesh_correction(config_.entity_mesh_path);
+                    auto const correction = mesh_correction(config_.entity_mesh_path);
+                    for (int index = 0; index < model_.meshCount; ++index) {
+                        bake_mesh_correction(model_.meshes[index], correction);
+                    }
                     return;
                 }
                 if (model_.meshCount > 0) {
@@ -807,7 +854,7 @@ namespace simnet
                         continue;
                     }
                     transform_buckets_[hue_bucket(entities.hues[index])].push_back(
-                        MatrixMultiply(model_correction_, entity_transform(position, heading, config_.entity_scale))
+                        entity_transform(position, heading, config_.entity_scale)
                     );
                     ++stats.instance_count;
                 }
@@ -1214,7 +1261,6 @@ namespace simnet
         Font font_ {};
         Mesh mesh_ {};
         Model model_ {};
-        Matrix model_correction_ {};
         Shader shader_ {};
         Camera3D camera_ {};
         Vector3 target_ {};
