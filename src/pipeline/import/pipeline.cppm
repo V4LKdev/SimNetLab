@@ -1,5 +1,5 @@
 /**
-* @defgroup pipeline simnet.pipeline
+ * @defgroup pipeline simnet.pipeline
  * @brief Snapshot replication pipeline.
  *
  * @details

@@ -69,18 +69,18 @@ export namespace simnet
         std::string entity_mesh_path {};
     };
 
-    /// Logging and profiling settings.
+    /// Logging settings and reserved metrics-export vocabulary.
     struct TelemetryConfig
     {
         bool console_log_enabled { true };
         bool file_log_enabled { true };
         std::string log_directory { "logs" };
         std::string min_level { "info" };
-        bool metrics_csv_enabled { true };
-        bool metrics_json_enabled { false };
+        bool metrics_csv_enabled { true };   /// Parsed; export is not implemented.
+        bool metrics_json_enabled { false }; /// Parsed; export is not implemented.
     };
 
-    /// Declarative load ramp settings.
+    /// Reserved load-ramp settings. Application behavior is not implemented.
     struct LoadRampConfig
     {
         bool enabled { false };
@@ -89,7 +89,7 @@ export namespace simnet
         std::uint32_t max_boids { 1000000 };
     };
 
-    /// Benchmark scenario settings.
+    /// Reserved benchmark settings. Application behavior is not implemented.
     struct BenchmarkScenarioConfig
     {
         bool enabled { false };

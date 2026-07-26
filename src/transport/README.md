@@ -32,7 +32,7 @@ The API supports reliable sequenced, unreliable sequenced, unreliable unsequence
 
 ## Snapshot acknowledgements
 
-`SnapshotAck` reports the newest decoded sequence, a 32-bit receipt history, and the newest applied sequence. It is a replication acknowledgement, not an ENet reliability acknowledgement. The wire format is fixed field by field on the Input lane. Transport validates the envelope. The Server app owns history retention and delta-baseline selection.
+`SnapshotAck` reports the newest decoded sequence, receipt bits for the preceding 32 sequences, and the newest applied sequence. The current Client advances this history monotonically and ignores late packets. It is a replication acknowledgement, not an ENet reliability acknowledgement. The wire format is fixed field by field on the Input lane. Transport validates the envelope. The Server app owns history retention and delta-baseline selection.
 
 ## Threading
 

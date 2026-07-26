@@ -32,8 +32,8 @@ export namespace simnet
     /// Result kind for an encode call.
     enum class EncodeResultKind : std::uint8_t
     {
-        Packet,     /// a complete packed was produced.
-        Skipped     /// no packed emitted this call.
+        Packet,     /// a complete packet was produced.
+        Skipped     /// no packet was emitted by this call.
     };
 
     /// Reason an encode call produced no packet.

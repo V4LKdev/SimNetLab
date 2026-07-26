@@ -128,6 +128,8 @@ export namespace simnet
     struct SnapshotAck
     {
         SequenceId newest_received_snapshot {};
+        /// Receipt bits for the 32 sequences preceding `newest_received_snapshot`.
+        /// The current Client advances this history monotonically and ignores late packets.
         std::uint32_t received_mask {};
         SequenceId newest_applied_snapshot {};
     };

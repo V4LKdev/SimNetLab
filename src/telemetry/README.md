@@ -24,6 +24,10 @@
 - `submit_metric_record` / `take_metric_records` / `clear_metric_records` - buffers for generic structured metrics.
 - `format_metric_record_key_value` - formats a record as a single line of `stream tick=... field=value...`.
 
+The metrics API currently provides in-memory storage only. The Server and Client
+do not yet submit tick metrics or export CSV/JSON files; the corresponding JSON
+settings are reserved configuration vocabulary.
+
 ## Trace Macros
 
 Include `<simnet/telemetry_trace.hpp>` to use these macros. They expand to no-ops unless the build system sets `SIMNET_ENABLE_TRACY=1` and links `Tracy::TracyClient`.
