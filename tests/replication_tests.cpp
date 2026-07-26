@@ -11,6 +11,7 @@
 import simnet.core;
 import simnet.game_client;
 import simnet.game_server;
+import simnet.game_shared;
 import simnet.pipeline;
 import simnet.snapshot;
 import simnet.transport;
@@ -237,6 +238,35 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
     CHECK(malformed_rejected.error == simnet::AuthoritativeSpawnError::InvalidBoidState);
     CHECK(malformed_rejected.failing_index == std::optional<std::size_t> { 0U });
     CHECK(simnet::authoritative_boid_count(world) == 2U);
+}
+
+TEST_CASE("authoritative extraction validates query ownership before snapshot commit", "[replication]")
+{
+    auto world = flecs::world {};
+    simnet::register_server_game(world);
+
+    auto initial = std::vector<simnet::BoidState> {
+        test_boid(2, 1, 0),
+        test_boid(3, 2, 0),
+    };
+    REQUIRE(simnet::append_authoritative_boids(world, initial).success());
+
+    auto snapshot = simnet::WorldSnapshot {};
+    REQUIRE(simnet::extract_world_snapshot(world, 1, snapshot).valid);
+    auto const ids_capacity = snapshot.ids.capacity();
+
+    auto const inserted = simnet::upsert_authoritative_boid(world, test_boid(1, 0, 2));
+    REQUIRE(inserted.is_alive());
+    auto const sorted = simnet::extract_world_snapshot(world, 2, snapshot);
+    REQUIRE(sorted.valid);
+    CHECK(snapshot.ids == std::vector<simnet::EntityNetId> { 1, 2, 3 });
+    CHECK(snapshot.ids.capacity() >= ids_capacity);
+
+    inserted.remove<simnet::Heading>();
+    auto const invalid = simnet::extract_world_snapshot(world, 3, snapshot);
+    CHECK_FALSE(invalid.valid);
+    CHECK(snapshot.tick == 3U);
+    CHECK(snapshot.empty());
 }
 
 TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replication]")
