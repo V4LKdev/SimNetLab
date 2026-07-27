@@ -9,4 +9,4 @@ if (-not (Test-Path ".\vcpkg\vcpkg.exe")) {
 }
 
 cmake --preset $Profile
-cmake --build --preset $Profile --target Server Client
+cmake --build --preset $Profile

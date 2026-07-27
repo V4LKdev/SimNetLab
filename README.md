@@ -2,14 +2,15 @@
 
 SimNetLab is a C++23 bachelor research project for evaluating snapshot replication techniques in a server-authoritative ECS simulation.
 
-The finished foundation separates core vocabulary, fixed-step runtime planning, configuration, snapshots, pipeline encoding, ENet transport, telemetry, and Flecs game contracts. Server and Client are the composition boundary.
+The current foundation separates core vocabulary, fixed-step runtime planning, configuration, snapshots, pipeline encoding, ENet transport, telemetry, and Flecs game contracts. Server and Client are the composition boundary.
 
 ## Current capability
 
 - ENet-only transport with session handshake, bounded payload policy, SnapshotAck messages, and reliable opaque application control
 - Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
 - One authoritative server peer and one client peer
-- Full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
+- Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
+- Application configuration for full replacement, incremental selection, quantization, and exact-baseline delta reconstruction
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - 1,000-entity Server to Client replication in the bounded runtime path
 - Optional Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local debug observer views, and authoritative remote pause
@@ -18,7 +19,7 @@ The Server currently advances the authoritative boid state but does not yet impl
 
 ## Planned work
 
-Area of interest, LOD, compression, benchmarking, metrics export, and Tracy instrumentation remain planned. Server and Client viewers are available when local visualization is enabled. The Server can display its current occupied spatial cells for debugging only.
+Area of interest, LOD, compression, benchmarking, and metrics export remain planned. Tracy instrumentation is available through the `SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are available when local visualization is enabled. The Server can display its current occupied spatial cells for debugging only.
 
 `Aoi`, `Lod`, and `Compression` remain declared pipeline vocabulary. They are not implemented and a selected unsupported pipeline option is rejected during app startup.
 
@@ -43,7 +44,7 @@ cd SimNetLab
 ./bootstrap.sh
 ```
 
-The bootstrap script initializes vcpkg, configures the Debug preset, and builds Server and Client.
+The bootstrap script initializes vcpkg, configures the Debug preset, and builds the applications, libraries, and tests.
 
 To select another preset:
 
@@ -56,11 +57,11 @@ To select another preset:
 
 ```sh
 cmake --preset debug
-cmake --build --preset debug --target Server Client
-ctest --test-dir build/debug --output-on-failure
+cmake --build --preset debug
+ctest --preset debug
 ```
 
-Server accepts `--config PATH`, `--max-ticks`, `--max-frames`, `--max-runtime-ms`, `--max-frame-delta-ms`, and `--max-steps-per-frame`. Client accepts `--config PATH`, `--max-ticks`, `--max-frames`, and `--max-runtime-ms`. A zero limit is disabled.
+Both applications accept `--config PATH`, `--shared-config PATH`, `--max-ticks`, `--max-frames`, and `--max-runtime-ms`. Server additionally accepts `--max-frame-delta-ms` and `--max-steps-per-frame`. A zero limit is disabled.
 
 The default profiles are headless. To start the visual development profiles from the repository root:
 
@@ -69,7 +70,7 @@ build/debug/app/Server --config config/server_visual.json
 build/debug/app/Client --config config/client_visual.json
 ```
 
-Set the local `visualization.entity_mesh_path` to an OBJ file to replace the procedural wedge. An empty or unavailable path keeps the instanced wedge fallback.
+The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set the local `visualization.entity_mesh_path` to another OBJ file to replace it. An empty or unavailable path keeps the instanced wedge fallback.
 
 ## Project structure
 
@@ -88,12 +89,18 @@ Set the local `visualization.entity_mesh_path` to an OBJ file to replace the pro
 - `simnet_render`: generic core-only Raylib viewer
 - `simnet_benchmarking`: benchmarking placeholder
 
+The placeholder benchmarking target is disabled by default. Enable
+`SIMNET_ENABLE_BENCHMARKING` only when working on the future benchmark harness.
+The current JSON metrics-export and benchmark settings are parsed configuration
+vocabulary; the applications do not yet export metrics or execute benchmark
+scenarios.
+
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration.
 
 For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
 
 ```sh
-build/debug/app/Server --config config/server_visual.json --shared-config config/shared_stress_100k.json
+build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_stress_100k.json
 ```
 
 Use the same `--shared-config` value for Client when connecting it to a non-default Server.

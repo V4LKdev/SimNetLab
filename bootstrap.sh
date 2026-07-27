@@ -10,4 +10,4 @@ if [ ! -x "./vcpkg/vcpkg" ]; then
 fi
 
 cmake --preset "$profile"
-cmake --build --preset "$profile" --target Server Client
+cmake --build --preset "$profile"
