@@ -74,6 +74,10 @@ export namespace simnet
     struct SpatialGridScratch
     {
         std::vector<SpatialGridWorkerScratch> workers;
+        std::vector<CellKey> dense_cell_keys;
+        std::vector<std::uint32_t> dense_cell_counts;
+        std::vector<std::uint32_t> dense_cell_offsets;
+        std::vector<std::uint32_t> dense_cell_write_offsets;
         std::vector<CellEntry> entries;
         std::vector<CellRange> occupied_cells;
     };

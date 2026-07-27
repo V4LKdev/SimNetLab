@@ -256,7 +256,12 @@ namespace
                 simnet::resize_spatial_grid(storage.grid, settings);
             }
             simnet::prepare_spatial_grid_scratch(storage.scratch, snapshot.positions.size(), 1U);
-            simnet::build_spatial_grid_serial(storage.grid, storage.scratch, snapshot.positions);
+            simnet::build_spatial_grid_serial(
+                storage.grid,
+                storage.scratch,
+                snapshot.positions,
+                snapshot.ids
+            );
         }
 
         {

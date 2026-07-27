@@ -59,4 +59,15 @@ export namespace simnet
         SpatialGridScratch& scratch,
         std::span<const Vec3f> positions
     );
+
+    /// Rebuilds the grid and orders entries within each cell by network identifier.
+    ///
+    /// IDs must be parallel to positions. Equal IDs use source index as a stable
+    /// tie-breaker.
+    void build_spatial_grid_serial(
+        SpatialGrid& grid,
+        SpatialGridScratch& scratch,
+        std::span<const Vec3f> positions,
+        std::span<const EntityNetId> ids
+    );
 }
