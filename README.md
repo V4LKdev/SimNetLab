@@ -97,6 +97,8 @@ scenarios.
 
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration.
 
+Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded; they do not parallelize queries or application code automatically.
+
 For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
 
 ```sh

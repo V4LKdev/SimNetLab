@@ -7,6 +7,9 @@
     "send_size_policy": "allow_backend_fragmentation",
     "snapshot_delivery": "reliable_sequenced"
   },
+  "flecs": {
+    "thread_count": 1
+  },
   "visualization": {
     "enabled": true,
     "window_width": 1800,

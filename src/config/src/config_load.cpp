@@ -243,6 +243,17 @@ namespace
             });
     }
 
+    void apply_flecs(Json const& json, simnet::FlecsConfig& config)
+    {
+        read_optional(json, "thread_count", config.thread_count);
+        validate_non_zero("flecs.thread_count", config.thread_count);
+        if (config.thread_count > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())) {
+            throw std::runtime_error(
+                "invalid config field 'flecs.thread_count': exceeds Flecs thread-count range"
+            );
+        }
+    }
+
     void apply_visualization(Json const& json, simnet::VisualizationConfig& config)
     {
         read_optional(json, "enabled", config.enabled);
@@ -346,6 +357,9 @@ namespace
 
         if (auto const* section = optional_object(json, "transport")) {
             apply_transport(*section, config.transport);
+        }
+        if (auto const* section = optional_object(json, "flecs")) {
+            apply_flecs(*section, config.flecs);
         }
         if (auto const* section = optional_object(json, "visualization")) {
             apply_visualization(*section, config.visualization);
@@ -503,6 +517,7 @@ namespace simnet
 
         hash_shared_native(hash, shared);
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
+        hash_bytes(hash, local.flecs.thread_count);
         hash_visualization(hash, local.visualization);
         hash_bytes(hash, local.benchmark.enabled);
         hash_bytes(hash, local.benchmark.repetitions);

@@ -53,6 +53,12 @@ export namespace simnet
         std::string snapshot_delivery { "reliable_sequenced" };
     };
 
+    /// Server-local Flecs scheduler settings.
+    struct FlecsConfig
+    {
+        std::uint32_t thread_count { 1 };
+    };
+
     /// Local visualization settings.
     struct VisualizationConfig
     {
@@ -110,6 +116,7 @@ export namespace simnet
     struct ServerConfig
     {
         TransportConfig transport {};
+        FlecsConfig flecs {};
         VisualizationConfig visualization {};
         TelemetryConfig telemetry {};
         BenchmarkScenarioConfig benchmark {};
