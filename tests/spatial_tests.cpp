@@ -265,3 +265,40 @@ TEST_CASE("ID-aware spatial build rejects mismatched arrays transactionally", "[
     CHECK(grid.entries[0].source_index == previous_entries[0].source_index);
     CHECK(grid.occupied_cells[0].key == previous_cells[0].key);
 }
+
+TEST_CASE("radius queries expose the exact inspected bounded cells", "[spatial][query]")
+{
+    auto grid = simnet::SpatialGrid {};
+    auto scratch = simnet::SpatialGridScratch {};
+    simnet::resize_spatial_grid(
+        grid,
+        simnet::make_spatial_grid_settings(simnet::make_centered_bounds(10.0F), 5.0F)
+    );
+    auto const positions = std::array {
+        simnet::Vec3f { -9.0F, -9.0F, -9.0F },
+        simnet::Vec3f { -4.0F, -4.0F, -4.0F },
+    };
+    simnet::build_spatial_grid_serial(grid, scratch, positions);
+
+    auto enumerated = std::vector<simnet::CellCoord> {};
+    auto const enumerated_count = simnet::for_each_radius_cell(
+        grid,
+        positions[0],
+        6.0F,
+        [&](simnet::CellCoord coord) { enumerated.push_back(coord); }
+    );
+    auto queried_indices = std::vector<std::uint32_t> {};
+    auto const queried_count = simnet::query_radius(
+        grid,
+        positions,
+        positions[0],
+        6.0F,
+        [&](std::uint32_t index) { queried_indices.push_back(index); }
+    );
+
+    CHECK(enumerated_count == 8U);
+    CHECK(queried_count == enumerated_count);
+    CHECK(enumerated.size() == enumerated_count);
+    CHECK(queried_indices == std::vector<std::uint32_t> { 0U });
+    CHECK(simnet::cell_coord_for_position(grid, positions[0]).x == 0);
+}

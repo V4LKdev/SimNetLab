@@ -83,6 +83,14 @@ export namespace simnet
         std::string_view status_message {};
     };
 
+    /// Producer-provided integer cell coordinate for selected-entity diagnostics.
+    struct SelectedCellCoord
+    {
+        std::int32_t x {};
+        std::int32_t y {};
+        std::int32_t z {};
+    };
+
     /// Optional producer-owned facts for the currently selected entity.
     struct SelectedEntityDetails
     {
@@ -90,10 +98,21 @@ export namespace simnet
         std::optional<Vec3f> velocity {};
         std::optional<Vec3f> acceleration {};
         std::optional<float> speed {};
-        std::optional<std::uint32_t> candidate_count {};
+        std::optional<std::uint32_t> raw_candidate_count {};
+        std::optional<std::uint32_t> retained_neighbor_count {};
         std::optional<std::uint32_t> separation_neighbor_count {};
         std::optional<std::uint32_t> alignment_neighbor_count {};
         std::optional<std::uint32_t> cohesion_neighbor_count {};
+        std::optional<SelectedCellCoord> current_cell {};
+        std::optional<std::uint32_t> queried_cell_count {};
+        std::optional<float> perception_radius {};
+        std::optional<float> separation_radius {};
+        std::optional<float> field_of_view_degrees {};
+        std::optional<std::uint32_t> maximum_neighbors {};
+        std::optional<bool> neighbor_cap_hit {};
+        std::optional<bool> overlap_recovery {};
+        std::optional<bool> acceleration_saturated {};
+        std::optional<bool> wall_guard {};
         std::optional<Vec3f> separation {};
         std::optional<Vec3f> alignment {};
         std::optional<Vec3f> cohesion {};
@@ -129,6 +148,61 @@ export namespace simnet
         bool display_capped {};
     };
 
+    struct DebugColor
+    {
+        std::uint8_t red { 255U };
+        std::uint8_t green { 255U };
+        std::uint8_t blue { 255U };
+        std::uint8_t alpha { 255U };
+    };
+
+    struct DebugSphereView
+    {
+        Vec3f center {};
+        float radius {};
+        DebugColor color {};
+        std::string_view label {};
+    };
+
+    struct DebugVectorView
+    {
+        Vec3f origin {};
+        Vec3f vector {};
+        DebugColor color {};
+        std::string_view label {};
+    };
+
+    struct DebugBoxView
+    {
+        Aabb3f bounds {};
+        DebugColor color {};
+        std::string_view label {};
+    };
+
+    struct DebugConeView
+    {
+        Vec3f apex {};
+        Vec3f direction { .z = 1.0F };
+        float length {};
+        float half_angle_degrees {};
+        DebugColor color {};
+        std::string_view label {};
+    };
+
+    /// Producer-resolved debug geometry valid for the duration of Viewer::draw().
+    struct DebugPrimitiveView
+    {
+        std::span<const DebugSphereView> spheres {};
+        std::span<const DebugVectorView> vectors {};
+        std::span<const DebugBoxView> boxes {};
+        std::span<const DebugConeView> cones {};
+
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return spheres.empty() && vectors.empty() && boxes.empty() && cones.empty();
+        }
+    };
+
     struct RenderFrame
     {
         RenderEntityView entities {};
@@ -136,6 +210,7 @@ export namespace simnet
         std::optional<SelectedEntityDetails> selected_details {};
         std::optional<ObserverView> observer {};
         std::optional<SpatialDebugView> spatial {};
+        DebugPrimitiveView debug_primitives {};
     };
 
     struct PlayerViewInput

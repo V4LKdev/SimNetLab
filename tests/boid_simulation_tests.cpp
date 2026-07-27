@@ -252,3 +252,57 @@ TEST_CASE("boid snapshots are identical across Flecs worker counts", "[boids][de
     CHECK(run_determinism_case(4U) == serial);
     CHECK(run_determinism_case(8U) == serial);
 }
+
+TEST_CASE("selected boid details are available without another simulation tick", "[boids][debug]")
+{
+    auto runtime = simnet::ServerGameRuntime { test_settings() };
+    auto world = flecs::world {};
+    simnet::register_server_game(world, runtime);
+    REQUIRE(append_boids(world, {
+        boid(1U, {}, { 1.0F, 0.0F, 0.0F }),
+        boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
+    }).success());
+
+    step(world, runtime);
+    REQUIRE_FALSE(runtime.selected_boid_debug().has_value());
+    auto const& report = runtime.last_step_report();
+    CHECK(report.diagnostics.grid.entity_count == 2U);
+    CHECK(report.diagnostics.raw_candidates_mean == 1.0);
+    CHECK(report.diagnostics.retained_neighbors_mean == 1.0);
+    CHECK(report.diagnostics.neighbor_cap_hit_count == 0U);
+    CHECK(report.diagnostics.separation_neighbors_mean == 1.0);
+    CHECK(report.diagnostics.speed_min > 0.0F);
+    CHECK(report.phases.progress_ms >= report.phases.compute_ms);
+
+    auto const before = canonical_hash(snapshot(world, 1U));
+    runtime.select_boid(1U);
+    auto const debug = runtime.selected_boid_debug();
+    REQUIRE(debug.has_value());
+    CHECK(debug->id == 1U);
+    CHECK(debug->raw_candidate_count == 1U);
+    CHECK(debug->retained_neighbor_count == 1U);
+    CHECK(debug->queried_cell_bounds.size() > 1U);
+    CHECK(debug->perception_radius == test_settings().perception_radius);
+    CHECK(debug->maximum_neighbors == test_settings().max_neighbors);
+    CHECK(canonical_hash(snapshot(world, 1U)) == before);
+
+    auto normal_runtime = simnet::ServerGameRuntime { test_settings() };
+    auto normal_world = flecs::world {};
+    simnet::register_server_game(normal_world, normal_runtime);
+    REQUIRE(append_boids(normal_world, {
+        boid(1U, {}, { 1.0F, 0.0F, 0.0F }),
+        boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
+    }).success());
+    normal_runtime.select_boid(1U);
+    step(normal_world, normal_runtime);
+    auto const normal_debug = normal_runtime.selected_boid_debug();
+    REQUIRE(normal_debug.has_value());
+    CHECK(normal_debug->velocity.x == debug->velocity.x);
+    CHECK(normal_debug->velocity.y == debug->velocity.y);
+    CHECK(normal_debug->velocity.z == debug->velocity.z);
+    CHECK(normal_debug->acceleration.x == debug->acceleration.x);
+    CHECK(normal_debug->acceleration.y == debug->acceleration.y);
+    CHECK(normal_debug->acceleration.z == debug->acceleration.z);
+    CHECK(normal_debug->raw_candidate_count == debug->raw_candidate_count);
+    CHECK(normal_debug->queried_cell_bounds.size() == debug->queried_cell_bounds.size());
+}

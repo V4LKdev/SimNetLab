@@ -78,6 +78,11 @@ namespace
         return { value.x, value.y, value.z };
     }
 
+    [[nodiscard]] Color to_raylib(simnet::DebugColor value) noexcept
+    {
+        return { value.red, value.green, value.blue, value.alpha };
+    }
+
     [[nodiscard]] bool finite(simnet::Vec3f value) noexcept
     {
         return simnet::is_finite(value);
@@ -778,7 +783,7 @@ namespace simnet
                 return;
             }
             auto const button_count = page_ == PanelPage::Entity
-                ? (selected_entity_.has_value() ? 1.0F : 0.0F)
+                ? (selected_entity_.has_value() ? 2.0F : 0.0F)
                 : 3.0F + (frame.observer.has_value() ? 3.0F : 0.0F)
                     + (frame.spatial.has_value() ? 1.0F : 0.0F)
                     + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
@@ -792,6 +797,8 @@ namespace simnet
             };
             if (page_ == PanelPage::Entity) {
                 if (selected_entity_.has_value() && CheckCollisionPointRec(mouse, button_at(0))) {
+                    show_selected_debug_ = !show_selected_debug_;
+                } else if (selected_entity_.has_value() && CheckCollisionPointRec(mouse, button_at(1))) {
                     clear_selection(result);
                 }
                 return;
@@ -922,6 +929,76 @@ namespace simnet
             }
         }
 
+        void draw_debug_primitives(DebugPrimitiveView const& debug, RenderStats& stats)
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("render.selected_debug_geometry", simnet::LogCategory::Render);
+            for (auto const& sphere : debug.spheres) {
+                if (sphere.radius <= 0.0F || !std::isfinite(sphere.radius) || !finite(sphere.center)) {
+                    continue;
+                }
+                DrawSphereWires(to_raylib(sphere.center), sphere.radius, 24, 12, to_raylib(sphere.color));
+                ++stats.draw_calls;
+            }
+            for (auto const& vector : debug.vectors) {
+                if (!finite(vector.origin) || !finite(vector.vector)
+                    || simnet::length_squared(vector.vector) <= 0.000001F) {
+                    continue;
+                }
+                DrawLine3D(
+                    to_raylib(vector.origin),
+                    to_raylib(vector.origin + vector.vector),
+                    to_raylib(vector.color)
+                );
+                ++stats.draw_calls;
+            }
+            for (auto const& box : debug.boxes) {
+                if (!finite(box.bounds.min) || !finite(box.bounds.max)) {
+                    continue;
+                }
+                DrawBoundingBox(
+                    { .min = to_raylib(box.bounds.min), .max = to_raylib(box.bounds.max) },
+                    to_raylib(box.color)
+                );
+                ++stats.draw_calls;
+            }
+            for (auto const& cone : debug.cones) {
+                if (!finite(cone.apex) || !finite(cone.direction)
+                    || cone.length <= 0.0F || !std::isfinite(cone.length)
+                    || cone.half_angle_degrees <= 0.0F
+                    || cone.half_angle_degrees >= 180.0F
+                    || !std::isfinite(cone.half_angle_degrees)) {
+                    continue;
+                }
+                auto const forward = normalized_or_forward(cone.direction);
+                auto right = cross(forward, { 0.0F, 1.0F, 0.0F });
+                if (simnet::length_squared(right) <= 0.000001F) {
+                    right = cross(forward, { 1.0F, 0.0F, 0.0F });
+                }
+                right = normalized_or_forward(right);
+                auto const up = normalized_or_forward(cross(right, forward));
+                auto const angle = cone.half_angle_degrees * pi / 180.0F;
+                auto const forward_scale = std::cos(angle);
+                auto const lateral_scale = std::sin(angle);
+                auto previous = simnet::Vec3f {};
+                auto constexpr segments = 12;
+                for (auto index = 0; index <= segments; ++index) {
+                    auto const around = 2.0F * pi * static_cast<float>(index)
+                        / static_cast<float>(segments);
+                    auto const lateral = right * std::cos(around) + up * std::sin(around);
+                    auto const direction = normalized_or_forward(
+                        forward * forward_scale + lateral * lateral_scale
+                    );
+                    auto const point = cone.apex + direction * cone.length;
+                    DrawLine3D(to_raylib(cone.apex), to_raylib(point), to_raylib(cone.color));
+                    if (index != 0) {
+                        DrawLine3D(to_raylib(previous), to_raylib(point), to_raylib(cone.color));
+                    }
+                    previous = point;
+                }
+                ++stats.draw_calls;
+            }
+        }
+
         void draw_scene(RenderFrame const& frame, RenderStats& stats)
         {
             BeginTextureMode(scene_);
@@ -951,6 +1028,9 @@ namespace simnet
             }
             if (frame.spatial.has_value() && show_spatial_cells_) {
                 draw_spatial_cells(*frame.spatial, stats);
+            }
+            if (show_selected_debug_ && !frame.debug_primitives.empty()) {
+                draw_debug_primitives(frame.debug_primitives, stats);
             }
 
             if (instancing_available_) {
@@ -1195,15 +1275,67 @@ namespace simnet
                             std::snprintf(line, sizeof(line), "speed %.2f", *details.speed);
                             text(line);
                         }
-                        if (details.candidate_count.has_value()) {
+                        if (details.raw_candidate_count.has_value()) {
                             std::snprintf(
                                 line,
                                 sizeof(line),
-                                "neighbors cand %u sep %u align %u coh %u",
-                                *details.candidate_count,
+                                "neighbors raw %u kept %u/%u",
+                                *details.raw_candidate_count,
+                                details.retained_neighbor_count.value_or(0U),
+                                details.maximum_neighbors.value_or(0U)
+                            );
+                            text(line);
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "accepted sep %u align %u coh %u",
                                 details.separation_neighbor_count.value_or(0U),
                                 details.alignment_neighbor_count.value_or(0U),
                                 details.cohesion_neighbor_count.value_or(0U)
+                            );
+                            text(line);
+                        }
+                        if (details.current_cell.has_value()) {
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "cell %d %d %d queried %u",
+                                details.current_cell->x,
+                                details.current_cell->y,
+                                details.current_cell->z,
+                                details.queried_cell_count.value_or(0U)
+                            );
+                            text(line);
+                        }
+                        if (details.perception_radius.has_value()) {
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "radii perception %.1f separation %.1f",
+                                *details.perception_radius,
+                                details.separation_radius.value_or(0.0F)
+                            );
+                            text(line);
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "FOV %.1f deg",
+                                details.field_of_view_degrees.value_or(0.0F)
+                            );
+                            text(line);
+                        }
+                        if (details.neighbor_cap_hit.value_or(false)
+                            || details.overlap_recovery.value_or(false)
+                            || details.acceleration_saturated.value_or(false)
+                            || details.wall_guard.value_or(false)) {
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "flags cap %s overlap %s accel-cap %s wall %s",
+                                details.neighbor_cap_hit.value_or(false) ? "yes" : "no",
+                                details.overlap_recovery.value_or(false) ? "yes" : "no",
+                                details.acceleration_saturated.value_or(false) ? "yes" : "no",
+                                details.wall_guard.value_or(false) ? "yes" : "no"
                             );
                             text(line);
                         }
@@ -1241,7 +1373,13 @@ namespace simnet
                 }
                 if (selected_entity_.has_value()) {
                     auto constexpr button_height = 26.0F;
-                    auto button_y = static_cast<float>(config_.window_height) - (button_height + 8.0F) - 18.0F;
+                    auto button_y = static_cast<float>(config_.window_height)
+                        - 2.0F * (button_height + 8.0F) - 18.0F;
+                    button(
+                        button_y,
+                        show_selected_debug_ ? "Hide selected debug" : "Show selected debug",
+                        show_selected_debug_
+                    );
                     button(button_y, "Return to overview", false);
                 }
             }
@@ -1304,6 +1442,7 @@ namespace simnet
         bool show_observer_radius_ { true };
         bool show_observer_frustum_ { true };
         bool show_spatial_cells_ {};
+        bool show_selected_debug_ { true };
         bool show_help_ {};
         PanelPage page_ { PanelPage::Overview };
         float overview_yaw_ { pi * 0.25F };

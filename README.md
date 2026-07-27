@@ -18,7 +18,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 
 ## Planned work
 
-Area of interest, LOD, compression, benchmarking, and metrics export remain planned. Tracy instrumentation is available through the `SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are available when local visualization is enabled. The Server can display its current occupied spatial cells for debugging only.
+Area of interest, LOD, compression, the repeatable benchmark runner, and general experiment export remain planned. Tracy instrumentation is available through the `SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are available when local visualization is enabled. The Server can display occupied spatial cells and selected-boid simulation diagnostics.
 
 `Aoi`, `Lod`, and `Compression` remain declared pipeline vocabulary. They are not implemented and a selected unsupported pipeline option is rejected during app startup.
 
@@ -90,9 +90,10 @@ The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set th
 
 The placeholder benchmarking target is disabled by default. Enable
 `SIMNET_ENABLE_BENCHMARKING` only when working on the future benchmark harness.
-The current JSON metrics-export and benchmark settings are parsed configuration
-vocabulary; the applications do not yet export metrics or execute benchmark
-scenarios.
+The Server writes a small boid-tuning CSV under `telemetry.log_directory` when
+`metrics_csv_enabled` is true. It contains one aggregate row per simulated
+second and is not the future benchmark runner. JSON metrics export and benchmark
+settings remain parsed vocabulary without runtime execution.
 
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration.
 
@@ -105,7 +106,7 @@ build/relWithDebInfo/app/Server --config config/server_visual.json --shared-conf
 build/relWithDebInfo/app/Client --config config/client_visual.json --shared-config config/shared_boids_demo.json
 ```
 
-The Server keeps velocity and neighbour-computation state private. Replication remains the stable ID, position, normalized heading, and hue snapshot contract. The Server selected-entity panel shows the current velocity, acceleration, neighbour counts, and individual steering contributions; the Client does not receive those private facts.
+The Server keeps velocity and neighbour-computation state private. Replication remains the stable ID, position, normalized heading, and hue snapshot contract. The Server selected-entity panel remains available while paused and shows velocity, acceleration, query and neighbour counts, rule settings, flags, and steering contributions. Its optional generic gizmos show the queried cells, rule radii, FOV, and steering vectors; the Client does not receive those private facts.
 
 For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
 

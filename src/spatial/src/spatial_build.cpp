@@ -423,23 +423,12 @@ namespace
 
         auto const cell_count = dense_cell_count(grid);
         auto const fallback_used = cell_count > max_dense_build_cells;
-        SIMNET_TRACE_PLOT("spatial.total_dense_cells", static_cast<double>(cell_count));
-        SIMNET_TRACE_PLOT("spatial.fallback_used", fallback_used ? 1.0 : 0.0);
 
         if (fallback_used) {
             build_comparison_sort(grid, scratch, positions, ids);
         } else {
             build_bounded_key(grid, scratch, positions, ids);
         }
-
-        SIMNET_TRACE_PLOT("spatial.entry_count", static_cast<double>(grid.stats.entity_count));
-        SIMNET_TRACE_PLOT("spatial.entry_capacity", static_cast<double>(grid.entries.capacity()));
-        SIMNET_TRACE_PLOT("spatial.occupied_cell_count", static_cast<double>(grid.stats.occupied_cell_count));
-        SIMNET_TRACE_PLOT("spatial.max_cell_occupancy", static_cast<double>(grid.stats.max_cell_occupancy));
-        SIMNET_TRACE_PLOT(
-            "spatial.average_occupied_cell_load",
-            static_cast<double>(grid.stats.average_occupied_cell_load)
-        );
     }
 }
 
@@ -465,6 +454,14 @@ namespace simnet
             .y = static_cast<std::int32_t>(y),
             .z = static_cast<std::int32_t>(z),
         });
+    }
+
+    CellCoord cell_coord_for_position(SpatialGrid const& grid, Vec3f position) noexcept
+    {
+        if (grid.dim_x == 0U || grid.dim_y == 0U || grid.dim_z == 0U) {
+            return {};
+        }
+        return position_to_cell_coord(grid, position);
     }
 
     Aabb3f cell_bounds(SpatialGrid const& grid, CellCoord coord) noexcept

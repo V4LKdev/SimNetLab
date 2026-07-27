@@ -5,11 +5,13 @@ module;
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 /// @brief Authoritative boid simulation runtime.
 export module simnet.game_server:simulation;
 
 import simnet.core;
+import simnet.spatial;
 
 export namespace simnet
 {
@@ -39,10 +41,21 @@ export namespace simnet
         Vec3f velocity {};
         Vec3f acceleration {};
         float speed {};
-        std::uint32_t candidate_count {};
+        std::uint32_t raw_candidate_count {};
+        std::uint32_t retained_neighbor_count {};
         std::uint32_t separation_neighbor_count {};
         std::uint32_t alignment_neighbor_count {};
         std::uint32_t cohesion_neighbor_count {};
+        CellCoord current_cell {};
+        std::vector<Aabb3f> queried_cell_bounds {};
+        float perception_radius {};
+        float separation_radius {};
+        float field_of_view_degrees {};
+        std::uint32_t maximum_neighbors {};
+        bool neighbor_cap_hit {};
+        bool overlap_recovery {};
+        bool acceleration_saturated {};
+        bool wall_guard {};
         Vec3f separation {};
         Vec3f alignment {};
         Vec3f cohesion {};
@@ -51,12 +64,47 @@ export namespace simnet
 
     struct ServerGameStepReport
     {
+        struct PhaseTimings
+        {
+            double capture_ms {};
+            double grid_ms {};
+            double compute_ms {};
+            double validate_ms {};
+            double commit_ms {};
+            double progress_ms {};
+        };
+
+        struct Diagnostics
+        {
+            SpatialGridStats grid {};
+            double raw_candidates_mean {};
+            std::uint32_t raw_candidates_max {};
+            double retained_neighbors_mean {};
+            std::uint32_t retained_neighbors_max {};
+            std::uint32_t neighbor_cap_hit_count {};
+            double separation_neighbors_mean {};
+            double social_neighbors_mean {};
+            std::uint32_t isolated_boid_count {};
+            double nearest_neighbor_distance_mean {};
+            double speed_mean {};
+            float speed_min {};
+            float speed_max {};
+            double acceleration_mean {};
+            float acceleration_max {};
+            std::uint32_t acceleration_saturation_count {};
+            std::uint32_t overlap_recovery_count {};
+            std::uint32_t hard_wall_guard_count {};
+            float polarization {};
+        };
+
         bool valid { true };
         std::string error {};
         std::uint32_t entity_count {};
         std::uint32_t overlap_recovery_count {};
         std::uint32_t hard_wall_guard_count {};
         std::uint32_t neighbor_cap_hit_count {};
+        Diagnostics diagnostics {};
+        PhaseTimings phases {};
     };
 
     /// Owns non-replicated, preallocated data used by authoritative boid systems.
@@ -75,7 +123,7 @@ export namespace simnet
         ServerGameRuntime(ServerGameRuntime&&) = delete;
         ServerGameRuntime& operator=(ServerGameRuntime&&) = delete;
 
-        void select_boid(std::optional<EntityNetId> id) noexcept;
+        void select_boid(std::optional<EntityNetId> id);
         [[nodiscard]] std::optional<SelectedBoidDebug> selected_boid_debug() const noexcept;
         [[nodiscard]] ServerGameStepReport const& last_step_report() const noexcept;
 

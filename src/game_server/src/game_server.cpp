@@ -2,6 +2,7 @@ module;
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <flecs.h>
@@ -173,6 +174,23 @@ namespace simnet
         {
             std::vector<Neighbor> neighbors {};
             std::optional<SelectedBoidDebug> selected {};
+            std::uint64_t raw_candidate_total {};
+            std::uint64_t retained_neighbor_total {};
+            std::uint64_t separation_neighbor_total {};
+            std::uint64_t social_neighbor_total {};
+            double nearest_neighbor_distance_total {};
+            double speed_total {};
+            double acceleration_total {};
+            Vec3f heading_total {};
+            float speed_min { std::numeric_limits<float>::max() };
+            float speed_max {};
+            float acceleration_max {};
+            std::uint32_t processed_boids {};
+            std::uint32_t raw_candidate_max {};
+            std::uint32_t retained_neighbor_max {};
+            std::uint32_t nearest_neighbor_samples {};
+            std::uint32_t isolated_boids {};
+            std::uint32_t acceleration_saturations {};
             std::uint32_t overlap_recoveries {};
             std::uint32_t wall_guards {};
             std::uint32_t cap_hits {};
@@ -189,6 +207,7 @@ namespace simnet
         SpatialGrid grid {};
         SpatialGridScratch grid_scratch {};
         std::vector<WorkerScratch> workers {};
+        WorkerScratch inspection {};
         std::vector<std::uint8_t> capture_seen {};
         flecs::query<
             const NetIdentity,
@@ -199,7 +218,11 @@ namespace simnet
         std::optional<EntityNetId> selected_id {};
         std::optional<SelectedBoidDebug> selected_debug {};
         ServerGameStepReport report {};
+        std::chrono::steady_clock::time_point progress_started {};
+        std::chrono::steady_clock::time_point compute_started {};
+        std::chrono::steady_clock::time_point commit_started {};
         std::size_t prepared_entity_count {};
+        float last_delta_time {};
         bool prepared {};
         bool phase_valid {};
     };
@@ -207,8 +230,61 @@ namespace simnet
 
 namespace
 {
+    using Clock = std::chrono::steady_clock;
+
     constexpr float vector_epsilon_squared = 1.0e-12F;
     constexpr float overlap_epsilon_squared = 1.0e-8F;
+
+    struct BoidEvaluation
+    {
+        simnet::Vec3f next_position {};
+        simnet::Vec3f next_velocity {};
+        simnet::Vec3f next_heading {};
+        simnet::Vec3f acceleration {};
+        simnet::Vec3f separation {};
+        simnet::Vec3f alignment {};
+        simnet::Vec3f cohesion {};
+        simnet::Vec3f containment {};
+        std::uint32_t raw_candidate_count {};
+        std::uint32_t retained_neighbor_count {};
+        std::uint32_t queried_cell_count {};
+        std::uint32_t separation_neighbor_count {};
+        std::uint32_t alignment_neighbor_count {};
+        std::uint32_t cohesion_neighbor_count {};
+        bool neighbor_cap_hit {};
+        bool overlap_recovery {};
+        bool acceleration_saturated {};
+        bool wall_guard {};
+    };
+
+    [[nodiscard]] double elapsed_ms(Clock::time_point start) noexcept
+    {
+        return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    }
+
+    void reset_worker_diagnostics(simnet::ServerGameRuntime::Impl::WorkerScratch& worker) noexcept
+    {
+        worker.raw_candidate_total = 0U;
+        worker.retained_neighbor_total = 0U;
+        worker.separation_neighbor_total = 0U;
+        worker.social_neighbor_total = 0U;
+        worker.nearest_neighbor_distance_total = 0.0;
+        worker.speed_total = 0.0;
+        worker.acceleration_total = 0.0;
+        worker.heading_total = {};
+        worker.speed_min = std::numeric_limits<float>::max();
+        worker.speed_max = 0.0F;
+        worker.acceleration_max = 0.0F;
+        worker.processed_boids = 0U;
+        worker.raw_candidate_max = 0U;
+        worker.retained_neighbor_max = 0U;
+        worker.nearest_neighbor_samples = 0U;
+        worker.isolated_boids = 0U;
+        worker.acceleration_saturations = 0U;
+        worker.overlap_recoveries = 0U;
+        worker.wall_guards = 0U;
+        worker.cap_hits = 0U;
+    }
 
     [[nodiscard]] simnet::Vec3f clamp_length(simnet::Vec3f value, float maximum) noexcept
     {
@@ -299,7 +375,6 @@ namespace
             std::push_heap(scratch.neighbors.begin(), scratch.neighbors.end(), neighbor_better);
             return;
         }
-        ++scratch.cap_hits;
         if (!neighbor_better(candidate, scratch.neighbors.front())) {
             return;
         }
@@ -371,8 +446,8 @@ namespace
         return false;
     }
 
-    void compute_boid_row(
-        simnet::ServerGameRuntime::Impl& runtime,
+    [[nodiscard]] BoidEvaluation evaluate_boid_row(
+        simnet::ServerGameRuntime::Impl const& runtime,
         simnet::ServerGameRuntime::Impl::WorkerScratch& scratch,
         std::uint32_t row,
         float delta_time
@@ -386,7 +461,8 @@ namespace
         auto const id = current.ids[row];
 
         scratch.neighbors.clear();
-        simnet::query_radius(
+        auto raw_candidate_count = std::uint32_t {};
+        auto const queried_cell_count = simnet::query_radius(
             runtime.grid,
             current.positions,
             position,
@@ -395,6 +471,7 @@ namespace
                 if (candidate_row == row) {
                     return;
                 }
+                ++raw_candidate_count;
                 auto const distance_squared = simnet::length_squared(
                     current.positions[candidate_row] - position
                 );
@@ -417,6 +494,7 @@ namespace
         auto separation_count = std::uint32_t {};
         auto alignment_count = std::uint32_t {};
         auto cohesion_count = std::uint32_t {};
+        auto overlap_recovery = false;
         auto const separation_radius_squared =
             settings.separation_radius * settings.separation_radius;
         auto const half_fov_radians =
@@ -429,6 +507,7 @@ namespace
                 if (neighbor.distance_squared <= overlap_epsilon_squared) {
                     separation_sum = separation_sum + overlap_direction(id, neighbor.id);
                     ++scratch.overlap_recoveries;
+                    overlap_recovery = true;
                 } else {
                     separation_sum = separation_sum
                         - offset / std::max(neighbor.distance_squared, overlap_epsilon_squared);
@@ -506,26 +585,124 @@ namespace
         }
         auto const next_heading = simnet::normalize_or(next_velocity, heading);
 
-        runtime.next.positions[row] = next_position;
-        runtime.next.velocities[row] = next_velocity;
-        runtime.next.headings[row] = next_heading;
+        auto const acceleration_squared = simnet::length_squared(acceleration);
+        auto const maximum_acceleration_squared =
+            settings.max_acceleration * settings.max_acceleration;
+        return {
+            .next_position = next_position,
+            .next_velocity = next_velocity,
+            .next_heading = next_heading,
+            .acceleration = acceleration,
+            .separation = separation,
+            .alignment = alignment,
+            .cohesion = cohesion,
+            .containment = containment,
+            .raw_candidate_count = raw_candidate_count,
+            .retained_neighbor_count = static_cast<std::uint32_t>(scratch.neighbors.size()),
+            .queried_cell_count = queried_cell_count,
+            .separation_neighbor_count = separation_count,
+            .alignment_neighbor_count = alignment_count,
+            .cohesion_neighbor_count = cohesion_count,
+            .neighbor_cap_hit = raw_candidate_count > settings.max_neighbors,
+            .overlap_recovery = overlap_recovery,
+            .acceleration_saturated =
+                acceleration_squared >= maximum_acceleration_squared * (1.0F - 1.0e-5F),
+            .wall_guard = guarded,
+        };
+    }
+
+    [[nodiscard]] simnet::SelectedBoidDebug make_selected_debug(
+        simnet::ServerGameRuntime::Impl const& runtime,
+        std::uint32_t row,
+        BoidEvaluation const& evaluation
+    )
+    {
+        auto queried_cell_bounds = std::vector<simnet::Aabb3f> {};
+        queried_cell_bounds.reserve(evaluation.queried_cell_count);
+        simnet::for_each_radius_cell(
+            runtime.grid,
+            runtime.current.positions[row],
+            runtime.settings.perception_radius,
+            [&](simnet::CellCoord coord) {
+                queried_cell_bounds.push_back(simnet::cell_bounds(runtime.grid, coord));
+            }
+        );
+        return {
+            .id = runtime.current.ids[row],
+            .velocity = evaluation.next_velocity,
+            .acceleration = evaluation.acceleration,
+            .speed = simnet::length(evaluation.next_velocity),
+            .raw_candidate_count = evaluation.raw_candidate_count,
+            .retained_neighbor_count = evaluation.retained_neighbor_count,
+            .separation_neighbor_count = evaluation.separation_neighbor_count,
+            .alignment_neighbor_count = evaluation.alignment_neighbor_count,
+            .cohesion_neighbor_count = evaluation.cohesion_neighbor_count,
+            .current_cell = simnet::cell_coord_for_position(
+                runtime.grid,
+                runtime.current.positions[row]
+            ),
+            .queried_cell_bounds = std::move(queried_cell_bounds),
+            .perception_radius = runtime.settings.perception_radius,
+            .separation_radius = runtime.settings.separation_radius,
+            .field_of_view_degrees = runtime.settings.field_of_view_degrees,
+            .maximum_neighbors = runtime.settings.max_neighbors,
+            .neighbor_cap_hit = evaluation.neighbor_cap_hit,
+            .overlap_recovery = evaluation.overlap_recovery,
+            .acceleration_saturated = evaluation.acceleration_saturated,
+            .wall_guard = evaluation.wall_guard,
+            .separation = evaluation.separation,
+            .alignment = evaluation.alignment,
+            .cohesion = evaluation.cohesion,
+            .containment = evaluation.containment,
+        };
+    }
+
+    void compute_boid_row(
+        simnet::ServerGameRuntime::Impl& runtime,
+        simnet::ServerGameRuntime::Impl::WorkerScratch& scratch,
+        std::uint32_t row,
+        float delta_time
+    )
+    {
+        auto const evaluation = evaluate_boid_row(runtime, scratch, row, delta_time);
+        auto const speed = simnet::length(evaluation.next_velocity);
+        auto const acceleration = simnet::length(evaluation.acceleration);
+        ++scratch.processed_boids;
+        scratch.raw_candidate_total += evaluation.raw_candidate_count;
+        scratch.retained_neighbor_total += evaluation.retained_neighbor_count;
+        scratch.separation_neighbor_total += evaluation.separation_neighbor_count;
+        scratch.social_neighbor_total += evaluation.alignment_neighbor_count;
+        scratch.raw_candidate_max = std::max(
+            scratch.raw_candidate_max,
+            evaluation.raw_candidate_count
+        );
+        scratch.retained_neighbor_max = std::max(
+            scratch.retained_neighbor_max,
+            evaluation.retained_neighbor_count
+        );
+        if (!scratch.neighbors.empty()) {
+            scratch.nearest_neighbor_distance_total += std::sqrt(
+                scratch.neighbors.front().distance_squared
+            );
+            ++scratch.nearest_neighbor_samples;
+        }
+        scratch.speed_total += speed;
+        scratch.acceleration_total += acceleration;
+        scratch.heading_total = scratch.heading_total + evaluation.next_heading;
+        scratch.speed_min = std::min(scratch.speed_min, speed);
+        scratch.speed_max = std::max(scratch.speed_max, speed);
+        scratch.acceleration_max = std::max(scratch.acceleration_max, acceleration);
+        scratch.isolated_boids += evaluation.alignment_neighbor_count == 0U ? 1U : 0U;
+        scratch.acceleration_saturations += evaluation.acceleration_saturated ? 1U : 0U;
+        scratch.cap_hits += evaluation.neighbor_cap_hit ? 1U : 0U;
+
+        runtime.next.positions[row] = evaluation.next_position;
+        runtime.next.velocities[row] = evaluation.next_velocity;
+        runtime.next.headings[row] = evaluation.next_heading;
         runtime.next.written[row] = 1U;
 
-        if (runtime.selected_id == id) {
-            scratch.selected = simnet::SelectedBoidDebug {
-                .id = id,
-                .velocity = next_velocity,
-                .acceleration = acceleration,
-                .speed = simnet::length(next_velocity),
-                .candidate_count = static_cast<std::uint32_t>(scratch.neighbors.size()),
-                .separation_neighbor_count = separation_count,
-                .alignment_neighbor_count = alignment_count,
-                .cohesion_neighbor_count = cohesion_count,
-                .separation = separation,
-                .alignment = alignment,
-                .cohesion = cohesion,
-                .containment = containment,
-            };
+        if (runtime.selected_id == runtime.current.ids[row]) {
+            scratch.selected = make_selected_debug(runtime, row, evaluation);
         }
     }
 
@@ -591,13 +768,35 @@ namespace simnet
 
     ServerGameRuntime::~ServerGameRuntime() = default;
 
-    void ServerGameRuntime::select_boid(std::optional<EntityNetId> id) noexcept
+    void ServerGameRuntime::select_boid(std::optional<EntityNetId> id)
     {
-        impl_->selected_id = id;
-        if (!id.has_value()
-            || (impl_->selected_debug.has_value() && impl_->selected_debug->id != *id)) {
-            impl_->selected_debug.reset();
+        if (impl_->selected_id == id && impl_->selected_debug.has_value()) {
+            return;
         }
+        impl_->selected_id = id;
+        impl_->selected_debug.reset();
+        if (!id.has_value() || !impl_->phase_valid || impl_->last_delta_time <= 0.0F) {
+            return;
+        }
+
+        auto const found = std::ranges::lower_bound(impl_->current.ids, *id);
+        if (found == impl_->current.ids.end() || *found != *id) {
+            return;
+        }
+        auto const row = static_cast<std::uint32_t>(
+            std::distance(impl_->current.ids.begin(), found)
+        );
+        impl_->inspection.neighbors.clear();
+        impl_->inspection.overlap_recoveries = 0U;
+        impl_->inspection.wall_guards = 0U;
+        impl_->inspection.cap_hits = 0U;
+        auto const evaluation = evaluate_boid_row(
+            *impl_,
+            impl_->inspection,
+            row,
+            impl_->last_delta_time
+        );
+        impl_->selected_debug = make_selected_debug(*impl_, row, evaluation);
     }
 
     std::optional<SelectedBoidDebug> ServerGameRuntime::selected_boid_debug() const noexcept
@@ -638,6 +837,7 @@ namespace simnet
         for (auto& worker : impl.workers) {
             worker.neighbors.reserve(impl.settings.max_neighbors);
         }
+        impl.inspection.neighbors.reserve(impl.settings.max_neighbors);
         prepare_spatial_grid_scratch(impl.grid_scratch, entity_count, 1U);
         auto const dense_cell_count =
             static_cast<std::uint64_t>(impl.grid.dim_x)
@@ -695,12 +895,18 @@ namespace simnet
         auto const commit_phase = world.entity("simnet::FlockCommitPhase")
             .add(flecs::Phase)
             .depends_on(validate_phase);
+        auto const report_phase = world.entity("simnet::FlockReportPhase")
+            .add(flecs::Phase)
+            .depends_on(commit_phase);
 
         world.system<>("simnet::FlockCapture")
             .kind(capture_phase)
             .run([impl](flecs::iter& system_iterator) {
                 while (system_iterator.next()) {
                     SIMNET_TRACE_SCOPE_CATEGORY("game_server.flock.capture", LogCategory::Simulation);
+                    impl->progress_started = Clock::now();
+                    auto const phase_started = Clock::now();
+                    impl->last_delta_time = system_iterator.delta_time();
                     impl->report = {};
                     impl->report.entity_count =
                         static_cast<std::uint32_t>(impl->prepared_entity_count);
@@ -710,13 +916,12 @@ namespace simnet
                     for (auto& worker : impl->workers) {
                         worker.neighbors.clear();
                         worker.selected.reset();
-                        worker.overlap_recoveries = 0U;
-                        worker.wall_guards = 0U;
-                        worker.cap_hits = 0U;
+                        reset_worker_diagnostics(worker);
                     }
                     if (!impl->phase_valid) {
                         impl->report.valid = false;
                         impl->report.error = "Server game runtime was not prepared before progress";
+                        impl->report.phases.capture_ms = elapsed_ms(phase_started);
                         continue;
                     }
 
@@ -760,6 +965,7 @@ namespace simnet
                         impl->report.error = "authoritative capture does not match ascending runtime rows";
                     }
                     impl->report.valid = impl->phase_valid;
+                    impl->report.phases.capture_ms = elapsed_ms(phase_started);
                 }
             });
 
@@ -768,9 +974,11 @@ namespace simnet
             .run([impl](flecs::iter& system_iterator) {
                 while (system_iterator.next()) {
                     if (!impl->phase_valid) {
+                        impl->compute_started = Clock::now();
                         continue;
                     }
                     SIMNET_TRACE_SCOPE_CATEGORY("game_server.flock.grid", LogCategory::Spatial);
+                    auto const phase_started = Clock::now();
                     try {
                         build_spatial_grid_serial(
                             impl->grid,
@@ -778,11 +986,25 @@ namespace simnet
                             impl->current.positions,
                             impl->current.ids
                         );
+                        SIMNET_TRACE_PLOT(
+                            "boids.grid.occupied_cells",
+                            static_cast<double>(impl->grid.stats.occupied_cell_count)
+                        );
+                        SIMNET_TRACE_PLOT(
+                            "boids.grid.max_occupancy",
+                            static_cast<double>(impl->grid.stats.max_cell_occupancy)
+                        );
+                        SIMNET_TRACE_PLOT(
+                            "boids.grid.average_load",
+                            static_cast<double>(impl->grid.stats.average_occupied_cell_load)
+                        );
                     } catch (std::exception const& error) {
                         impl->phase_valid = false;
                         impl->report.valid = false;
                         impl->report.error = error.what();
                     }
+                    impl->report.phases.grid_ms = elapsed_ms(phase_started);
+                    impl->compute_started = Clock::now();
                 }
             });
 
@@ -811,6 +1033,8 @@ namespace simnet
             .run([impl](flecs::iter& system_iterator) {
                 while (system_iterator.next()) {
                     SIMNET_TRACE_SCOPE_CATEGORY("game_server.flock.validate", LogCategory::Simulation);
+                    impl->report.phases.compute_ms = elapsed_ms(impl->compute_started);
+                    auto const phase_started = Clock::now();
                     if (impl->phase_valid) {
                         for (std::size_t row = 0; row < impl->prepared_entity_count; ++row) {
                             if (impl->next.written[row] == 0U
@@ -825,7 +1049,55 @@ namespace simnet
                         }
                     }
 
+                    auto processed_boids = std::uint64_t {};
+                    auto nearest_neighbor_samples = std::uint64_t {};
+                    auto heading_total = Vec3f {};
+                    impl->report.diagnostics.grid = impl->grid.stats;
                     for (auto const& worker : impl->workers) {
+                        processed_boids += worker.processed_boids;
+                        nearest_neighbor_samples += worker.nearest_neighbor_samples;
+                        heading_total = heading_total + worker.heading_total;
+                        impl->report.diagnostics.raw_candidates_mean +=
+                            static_cast<double>(worker.raw_candidate_total);
+                        impl->report.diagnostics.raw_candidates_max = std::max(
+                            impl->report.diagnostics.raw_candidates_max,
+                            worker.raw_candidate_max
+                        );
+                        impl->report.diagnostics.retained_neighbors_mean +=
+                            static_cast<double>(worker.retained_neighbor_total);
+                        impl->report.diagnostics.retained_neighbors_max = std::max(
+                            impl->report.diagnostics.retained_neighbors_max,
+                            worker.retained_neighbor_max
+                        );
+                        impl->report.diagnostics.separation_neighbors_mean +=
+                            static_cast<double>(worker.separation_neighbor_total);
+                        impl->report.diagnostics.social_neighbors_mean +=
+                            static_cast<double>(worker.social_neighbor_total);
+                        impl->report.diagnostics.nearest_neighbor_distance_mean +=
+                            worker.nearest_neighbor_distance_total;
+                        impl->report.diagnostics.speed_mean += worker.speed_total;
+                        impl->report.diagnostics.acceleration_mean += worker.acceleration_total;
+                        impl->report.diagnostics.speed_min = std::min(
+                            impl->report.diagnostics.speed_min == 0.0F
+                                ? std::numeric_limits<float>::max()
+                                : impl->report.diagnostics.speed_min,
+                            worker.speed_min
+                        );
+                        impl->report.diagnostics.speed_max = std::max(
+                            impl->report.diagnostics.speed_max,
+                            worker.speed_max
+                        );
+                        impl->report.diagnostics.acceleration_max = std::max(
+                            impl->report.diagnostics.acceleration_max,
+                            worker.acceleration_max
+                        );
+                        impl->report.diagnostics.neighbor_cap_hit_count += worker.cap_hits;
+                        impl->report.diagnostics.isolated_boid_count += worker.isolated_boids;
+                        impl->report.diagnostics.acceleration_saturation_count +=
+                            worker.acceleration_saturations;
+                        impl->report.diagnostics.overlap_recovery_count +=
+                            worker.overlap_recoveries;
+                        impl->report.diagnostics.hard_wall_guard_count += worker.wall_guards;
                         impl->report.overlap_recovery_count += worker.overlap_recoveries;
                         impl->report.hard_wall_guard_count += worker.wall_guards;
                         impl->report.neighbor_cap_hit_count += worker.cap_hits;
@@ -833,11 +1105,27 @@ namespace simnet
                             impl->selected_debug = worker.selected;
                         }
                     }
+                    if (processed_boids != 0U) {
+                        auto const denominator = static_cast<double>(processed_boids);
+                        impl->report.diagnostics.raw_candidates_mean /= denominator;
+                        impl->report.diagnostics.retained_neighbors_mean /= denominator;
+                        impl->report.diagnostics.separation_neighbors_mean /= denominator;
+                        impl->report.diagnostics.social_neighbors_mean /= denominator;
+                        impl->report.diagnostics.speed_mean /= denominator;
+                        impl->report.diagnostics.acceleration_mean /= denominator;
+                        impl->report.diagnostics.polarization = length(
+                            heading_total / static_cast<float>(processed_boids)
+                        );
+                    } else {
+                        impl->report.diagnostics.speed_min = 0.0F;
+                    }
+                    if (nearest_neighbor_samples != 0U) {
+                        impl->report.diagnostics.nearest_neighbor_distance_mean /=
+                            static_cast<double>(nearest_neighbor_samples);
+                    }
                     impl->report.valid = impl->phase_valid;
-                    SIMNET_TRACE_PLOT(
-                        "game_server.flock.neighbor_cap_hits",
-                        static_cast<double>(impl->report.neighbor_cap_hit_count)
-                    );
+                    impl->report.phases.validate_ms = elapsed_ms(phase_started);
+                    impl->commit_started = Clock::now();
                 }
             });
 
@@ -859,6 +1147,54 @@ namespace simnet
                 position.value = impl->next.positions[row];
                 heading.value = impl->next.headings[row];
                 velocity.value = impl->next.velocities[row];
+            });
+
+        world.system<>("simnet::FlockReport")
+            .kind(report_phase)
+            .run([impl](flecs::iter& system_iterator) {
+                while (system_iterator.next()) {
+                    impl->report.phases.commit_ms = elapsed_ms(impl->commit_started);
+                    impl->report.phases.progress_ms = elapsed_ms(impl->progress_started);
+                    auto const& diagnostics = impl->report.diagnostics;
+                    auto const& phases = impl->report.phases;
+                    SIMNET_TRACE_PLOT("boids.neighbors.raw_mean", diagnostics.raw_candidates_mean);
+                    SIMNET_TRACE_PLOT(
+                        "boids.neighbors.raw_max",
+                        static_cast<double>(diagnostics.raw_candidates_max)
+                    );
+                    SIMNET_TRACE_PLOT(
+                        "boids.neighbors.retained_mean",
+                        diagnostics.retained_neighbors_mean
+                    );
+                    SIMNET_TRACE_PLOT(
+                        "boids.neighbors.cap_hit_boids",
+                        static_cast<double>(diagnostics.neighbor_cap_hit_count)
+                    );
+                    SIMNET_TRACE_PLOT(
+                        "boids.neighbors.separation_mean",
+                        diagnostics.separation_neighbors_mean
+                    );
+                    SIMNET_TRACE_PLOT(
+                        "boids.neighbors.social_mean",
+                        diagnostics.social_neighbors_mean
+                    );
+                    SIMNET_TRACE_PLOT("boids.motion.speed_mean", diagnostics.speed_mean);
+                    SIMNET_TRACE_PLOT(
+                        "boids.motion.acceleration_mean",
+                        diagnostics.acceleration_mean
+                    );
+                    SIMNET_TRACE_PLOT(
+                        "boids.motion.acceleration_saturations",
+                        static_cast<double>(diagnostics.acceleration_saturation_count)
+                    );
+                    SIMNET_TRACE_PLOT("boids.motion.polarization", diagnostics.polarization);
+                    SIMNET_TRACE_PLOT("boids.phase.capture_ms", phases.capture_ms);
+                    SIMNET_TRACE_PLOT("boids.phase.grid_ms", phases.grid_ms);
+                    SIMNET_TRACE_PLOT("boids.phase.compute_ms", phases.compute_ms);
+                    SIMNET_TRACE_PLOT("boids.phase.validate_ms", phases.validate_ms);
+                    SIMNET_TRACE_PLOT("boids.phase.commit_ms", phases.commit_ms);
+                    SIMNET_TRACE_PLOT("boids.phase.progress_ms", phases.progress_ms);
+                }
             });
     }
 

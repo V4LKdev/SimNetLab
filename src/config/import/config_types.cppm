@@ -100,7 +100,7 @@ export namespace simnet
         bool file_log_enabled { true };
         std::string log_directory { "logs" };
         std::string min_level { "info" };
-        bool metrics_csv_enabled { true };   /// Parsed; export is not implemented.
+        bool metrics_csv_enabled { true };   /// Enables sampled Server boid evidence CSV.
         bool metrics_json_enabled { false }; /// Parsed; export is not implemented.
     };
 

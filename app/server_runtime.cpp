@@ -8,7 +8,10 @@
 #include <exception>
 #include <filesystem>
 #include <flecs.h>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -53,6 +56,14 @@ namespace
         std::vector<simnet::SpatialCellView> displayed_cells {};
         std::vector<SpatialRenderCandidate> candidates {};
     };
+
+    struct SelectedDebugRenderStorage
+    {
+        std::vector<simnet::DebugSphereView> spheres {};
+        std::vector<simnet::DebugVectorView> vectors {};
+        std::vector<simnet::DebugBoxView> boxes {};
+        std::vector<simnet::DebugConeView> cones {};
+    };
 #endif
 
     constexpr std::size_t retained_snapshot_limit = 64;
@@ -66,6 +77,102 @@ namespace
         simnet::NS max_runtime {};
         simnet::NS max_frame_time { std::chrono::milliseconds(250) };
         std::uint16_t max_steps_per_frame { 5 };
+    };
+
+    class BoidCsvEvidence
+    {
+    public:
+        BoidCsvEvidence(
+            simnet::TelemetryConfig const& config,
+            double tick_rate_hz,
+            std::uint32_t worker_count
+        )
+            : interval_(std::max<simnet::Tick>(
+                1U,
+                static_cast<simnet::Tick>(std::llround(tick_rate_hz))
+            )),
+              worker_count_(worker_count)
+        {
+            if (!config.metrics_csv_enabled) {
+                return;
+            }
+            std::filesystem::create_directories(config.log_directory);
+            auto const stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count();
+            path_ = std::filesystem::path { config.log_directory }
+                / ("server_boids_" + std::to_string(stamp) + ".csv");
+            stream_.open(path_, std::ios::out | std::ios::trunc);
+            if (!stream_) {
+                throw std::runtime_error("failed to create boid metrics CSV: " + path_.string());
+            }
+            stream_
+                << "tick,entity_count,worker_count,occupied_cells,max_occupancy,average_load,"
+                   "raw_candidates_mean,raw_candidates_max,retained_neighbors_mean,"
+                   "retained_neighbors_max,cap_hit_count,separation_count_mean,social_count_mean,"
+                   "isolated_count,nearest_neighbor_distance_mean,speed_mean,speed_min,speed_max,"
+                   "acceleration_mean,acceleration_max,acceleration_saturation_count,"
+                   "overlap_recovery_count,wall_guard_count,polarization,capture_ms,grid_ms,"
+                   "compute_ms,validate_ms,commit_ms,progress_ms\n";
+            simnet::log(
+                simnet::LogCategory::Telemetry,
+                simnet::LogLevel::Info,
+                "boid CSV evidence path=" + path_.string()
+            );
+        }
+
+        void sample(
+            simnet::Tick tick,
+            simnet::ServerGameStepReport const& report,
+            bool force = false
+        )
+        {
+            if (!stream_ || (!force && tick % interval_ != 0U) || last_tick_ == tick) {
+                return;
+            }
+            auto const& value = report.diagnostics;
+            auto const& phase = report.phases;
+            stream_ << std::setprecision(9)
+                << tick << ','
+                << report.entity_count << ','
+                << worker_count_ << ','
+                << value.grid.occupied_cell_count << ','
+                << value.grid.max_cell_occupancy << ','
+                << value.grid.average_occupied_cell_load << ','
+                << value.raw_candidates_mean << ','
+                << value.raw_candidates_max << ','
+                << value.retained_neighbors_mean << ','
+                << value.retained_neighbors_max << ','
+                << value.neighbor_cap_hit_count << ','
+                << value.separation_neighbors_mean << ','
+                << value.social_neighbors_mean << ','
+                << value.isolated_boid_count << ','
+                << value.nearest_neighbor_distance_mean << ','
+                << value.speed_mean << ','
+                << value.speed_min << ','
+                << value.speed_max << ','
+                << value.acceleration_mean << ','
+                << value.acceleration_max << ','
+                << value.acceleration_saturation_count << ','
+                << value.overlap_recovery_count << ','
+                << value.hard_wall_guard_count << ','
+                << value.polarization << ','
+                << phase.capture_ms << ','
+                << phase.grid_ms << ','
+                << phase.compute_ms << ','
+                << phase.validate_ms << ','
+                << phase.commit_ms << ','
+                << phase.progress_ms << '\n';
+            stream_.flush();
+            last_tick_ = tick;
+        }
+
+    private:
+        std::ofstream stream_ {};
+        std::filesystem::path path_ {};
+        simnet::Tick interval_ { 1U };
+        simnet::Tick last_tick_ { std::numeric_limits<simnet::Tick>::max() };
+        std::uint32_t worker_count_ {};
     };
 
     struct RetainedSnapshot
@@ -201,6 +308,7 @@ namespace
         std::optional<PeerRuntimeState> const& peer,
         simnet::app::DebugObserverState const& observer,
         SpatialRenderStorage const& spatial,
+        SelectedDebugRenderStorage& debug_storage,
         std::optional<simnet::SelectedBoidDebug> const& selected_debug
     )
     {
@@ -230,22 +338,88 @@ namespace
             replication = std::move(details);
         }
         auto selected_details = std::optional<simnet::SelectedEntityDetails> {};
+        debug_storage.spheres.clear();
+        debug_storage.vectors.clear();
+        debug_storage.boxes.clear();
+        debug_storage.cones.clear();
         if (selected_debug.has_value()) {
             selected_details = simnet::SelectedEntityDetails {
                 .id = selected_debug->id,
                 .velocity = selected_debug->velocity,
                 .acceleration = selected_debug->acceleration,
                 .speed = selected_debug->speed,
-                .candidate_count = selected_debug->candidate_count,
+                .raw_candidate_count = selected_debug->raw_candidate_count,
+                .retained_neighbor_count = selected_debug->retained_neighbor_count,
                 .separation_neighbor_count = selected_debug->separation_neighbor_count,
                 .alignment_neighbor_count = selected_debug->alignment_neighbor_count,
                 .cohesion_neighbor_count = selected_debug->cohesion_neighbor_count,
+                .current_cell = simnet::SelectedCellCoord {
+                    .x = selected_debug->current_cell.x,
+                    .y = selected_debug->current_cell.y,
+                    .z = selected_debug->current_cell.z,
+                },
+                .queried_cell_count = static_cast<std::uint32_t>(
+                    selected_debug->queried_cell_bounds.size()
+                ),
+                .perception_radius = selected_debug->perception_radius,
+                .separation_radius = selected_debug->separation_radius,
+                .field_of_view_degrees = selected_debug->field_of_view_degrees,
+                .maximum_neighbors = selected_debug->maximum_neighbors,
+                .neighbor_cap_hit = selected_debug->neighbor_cap_hit,
+                .overlap_recovery = selected_debug->overlap_recovery,
+                .acceleration_saturated = selected_debug->acceleration_saturated,
+                .wall_guard = selected_debug->wall_guard,
                 .separation = selected_debug->separation,
                 .alignment = selected_debug->alignment,
                 .cohesion = selected_debug->cohesion,
                 .containment = selected_debug->containment,
                 .replicated = false,
             };
+            auto const found = std::ranges::lower_bound(snapshot.ids, selected_debug->id);
+            if (found != snapshot.ids.end() && *found == selected_debug->id) {
+                auto const index = static_cast<std::size_t>(
+                    std::distance(snapshot.ids.begin(), found)
+                );
+                auto const position = snapshot.positions[index];
+                auto const heading = snapshot.headings[index];
+                debug_storage.spheres = {
+                    {
+                        .center = position,
+                        .radius = selected_debug->separation_radius,
+                        .color = { 230U, 94U, 94U, 110U },
+                        .label = "separation",
+                    },
+                    {
+                        .center = position,
+                        .radius = selected_debug->perception_radius,
+                        .color = { 92U, 174U, 235U, 85U },
+                        .label = "perception",
+                    },
+                };
+                debug_storage.vectors = {
+                    { position, selected_debug->separation, { 230U, 94U, 94U, 255U }, "separation" },
+                    { position, selected_debug->alignment, { 92U, 174U, 235U, 255U }, "alignment" },
+                    { position, selected_debug->cohesion, { 124U, 214U, 156U, 255U }, "cohesion" },
+                    { position, selected_debug->containment, { 247U, 184U, 74U, 255U }, "containment" },
+                    { position, selected_debug->acceleration, { 245U, 245U, 245U, 255U }, "acceleration" },
+                };
+                debug_storage.boxes.reserve(selected_debug->queried_cell_bounds.size());
+                for (auto const bounds : selected_debug->queried_cell_bounds) {
+                    debug_storage.boxes.push_back({
+                        .bounds = bounds,
+                        .color = { 180U, 205U, 235U, 72U },
+                        .label = "queried cell",
+                    });
+                }
+                debug_storage.cones.push_back({
+                    .apex = position,
+                    .direction = heading,
+                    .length = selected_debug->perception_radius,
+                    .half_angle_degrees = selected_debug->field_of_view_degrees * 0.5F,
+                    .color = { 255U, 205U, 120U, 90U },
+                    .label = "FOV",
+                });
+            }
         }
         return {
             .entities = {
@@ -278,6 +452,12 @@ namespace
                 .average_occupied_cell_load = spatial.grid.stats.average_occupied_cell_load,
                 .display_capped = spatial.displayed_cells.size() < spatial.grid.occupied_cells.size(),
             },
+            .debug_primitives = {
+                .spheres = debug_storage.spheres,
+                .vectors = debug_storage.vectors,
+                .boxes = debug_storage.boxes,
+                .cones = debug_storage.cones,
+            },
         };
     }
 
@@ -290,7 +470,7 @@ namespace
     )
     {
         {
-            SIMNET_TRACE_SCOPE_CATEGORY("spatial.build", simnet::LogCategory::Spatial);
+            SIMNET_TRACE_SCOPE_CATEGORY("render.spatial.build", simnet::LogCategory::Spatial);
             auto const settings = simnet::make_spatial_grid_settings(
                 simnet::make_centered_bounds(config.simulation.world_half),
                 config.spatial.cell_size
@@ -345,8 +525,14 @@ namespace
                 });
             }
         }
-        SIMNET_TRACE_PLOT("spatial.occupied_cells", static_cast<double>(storage.grid.occupied_cells.size()));
-        SIMNET_TRACE_PLOT("spatial.displayed_cells", static_cast<double>(storage.displayed_cells.size()));
+        SIMNET_TRACE_PLOT(
+            "render.spatial.occupied_cells",
+            static_cast<double>(storage.grid.occupied_cells.size())
+        );
+        SIMNET_TRACE_PLOT(
+            "render.spatial.displayed_cells",
+            static_cast<double>(storage.displayed_cells.size())
+        );
     }
 #endif
 
@@ -881,6 +1067,11 @@ namespace simnet::app
                 "server.flecs.thread_count",
                 static_cast<double>(local.flecs.thread_count)
             );
+            auto boid_csv = BoidCsvEvidence {
+                local.telemetry,
+                shared.simulation.tick_rate_hz,
+                local.flecs.thread_count,
+            };
 
             auto stats = RuntimeStats {};
             auto timer = RuntimeFrameTimer {};
@@ -898,6 +1089,7 @@ namespace simnet::app
             auto current_snapshot = CurrentSnapshotState {};
 #if defined(SIMNET_ENABLE_RENDER)
             auto spatial_render = SpatialRenderStorage {};
+            auto selected_debug_render = SelectedDebugRenderStorage {};
             auto spatial_snapshot_tick = std::optional<Tick> {};
             auto selected_entity = std::optional<EntityNetId> {};
             if (viewer.has_value()) {
@@ -947,10 +1139,11 @@ namespace simnet::app
                     frame = plan_runtime_frame(clock, stats, frame_delta, settings);
                 }
                 for (std::uint16_t offset = 0; offset < frame.step_count; ++offset) {
-                        if (!run_tick(
+                    auto const tick = frame.first_tick + offset;
+                    if (!run_tick(
                             world,
                             game,
-                            frame.first_tick + offset,
+                            tick,
                             clock.fixed_dt,
                             pipeline,
                             delivery,
@@ -962,6 +1155,7 @@ namespace simnet::app
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;
                     }
+                    boid_csv.sample(tick, game.last_step_report());
                 }
 
                 if (frame.step_limit_reached) {
@@ -999,6 +1193,7 @@ namespace simnet::app
                                     peer,
                                     debug_observer,
                                     spatial_render,
+                                    selected_debug_render,
                                     game.selected_boid_debug()
                                 )
                             );
@@ -1036,6 +1231,9 @@ namespace simnet::app
                 SIMNET_TRACE_FRAME("server");
             }
 
+            if (stats.ticks != 0U) {
+                boid_csv.sample(stats.ticks, game.last_step_report(), true);
+            }
             disconnect_before_stop(transport, peer);
             transport.stop();
             log(LogCategory::Simulation, LogLevel::Info,

@@ -128,12 +128,10 @@ namespace simnet::spatial_detail
 
 export namespace simnet
 {
-    /// Calls callback with source indices whose positions are inside the radius.
-    /// The positions span must match the finite source positions used to build the grid.
+    /// Calls callback for every bounded grid cell inspected by a radius query.
     template <class Callback>
-    void query_radius(
+    std::uint32_t for_each_radius_cell(
         SpatialGrid const& grid,
-        std::span<const Vec3f> positions,
         Vec3f center,
         float radius,
         Callback&& callback
@@ -148,7 +146,7 @@ export namespace simnet
         };
 
         if (!spatial_detail::intersects(grid.settings.bounds, query_bounds)) {
-            return;
+            return 0U;
         }
 
         auto const min_x = spatial_detail::clamp_axis(
@@ -188,21 +186,51 @@ export namespace simnet
             grid.dim_z
         );
 
-        auto const radius_squared = radius * radius;
+        auto count = std::uint32_t {};
         for (auto z = min_z;; ++z) {
             for (auto y = min_y;; ++y) {
                 for (auto x = min_x;; ++x) {
-                    auto const key = spatial_detail::cell_key_from_coord(grid, {
+                    auto const coord = CellCoord {
                         .x = static_cast<std::int32_t>(x),
                         .y = static_cast<std::int32_t>(y),
                         .z = static_cast<std::int32_t>(z),
-                    });
+                    };
+                    callback(coord);
+                    ++count;
+
+                    if (x == max_x) {
+                        break;
+                    }
+                }
+                if (y == max_y) {
+                    break;
+                }
+            }
+            if (z == max_z) {
+                break;
+            }
+        }
+        return count;
+    }
+
+    /// Calls callback with source indices whose positions are inside the radius.
+    /// The positions span must match the finite source positions used to build the grid.
+    /// Returns the number of bounded grid cells inspected.
+    template <class Callback>
+    std::uint32_t query_radius(
+        SpatialGrid const& grid,
+        std::span<const Vec3f> positions,
+        Vec3f center,
+        float radius,
+        Callback&& callback
+    )
+    {
+        auto const radius_squared = radius * radius;
+        return for_each_radius_cell(grid, center, radius, [&](CellCoord coord) {
+                    auto const key = spatial_detail::cell_key_from_coord(grid, coord);
                     auto const* range = spatial_detail::find_cell_range(grid, key);
                     if (range == nullptr) {
-                        if (x == max_x) {
-                            break;
-                        }
-                        continue;
+                        return;
                     }
 
                     auto const end = range->begin + range->count;
@@ -217,19 +245,7 @@ export namespace simnet
                             callback(source_index);
                         }
                     }
-
-                    if (x == max_x) {
-                        break;
-                    }
-                }
-                if (y == max_y) {
-                    break;
-                }
-            }
-            if (z == max_z) {
-                break;
-            }
-        }
+                });
     }
 
     /// Calls callback with source indices whose positions are inside the bounds.
