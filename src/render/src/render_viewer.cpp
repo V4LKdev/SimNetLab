@@ -1195,6 +1195,37 @@ namespace simnet
                             std::snprintf(line, sizeof(line), "speed %.2f", *details.speed);
                             text(line);
                         }
+                        if (details.candidate_count.has_value()) {
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "neighbors cand %u sep %u align %u coh %u",
+                                *details.candidate_count,
+                                details.separation_neighbor_count.value_or(0U),
+                                details.alignment_neighbor_count.value_or(0U),
+                                details.cohesion_neighbor_count.value_or(0U)
+                            );
+                            text(line);
+                        }
+                        auto vector = [&](char const* label, std::optional<Vec3f> const& value) {
+                            if (!value.has_value()) {
+                                return;
+                            }
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "%s %.2f %.2f %.2f",
+                                label,
+                                value->x,
+                                value->y,
+                                value->z
+                            );
+                            text(line);
+                        };
+                        vector("separation", details.separation);
+                        vector("alignment", details.alignment);
+                        vector("cohesion", details.cohesion);
+                        vector("containment", details.containment);
                         if (details.last_update_tick.has_value()) {
                             std::snprintf(line, sizeof(line), "update tick %llu", static_cast<unsigned long long>(*details.last_update_tick));
                             text(line);

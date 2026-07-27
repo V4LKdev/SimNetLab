@@ -90,6 +90,14 @@ export namespace simnet
         std::optional<Vec3f> velocity {};
         std::optional<Vec3f> acceleration {};
         std::optional<float> speed {};
+        std::optional<std::uint32_t> candidate_count {};
+        std::optional<std::uint32_t> separation_neighbor_count {};
+        std::optional<std::uint32_t> alignment_neighbor_count {};
+        std::optional<std::uint32_t> cohesion_neighbor_count {};
+        std::optional<Vec3f> separation {};
+        std::optional<Vec3f> alignment {};
+        std::optional<Vec3f> cohesion {};
+        std::optional<Vec3f> containment {};
         std::optional<Tick> last_update_tick {};
         std::optional<SequenceId> last_update_sequence {};
         std::optional<bool> replicated {};
