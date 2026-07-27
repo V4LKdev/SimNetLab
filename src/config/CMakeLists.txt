@@ -9,6 +9,10 @@ configure_file("${PROJECT_SOURCE_DIR}/config/shared_default.json"
     "${_simnet_default_config_dir}/shared_default.json"
     COPYONLY
 )
+configure_file("${PROJECT_SOURCE_DIR}/config/shared_boids_demo.json"
+    "${_simnet_default_config_dir}/shared_boids_demo.json"
+    COPYONLY
+)
 configure_file("${PROJECT_SOURCE_DIR}/config/server_default.json"
     "${_simnet_default_config_dir}/server_default.json"
     COPYONLY

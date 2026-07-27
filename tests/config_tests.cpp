@@ -14,4 +14,23 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     changed = baseline;
     changed.pipeline.enable_delta = !changed.pipeline.enable_delta;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.boids.separation_radius += 1.0F;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+}
+
+TEST_CASE("boids demo profile loads a density-tuned deterministic scenario", "[config]")
+{
+    auto const path = simnet::default_shared_config_path().parent_path()
+        / "shared_boids_demo.json";
+    auto const config = simnet::load_shared_config(path);
+
+    CHECK(config.simulation.initial_boid_count == 1000U);
+    CHECK(config.simulation.world_half == 65.0F);
+    CHECK(config.spatial.cell_size == 18.0F);
+    CHECK(config.spatial.max_neighbors == 64U);
+    CHECK(config.boids.min_speed <= config.boids.cruise_speed);
+    CHECK(config.boids.cruise_speed <= config.boids.max_speed);
+    CHECK(config.boids.separation_radius <= config.boids.perception_radius);
 }

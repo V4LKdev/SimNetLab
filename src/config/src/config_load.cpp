@@ -190,6 +190,58 @@ namespace
         validate_non_zero("spatial.max_neighbors", config.max_neighbors);
     }
 
+    void apply_boids(Json const& json, simnet::BoidsConfig& config)
+    {
+        read_optional(json, "min_speed", config.min_speed);
+        read_optional(json, "cruise_speed", config.cruise_speed);
+        read_optional(json, "max_speed", config.max_speed);
+        read_optional(json, "max_acceleration", config.max_acceleration);
+        read_optional(json, "perception_radius", config.perception_radius);
+        read_optional(json, "separation_radius", config.separation_radius);
+        read_optional(json, "field_of_view_degrees", config.field_of_view_degrees);
+        read_optional(json, "containment_prediction_seconds", config.containment_prediction_seconds);
+        read_optional(json, "containment_margin", config.containment_margin);
+        read_optional(json, "separation_acceleration", config.separation_acceleration);
+        read_optional(json, "containment_acceleration", config.containment_acceleration);
+        read_optional(json, "alignment_acceleration", config.alignment_acceleration);
+        read_optional(json, "cohesion_acceleration", config.cohesion_acceleration);
+
+        if (config.min_speed < 0.0F
+            || config.min_speed > config.cruise_speed
+            || config.cruise_speed > config.max_speed) {
+            throw std::runtime_error(
+                "invalid boids speed limits: expected 0 <= min_speed <= cruise_speed <= max_speed"
+            );
+        }
+        validate_positive("boids.max_speed", config.max_speed);
+        validate_positive("boids.max_acceleration", config.max_acceleration);
+        validate_positive("boids.perception_radius", config.perception_radius);
+        validate_positive("boids.separation_radius", config.separation_radius);
+        if (config.separation_radius > config.perception_radius) {
+            throw std::runtime_error(
+                "invalid boids radii: separation_radius exceeds perception_radius"
+            );
+        }
+        if (config.field_of_view_degrees <= 0.0F || config.field_of_view_degrees > 360.0F) {
+            throw std::runtime_error(
+                "invalid config field 'boids.field_of_view_degrees': expected (0, 360]"
+            );
+        }
+        validate_positive(
+            "boids.containment_prediction_seconds",
+            config.containment_prediction_seconds
+        );
+        validate_positive("boids.containment_margin", config.containment_margin);
+        if (config.separation_acceleration < 0.0F
+            || config.containment_acceleration < 0.0F
+            || config.alignment_acceleration < 0.0F
+            || config.cohesion_acceleration < 0.0F) {
+            throw std::runtime_error(
+                "invalid boids rule acceleration: expected non-negative values"
+            );
+        }
+    }
+
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
     {
         read_optional(json, "enable_aoi", config.enable_aoi);
@@ -247,9 +299,9 @@ namespace
     {
         read_optional(json, "thread_count", config.thread_count);
         validate_non_zero("flecs.thread_count", config.thread_count);
-        if (config.thread_count > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())) {
+        if (config.thread_count > 64U) {
             throw std::runtime_error(
-                "invalid config field 'flecs.thread_count': exceeds Flecs thread-count range"
+                "invalid config field 'flecs.thread_count': expected 1..64"
             );
         }
     }
@@ -341,6 +393,9 @@ namespace
         if (auto const* section = optional_object(json, "spatial")) {
             apply_spatial(*section, config.spatial);
         }
+        if (auto const* section = optional_object(json, "boids")) {
+            apply_boids(*section, config.boids);
+        }
         if (auto const* section = optional_object(json, "pipeline")) {
             apply_pipeline(*section, config.pipeline);
         }
@@ -403,6 +458,19 @@ namespace
         hash_bytes(hash, config.simulation.initial_boid_count);
         hash_bytes(hash, config.spatial.cell_size);
         hash_bytes(hash, config.spatial.max_neighbors);
+        hash_bytes(hash, config.boids.min_speed);
+        hash_bytes(hash, config.boids.cruise_speed);
+        hash_bytes(hash, config.boids.max_speed);
+        hash_bytes(hash, config.boids.max_acceleration);
+        hash_bytes(hash, config.boids.perception_radius);
+        hash_bytes(hash, config.boids.separation_radius);
+        hash_bytes(hash, config.boids.field_of_view_degrees);
+        hash_bytes(hash, config.boids.containment_prediction_seconds);
+        hash_bytes(hash, config.boids.containment_margin);
+        hash_bytes(hash, config.boids.separation_acceleration);
+        hash_bytes(hash, config.boids.containment_acceleration);
+        hash_bytes(hash, config.boids.alignment_acceleration);
+        hash_bytes(hash, config.boids.cohesion_acceleration);
         hash_bytes(hash, config.pipeline.enable_aoi);
         hash_bytes(hash, config.pipeline.enable_incremental);
         hash_bytes(hash, config.pipeline.enable_quantization);
@@ -423,6 +491,19 @@ namespace
         hash_canonical_u32(hash, config.simulation.initial_boid_count);
         hash_canonical_float(hash, config.spatial.cell_size);
         hash_canonical_u32(hash, config.spatial.max_neighbors);
+        hash_canonical_float(hash, config.boids.min_speed);
+        hash_canonical_float(hash, config.boids.cruise_speed);
+        hash_canonical_float(hash, config.boids.max_speed);
+        hash_canonical_float(hash, config.boids.max_acceleration);
+        hash_canonical_float(hash, config.boids.perception_radius);
+        hash_canonical_float(hash, config.boids.separation_radius);
+        hash_canonical_float(hash, config.boids.field_of_view_degrees);
+        hash_canonical_float(hash, config.boids.containment_prediction_seconds);
+        hash_canonical_float(hash, config.boids.containment_margin);
+        hash_canonical_float(hash, config.boids.separation_acceleration);
+        hash_canonical_float(hash, config.boids.containment_acceleration);
+        hash_canonical_float(hash, config.boids.alignment_acceleration);
+        hash_canonical_float(hash, config.boids.cohesion_acceleration);
         hash_canonical_bool(hash, config.pipeline.enable_aoi);
         hash_canonical_bool(hash, config.pipeline.enable_incremental);
         hash_canonical_bool(hash, config.pipeline.enable_quantization);

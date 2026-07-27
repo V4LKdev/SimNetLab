@@ -4,11 +4,11 @@
   },
   "simulation": {
     "tick_rate_hz": 60.0,
-    "world_half": 400.0,
-    "initial_boid_count": 100000
+    "world_half": 65.0,
+    "initial_boid_count": 1000
   },
   "spatial": {
-    "cell_size": 20.0,
+    "cell_size": 18.0,
     "max_neighbors": 64
   },
   "boids": {

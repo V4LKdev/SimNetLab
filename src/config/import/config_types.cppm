@@ -30,6 +30,24 @@ export namespace simnet
         std::uint32_t max_neighbors { 64 };
     };
 
+    /// Deterministic authoritative flocking parameters.
+    struct BoidsConfig
+    {
+        float min_speed { 6.0F };
+        float cruise_speed { 8.0F };
+        float max_speed { 10.0F };
+        float max_acceleration { 12.0F };
+        float perception_radius { 18.0F };
+        float separation_radius { 3.6F };
+        float field_of_view_degrees { 240.0F };
+        float containment_prediction_seconds { 0.75F };
+        float containment_margin { 22.5F };
+        float separation_acceleration { 10.0F };
+        float containment_acceleration { 9.0F };
+        float alignment_acceleration { 3.0F };
+        float cohesion_acceleration { 2.0F };
+    };
+
     /// Snapshot processing pipeline settings.
     struct PipelineConfig
     {
@@ -109,6 +127,7 @@ export namespace simnet
         RunConfig run {};
         SimulationConfig simulation {};
         SpatialConfig spatial {};
+        BoidsConfig boids {};
         PipelineConfig pipeline {};
     };
 
