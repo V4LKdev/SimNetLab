@@ -101,7 +101,7 @@ namespace simnet
         return "unknown";
     }
 
-    void register_server_game(flecs::world& world)
+    void register_server_game(flecs::world& world, float world_half)
     {
         register_game_components(world);
         world.component<AuthoritativeReplicationIndex>("simnet::detail::AuthoritativeReplicationIndex");
@@ -113,6 +113,16 @@ namespace simnet
             const Hue>()
             .cache_kind(flecs::QueryCacheAll)
             .build();
+
+        world.system<Position, const Heading>("simnet::AuthoritativeMovement")
+            .kind(flecs::OnUpdate)
+            .multi_threaded()
+            .each([world_half](flecs::iter& iterator, std::size_t, Position& position, Heading const& heading) {
+                position.value = position.value + heading.value * iterator.delta_time();
+                if (position.value.x > world_half) {
+                    position.value.x = -world_half;
+                }
+            });
     }
 
     flecs::entity upsert_authoritative_boid(flecs::world& world, BoidState const& boid)

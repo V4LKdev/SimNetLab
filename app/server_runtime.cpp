@@ -339,18 +339,11 @@ namespace
         return report;
     }
 
-    void advance_world(flecs::world& world, simnet::NS fixed_dt, float world_half)
+    void advance_world(flecs::world& world, simnet::NS fixed_dt)
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_step.world_advance", simnet::LogCategory::Simulation);
         auto const seconds = std::chrono::duration<float>(fixed_dt).count();
-        world.each(
-            [seconds, world_half](simnet::Position& position, simnet::Heading const& heading) {
-                position.value = position.value + heading.value * seconds;
-                if (position.value.x > world_half) {
-                    position.value.x = -world_half;
-                }
-            }
-        );
+        static_cast<void>(world.progress(seconds));
     }
 
     [[nodiscard]] bool valid_ack(PeerRuntimeState const& peer, simnet::SnapshotAck const& ack)
@@ -568,7 +561,6 @@ namespace
         flecs::world& world,
         simnet::Tick tick,
         simnet::NS fixed_dt,
-        float world_half,
         simnet::PipelineDefinition const& pipeline,
         simnet::Delivery delivery,
         simnet::TransportServer& transport,
@@ -578,7 +570,7 @@ namespace
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
-        advance_world(world, fixed_dt, world_half);
+        advance_world(world, fixed_dt);
         snapshot_state.dirty = true;
         if (!peer.has_value()) {
             return true;
@@ -758,7 +750,7 @@ namespace simnet::app
 #endif
 
             auto world = flecs::world {};
-            register_server_game(world);
+            register_server_game(world, shared.simulation.world_half);
             auto const initialization_start = std::chrono::steady_clock::now();
             log(LogCategory::Simulation, LogLevel::Info,
                 "initializing authoritative world entities=" + std::to_string(shared.simulation.initial_boid_count));
@@ -774,6 +766,15 @@ namespace simnet::app
             );
             log(LogCategory::Simulation, LogLevel::Info,
                 "authoritative world initialized elapsed_ns=" + std::to_string(initialization_elapsed.count()));
+            if (local.flecs.thread_count > 1U) {
+                world.set_threads(static_cast<std::int32_t>(local.flecs.thread_count));
+            }
+            log(LogCategory::Simulation, LogLevel::Info,
+                "Flecs scheduler threads=" + std::to_string(local.flecs.thread_count));
+            SIMNET_TRACE_PLOT(
+                "server.flecs.thread_count",
+                static_cast<double>(local.flecs.thread_count)
+            );
 
             auto stats = RuntimeStats {};
             auto timer = RuntimeFrameTimer {};
@@ -843,7 +844,6 @@ namespace simnet::app
                             world,
                             frame.first_tick + offset,
                             clock.fixed_dt,
-                            shared.simulation.world_half,
                             pipeline,
                             delivery,
                             transport,

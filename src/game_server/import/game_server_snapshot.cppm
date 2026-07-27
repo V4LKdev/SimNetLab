@@ -53,8 +53,8 @@ export namespace simnet
 
     [[nodiscard]] std::string_view authoritative_spawn_error_name(AuthoritativeSpawnError error) noexcept;
 
-    /// Registers shared authoritative game components with a Flecs world.
-    void register_server_game(flecs::world& world);
+    /// Registers authoritative components, queries, and simulation systems.
+    void register_server_game(flecs::world& world, float world_half);
 
     /// Creates or updates one authoritative boid entity by EntityNetId.
     [[nodiscard]] flecs::entity upsert_authoritative_boid(

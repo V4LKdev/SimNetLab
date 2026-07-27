@@ -20,6 +20,8 @@ Flecs
 
 The module must not depend on pipeline, transport, render, synthetic data, spatial indexing, config, ENet, or Raylib. App/runtime code can combine those layers later.
 
+The current authoritative movement system updates each matched entity independently and is marked as Flecs-multithreaded. It runs serially unless the application configures more than one Flecs worker. Entity creation, deletion, and snapshot extraction remain outside system progress.
+
 Authoritative boid creation and deletion must use this module's mutation API. Systems may update boid components directly, but they must not create or delete indexed boids behind the module's private replication index. The index keeps stable network IDs and Flecs entity handles in ascending ID order.
 
 `append_authoritative_boids` accepts only a strictly ascending batch of new IDs. Call it on the world-owning thread outside Flecs iteration and deferred mutation contexts. Active observers must not create or delete boids during the bulk call because Flecs returns transient entity IDs that SimNet copies immediately after insertion. This supports startup population and later load-ramp additions without repeated world scans.

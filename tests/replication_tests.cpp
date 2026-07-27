@@ -85,7 +85,7 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
 
     auto server_world = flecs::world {};
     auto client_world = flecs::world {};
-    simnet::register_server_game(server_world);
+    simnet::register_server_game(server_world, 400.0F);
     simnet::register_client_game(client_world);
 
     auto encode_state = simnet::ClientReplicationState {};
@@ -174,7 +174,7 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
 TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[replication]")
 {
     auto world = flecs::world {};
-    simnet::register_server_game(world);
+    simnet::register_server_game(world, 400.0F);
 
     auto boids = std::vector<simnet::BoidState> {};
     boids.push_back(test_boid(1, 0, 0));
@@ -240,7 +240,7 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
 TEST_CASE("authoritative extraction validates query ownership before snapshot commit", "[replication]")
 {
     auto world = flecs::world {};
-    simnet::register_server_game(world);
+    simnet::register_server_game(world, 400.0F);
 
     auto initial = std::vector<simnet::BoidState> {
         test_boid(2, 1, 0),
