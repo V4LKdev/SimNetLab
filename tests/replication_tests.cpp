@@ -83,9 +83,10 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     pipeline.send_interval.interval_ticks = 2;
     pipeline.quantization.position_bounds = simnet::make_centered_bounds(400.0F);
 
+    auto server_game = simnet::ServerGameRuntime { simnet::BoidSimulationSettings {} };
     auto server_world = flecs::world {};
     auto client_world = flecs::world {};
-    simnet::register_server_game(server_world, 400.0F);
+    simnet::register_server_game(server_world, server_game);
     simnet::register_client_game(client_world);
 
     auto encode_state = simnet::ClientReplicationState {};
@@ -173,8 +174,9 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
 
 TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[replication]")
 {
+    auto game = simnet::ServerGameRuntime { simnet::BoidSimulationSettings {} };
     auto world = flecs::world {};
-    simnet::register_server_game(world, 400.0F);
+    simnet::register_server_game(world, game);
 
     auto boids = std::vector<simnet::BoidState> {};
     boids.push_back(test_boid(1, 0, 0));
@@ -235,12 +237,20 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
     CHECK(malformed_rejected.error == simnet::AuthoritativeSpawnError::InvalidBoidState);
     CHECK(malformed_rejected.failing_index == std::optional<std::size_t> { 0U });
     CHECK(simnet::authoritative_boid_count(world) == 2U);
+
+    REQUIRE(simnet::prepare_server_game_runtime(world, game));
+    REQUIRE(world.progress(1.0F / 60.0F));
+    REQUIRE(game.last_step_report().valid);
+    auto remapped_snapshot = simnet::WorldSnapshot {};
+    REQUIRE(simnet::extract_world_snapshot(world, 6, remapped_snapshot).valid);
+    CHECK(remapped_snapshot.ids == std::vector<simnet::EntityNetId> { 2, 3 });
 }
 
 TEST_CASE("authoritative extraction validates query ownership before snapshot commit", "[replication]")
 {
+    auto game = simnet::ServerGameRuntime { simnet::BoidSimulationSettings {} };
     auto world = flecs::world {};
-    simnet::register_server_game(world, 400.0F);
+    simnet::register_server_game(world, game);
 
     auto initial = std::vector<simnet::BoidState> {
         test_boid(2, 1, 0),

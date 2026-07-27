@@ -1,6 +1,7 @@
 find_package(Catch2 CONFIG REQUIRED)
 
 add_executable(SimNetTests
+    boid_simulation_tests.cpp
     config_tests.cpp
     core_time_tests.cpp
     pipeline_tests.cpp

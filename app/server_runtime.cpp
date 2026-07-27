@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <deque>
 #include <exception>
@@ -150,6 +151,30 @@ namespace
         throw std::runtime_error("unsupported snapshot delivery: " + config.snapshot_delivery);
     }
 
+    [[nodiscard]] simnet::BoidSimulationSettings boid_settings(
+        simnet::SharedConfig const& config
+    )
+    {
+        return {
+            .world_half = config.simulation.world_half,
+            .cell_size = config.spatial.cell_size,
+            .max_neighbors = config.spatial.max_neighbors,
+            .min_speed = config.boids.min_speed,
+            .cruise_speed = config.boids.cruise_speed,
+            .max_speed = config.boids.max_speed,
+            .max_acceleration = config.boids.max_acceleration,
+            .perception_radius = config.boids.perception_radius,
+            .separation_radius = config.boids.separation_radius,
+            .field_of_view_degrees = config.boids.field_of_view_degrees,
+            .containment_prediction_seconds = config.boids.containment_prediction_seconds,
+            .containment_margin = config.boids.containment_margin,
+            .separation_acceleration = config.boids.separation_acceleration,
+            .containment_acceleration = config.boids.containment_acceleration,
+            .alignment_acceleration = config.boids.alignment_acceleration,
+            .cohesion_acceleration = config.boids.cohesion_acceleration,
+        };
+    }
+
 #if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] simnet::ViewerConfig viewer_config(simnet::VisualizationConfig const& config)
     {
@@ -175,7 +200,8 @@ namespace
         bool paused,
         std::optional<PeerRuntimeState> const& peer,
         simnet::app::DebugObserverState const& observer,
-        SpatialRenderStorage const& spatial
+        SpatialRenderStorage const& spatial,
+        std::optional<simnet::SelectedBoidDebug> const& selected_debug
     )
     {
         auto connection = simnet::RenderConnectionInfo {
@@ -203,6 +229,24 @@ namespace
             }
             replication = std::move(details);
         }
+        auto selected_details = std::optional<simnet::SelectedEntityDetails> {};
+        if (selected_debug.has_value()) {
+            selected_details = simnet::SelectedEntityDetails {
+                .id = selected_debug->id,
+                .velocity = selected_debug->velocity,
+                .acceleration = selected_debug->acceleration,
+                .speed = selected_debug->speed,
+                .candidate_count = selected_debug->candidate_count,
+                .separation_neighbor_count = selected_debug->separation_neighbor_count,
+                .alignment_neighbor_count = selected_debug->alignment_neighbor_count,
+                .cohesion_neighbor_count = selected_debug->cohesion_neighbor_count,
+                .separation = selected_debug->separation,
+                .alignment = selected_debug->alignment,
+                .cohesion = selected_debug->cohesion,
+                .containment = selected_debug->containment,
+                .replicated = false,
+            };
+        }
         return {
             .entities = {
                 .ids = snapshot.ids,
@@ -220,6 +264,7 @@ namespace
                 .connection = connection,
                 .replication = std::move(replication),
             },
+            .selected_details = std::move(selected_details),
             .observer = simnet::ObserverView {
                 .position = observer.position,
                 .forward = simnet::app::debug_observer_forward(observer),
@@ -305,16 +350,57 @@ namespace
     }
 #endif
 
-    [[nodiscard]] simnet::BoidState initial_boid(std::uint32_t index, float world_half)
+    [[nodiscard]] std::uint64_t mix64(std::uint64_t value) noexcept
     {
-        auto const span = std::max(1.0F, world_half * 2.0F);
-        auto const x = static_cast<float>(index % 100U) / 99.0F * span - world_half;
-        auto const y = static_cast<float>((index / 100U) % 100U) / 99.0F * span - world_half;
-        auto const z = static_cast<float>((index / 10000U) % 100U) / 99.0F * span - world_half;
+        value += 0x9e3779b97f4a7c15ULL;
+        value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+        value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+        return value ^ (value >> 31U);
+    }
+
+    [[nodiscard]] float unit_hash(std::uint64_t value) noexcept
+    {
+        auto const bits = static_cast<std::uint32_t>(mix64(value) >> 40U);
+        return static_cast<float>(bits) / static_cast<float>(0xFFFFFFU);
+    }
+
+    [[nodiscard]] simnet::BoidState initial_boid(
+        std::uint32_t index,
+        std::uint32_t count,
+        simnet::SharedConfig const& config
+    )
+    {
+        auto const side = std::max(
+            1U,
+            static_cast<std::uint32_t>(std::ceil(std::cbrt(static_cast<double>(count))))
+        );
+        auto const x_index = index % side;
+        auto const y_index = (index / side) % side;
+        auto const z_index = index / (side * side);
+        auto const cell = config.simulation.world_half * 2.0F / static_cast<float>(side);
+        auto const id = static_cast<simnet::EntityNetId>(index + 1U);
+        auto const key = config.run.seed ^ (static_cast<std::uint64_t>(id) << 1U);
+        auto const coordinate = [&](std::uint32_t cell_index, std::uint64_t salt) {
+            auto const jitter = (unit_hash(key ^ salt) - 0.5F) * 0.5F;
+            return -config.simulation.world_half
+                + (static_cast<float>(cell_index) + 0.5F + jitter) * cell;
+        };
+        auto const heading = simnet::normalize_or(
+            simnet::Vec3f {
+                unit_hash(key ^ 0x243f6a8885a308d3ULL) * 2.0F - 1.0F,
+                unit_hash(key ^ 0x13198a2e03707344ULL) * 2.0F - 1.0F,
+                unit_hash(key ^ 0xa4093822299f31d0ULL) * 2.0F - 1.0F,
+            },
+            simnet::Vec3f { 1.0F, 0.0F, 0.0F }
+        );
         return {
-            .id = static_cast<simnet::EntityNetId>(index + 1U),
-            .position = { x, y, z },
-            .heading = { 1.0F, 0.0F, 0.0F },
+            .id = id,
+            .position = {
+                coordinate(x_index, 0x082efa98ec4e6c89ULL),
+                coordinate(y_index, 0x452821e638d01377ULL),
+                coordinate(z_index, 0xbe5466cf34e90c6cULL),
+            },
+            .heading = heading,
             .hue = static_cast<std::uint8_t>((index * 23U) & 0xFFU),
         };
     }
@@ -330,7 +416,11 @@ namespace
             SIMNET_TRACE_SCOPE_CATEGORY("server.initial_state_generation", simnet::LogCategory::Simulation);
             boids.reserve(config.simulation.initial_boid_count);
             for (std::uint32_t index = 0; index < config.simulation.initial_boid_count; ++index) {
-                boids.push_back(initial_boid(index, config.simulation.world_half));
+                boids.push_back(initial_boid(
+                    index,
+                    config.simulation.initial_boid_count,
+                    config
+                ));
             }
         }
         auto const report = simnet::append_authoritative_boids(world, boids);
@@ -339,11 +429,18 @@ namespace
         return report;
     }
 
-    void advance_world(flecs::world& world, simnet::NS fixed_dt)
+    [[nodiscard]] bool advance_world(
+        flecs::world& world,
+        simnet::ServerGameRuntime& game,
+        simnet::NS fixed_dt
+    )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_step.world_advance", simnet::LogCategory::Simulation);
+        if (!simnet::prepare_server_game_runtime(world, game)) {
+            return false;
+        }
         auto const seconds = std::chrono::duration<float>(fixed_dt).count();
-        static_cast<void>(world.progress(seconds));
+        return world.progress(seconds) && game.last_step_report().valid;
     }
 
     [[nodiscard]] bool valid_ack(PeerRuntimeState const& peer, simnet::SnapshotAck const& ack)
@@ -559,6 +656,7 @@ namespace
 
     [[nodiscard]] bool run_tick(
         flecs::world& world,
+        simnet::ServerGameRuntime& game,
         simnet::Tick tick,
         simnet::NS fixed_dt,
         simnet::PipelineDefinition const& pipeline,
@@ -570,7 +668,14 @@ namespace
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
-        advance_world(world, fixed_dt);
+        if (!advance_world(world, game, fixed_dt)) {
+            simnet::log(
+                simnet::LogCategory::Simulation,
+                simnet::LogLevel::Error,
+                "authoritative boid step failed: " + game.last_step_report().error
+            );
+            return false;
+        }
         snapshot_state.dirty = true;
         if (!peer.has_value()) {
             return true;
@@ -749,8 +854,9 @@ namespace simnet::app
             }
 #endif
 
+            auto game = ServerGameRuntime { boid_settings(shared) };
             auto world = flecs::world {};
-            register_server_game(world, shared.simulation.world_half);
+            register_server_game(world, game);
             auto const initialization_start = std::chrono::steady_clock::now();
             log(LogCategory::Simulation, LogLevel::Info,
                 "initializing authoritative world entities=" + std::to_string(shared.simulation.initial_boid_count));
@@ -793,6 +899,7 @@ namespace simnet::app
 #if defined(SIMNET_ENABLE_RENDER)
             auto spatial_render = SpatialRenderStorage {};
             auto spatial_snapshot_tick = std::optional<Tick> {};
+            auto selected_entity = std::optional<EntityNetId> {};
             if (viewer.has_value()) {
                 // Viewer startup is not simulation time and must not create an initial catch-up frame.
                 reset_frame_timer(timer);
@@ -840,8 +947,9 @@ namespace simnet::app
                     frame = plan_runtime_frame(clock, stats, frame_delta, settings);
                 }
                 for (std::uint16_t offset = 0; offset < frame.step_count; ++offset) {
-                    if (!run_tick(
+                        if (!run_tick(
                             world,
+                            game,
                             frame.first_tick + offset,
                             clock.fixed_dt,
                             pipeline,
@@ -890,10 +998,13 @@ namespace simnet::app
                                     simulation_paused,
                                     peer,
                                     debug_observer,
-                                    spatial_render
+                                    spatial_render,
+                                    game.selected_boid_debug()
                                 )
                             );
                         }
+                        selected_entity = viewer_result.selected_entity;
+                        game.select_boid(selected_entity);
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }

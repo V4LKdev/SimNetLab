@@ -12,10 +12,9 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
 - Application configuration for full replacement, incremental selection, quantization, and exact-baseline delta reconstruction
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
+- Deterministic Server-authoritative boids with separation, alignment, cohesion, bounded containment, and Flecs worker scheduling
 - 1,000-entity Server to Client replication in the bounded runtime path
 - Optional Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local debug observer views, and authoritative remote pause
-
-The Server currently advances the authoritative boid state but does not yet implement the intended boid behavior model.
 
 ## Planned work
 
@@ -82,7 +81,7 @@ The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set th
 - `simnet_telemetry`: logging, metrics storage, and profiling hooks
 - `simnet_spatial`: sparse uniform-grid queries
 - `simnet_game_shared`: shared Flecs contracts
-- `simnet_game_server`: authoritative extraction
+- `simnet_game_server`: authoritative lifecycle, boid simulation, and snapshot extraction
 - `simnet_game_client`: client patch application and replicated-world extraction
 - `simnet_pipeline`: snapshot selection, transformation, encoding, and decoding
 - `simnet_transport`: ENet transport and session protocol
@@ -98,6 +97,15 @@ scenarios.
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration.
 
 Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded; they do not parallelize queries or application code automatically.
+
+For the density-tuned 1,000-boid visual demonstration:
+
+```sh
+build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_boids_demo.json
+build/relWithDebInfo/app/Client --config config/client_visual.json --shared-config config/shared_boids_demo.json
+```
+
+The Server keeps velocity and neighbour-computation state private. Replication remains the stable ID, position, normalized heading, and hue snapshot contract. The Server selected-entity panel shows the current velocity, acceleration, neighbour counts, and individual steering contributions; the Client does not receive those private facts.
 
 For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
 

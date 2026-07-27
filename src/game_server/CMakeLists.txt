@@ -6,6 +6,7 @@ target_sources(simnet_game_server
         BASE_DIRS import
         FILES
             import/game_server.cppm
+            import/game_server_simulation.cppm
             import/game_server_snapshot.cppm
     PRIVATE
         src/game_server.cpp
@@ -17,6 +18,7 @@ target_link_libraries(simnet_game_server
         simnet_snapshot
         simnet_game_shared
     PRIVATE
+        simnet_spatial
         simnet_telemetry
 )
 

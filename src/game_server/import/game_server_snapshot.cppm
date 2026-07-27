@@ -14,6 +14,7 @@ export module simnet.game_server:snapshot;
 import simnet.core;
 import simnet.game_shared;
 import simnet.snapshot;
+import :simulation;
 
 export namespace simnet
 {
@@ -54,7 +55,7 @@ export namespace simnet
     [[nodiscard]] std::string_view authoritative_spawn_error_name(AuthoritativeSpawnError error) noexcept;
 
     /// Registers authoritative components, queries, and simulation systems.
-    void register_server_game(flecs::world& world, float world_half);
+    void register_server_game(flecs::world& world, ServerGameRuntime& runtime);
 
     /// Creates or updates one authoritative boid entity by EntityNetId.
     [[nodiscard]] flecs::entity upsert_authoritative_boid(

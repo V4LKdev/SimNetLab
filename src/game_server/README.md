@@ -1,11 +1,16 @@
 # simnet_game_server
 
-`simnet_game_server` owns authoritative server-side Flecs world lifecycle and snapshot extraction.
+`simnet_game_server` owns authoritative server-side Flecs lifecycle, boid simulation, and snapshot extraction.
 
 Its first responsibility is narrow:
 
 ```txt
-authoritative Flecs world -> validated WorldSnapshot
+authoritative Flecs components
+-> immutable CurrentState SoA
+-> simulation spatial grid
+-> disjoint NextState rows
+-> validated Flecs commit
+-> validated WorldSnapshot
 ```
 
 Allowed dependencies:
@@ -14,13 +19,16 @@ Allowed dependencies:
 simnet_core
 simnet_snapshot
 simnet_game_shared
+simnet_spatial (private simulation acceleration)
 simnet_telemetry (private implementation tracing only)
 Flecs
 ```
 
-The module must not depend on pipeline, transport, render, synthetic data, spatial indexing, config, ENet, or Raylib. App/runtime code can combine those layers later.
+The module must not depend on pipeline, transport, render, synthetic data, config, ENet, or Raylib. App/runtime code maps shared configuration into the renderer-independent simulation settings.
 
-The current authoritative movement system updates each matched entity independently and is marked as Flecs-multithreaded. It runs serially unless the application configures more than one Flecs worker. Entity creation, deletion, and snapshot extraction remain outside system progress.
+`ServerGameRuntime` owns Server-private velocity, stable row state, reusable SoA buffers, the simulation grid, worker scratch, and one selected-boid diagnostic result. It must outlive its registered Flecs world. `prepare_server_game_runtime` sizes all external storage before `world.progress()`.
+
+Explicit Flecs phases always run capture, serial grid build, multithreaded compute, serial validation/merge, and multithreaded commit in that order. Compute reads only immutable previous-tick state and writes `NextState[FlockRow]`. A worker never mutates Flecs components, resizes runtime storage, shares neighbour arrays, or updates shared counters. Invalid next state skips the complete commit.
 
 Authoritative boid creation and deletion must use this module's mutation API. Systems may update boid components directly, but they must not create or delete indexed boids behind the module's private replication index. The index keeps stable network IDs and Flecs entity handles in ascending ID order.
 
@@ -28,4 +36,4 @@ Authoritative boid creation and deletion must use this module's mutation API. Sy
 
 Extraction gathers authoritative entities with `NetIdentity`, `Position`, `Heading`, and `Hue`, sorts by `EntityNetId`, validates the resulting `WorldSnapshot`, and does not mutate the Flecs world. On extraction failure, the output snapshot is cleared and its tick is set to the requested tick.
 
-Snapshot extraction remains world-query based for now. The private sorted index is a future profiling candidate for direct ordered extraction, but that optimization is intentionally separate from authoritative population.
+Velocity, row mapping, neighbour scratch, and rule diagnostics are Server-private and never enter the snapshot wire contract. Snapshot extraction remains world-query based for now. The private sorted index is a future profiling candidate for direct ordered extraction, but that optimization is intentionally separate from simulation.

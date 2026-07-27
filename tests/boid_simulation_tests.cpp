@@ -1,0 +1,254 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include <array>
+#include <bit>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <flecs.h>
+#include <initializer_list>
+#include <limits>
+#include <vector>
+
+import simnet.core;
+import simnet.game_server;
+import simnet.game_shared;
+import simnet.snapshot;
+
+namespace
+{
+    [[nodiscard]] simnet::BoidSimulationSettings test_settings()
+    {
+        auto settings = simnet::BoidSimulationSettings {};
+        settings.world_half = 100.0F;
+        settings.cell_size = 10.0F;
+        settings.min_speed = 0.0F;
+        settings.cruise_speed = 1.0F;
+        settings.max_speed = 10.0F;
+        settings.max_acceleration = 20.0F;
+        settings.perception_radius = 20.0F;
+        settings.separation_radius = 3.0F;
+        settings.field_of_view_degrees = 240.0F;
+        settings.containment_prediction_seconds = 0.75F;
+        settings.containment_margin = 5.0F;
+        settings.separation_acceleration = 10.0F;
+        settings.containment_acceleration = 9.0F;
+        settings.alignment_acceleration = 3.0F;
+        settings.cohesion_acceleration = 2.0F;
+        return settings;
+    }
+
+    [[nodiscard]] simnet::BoidState boid(
+        simnet::EntityNetId id,
+        simnet::Vec3f position,
+        simnet::Vec3f heading
+    )
+    {
+        return {
+            .id = id,
+            .position = position,
+            .heading = heading,
+            .hue = static_cast<std::uint8_t>(id),
+        };
+    }
+
+    [[nodiscard]] simnet::AuthoritativeSpawnReport append_boids(
+        flecs::world& world,
+        std::initializer_list<simnet::BoidState> values
+    )
+    {
+        auto storage = std::vector<simnet::BoidState> { values };
+        return simnet::append_authoritative_boids(world, storage);
+    }
+
+    void step(
+        flecs::world& world,
+        simnet::ServerGameRuntime& runtime,
+        float delta_time = 1.0F / 60.0F
+    )
+    {
+        REQUIRE(simnet::prepare_server_game_runtime(world, runtime));
+        REQUIRE(world.progress(delta_time));
+        REQUIRE(runtime.last_step_report().valid);
+    }
+
+    [[nodiscard]] simnet::WorldSnapshot snapshot(flecs::world const& world, simnet::Tick tick)
+    {
+        auto result = simnet::WorldSnapshot {};
+        REQUIRE(simnet::extract_world_snapshot(world, tick, result).valid);
+        return result;
+    }
+
+    void hash_byte(std::uint64_t& hash, std::uint8_t value)
+    {
+        hash ^= value;
+        hash *= 1099511628211ULL;
+    }
+
+    void hash_u32(std::uint64_t& hash, std::uint32_t value)
+    {
+        for (auto shift = 0U; shift < 32U; shift += 8U) {
+            hash_byte(hash, static_cast<std::uint8_t>(value >> shift));
+        }
+    }
+
+    [[nodiscard]] std::uint64_t canonical_hash(simnet::WorldSnapshot const& value)
+    {
+        auto hash = std::uint64_t { 14695981039346656037ULL };
+        for (std::size_t index = 0; index < value.size(); ++index) {
+            hash_u32(hash, value.ids[index]);
+            hash_u32(hash, std::bit_cast<std::uint32_t>(value.positions[index].x));
+            hash_u32(hash, std::bit_cast<std::uint32_t>(value.positions[index].y));
+            hash_u32(hash, std::bit_cast<std::uint32_t>(value.positions[index].z));
+            hash_u32(hash, std::bit_cast<std::uint32_t>(value.headings[index].x));
+            hash_u32(hash, std::bit_cast<std::uint32_t>(value.headings[index].y));
+            hash_u32(hash, std::bit_cast<std::uint32_t>(value.headings[index].z));
+            hash_byte(hash, value.hues[index]);
+        }
+        return hash;
+    }
+
+    [[nodiscard]] std::uint64_t run_determinism_case(std::uint32_t thread_count)
+    {
+        auto settings = test_settings();
+        settings.world_half = 30.0F;
+        settings.cell_size = 6.0F;
+        settings.perception_radius = 6.0F;
+        settings.separation_radius = 2.5F;
+        settings.containment_margin = 6.0F;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+
+        auto boids = std::vector<simnet::BoidState> {};
+        boids.reserve(256);
+        auto constexpr headings = std::array {
+            simnet::Vec3f { 1.0F, 0.0F, 0.0F },
+            simnet::Vec3f { 0.0F, 1.0F, 0.0F },
+            simnet::Vec3f { 0.0F, 0.0F, 1.0F },
+            simnet::Vec3f { -1.0F, 0.0F, 0.0F },
+        };
+        for (std::uint32_t index = 0; index < 256U; ++index) {
+            auto const x = static_cast<float>(index % 8U) * 3.0F - 10.5F;
+            auto const y = static_cast<float>((index / 8U) % 8U) * 3.0F - 10.5F;
+            auto const z = static_cast<float>(index / 64U) * 3.0F - 4.5F;
+            boids.push_back(boid(index + 1U, { x, y, z }, headings[index % headings.size()]));
+        }
+        REQUIRE(simnet::append_authoritative_boids(world, boids).success());
+        if (thread_count > 1U) {
+            world.set_threads(static_cast<std::int32_t>(thread_count));
+        }
+        for (auto tick = 0U; tick < 120U; ++tick) {
+            step(world, runtime);
+        }
+        return canonical_hash(snapshot(world, 120U));
+    }
+}
+
+TEST_CASE("boid rules produce deterministic local steering", "[boids]")
+{
+    SECTION("separation pushes nearby boids apart")
+    {
+        auto settings = test_settings();
+        settings.alignment_acceleration = 0.0F;
+        settings.cohesion_acceleration = 0.0F;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            boid(1U, { -1.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
+            boid(2U, { 1.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
+        }).success());
+        runtime.select_boid(1U);
+        step(world, runtime);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->separation_neighbor_count == 1U);
+        CHECK(debug->separation.x < 0.0F);
+    }
+
+    SECTION("alignment follows average velocity and cohesion follows centroid")
+    {
+        auto settings = test_settings();
+        settings.separation_radius = 0.1F;
+        settings.field_of_view_degrees = 360.0F;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            boid(1U, { -5.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
+            boid(2U, { 5.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
+        }).success());
+        runtime.select_boid(1U);
+        step(world, runtime);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->alignment.x > 0.0F);
+        CHECK(debug->cohesion.x > 0.0F);
+    }
+
+    SECTION("FOV excludes social rules but never separation")
+    {
+        auto settings = test_settings();
+        settings.field_of_view_degrees = 90.0F;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            boid(1U, {}, { 1.0F, 0.0F, 0.0F }),
+            boid(2U, { -2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
+        }).success());
+        runtime.select_boid(1U);
+        step(world, runtime);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->separation_neighbor_count == 1U);
+        CHECK(debug->alignment_neighbor_count == 0U);
+        CHECK(debug->cohesion_neighbor_count == 0U);
+    }
+
+    SECTION("containment predicts an inward correction")
+    {
+        auto settings = test_settings();
+        settings.world_half = 10.0F;
+        settings.containment_margin = 3.0F;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            boid(1U, { 9.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
+        }).success());
+        runtime.select_boid(1U);
+        step(world, runtime);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->containment.x < 0.0F);
+    }
+}
+
+TEST_CASE("invalid computed state is not partially committed", "[boids]")
+{
+    auto settings = test_settings();
+    auto runtime = simnet::ServerGameRuntime { settings };
+    auto world = flecs::world {};
+    simnet::register_server_game(world, runtime);
+    REQUIRE(append_boids(world, {
+        boid(1U, {}, { 1.0F, 0.0F, 0.0F }),
+        boid(2U, { 5.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
+    }).success());
+    auto const before = snapshot(world, 0U);
+
+    REQUIRE(simnet::prepare_server_game_runtime(world, runtime));
+    REQUIRE(world.progress(std::numeric_limits<float>::quiet_NaN()));
+    CHECK_FALSE(runtime.last_step_report().valid);
+    auto const after = snapshot(world, 1U);
+    CHECK(after.ids == before.ids);
+    CHECK(canonical_hash(after) == canonical_hash(before));
+}
+
+TEST_CASE("boid snapshots are identical across Flecs worker counts", "[boids][determinism]")
+{
+    auto const serial = run_determinism_case(1U);
+    CHECK(run_determinism_case(4U) == serial);
+    CHECK(run_determinism_case(8U) == serial);
+}
