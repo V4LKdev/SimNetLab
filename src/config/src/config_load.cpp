@@ -192,12 +192,24 @@ namespace
 
     void apply_boids(Json const& json, simnet::BoidsConfig& config)
     {
+        read_optional(json, "enable_separation", config.enable_separation);
+        read_optional(json, "enable_alignment", config.enable_alignment);
+        read_optional(json, "enable_cohesion", config.enable_cohesion);
+        read_optional(json, "enable_containment", config.enable_containment);
+        read_optional(json, "enable_wander", config.enable_wander);
+        read_optional(json, "enable_hue_assimilation", config.enable_hue_assimilation);
+        read_optional(json, "enable_hue_drift", config.enable_hue_drift);
         read_optional(json, "min_speed", config.min_speed);
         read_optional(json, "cruise_speed", config.cruise_speed);
         read_optional(json, "max_speed", config.max_speed);
         read_optional(json, "max_acceleration", config.max_acceleration);
-        read_optional(json, "perception_radius", config.perception_radius);
+        auto legacy_perception_radius = config.alignment_radius;
+        read_optional(json, "perception_radius", legacy_perception_radius);
+        config.alignment_radius = legacy_perception_radius;
+        config.cohesion_radius = legacy_perception_radius;
         read_optional(json, "separation_radius", config.separation_radius);
+        read_optional(json, "alignment_radius", config.alignment_radius);
+        read_optional(json, "cohesion_radius", config.cohesion_radius);
         read_optional(json, "field_of_view_degrees", config.field_of_view_degrees);
         read_optional(json, "containment_prediction_seconds", config.containment_prediction_seconds);
         read_optional(json, "containment_margin", config.containment_margin);
@@ -205,6 +217,10 @@ namespace
         read_optional(json, "containment_acceleration", config.containment_acceleration);
         read_optional(json, "alignment_acceleration", config.alignment_acceleration);
         read_optional(json, "cohesion_acceleration", config.cohesion_acceleration);
+        read_optional(json, "wander_acceleration", config.wander_acceleration);
+        read_optional(json, "wander_frequency_hz", config.wander_frequency_hz);
+        read_optional(json, "hue_assimilation_rate", config.hue_assimilation_rate);
+        read_optional(json, "hue_drift_rate", config.hue_drift_rate);
 
         if (config.min_speed < 0.0F
             || config.min_speed > config.cruise_speed
@@ -215,13 +231,9 @@ namespace
         }
         validate_positive("boids.max_speed", config.max_speed);
         validate_positive("boids.max_acceleration", config.max_acceleration);
-        validate_positive("boids.perception_radius", config.perception_radius);
         validate_positive("boids.separation_radius", config.separation_radius);
-        if (config.separation_radius > config.perception_radius) {
-            throw std::runtime_error(
-                "invalid boids radii: separation_radius exceeds perception_radius"
-            );
-        }
+        validate_positive("boids.alignment_radius", config.alignment_radius);
+        validate_positive("boids.cohesion_radius", config.cohesion_radius);
         if (config.field_of_view_degrees <= 0.0F || config.field_of_view_degrees > 360.0F) {
             throw std::runtime_error(
                 "invalid config field 'boids.field_of_view_degrees': expected (0, 360]"
@@ -235,11 +247,15 @@ namespace
         if (config.separation_acceleration < 0.0F
             || config.containment_acceleration < 0.0F
             || config.alignment_acceleration < 0.0F
-            || config.cohesion_acceleration < 0.0F) {
+            || config.cohesion_acceleration < 0.0F
+            || config.wander_acceleration < 0.0F) {
             throw std::runtime_error(
                 "invalid boids rule acceleration: expected non-negative values"
             );
         }
+        validate_positive("boids.wander_frequency_hz", config.wander_frequency_hz);
+        validate_positive("boids.hue_assimilation_rate", config.hue_assimilation_rate);
+        validate_positive("boids.hue_drift_rate", config.hue_drift_rate);
     }
 
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
@@ -462,8 +478,16 @@ namespace
         hash_bytes(hash, config.boids.cruise_speed);
         hash_bytes(hash, config.boids.max_speed);
         hash_bytes(hash, config.boids.max_acceleration);
-        hash_bytes(hash, config.boids.perception_radius);
+        hash_bytes(hash, config.boids.enable_separation);
+        hash_bytes(hash, config.boids.enable_alignment);
+        hash_bytes(hash, config.boids.enable_cohesion);
+        hash_bytes(hash, config.boids.enable_containment);
+        hash_bytes(hash, config.boids.enable_wander);
+        hash_bytes(hash, config.boids.enable_hue_assimilation);
+        hash_bytes(hash, config.boids.enable_hue_drift);
         hash_bytes(hash, config.boids.separation_radius);
+        hash_bytes(hash, config.boids.alignment_radius);
+        hash_bytes(hash, config.boids.cohesion_radius);
         hash_bytes(hash, config.boids.field_of_view_degrees);
         hash_bytes(hash, config.boids.containment_prediction_seconds);
         hash_bytes(hash, config.boids.containment_margin);
@@ -471,6 +495,10 @@ namespace
         hash_bytes(hash, config.boids.containment_acceleration);
         hash_bytes(hash, config.boids.alignment_acceleration);
         hash_bytes(hash, config.boids.cohesion_acceleration);
+        hash_bytes(hash, config.boids.wander_acceleration);
+        hash_bytes(hash, config.boids.wander_frequency_hz);
+        hash_bytes(hash, config.boids.hue_assimilation_rate);
+        hash_bytes(hash, config.boids.hue_drift_rate);
         hash_bytes(hash, config.pipeline.enable_aoi);
         hash_bytes(hash, config.pipeline.enable_incremental);
         hash_bytes(hash, config.pipeline.enable_quantization);
@@ -495,8 +523,16 @@ namespace
         hash_canonical_float(hash, config.boids.cruise_speed);
         hash_canonical_float(hash, config.boids.max_speed);
         hash_canonical_float(hash, config.boids.max_acceleration);
-        hash_canonical_float(hash, config.boids.perception_radius);
+        hash_canonical_bool(hash, config.boids.enable_separation);
+        hash_canonical_bool(hash, config.boids.enable_alignment);
+        hash_canonical_bool(hash, config.boids.enable_cohesion);
+        hash_canonical_bool(hash, config.boids.enable_containment);
+        hash_canonical_bool(hash, config.boids.enable_wander);
+        hash_canonical_bool(hash, config.boids.enable_hue_assimilation);
+        hash_canonical_bool(hash, config.boids.enable_hue_drift);
         hash_canonical_float(hash, config.boids.separation_radius);
+        hash_canonical_float(hash, config.boids.alignment_radius);
+        hash_canonical_float(hash, config.boids.cohesion_radius);
         hash_canonical_float(hash, config.boids.field_of_view_degrees);
         hash_canonical_float(hash, config.boids.containment_prediction_seconds);
         hash_canonical_float(hash, config.boids.containment_margin);
@@ -504,6 +540,10 @@ namespace
         hash_canonical_float(hash, config.boids.containment_acceleration);
         hash_canonical_float(hash, config.boids.alignment_acceleration);
         hash_canonical_float(hash, config.boids.cohesion_acceleration);
+        hash_canonical_float(hash, config.boids.wander_acceleration);
+        hash_canonical_float(hash, config.boids.wander_frequency_hz);
+        hash_canonical_float(hash, config.boids.hue_assimilation_rate);
+        hash_canonical_float(hash, config.boids.hue_drift_rate);
         hash_canonical_bool(hash, config.pipeline.enable_aoi);
         hash_canonical_bool(hash, config.pipeline.enable_incremental);
         hash_canonical_bool(hash, config.pipeline.enable_quantization);

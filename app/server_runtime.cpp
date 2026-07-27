@@ -263,15 +263,24 @@ namespace
     )
     {
         return {
+            .seed = config.run.seed,
             .world_half = config.simulation.world_half,
             .cell_size = config.spatial.cell_size,
             .max_neighbors = config.spatial.max_neighbors,
+            .enable_separation = config.boids.enable_separation,
+            .enable_alignment = config.boids.enable_alignment,
+            .enable_cohesion = config.boids.enable_cohesion,
+            .enable_containment = config.boids.enable_containment,
+            .enable_wander = config.boids.enable_wander,
+            .enable_hue_assimilation = config.boids.enable_hue_assimilation,
+            .enable_hue_drift = config.boids.enable_hue_drift,
             .min_speed = config.boids.min_speed,
             .cruise_speed = config.boids.cruise_speed,
             .max_speed = config.boids.max_speed,
             .max_acceleration = config.boids.max_acceleration,
-            .perception_radius = config.boids.perception_radius,
             .separation_radius = config.boids.separation_radius,
+            .alignment_radius = config.boids.alignment_radius,
+            .cohesion_radius = config.boids.cohesion_radius,
             .field_of_view_degrees = config.boids.field_of_view_degrees,
             .containment_prediction_seconds = config.boids.containment_prediction_seconds,
             .containment_margin = config.boids.containment_margin,
@@ -279,6 +288,10 @@ namespace
             .containment_acceleration = config.boids.containment_acceleration,
             .alignment_acceleration = config.boids.alignment_acceleration,
             .cohesion_acceleration = config.boids.cohesion_acceleration,
+            .wander_acceleration = config.boids.wander_acceleration,
+            .wander_frequency_hz = config.boids.wander_frequency_hz,
+            .hue_assimilation_rate = config.boids.hue_assimilation_rate,
+            .hue_drift_rate = config.boids.hue_drift_rate,
         };
     }
 
@@ -353,6 +366,7 @@ namespace
                 .separation_neighbor_count = selected_debug->separation_neighbor_count,
                 .alignment_neighbor_count = selected_debug->alignment_neighbor_count,
                 .cohesion_neighbor_count = selected_debug->cohesion_neighbor_count,
+                .hue_neighbor_count = selected_debug->hue_neighbor_count,
                 .current_cell = simnet::SelectedCellCoord {
                     .x = selected_debug->current_cell.x,
                     .y = selected_debug->current_cell.y,
@@ -361,18 +375,28 @@ namespace
                 .queried_cell_count = static_cast<std::uint32_t>(
                     selected_debug->queried_cell_bounds.size()
                 ),
-                .perception_radius = selected_debug->perception_radius,
                 .separation_radius = selected_debug->separation_radius,
+                .alignment_radius = selected_debug->alignment_radius,
+                .cohesion_radius = selected_debug->cohesion_radius,
+                .query_radius = selected_debug->query_radius,
                 .field_of_view_degrees = selected_debug->field_of_view_degrees,
                 .maximum_neighbors = selected_debug->maximum_neighbors,
                 .neighbor_cap_hit = selected_debug->neighbor_cap_hit,
                 .overlap_recovery = selected_debug->overlap_recovery,
                 .acceleration_saturated = selected_debug->acceleration_saturated,
                 .wall_guard = selected_debug->wall_guard,
+                .wander_active = selected_debug->wander_active,
+                .hue_assimilation_active = selected_debug->hue_assimilation_active,
+                .hue_drift_active = selected_debug->hue_drift_active,
                 .separation = selected_debug->separation,
                 .alignment = selected_debug->alignment,
                 .cohesion = selected_debug->cohesion,
                 .containment = selected_debug->containment,
+                .wander = selected_debug->wander,
+                .current_hue = selected_debug->current_hue,
+                .hue_target = selected_debug->hue_target,
+                .hue_delta = selected_debug->hue_delta,
+                .applied_hue_step = selected_debug->applied_hue_step,
                 .replicated = false,
             };
             auto const found = std::ranges::lower_bound(snapshot.ids, selected_debug->id);
@@ -391,9 +415,15 @@ namespace
                     },
                     {
                         .center = position,
-                        .radius = selected_debug->perception_radius,
+                        .radius = selected_debug->alignment_radius,
                         .color = { 92U, 174U, 235U, 85U },
-                        .label = "perception",
+                        .label = "alignment",
+                    },
+                    {
+                        .center = position,
+                        .radius = selected_debug->cohesion_radius,
+                        .color = { 124U, 214U, 156U, 85U },
+                        .label = "cohesion",
                     },
                 };
                 debug_storage.vectors = {
@@ -401,6 +431,7 @@ namespace
                     { position, selected_debug->alignment, { 92U, 174U, 235U, 255U }, "alignment" },
                     { position, selected_debug->cohesion, { 124U, 214U, 156U, 255U }, "cohesion" },
                     { position, selected_debug->containment, { 247U, 184U, 74U, 255U }, "containment" },
+                    { position, selected_debug->wander, { 198U, 126U, 255U, 255U }, "wander" },
                     { position, selected_debug->acceleration, { 245U, 245U, 245U, 255U }, "acceleration" },
                 };
                 debug_storage.boxes.reserve(selected_debug->queried_cell_bounds.size());
@@ -414,7 +445,7 @@ namespace
                 debug_storage.cones.push_back({
                     .apex = position,
                     .direction = heading,
-                    .length = selected_debug->perception_radius,
+                    .length = selected_debug->query_radius,
                     .half_angle_degrees = selected_debug->field_of_view_degrees * 0.5F,
                     .color = { 255U, 205U, 120U, 90U },
                     .label = "FOV",

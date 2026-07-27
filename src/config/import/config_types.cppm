@@ -33,12 +33,20 @@ export namespace simnet
     /// Deterministic authoritative flocking parameters.
     struct BoidsConfig
     {
+        bool enable_separation { true };
+        bool enable_alignment { true };
+        bool enable_cohesion { true };
+        bool enable_containment { true };
+        bool enable_wander { true };
+        bool enable_hue_assimilation { true };
+        bool enable_hue_drift { true };
         float min_speed { 6.0F };
         float cruise_speed { 8.0F };
         float max_speed { 10.0F };
         float max_acceleration { 12.0F };
-        float perception_radius { 18.0F };
         float separation_radius { 3.6F };
+        float alignment_radius { 18.0F };
+        float cohesion_radius { 18.0F };
         float field_of_view_degrees { 240.0F };
         float containment_prediction_seconds { 0.75F };
         float containment_margin { 22.5F };
@@ -46,6 +54,10 @@ export namespace simnet
         float containment_acceleration { 9.0F };
         float alignment_acceleration { 3.0F };
         float cohesion_acceleration { 2.0F };
+        float wander_acceleration { 0.35F };
+        float wander_frequency_hz { 0.35F };
+        float hue_assimilation_rate { 0.25F };
+        float hue_drift_rate { 0.02F };
     };
 
     /// Snapshot processing pipeline settings.

@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include <array>
 #include <bit>
@@ -26,8 +27,12 @@ namespace
         settings.cruise_speed = 1.0F;
         settings.max_speed = 10.0F;
         settings.max_acceleration = 20.0F;
-        settings.perception_radius = 20.0F;
+        settings.enable_wander = false;
+        settings.enable_hue_assimilation = false;
+        settings.enable_hue_drift = false;
         settings.separation_radius = 3.0F;
+        settings.alignment_radius = 20.0F;
+        settings.cohesion_radius = 20.0F;
         settings.field_of_view_degrees = 240.0F;
         settings.containment_prediction_seconds = 0.75F;
         settings.containment_margin = 5.0F;
@@ -59,6 +64,18 @@ namespace
     {
         auto storage = std::vector<simnet::BoidState> { values };
         return simnet::append_authoritative_boids(world, storage);
+    }
+
+    [[nodiscard]] simnet::BoidState hued_boid(
+        simnet::EntityNetId id,
+        simnet::Vec3f position,
+        simnet::Vec3f heading,
+        std::uint8_t hue
+    )
+    {
+        auto result = boid(id, position, heading);
+        result.hue = hue;
+        return result;
     }
 
     void step(
@@ -113,9 +130,13 @@ namespace
         auto settings = test_settings();
         settings.world_half = 30.0F;
         settings.cell_size = 6.0F;
-        settings.perception_radius = 6.0F;
         settings.separation_radius = 2.5F;
+        settings.alignment_radius = 6.0F;
+        settings.cohesion_radius = 6.0F;
         settings.containment_margin = 6.0F;
+        settings.enable_wander = true;
+        settings.enable_hue_assimilation = true;
+        settings.enable_hue_drift = true;
         auto runtime = simnet::ServerGameRuntime { settings };
         auto world = flecs::world {};
         simnet::register_server_game(world, runtime);
@@ -224,6 +245,161 @@ TEST_CASE("boid rules produce deterministic local steering", "[boids]")
         REQUIRE(debug.has_value());
         CHECK(debug->containment.x < 0.0F);
     }
+
+    SECTION("alignment and cohesion use independent radii")
+    {
+        auto settings = test_settings();
+        settings.separation_radius = 0.1F;
+        settings.alignment_radius = 2.0F;
+        settings.cohesion_radius = 10.0F;
+        settings.field_of_view_degrees = 360.0F;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            boid(1U, {}, { 0.0F, 1.0F, 0.0F }),
+            boid(2U, { 5.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
+        }).success());
+        runtime.select_boid(1U);
+        step(world, runtime);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->alignment_neighbor_count == 0U);
+        CHECK(debug->cohesion_neighbor_count == 1U);
+        CHECK(simnet::length_squared(debug->alignment) == 0.0F);
+        CHECK(debug->cohesion.x > 0.0F);
+    }
+}
+
+TEST_CASE("boid rule toggles remove their steering contribution", "[boids][config]")
+{
+    auto settings = test_settings();
+    settings.enable_separation = false;
+    settings.enable_alignment = false;
+    settings.enable_cohesion = false;
+    settings.enable_containment = false;
+    auto runtime = simnet::ServerGameRuntime { settings };
+    auto world = flecs::world {};
+    simnet::register_server_game(world, runtime);
+    REQUIRE(append_boids(world, {
+        boid(1U, { 99.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
+        boid(2U, { 98.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
+    }).success());
+    runtime.select_boid(1U);
+    step(world, runtime);
+    auto const debug = runtime.selected_boid_debug();
+    REQUIRE(debug.has_value());
+    CHECK(simnet::length_squared(debug->separation) == 0.0F);
+    CHECK(simnet::length_squared(debug->alignment) == 0.0F);
+    CHECK(simnet::length_squared(debug->cohesion) == 0.0F);
+    CHECK(simnet::length_squared(debug->containment) == 0.0F);
+    CHECK(simnet::length_squared(debug->wander) == 0.0F);
+    CHECK_FALSE(debug->wander_active);
+}
+
+TEST_CASE("deterministic wander is a capped Server-private steering input", "[boids]")
+{
+    auto settings = test_settings();
+    settings.enable_separation = false;
+    settings.enable_alignment = false;
+    settings.enable_cohesion = false;
+    settings.enable_containment = false;
+    settings.enable_wander = true;
+    settings.wander_acceleration = 0.5F;
+    auto runtime = simnet::ServerGameRuntime { settings };
+    auto world = flecs::world {};
+    simnet::register_server_game(world, runtime);
+    REQUIRE(append_boids(world, {
+        boid(7U, {}, { 1.0F, 0.0F, 0.0F }),
+    }).success());
+    runtime.select_boid(7U);
+    step(world, runtime);
+    auto const debug = runtime.selected_boid_debug();
+    REQUIRE(debug.has_value());
+    CHECK(debug->wander_active);
+    CHECK(simnet::length(debug->wander) == Catch::Approx(0.5F));
+    CHECK(std::abs(simnet::dot(debug->wander, { 1.0F, 0.0F, 0.0F })) < 1.0e-5F);
+}
+
+TEST_CASE("hue rules use circular deterministic updates", "[boids][hue]")
+{
+    SECTION("assimilation crosses the hue wrap boundary by the short path")
+    {
+        auto settings = test_settings();
+        settings.enable_hue_assimilation = true;
+        settings.enable_hue_drift = false;
+        settings.field_of_view_degrees = 360.0F;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            hued_boid(1U, {}, { 1.0F, 0.0F, 0.0F }, 250U),
+            hued_boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 5U),
+        }).success());
+        runtime.select_boid(1U);
+        step(world, runtime, 1.0F);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->hue_neighbor_count == 1U);
+        CHECK(debug->hue_assimilation_active);
+        CHECK_FALSE(debug->hue_drift_active);
+        CHECK(debug->hue_delta > 0.0F);
+        CHECK(debug->hue_delta < 0.1F);
+        CHECK(debug->applied_hue_step > 0.0F);
+    }
+
+    SECTION("an isolated boid drifts toward its stable target")
+    {
+        auto settings = test_settings();
+        settings.enable_hue_assimilation = true;
+        settings.enable_hue_drift = true;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            hued_boid(17U, {}, { 1.0F, 0.0F, 0.0F }, 0U),
+        }).success());
+        runtime.select_boid(17U);
+        step(world, runtime, 1.0F);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->hue_neighbor_count == 0U);
+        CHECK_FALSE(debug->hue_assimilation_active);
+        CHECK(debug->hue_drift_active);
+        CHECK(std::abs(debug->applied_hue_step) > 0.0F);
+    }
+
+    SECTION("disabled hue rules preserve hue")
+    {
+        auto settings = test_settings();
+        settings.enable_hue_assimilation = false;
+        settings.enable_hue_drift = false;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            hued_boid(1U, {}, { 1.0F, 0.0F, 0.0F }, 50U),
+            hued_boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 200U),
+        }).success());
+        runtime.select_boid(1U);
+        step(world, runtime, 1.0F);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK_FALSE(debug->hue_assimilation_active);
+        CHECK_FALSE(debug->hue_drift_active);
+        CHECK(debug->applied_hue_step == 0.0F);
+        CHECK(snapshot(world, 1U).hues.front() == 50U);
+    }
+}
+
+TEST_CASE("boid radii must be finite and positive", "[boids][config]")
+{
+    auto settings = test_settings();
+    settings.alignment_radius = 0.0F;
+    CHECK_THROWS_AS(simnet::ServerGameRuntime { settings }, std::invalid_argument);
+    settings = test_settings();
+    settings.cohesion_radius = std::numeric_limits<float>::quiet_NaN();
+    CHECK_THROWS_AS(simnet::ServerGameRuntime { settings }, std::invalid_argument);
 }
 
 TEST_CASE("invalid computed state is not partially committed", "[boids]")
@@ -282,7 +458,8 @@ TEST_CASE("selected boid details are available without another simulation tick",
     CHECK(debug->raw_candidate_count == 1U);
     CHECK(debug->retained_neighbor_count == 1U);
     CHECK(debug->queried_cell_bounds.size() > 1U);
-    CHECK(debug->perception_radius == test_settings().perception_radius);
+    CHECK(debug->alignment_radius == test_settings().alignment_radius);
+    CHECK(debug->cohesion_radius == test_settings().cohesion_radius);
     CHECK(debug->maximum_neighbors == test_settings().max_neighbors);
     CHECK(canonical_hash(snapshot(world, 1U)) == before);
 

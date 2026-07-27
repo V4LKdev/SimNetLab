@@ -18,9 +18,17 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     changed = baseline;
     changed.boids.separation_radius += 1.0F;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.boids.enable_wander = !changed.boids.enable_wander;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.boids.alignment_radius += 1.0F;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
 }
 
-TEST_CASE("boids demo profile loads a density-tuned deterministic scenario", "[config]")
+TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")
 {
     auto const path = simnet::default_shared_config_path().parent_path()
         / "shared_boids_demo.json";
@@ -32,5 +40,8 @@ TEST_CASE("boids demo profile loads a density-tuned deterministic scenario", "[c
     CHECK(config.spatial.max_neighbors == 64U);
     CHECK(config.boids.min_speed <= config.boids.cruise_speed);
     CHECK(config.boids.cruise_speed <= config.boids.max_speed);
-    CHECK(config.boids.separation_radius <= config.boids.perception_radius);
+    CHECK(config.boids.alignment_radius == 18.0F);
+    CHECK(config.boids.cohesion_radius == 18.0F);
+    CHECK(config.boids.enable_wander);
+    CHECK(config.boids.enable_hue_assimilation);
 }

@@ -1294,6 +1294,13 @@ namespace simnet
                                 details.cohesion_neighbor_count.value_or(0U)
                             );
                             text(line);
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "hue neighbors %u",
+                                details.hue_neighbor_count.value_or(0U)
+                            );
+                            text(line);
                         }
                         if (details.current_cell.has_value()) {
                             std::snprintf(
@@ -1307,13 +1314,21 @@ namespace simnet
                             );
                             text(line);
                         }
-                        if (details.perception_radius.has_value()) {
+                        if (details.query_radius.has_value()) {
                             std::snprintf(
                                 line,
                                 sizeof(line),
-                                "radii perception %.1f separation %.1f",
-                                *details.perception_radius,
+                                "radii query %.1f separation %.1f",
+                                *details.query_radius,
                                 details.separation_radius.value_or(0.0F)
+                            );
+                            text(line);
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "alignment %.1f cohesion %.1f",
+                                details.alignment_radius.value_or(0.0F),
+                                details.cohesion_radius.value_or(0.0F)
                             );
                             text(line);
                             std::snprintf(
@@ -1358,6 +1373,34 @@ namespace simnet
                         vector("alignment", details.alignment);
                         vector("cohesion", details.cohesion);
                         vector("containment", details.containment);
+                        vector("wander", details.wander);
+                        if (details.current_hue.has_value()) {
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "hue %.3f target %.3f",
+                                *details.current_hue,
+                                details.hue_target.value_or(*details.current_hue)
+                            );
+                            text(line);
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "hue delta %.4f step %.4f",
+                                details.hue_delta.value_or(0.0F),
+                                details.applied_hue_step.value_or(0.0F)
+                            );
+                            text(line);
+                            std::snprintf(
+                                line,
+                                sizeof(line),
+                                "active wander %s hue-assim %s hue-drift %s",
+                                details.wander_active.value_or(false) ? "yes" : "no",
+                                details.hue_assimilation_active.value_or(false) ? "yes" : "no",
+                                details.hue_drift_active.value_or(false) ? "yes" : "no"
+                            );
+                            text(line);
+                        }
                         if (details.last_update_tick.has_value()) {
                             std::snprintf(line, sizeof(line), "update tick %llu", static_cast<unsigned long long>(*details.last_update_tick));
                             text(line);

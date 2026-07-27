@@ -12,19 +12,31 @@
     "max_neighbors": 64
   },
   "boids": {
+    "enable_separation": true,
+    "enable_alignment": true,
+    "enable_cohesion": true,
+    "enable_containment": true,
+    "enable_wander": true,
+    "enable_hue_assimilation": true,
+    "enable_hue_drift": true,
     "min_speed": 6.0,
     "cruise_speed": 8.0,
     "max_speed": 10.0,
     "max_acceleration": 12.0,
-    "perception_radius": 18.0,
     "separation_radius": 3.6,
+    "alignment_radius": 18.0,
+    "cohesion_radius": 18.0,
     "field_of_view_degrees": 240.0,
     "containment_prediction_seconds": 0.75,
     "containment_margin": 22.5,
     "separation_acceleration": 10.0,
     "containment_acceleration": 9.0,
     "alignment_acceleration": 3.0,
-    "cohesion_acceleration": 2.0
+    "cohesion_acceleration": 2.0,
+    "wander_acceleration": 0.35,
+    "wander_frequency_hz": 0.35,
+    "hue_assimilation_rate": 0.25,
+    "hue_drift_rate": 0.02
   },
   "pipeline": {
     "enable_aoi": false,

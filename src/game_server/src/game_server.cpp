@@ -34,6 +34,11 @@ namespace
         simnet::Vec3f value {};
     };
 
+    struct HueState
+    {
+        float value {};
+    };
+
     struct FlockRow
     {
         std::uint32_t value {};
@@ -103,6 +108,7 @@ namespace
     {
         set_authoritative_boid_components(entity, boid);
         entity.set<Velocity>({ .value = boid.heading * cruise_speed });
+        entity.set<HueState>({ .value = static_cast<float>(boid.hue) / 256.0F });
         entity.set<FlockRow>({ .value = row });
     }
 
@@ -137,6 +143,8 @@ namespace simnet
             std::vector<Vec3f> positions {};
             std::vector<Vec3f> velocities {};
             std::vector<Vec3f> headings {};
+            std::vector<float> hues {};
+            std::vector<Vec3f> hue_units {};
 
             void resize(std::size_t count)
             {
@@ -144,6 +152,8 @@ namespace simnet
                 positions.resize(count);
                 velocities.resize(count);
                 headings.resize(count);
+                hues.resize(count);
+                hue_units.resize(count);
             }
         };
 
@@ -152,6 +162,7 @@ namespace simnet
             std::vector<Vec3f> positions {};
             std::vector<Vec3f> velocities {};
             std::vector<Vec3f> headings {};
+            std::vector<float> hues {};
             std::vector<std::uint8_t> written {};
 
             void resize(std::size_t count)
@@ -159,6 +170,7 @@ namespace simnet
                 positions.resize(count);
                 velocities.resize(count);
                 headings.resize(count);
+                hues.resize(count);
                 written.resize(count);
             }
         };
@@ -214,6 +226,8 @@ namespace simnet
             const Position,
             const Heading,
             const Velocity,
+            const HueState,
+            const Hue,
             const FlockRow> capture_query {};
         std::optional<EntityNetId> selected_id {};
         std::optional<SelectedBoidDebug> selected_debug {};
@@ -223,6 +237,8 @@ namespace simnet
         std::chrono::steady_clock::time_point commit_started {};
         std::size_t prepared_entity_count {};
         float last_delta_time {};
+        std::uint64_t evaluation_tick {};
+        std::uint64_t completed_tick_count {};
         bool prepared {};
         bool phase_valid {};
     };
@@ -245,16 +261,25 @@ namespace
         simnet::Vec3f alignment {};
         simnet::Vec3f cohesion {};
         simnet::Vec3f containment {};
+        simnet::Vec3f wander {};
+        float next_hue {};
+        float hue_target {};
+        float hue_delta {};
+        float applied_hue_step {};
         std::uint32_t raw_candidate_count {};
         std::uint32_t retained_neighbor_count {};
         std::uint32_t queried_cell_count {};
         std::uint32_t separation_neighbor_count {};
         std::uint32_t alignment_neighbor_count {};
         std::uint32_t cohesion_neighbor_count {};
+        std::uint32_t hue_neighbor_count {};
         bool neighbor_cap_hit {};
         bool overlap_recovery {};
         bool acceleration_saturated {};
         bool wall_guard {};
+        bool wander_active {};
+        bool hue_assimilation_active {};
+        bool hue_drift_active {};
     };
 
     [[nodiscard]] double elapsed_ms(Clock::time_point start) noexcept
@@ -334,6 +359,85 @@ namespace
         return static_cast<float>(bits) / static_cast<float>(0xFFFFFFU) * 2.0F - 1.0F;
     }
 
+    [[nodiscard]] float unit_hash_component(std::uint64_t value) noexcept
+    {
+        auto const bits = static_cast<std::uint32_t>(mix64(value) >> 40U);
+        return static_cast<float>(bits) / 16777216.0F;
+    }
+
+    [[nodiscard]] float wrap_hue(float hue) noexcept
+    {
+        hue -= std::floor(hue);
+        return hue < 0.0F ? hue + 1.0F : hue;
+    }
+
+    [[nodiscard]] float hue_delta(float from, float to) noexcept
+    {
+        return std::remainder(to - from, 1.0F);
+    }
+
+    [[nodiscard]] float deterministic_hue_target(
+        std::uint64_t seed,
+        simnet::EntityNetId id
+    ) noexcept
+    {
+        return unit_hash_component(seed ^ (static_cast<std::uint64_t>(id) << 1U));
+    }
+
+    [[nodiscard]] simnet::Vec3f deterministic_wander(
+        simnet::BoidSimulationSettings const& settings,
+        simnet::EntityNetId id,
+        simnet::Vec3f heading,
+        std::uint64_t tick,
+        float delta_time
+    ) noexcept
+    {
+        auto const key = settings.seed ^ (static_cast<std::uint64_t>(id) << 32U);
+        auto const phase = static_cast<float>(tick) * delta_time
+            * settings.wander_frequency_hz
+            + unit_hash_component(key ^ 0x243f6a8885a308d3ULL);
+        auto const segment = static_cast<std::uint64_t>(std::floor(phase));
+        auto interpolation = phase - std::floor(phase);
+        interpolation = interpolation * interpolation * (3.0F - 2.0F * interpolation);
+        auto component = [&](std::uint64_t salt) {
+            auto const current = signed_hash_component(key ^ salt ^ segment);
+            auto const next = signed_hash_component(key ^ salt ^ (segment + 1U));
+            return current + (next - current) * interpolation;
+        };
+        auto const raw = simnet::Vec3f {
+            component(0x13198a2e03707344ULL),
+            component(0xa4093822299f31d0ULL),
+            component(0x082efa98ec4e6c89ULL),
+        };
+        auto lateral = raw - heading * simnet::dot(raw, heading);
+        if (simnet::length_squared(lateral) <= vector_epsilon_squared) {
+            auto const axis = std::abs(heading.y) < 0.9F
+                ? simnet::Vec3f { 0.0F, 1.0F, 0.0F }
+                : simnet::Vec3f { 1.0F, 0.0F, 0.0F };
+            lateral = {
+                heading.y * axis.z - heading.z * axis.y,
+                heading.z * axis.x - heading.x * axis.z,
+                heading.x * axis.y - heading.y * axis.x,
+            };
+        }
+        return simnet::normalize_or(lateral, { 1.0F, 0.0F, 0.0F })
+            * settings.wander_acceleration;
+    }
+
+    [[nodiscard]] std::array<simnet::Vec3f, 256> const& hue_unit_table()
+    {
+        static auto const table = [] {
+            auto result = std::array<simnet::Vec3f, 256> {};
+            for (auto index = std::size_t {}; index < result.size(); ++index) {
+                auto const angle = static_cast<float>(index)
+                    / 256.0F * 2.0F * std::numbers::pi_v<float>;
+                result[index] = { std::cos(angle), std::sin(angle), 0.0F };
+            }
+            return result;
+        }();
+        return table;
+    }
+
     [[nodiscard]] simnet::Vec3f overlap_direction(
         simnet::EntityNetId lhs,
         simnet::EntityNetId rhs
@@ -362,6 +466,17 @@ namespace
             return lhs.distance_squared < rhs.distance_squared;
         }
         return lhs.id < rhs.id;
+    }
+
+    [[nodiscard]] float query_radius(
+        simnet::BoidSimulationSettings const& settings
+    ) noexcept
+    {
+        return std::max({
+            settings.separation_radius,
+            settings.alignment_radius,
+            settings.cohesion_radius,
+        });
     }
 
     void keep_neighbor(
@@ -450,7 +565,8 @@ namespace
         simnet::ServerGameRuntime::Impl const& runtime,
         simnet::ServerGameRuntime::Impl::WorkerScratch& scratch,
         std::uint32_t row,
-        float delta_time
+        float delta_time,
+        std::uint64_t tick
     )
     {
         auto const& settings = runtime.settings;
@@ -458,6 +574,7 @@ namespace
         auto const position = current.positions[row];
         auto const velocity = current.velocities[row];
         auto const heading = current.headings[row];
+        auto const current_hue = current.hues[row];
         auto const id = current.ids[row];
 
         scratch.neighbors.clear();
@@ -466,7 +583,7 @@ namespace
             runtime.grid,
             current.positions,
             position,
-            settings.perception_radius,
+            query_radius(settings),
             [&](std::uint32_t candidate_row) {
                 if (candidate_row == row) {
                     return;
@@ -491,19 +608,27 @@ namespace
         auto separation_sum = simnet::Vec3f {};
         auto alignment_velocity = simnet::Vec3f {};
         auto cohesion_position = simnet::Vec3f {};
+        auto hue_x = 0.0F;
+        auto hue_y = 0.0F;
         auto separation_count = std::uint32_t {};
         auto alignment_count = std::uint32_t {};
         auto cohesion_count = std::uint32_t {};
+        auto hue_count = std::uint32_t {};
         auto overlap_recovery = false;
         auto const separation_radius_squared =
             settings.separation_radius * settings.separation_radius;
+        auto const alignment_radius_squared =
+            settings.alignment_radius * settings.alignment_radius;
+        auto const cohesion_radius_squared =
+            settings.cohesion_radius * settings.cohesion_radius;
         auto const half_fov_radians =
             settings.field_of_view_degrees * std::numbers::pi_v<float> / 360.0F;
         auto const fov_cosine = std::cos(half_fov_radians);
 
         for (auto const& neighbor : scratch.neighbors) {
             auto const offset = current.positions[neighbor.row] - position;
-            if (neighbor.distance_squared <= separation_radius_squared) {
+            if (settings.enable_separation
+                && neighbor.distance_squared <= separation_radius_squared) {
                 if (neighbor.distance_squared <= overlap_epsilon_squared) {
                     separation_sum = separation_sum + overlap_direction(id, neighbor.id);
                     ++scratch.overlap_recoveries;
@@ -519,11 +644,24 @@ namespace
                 settings.field_of_view_degrees >= 360.0F
                 || simnet::dot(heading, offset)
                     >= fov_cosine * std::sqrt(neighbor.distance_squared);
-            if (accepted_by_fov) {
+            if (settings.enable_alignment
+                && accepted_by_fov
+                && neighbor.distance_squared <= alignment_radius_squared) {
                 alignment_velocity = alignment_velocity + current.velocities[neighbor.row];
-                cohesion_position = cohesion_position + current.positions[neighbor.row];
                 ++alignment_count;
+            }
+            if (settings.enable_cohesion
+                && accepted_by_fov
+                && neighbor.distance_squared <= cohesion_radius_squared) {
+                cohesion_position = cohesion_position + current.positions[neighbor.row];
                 ++cohesion_count;
+            }
+            if ((settings.enable_hue_assimilation || settings.enable_hue_drift)
+                && accepted_by_fov
+                && neighbor.distance_squared <= cohesion_radius_squared) {
+                hue_x += current.hue_units[neighbor.row].x;
+                hue_y += current.hue_units[neighbor.row].y;
+                ++hue_count;
             }
         }
 
@@ -557,7 +695,12 @@ namespace
             );
         }
 
-        auto const containment = containment_acceleration(runtime, position, velocity);
+        auto const containment = settings.enable_containment
+            ? containment_acceleration(runtime, position, velocity)
+            : simnet::Vec3f {};
+        auto const wander = settings.enable_wander && settings.wander_acceleration > 0.0F
+            ? deterministic_wander(settings, id, heading, tick, delta_time)
+            : simnet::Vec3f {};
         auto const safety = clamp_length(
             separation + containment,
             settings.max_acceleration
@@ -566,8 +709,33 @@ namespace
             0.0F,
             settings.max_acceleration - simnet::length(safety)
         );
-        auto const social = clamp_length(alignment + cohesion, remaining);
+        auto const social = clamp_length(alignment + cohesion + wander, remaining);
         auto const acceleration = safety + social;
+
+        auto next_hue = current_hue;
+        auto hue_target = current_hue;
+        auto applied_hue_step = 0.0F;
+        auto hue_assimilation_active = false;
+        auto hue_drift_active = false;
+        if (settings.enable_hue_assimilation && hue_count != 0U) {
+            hue_assimilation_active = true;
+            if (hue_x != 0.0F || hue_y != 0.0F) {
+                hue_target = wrap_hue(
+                    std::atan2(hue_y, hue_x) / (2.0F * std::numbers::pi_v<float>)
+                );
+            }
+            auto const delta = hue_delta(current_hue, hue_target);
+            auto const maximum_step = settings.hue_assimilation_rate * delta_time;
+            applied_hue_step = std::clamp(delta, -maximum_step, maximum_step);
+            next_hue = wrap_hue(current_hue + applied_hue_step);
+        } else if (settings.enable_hue_drift && hue_count == 0U) {
+            hue_drift_active = true;
+            hue_target = deterministic_hue_target(settings.seed, id);
+            auto const delta = hue_delta(current_hue, hue_target);
+            auto const maximum_step = settings.hue_drift_rate * delta_time;
+            applied_hue_step = std::clamp(delta, -maximum_step, maximum_step);
+            next_hue = wrap_hue(current_hue + applied_hue_step);
+        }
 
         auto next_velocity = clamp_speed(
             velocity + acceleration * delta_time,
@@ -597,17 +765,26 @@ namespace
             .alignment = alignment,
             .cohesion = cohesion,
             .containment = containment,
+            .wander = wander,
+            .next_hue = next_hue,
+            .hue_target = hue_target,
+            .hue_delta = hue_delta(current_hue, hue_target),
+            .applied_hue_step = applied_hue_step,
             .raw_candidate_count = raw_candidate_count,
             .retained_neighbor_count = static_cast<std::uint32_t>(scratch.neighbors.size()),
             .queried_cell_count = queried_cell_count,
             .separation_neighbor_count = separation_count,
             .alignment_neighbor_count = alignment_count,
             .cohesion_neighbor_count = cohesion_count,
+            .hue_neighbor_count = hue_count,
             .neighbor_cap_hit = raw_candidate_count > settings.max_neighbors,
             .overlap_recovery = overlap_recovery,
             .acceleration_saturated =
                 acceleration_squared >= maximum_acceleration_squared * (1.0F - 1.0e-5F),
             .wall_guard = guarded,
+            .wander_active = settings.enable_wander && settings.wander_acceleration > 0.0F,
+            .hue_assimilation_active = hue_assimilation_active,
+            .hue_drift_active = hue_drift_active,
         };
     }
 
@@ -622,7 +799,7 @@ namespace
         simnet::for_each_radius_cell(
             runtime.grid,
             runtime.current.positions[row],
-            runtime.settings.perception_radius,
+            query_radius(runtime.settings),
             [&](simnet::CellCoord coord) {
                 queried_cell_bounds.push_back(simnet::cell_bounds(runtime.grid, coord));
             }
@@ -637,23 +814,34 @@ namespace
             .separation_neighbor_count = evaluation.separation_neighbor_count,
             .alignment_neighbor_count = evaluation.alignment_neighbor_count,
             .cohesion_neighbor_count = evaluation.cohesion_neighbor_count,
+            .hue_neighbor_count = evaluation.hue_neighbor_count,
             .current_cell = simnet::cell_coord_for_position(
                 runtime.grid,
                 runtime.current.positions[row]
             ),
             .queried_cell_bounds = std::move(queried_cell_bounds),
-            .perception_radius = runtime.settings.perception_radius,
             .separation_radius = runtime.settings.separation_radius,
+            .alignment_radius = runtime.settings.alignment_radius,
+            .cohesion_radius = runtime.settings.cohesion_radius,
+            .query_radius = query_radius(runtime.settings),
             .field_of_view_degrees = runtime.settings.field_of_view_degrees,
             .maximum_neighbors = runtime.settings.max_neighbors,
             .neighbor_cap_hit = evaluation.neighbor_cap_hit,
             .overlap_recovery = evaluation.overlap_recovery,
             .acceleration_saturated = evaluation.acceleration_saturated,
             .wall_guard = evaluation.wall_guard,
+            .wander_active = evaluation.wander_active,
+            .hue_assimilation_active = evaluation.hue_assimilation_active,
+            .hue_drift_active = evaluation.hue_drift_active,
             .separation = evaluation.separation,
             .alignment = evaluation.alignment,
             .cohesion = evaluation.cohesion,
             .containment = evaluation.containment,
+            .wander = evaluation.wander,
+            .current_hue = runtime.current.hues[row],
+            .hue_target = evaluation.hue_target,
+            .hue_delta = evaluation.hue_delta,
+            .applied_hue_step = evaluation.applied_hue_step,
         };
     }
 
@@ -664,7 +852,13 @@ namespace
         float delta_time
     )
     {
-        auto const evaluation = evaluate_boid_row(runtime, scratch, row, delta_time);
+        auto const evaluation = evaluate_boid_row(
+            runtime,
+            scratch,
+            row,
+            delta_time,
+            runtime.evaluation_tick
+        );
         auto const speed = simnet::length(evaluation.next_velocity);
         auto const acceleration = simnet::length(evaluation.acceleration);
         ++scratch.processed_boids;
@@ -699,6 +893,7 @@ namespace
         runtime.next.positions[row] = evaluation.next_position;
         runtime.next.velocities[row] = evaluation.next_velocity;
         runtime.next.headings[row] = evaluation.next_heading;
+        runtime.next.hues[row] = evaluation.next_hue;
         runtime.next.written[row] = 1U;
 
         if (runtime.selected_id == runtime.current.ids[row]) {
@@ -717,9 +912,9 @@ namespace
             && settings.min_speed <= settings.cruise_speed
             && settings.cruise_speed <= settings.max_speed
             && std::isfinite(settings.max_acceleration) && settings.max_acceleration > 0.0F
-            && std::isfinite(settings.perception_radius) && settings.perception_radius > 0.0F
             && std::isfinite(settings.separation_radius) && settings.separation_radius > 0.0F
-            && settings.separation_radius <= settings.perception_radius
+            && std::isfinite(settings.alignment_radius) && settings.alignment_radius > 0.0F
+            && std::isfinite(settings.cohesion_radius) && settings.cohesion_radius > 0.0F
             && std::isfinite(settings.field_of_view_degrees)
             && settings.field_of_view_degrees > 0.0F
             && settings.field_of_view_degrees <= 360.0F
@@ -733,7 +928,15 @@ namespace
             && std::isfinite(settings.alignment_acceleration)
             && settings.alignment_acceleration >= 0.0F
             && std::isfinite(settings.cohesion_acceleration)
-            && settings.cohesion_acceleration >= 0.0F;
+            && settings.cohesion_acceleration >= 0.0F
+            && std::isfinite(settings.wander_acceleration)
+            && settings.wander_acceleration >= 0.0F
+            && std::isfinite(settings.wander_frequency_hz)
+            && settings.wander_frequency_hz > 0.0F
+            && std::isfinite(settings.hue_assimilation_rate)
+            && settings.hue_assimilation_rate > 0.0F
+            && std::isfinite(settings.hue_drift_rate)
+            && settings.hue_drift_rate > 0.0F;
     }
 }
 
@@ -794,7 +997,8 @@ namespace simnet
             *impl_,
             impl_->inspection,
             row,
-            impl_->last_delta_time
+            impl_->last_delta_time,
+            impl_->evaluation_tick
         );
         impl_->selected_debug = make_selected_debug(*impl_, row, evaluation);
     }
@@ -860,6 +1064,7 @@ namespace simnet
         auto* impl = runtime.impl_.get();
         register_game_components(world);
         world.component<Velocity>("simnet::detail::Velocity");
+        world.component<HueState>("simnet::detail::HueState");
         world.component<FlockRow>("simnet::detail::FlockRow");
         world.component<AuthoritativeReplicationIndex>("simnet::detail::AuthoritativeReplicationIndex");
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
@@ -876,6 +1081,8 @@ namespace simnet
             const Position,
             const Heading,
             const Velocity,
+            const HueState,
+            const Hue,
             const FlockRow>()
             .cache_kind(flecs::QueryCacheAll)
             .build();
@@ -907,6 +1114,7 @@ namespace simnet
                     impl->progress_started = Clock::now();
                     auto const phase_started = Clock::now();
                     impl->last_delta_time = system_iterator.delta_time();
+                    impl->evaluation_tick = impl->completed_tick_count;
                     impl->report = {};
                     impl->report.entity_count =
                         static_cast<std::uint32_t>(impl->prepared_entity_count);
@@ -932,7 +1140,9 @@ namespace simnet
                             auto const positions = query_iterator.field<const Position>(1);
                             auto const headings = query_iterator.field<const Heading>(2);
                             auto const velocities = query_iterator.field<const Velocity>(3);
-                            auto const rows = query_iterator.field<const FlockRow>(4);
+                            auto const hues = query_iterator.field<const HueState>(4);
+                            auto const quantized_hues = query_iterator.field<const Hue>(5);
+                            auto const rows = query_iterator.field<const FlockRow>(6);
                             for (auto query_row : query_iterator) {
                                 auto const row = rows[query_row].value;
                                 if (row >= impl->prepared_entity_count || impl->capture_seen[row] != 0U) {
@@ -944,8 +1154,10 @@ namespace simnet
                                 auto const position = positions[query_row].value;
                                 auto const heading = headings[query_row].value;
                                 auto const velocity = velocities[query_row].value;
+                                auto const hue = hues[query_row].value;
                                 if (id == 0U || !is_finite(position) || !is_finite(heading)
-                                    || !is_normalized_heading(heading) || !is_finite(velocity)) {
+                                    || !is_normalized_heading(heading) || !is_finite(velocity)
+                                    || !std::isfinite(hue) || hue < 0.0F || hue >= 1.0F) {
                                     impl->phase_valid = false;
                                     impl->report.error = "authoritative boid capture contains invalid state";
                                     break;
@@ -955,6 +1167,9 @@ namespace simnet
                                 impl->current.positions[row] = position;
                                 impl->current.headings[row] = heading;
                                 impl->current.velocities[row] = velocity;
+                                impl->current.hues[row] = hue;
+                                impl->current.hue_units[row] =
+                                    hue_unit_table()[quantized_hues[query_row].value];
                             }
                         }
                     });
@@ -1041,7 +1256,10 @@ namespace simnet
                                 || !is_finite(impl->next.positions[row])
                                 || !is_finite(impl->next.velocities[row])
                                 || !is_finite(impl->next.headings[row])
-                                || !is_normalized_heading(impl->next.headings[row])) {
+                                || !is_normalized_heading(impl->next.headings[row])
+                                || !std::isfinite(impl->next.hues[row])
+                                || impl->next.hues[row] < 0.0F
+                                || impl->next.hues[row] >= 1.0F) {
                                 impl->phase_valid = false;
                                 impl->report.error = "computed boid state failed validation";
                                 break;
@@ -1129,7 +1347,9 @@ namespace simnet
                 }
             });
 
-        world.system<const FlockRow, Position, Heading, Velocity>("simnet::FlockCommit")
+        world.system<const FlockRow, Position, Heading, Velocity, HueState, Hue>(
+                "simnet::FlockCommit"
+            )
             .kind(commit_phase)
             .multi_threaded()
             .each([impl](
@@ -1138,7 +1358,9 @@ namespace simnet
                 FlockRow const& flock_row,
                 Position& position,
                 Heading& heading,
-                Velocity& velocity
+                Velocity& velocity,
+                HueState& hue_state,
+                Hue& hue
             ) {
                 if (!impl->phase_valid || flock_row.value >= impl->prepared_entity_count) {
                     return;
@@ -1147,12 +1369,19 @@ namespace simnet
                 position.value = impl->next.positions[row];
                 heading.value = impl->next.headings[row];
                 velocity.value = impl->next.velocities[row];
+                hue_state.value = impl->next.hues[row];
+                hue.value = static_cast<std::uint8_t>(
+                    std::floor(impl->next.hues[row] * 256.0F)
+                );
             });
 
         world.system<>("simnet::FlockReport")
             .kind(report_phase)
             .run([impl](flecs::iter& system_iterator) {
                 while (system_iterator.next()) {
+                    if (impl->phase_valid) {
+                        ++impl->completed_tick_count;
+                    }
                     impl->report.phases.commit_ms = elapsed_ms(impl->commit_started);
                     impl->report.phases.progress_ms = elapsed_ms(impl->progress_started);
                     auto const& diagnostics = impl->report.diagnostics;
@@ -1300,6 +1529,7 @@ namespace simnet
         auto headings = std::vector<Heading> {};
         auto hues = std::vector<Hue> {};
         auto velocities = std::vector<Velocity> {};
+        auto hue_states = std::vector<HueState> {};
         auto rows = std::vector<FlockRow> {};
         auto entities = std::vector<flecs::entity_t> {};
         {
@@ -1309,6 +1539,7 @@ namespace simnet
             headings.reserve(boids.size());
             hues.reserve(boids.size());
             velocities.reserve(boids.size());
+            hue_states.reserve(boids.size());
             rows.reserve(boids.size());
             entities.resize(boids.size());
             index.reserve(index.ids.size() + boids.size());
@@ -1319,26 +1550,31 @@ namespace simnet
                 headings.push_back({ .value = boid.heading });
                 hues.push_back({ .value = boid.hue });
                 velocities.push_back({ .value = boid.heading * index.cruise_speed });
+                hue_states.push_back({
+                    .value = static_cast<float>(boid.hue) / 256.0F,
+                });
                 rows.push_back({
                     .value = static_cast<std::uint32_t>(index.ids.size() + offset),
                 });
             }
         }
 
-        auto ids = std::array<ecs_id_t, 6> {
+        auto ids = std::array<ecs_id_t, 7> {
             world.id<NetIdentity>(),
             world.id<Position>(),
             world.id<Heading>(),
             world.id<Hue>(),
             world.id<Velocity>(),
+            world.id<HueState>(),
             world.id<FlockRow>(),
         };
-        auto data = std::array<void*, 6> {
+        auto data = std::array<void*, 7> {
             identities.data(),
             positions.data(),
             headings.data(),
             hues.data(),
             velocities.data(),
+            hue_states.data(),
             rows.data(),
         };
         auto populate = ecs_bulk_desc_t {};
