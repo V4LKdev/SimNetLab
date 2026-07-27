@@ -33,3 +33,9 @@ export import :validate;
  * replacements or baseline-relative patches.
  */
 export import :reconstruct;
+
+/**
+ * @par simnet.snapshot:interpolate
+ * Presentation-only interpolation between validated complete snapshots.
+ */
+export import :interpolate;

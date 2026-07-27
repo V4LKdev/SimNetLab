@@ -7,6 +7,7 @@ add_executable(SimNetTests
     pipeline_tests.cpp
     replication_tests.cpp
     runtime_tests.cpp
+    snapshot_interpolation_tests.cpp
     spatial_tests.cpp
     transport_tests.cpp
 )

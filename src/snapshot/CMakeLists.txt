@@ -9,6 +9,7 @@ target_sources(simnet_snapshot
             import/snapshot_types.cppm
             import/snapshot_validate.cppm
             import/snapshot_reconstruct.cppm
+            import/snapshot_interpolate.cppm
 )
 
 target_link_libraries(simnet_snapshot
