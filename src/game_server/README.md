@@ -26,7 +26,7 @@ Flecs
 
 The module must not depend on pipeline, transport, render, synthetic data, config, ENet, or Raylib. App/runtime code maps shared configuration into the renderer-independent simulation settings.
 
-`ServerGameRuntime` owns Server-private velocity, stable row state, reusable SoA buffers, the simulation grid, worker scratch, and one selected-boid diagnostic result. It must outlive its registered Flecs world. `prepare_server_game_runtime` sizes all external storage before `world.progress()`.
+`ServerGameRuntime` owns Server-private velocity and precise hue state, stable row state, reusable SoA buffers, the simulation grid, worker scratch, and one selected-boid diagnostic result. It must outlive its registered Flecs world. `prepare_server_game_runtime` sizes all external storage before `world.progress()`.
 
 Explicit Flecs phases always run capture, serial grid build, multithreaded compute, serial validation/merge, and multithreaded commit in that order. Compute reads only immutable previous-tick state and writes `NextState[FlockRow]`. A worker never mutates Flecs components, resizes runtime storage, shares neighbour arrays, or updates shared counters. Invalid next state skips the complete commit.
 
@@ -36,4 +36,8 @@ Authoritative boid creation and deletion must use this module's mutation API. Sy
 
 Extraction gathers authoritative entities with `NetIdentity`, `Position`, `Heading`, and `Hue`, sorts by `EntityNetId`, validates the resulting `WorldSnapshot`, and does not mutate the Flecs world. On extraction failure, the output snapshot is cleared and its tick is set to the requested tick.
 
-Velocity, row mapping, neighbour scratch, and rule diagnostics are Server-private and never enter the snapshot wire contract. Snapshot extraction remains world-query based for now. The private sorted index is a future profiling candidate for direct ordered extraction, but that optimization is intentionally separate from simulation.
+Velocity, precise hue phase, deterministic wander inputs, row mapping, neighbour scratch, and rule diagnostics are Server-private and never enter the snapshot wire contract. Wander is a smooth stateless function of run seed, stable ID, and tick, so worker scheduling cannot change its result. Hue assimilation averages accepted neighbour hues on the unit circle; isolated hue drift uses a stable per-ID target. Only the quantized authoritative hue component enters snapshots.
+
+Each steering and hue rule has a direct settings toggle. Alignment and cohesion use independent radii, while the simulation grid query uses the maximum separation/alignment/cohesion radius. The selected-boid record exposes wander and hue decisions without retaining debug arrays for every entity.
+
+Snapshot extraction remains world-query based for now. The private sorted index is a future profiling candidate for direct ordered extraction, but that optimization is intentionally separate from simulation.

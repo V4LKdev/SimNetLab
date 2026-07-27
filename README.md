@@ -12,7 +12,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
 - Application configuration for full replacement, incremental selection, quantization, and exact-baseline delta reconstruction
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
-- Deterministic Server-authoritative boids with separation, alignment, cohesion, bounded containment, and Flecs worker scheduling
+- Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
 - 1,000-entity Server to Client replication in the bounded runtime path
 - Optional Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local debug observer views, and authoritative remote pause
 
@@ -99,14 +99,14 @@ Default configuration is in `config/shared_default.json`, `config/server_default
 
 Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded; they do not parallelize queries or application code automatically.
 
-For the density-tuned 1,000-boid visual demonstration:
+For the conservative 1,000-boid visual demonstration:
 
 ```sh
 build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_boids_demo.json
 build/relWithDebInfo/app/Client --config config/client_visual.json --shared-config config/shared_boids_demo.json
 ```
 
-The Server keeps velocity and neighbour-computation state private. Replication remains the stable ID, position, normalized heading, and hue snapshot contract. The Server selected-entity panel remains available while paused and shows velocity, acceleration, query and neighbour counts, rule settings, flags, and steering contributions. Its optional generic gizmos show the queried cells, rule radii, FOV, and steering vectors; the Client does not receive those private facts.
+The Server keeps velocity, precise hue phase, and neighbour-computation state private. Replication remains the stable ID, position, normalized heading, and one-byte hue snapshot contract. The Server selected-entity panel remains available while paused and shows velocity, acceleration, query and neighbour counts, rule settings, flags, hue decisions, and steering contributions. Its optional generic gizmos show the queried cells, rule radii, FOV, and steering vectors; the Client does not receive those private facts.
 
 For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
 
