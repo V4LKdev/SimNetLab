@@ -326,6 +326,41 @@ TEST_CASE("authoritative player is replicated but excluded from flock simulation
     CHECK(simnet::authoritative_boid_count(world) == 2U);
 }
 
+TEST_CASE("player yaw maps D to positive X and A to negative X", "[player]")
+{
+    auto const run_yaw = [](bool left, bool right) {
+        auto settings = test_settings();
+        auto player_settings = simnet::PlayerMovementSettings {
+            .world_half = 10.0F,
+            .cruise_speed = 2.0F,
+            .boost_speed = 4.0F,
+            .slow_speed = 1.0F,
+            .speed_change_rate = 10.0F,
+            .yaw_rate_degrees = 90.0F,
+            .pitch_rate_degrees = 60.0F,
+            .pitch_limit_degrees = 75.0F,
+        };
+        auto runtime = simnet::ServerGameRuntime { settings, player_settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        auto const player_id = simnet::spawn_authoritative_player(world);
+        REQUIRE(player_id != 0U);
+        REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
+            .yaw_left = left,
+            .yaw_right = right,
+        }));
+
+        step(world, runtime, 1.0F / 60.0F);
+        auto const state = snapshot(world, 1U);
+        REQUIRE(state.size() == 1U);
+        REQUIRE(state.ids.front() == player_id);
+        return state.headings.front();
+    };
+
+    CHECK(run_yaw(false, true).x > 0.0F);
+    CHECK(run_yaw(true, false).x < 0.0F);
+}
+
 TEST_CASE("boid rule toggles remove their steering contribution", "[boids][config]")
 {
     auto settings = test_settings();
