@@ -19,6 +19,8 @@ Applications may supply presentation interpolation facts for F1. The renderer st
 
 Applications can supply a local `ObserverView` without giving the renderer any simulation or networking ownership. `F4` switches between the debug orbit camera and the observer camera. Arrow keys rotate the application-owned observer in either view. The observer uses one vertical FOV, and the renderer derives the matching horizontal FOV from the 4:3 scene aspect. Overview can display its marker, forward line, interest sphere, and frustum.
 
+A Client may instead supply a resolved `GameCameraView`. The generic viewer uses its position, target, up vector, and FOV without knowing about replication or player authority. In that case `F4` switches between Game and Overview, and Game emits semantic key/button state through `ViewerResult`. The application owns the locked chase-camera calculation and maps those inputs to its protocol. A missing camera pose falls back to Overview.
+
 Applications can also supply bounded occupied-cell data through `SpatialDebugView`. The renderer draws only supplied cell bounds and never imports `simnet_spatial`. The Server currently rebuilds this view from its authoritative render snapshot and uses the configured shared spatial cell size.
 
 Interpolated entity meshes may trail authoritative Server spatial cells and rule data by at most one simulation tick. Selected-boid vector origins use the displayed interpolated position so the gizmos remain readable.

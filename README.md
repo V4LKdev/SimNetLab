@@ -6,7 +6,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 
 ## Current capability
 
-- ENet-only transport with session handshake, bounded payload policy, SnapshotAck messages, and reliable opaque application control
+- ENet-only transport with session handshake, bounded payload policy, SnapshotAck messages, reliable opaque application control, and unreliable-sequenced opaque player input
 - Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
 - One authoritative server peer and one client peer
 - Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
@@ -15,6 +15,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
 - 1,000-entity Server to Client replication in the bounded runtime path
 - Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local debug observer views, and authoritative remote pause
+- Observer and authoritative Player join roles with one Server-owned Player fish and a locked third-person Client chase camera
 
 ## Planned work
 
@@ -69,6 +70,18 @@ build/debug/app/Server --config config/server_visual.json
 build/debug/app/Client --config config/client_visual.json
 ```
 
+To join as the one supported Player instead of an Observer:
+
+```sh
+build/debug/app/Client --config config/client_player_visual.json
+```
+
+The Player camera is locked behind and above the replicated fish. `W`/`S` pitch,
+`A`/`D` yaw, Shift accelerates, and Ctrl slows; Shift+Ctrl selects cruise speed.
+Input is latest-state unreliable-sequenced data, while join and pause remain
+reliable controls. `F4` switches locally between Game and Overview and sends one
+neutral input state when leaving Game. There is no client prediction yet.
+
 The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set the local `visualization.entity_mesh_path` to another OBJ file to replace it. An empty or unavailable path keeps the instanced wedge fallback.
 
 ## Project structure
@@ -95,7 +108,7 @@ The Server writes a small boid-tuning CSV under `telemetry.log_directory` when
 second and is not the future benchmark runner. JSON metrics export and benchmark
 settings remain parsed vocabulary without runtime execution.
 
-Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration.
+Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the Player role; Observer remains the default.
 
 Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded; they do not parallelize queries or application code automatically.
 
