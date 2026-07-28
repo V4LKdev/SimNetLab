@@ -14,7 +14,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
 - 1,000-entity Server to Client replication in the bounded runtime path
-- Optional Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local debug observer views, and authoritative remote pause
+- Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local debug observer views, and authoritative remote pause
 
 ## Planned work
 
@@ -107,6 +107,8 @@ build/relWithDebInfo/app/Client --config config/client_visual.json --shared-conf
 ```
 
 The Server keeps velocity, precise hue phase, and neighbour-computation state private. Replication remains the stable ID, position, normalized heading, and one-byte hue snapshot contract. The Server selected-entity panel remains available while paused and shows velocity, acceleration, query and neighbour counts, rule settings, flags, hue decisions, and steering contributions. Its optional generic gizmos show the queried cells, rule radii, FOV, and steering vectors; the Client does not receive those private facts.
+
+Visual interpolation is local and presentation-only. The Server blends adjacent authoritative ticks with the fixed-step alpha. The Client renders directly from retained reconstructed snapshots and derives its interval from snapshot ticks; it does not query the replicated Flecs world every frame. Pause snaps both viewers to their latest exact state. Set `visualization.interpolation_enabled` to `false` for exact snapshot debugging.
 
 For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
 

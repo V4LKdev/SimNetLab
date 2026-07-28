@@ -1159,6 +1159,27 @@ namespace simnet
                 text(line);
                 std::snprintf(line, sizeof(line), "frame %.2f ms", static_cast<double>(frame.info.frame_delta.count()) / 1'000'000.0);
                 text(line);
+                if (frame.info.interpolation.has_value()) {
+                    auto const& interpolation = *frame.info.interpolation;
+                    std::snprintf(
+                        line,
+                        sizeof(line),
+                        "interpolation %s alpha %.2f",
+                        interpolation.enabled
+                            ? (interpolation.interpolating ? "active" : "holding")
+                            : "off",
+                        interpolation.alpha
+                    );
+                    text(line);
+                    std::snprintf(
+                        line,
+                        sizeof(line),
+                        "display ticks %llu -> %llu",
+                        static_cast<unsigned long long>(interpolation.from_tick),
+                        static_cast<unsigned long long>(interpolation.to_tick)
+                    );
+                    text(line);
+                }
                 std::snprintf(line, sizeof(line), "input %.2f ms", static_cast<double>(stats.input_cpu_time.count()) / 1'000'000.0);
                 text(line);
                 std::snprintf(line, sizeof(line), "prepare %.2f ms", static_cast<double>(stats.preparation_cpu_time.count()) / 1'000'000.0);

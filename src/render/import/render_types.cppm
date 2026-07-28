@@ -48,6 +48,16 @@ export namespace simnet
         bool can_pause_simulation {};
     };
 
+    /// Presentation-only interpolation facts supplied by the application.
+    struct RenderInterpolationInfo
+    {
+        bool enabled {};
+        bool interpolating {};
+        Tick from_tick {};
+        Tick to_tick {};
+        double alpha { 1.0 };
+    };
+
     /// Non-owning application connection facts valid for the duration of Viewer::draw().
     struct RenderConnectionInfo
     {
@@ -77,6 +87,7 @@ export namespace simnet
         NS frame_delta {};
         std::optional<double> fixed_tick_rate_hz {};
         std::optional<bool> simulation_paused {};
+        std::optional<RenderInterpolationInfo> interpolation {};
         ViewerCapabilities capabilities {};
         std::optional<RenderConnectionInfo> connection {};
         std::optional<RenderReplicationInfo> replication {};

@@ -54,14 +54,15 @@ namespace
         simnet::WorldSnapshot snapshot {};
     };
 
+    constexpr std::size_t retained_snapshot_limit = 64;
+
+#if defined(SIMNET_ENABLE_RENDER)
     struct ClientPresentationState
     {
-        simnet::SequenceId observed_sequence {};
+        simnet::Tick observed_tick {};
         simnet::NS elapsed {};
         simnet::WorldSnapshot interpolated {};
     };
-
-    constexpr std::size_t retained_snapshot_limit = 64;
 
     [[nodiscard]] simnet::WorldSnapshot const* presentation_snapshot(
         std::deque<RetainedClientSnapshot> const& history,
@@ -79,8 +80,8 @@ namespace
         }
 
         auto const& current = history.back();
-        if (state.observed_sequence != current.sequence) {
-            state.observed_sequence = current.sequence;
+        if (state.observed_tick != current.snapshot.tick) {
+            state.observed_tick = current.snapshot.tick;
             state.elapsed = {};
         } else if (!paused) {
             state.elapsed += std::max(frame_delta, simnet::NS {});
@@ -98,6 +99,7 @@ namespace
         auto const elapsed_seconds =
             std::chrono::duration<double>(state.elapsed).count();
         alpha = std::clamp(elapsed_seconds / interval_seconds, 0.0, 1.0);
+        SIMNET_TRACE_SCOPE_CATEGORY("client.presentation.interpolate", simnet::LogCategory::Render);
         auto const interpolated = simnet::interpolate_world_snapshots(
             previous.snapshot,
             current.snapshot,
@@ -106,6 +108,7 @@ namespace
         );
         return interpolated.valid ? &state.interpolated : nullptr;
     }
+#endif
 
     enum class ClientConnectionState : std::uint8_t
     {
@@ -172,6 +175,7 @@ namespace
         std::optional<simnet::SequenceId> sequence,
         bool session_ready,
         std::optional<bool> simulation_paused,
+        simnet::RenderInterpolationInfo interpolation,
         ClientConnectionState connection_state,
         std::optional<simnet::PeerId> peer,
         simnet::SnapshotAck const& ack,
@@ -204,6 +208,7 @@ namespace
                 .frame_delta = frame_delta,
                 .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
                 .simulation_paused = simulation_paused,
+                .interpolation = interpolation,
                 .capabilities = { .can_pause_simulation = session_ready && simulation_paused.has_value() },
                 .connection = std::optional<simnet::RenderConnectionInfo> {
                     simnet::RenderConnectionInfo {
@@ -664,7 +669,28 @@ namespace simnet::app
                         stop_cause = ClientStopCause::ProtocolError;
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                     } else if (displayed_snapshot != nullptr) {
-                        static_cast<void>(interpolation_alpha);
+                        auto const has_pair = snapshot_history.size() >= 2U
+                            && snapshot_history[snapshot_history.size() - 2U].snapshot.tick
+                                < snapshot_history.back().snapshot.tick;
+                        auto const interpolation_active =
+                            local.visualization.interpolation_enabled
+                            && !(pause_state_received && authoritative_pause_state)
+                            && has_pair;
+                        auto const interpolation = RenderInterpolationInfo {
+                            .enabled = local.visualization.interpolation_enabled,
+                            .interpolating = interpolation_active,
+                            .from_tick = has_pair
+                                ? snapshot_history[snapshot_history.size() - 2U].snapshot.tick
+                                : displayed_snapshot->tick,
+                            .to_tick = snapshot_history.empty()
+                                ? displayed_snapshot->tick
+                                : snapshot_history.back().snapshot.tick,
+                            .alpha = interpolation_active ? interpolation_alpha : 1.0,
+                        };
+                        SIMNET_TRACE_PLOT(
+                            "client.render.interpolation_alpha",
+                            interpolation.alpha
+                        );
                         auto const sequence = latest_applied_sequence == 0
                             ? std::optional<SequenceId> {}
                             : std::optional<SequenceId> { latest_applied_sequence };
@@ -681,6 +707,7 @@ namespace simnet::app
                                     pause_state_received
                                         ? std::optional<bool> { authoritative_pause_state }
                                         : std::optional<bool> {},
+                                    interpolation,
                                     connection_state,
                                     server_peer,
                                     ack_tracker.value,

@@ -189,6 +189,7 @@ namespace
         bool dirty { true };
     };
 
+#if defined(SIMNET_ENABLE_RENDER)
     struct PresentationSnapshotState
     {
         simnet::WorldSnapshot previous {};
@@ -197,6 +198,7 @@ namespace
         bool has_previous {};
         bool has_current {};
     };
+#endif
 
     struct PeerRuntimeState
     {
@@ -327,6 +329,7 @@ namespace
         simnet::SharedConfig const& config,
         simnet::NS frame_delta,
         bool paused,
+        simnet::RenderInterpolationInfo interpolation,
         std::optional<PeerRuntimeState> const& peer,
         simnet::app::DebugObserverState const& observer,
         SpatialRenderStorage const& spatial,
@@ -474,6 +477,7 @@ namespace
                 .frame_delta = frame_delta,
                 .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
                 .simulation_paused = paused,
+                .interpolation = interpolation,
                 .capabilities = { .can_pause_simulation = true },
                 .connection = connection,
                 .replication = std::move(replication),
@@ -717,6 +721,7 @@ namespace
         std::copy(source.hues.begin(), source.hues.end(), destination.hues.begin());
     }
 
+#if defined(SIMNET_ENABLE_RENDER)
     void retain_presentation_snapshot(
         PresentationSnapshotState& state,
         simnet::WorldSnapshot const& snapshot
@@ -746,6 +751,7 @@ namespace
         if (!interpolation_enabled || paused || !state.has_previous) {
             return &state.current;
         }
+        SIMNET_TRACE_SCOPE_CATEGORY("server.presentation.interpolate", simnet::LogCategory::Render);
         auto const interpolated = simnet::interpolate_world_snapshots(
             state.previous,
             state.current,
@@ -754,6 +760,7 @@ namespace
         );
         return interpolated.valid ? &state.interpolated : nullptr;
     }
+#endif
 
     void retain_snapshot(
         PeerRuntimeState& peer,
@@ -1300,6 +1307,25 @@ namespace simnet::app
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
                             continue;
                         }
+                        auto const interpolation_active =
+                            local.visualization.interpolation_enabled
+                            && !simulation_paused
+                            && presentation.has_previous;
+                        auto const interpolation = RenderInterpolationInfo {
+                            .enabled = local.visualization.interpolation_enabled,
+                            .interpolating = interpolation_active,
+                            .from_tick = presentation.has_previous
+                                ? presentation.previous.tick
+                                : current_snapshot.snapshot.tick,
+                            .to_tick = current_snapshot.snapshot.tick,
+                            .alpha = interpolation_active
+                                ? frame.interpolation_alpha
+                                : 1.0,
+                        };
+                        SIMNET_TRACE_PLOT(
+                            "server.render.interpolation_alpha",
+                            interpolation.alpha
+                        );
                         auto viewer_result = ViewerResult {};
                         {
                             SIMNET_TRACE_SCOPE_CATEGORY("server.viewer_draw", LogCategory::Render);
@@ -1309,6 +1335,7 @@ namespace simnet::app
                                     shared,
                                     frame_delta,
                                     simulation_paused,
+                                    interpolation,
                                     peer,
                                     debug_observer,
                                     spatial_render,
