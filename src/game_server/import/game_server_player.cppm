@@ -1,0 +1,40 @@
+module;
+
+#include <flecs.h>
+
+/// @brief Authoritative session-owned Player lifecycle and semantic input.
+export module simnet.game_server:player;
+
+import :simulation;
+import simnet.core;
+
+export namespace simnet
+{
+    struct PlayerControlState
+    {
+        bool pitch_up {};
+        bool yaw_left {};
+        bool pitch_down {};
+        bool yaw_right {};
+        bool accelerate {};
+        bool decelerate {};
+        bool left_mouse {};
+        bool right_mouse {};
+    };
+
+    /// Spawns the one supported authoritative Player. Returns zero on failure.
+    [[nodiscard]] EntityNetId spawn_authoritative_player(flecs::world& world);
+
+    /// Replaces the latest-state input owned by the authoritative Player.
+    [[nodiscard]] bool set_authoritative_player_input(
+        flecs::world& world,
+        EntityNetId id,
+        PlayerControlState input
+    );
+
+    /// Deletes the session-owned Player and its replication index entry.
+    [[nodiscard]] bool delete_authoritative_player(
+        flecs::world& world,
+        EntityNetId id
+    );
+}

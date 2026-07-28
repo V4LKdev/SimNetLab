@@ -203,6 +203,8 @@ namespace
     struct PeerRuntimeState
     {
         simnet::PeerId peer {};
+        std::optional<simnet::app::ClientRole> role {};
+        simnet::EntityNetId player_id {};
         simnet::ClientReplicationState pipeline_state {};
         simnet::SnapshotAck latest_ack {};
         simnet::SequenceId newest_emitted_sequence {};
@@ -303,6 +305,22 @@ namespace
             .wander_frequency_hz = config.boids.wander_frequency_hz,
             .hue_assimilation_rate = config.boids.hue_assimilation_rate,
             .hue_drift_rate = config.boids.hue_drift_rate,
+        };
+    }
+
+    [[nodiscard]] simnet::PlayerMovementSettings player_settings(
+        simnet::SharedConfig const& config
+    )
+    {
+        return {
+            .world_half = config.simulation.world_half,
+            .cruise_speed = config.player.cruise_speed,
+            .boost_speed = config.player.boost_speed,
+            .slow_speed = config.player.slow_speed,
+            .speed_change_rate = config.player.speed_change_rate,
+            .yaw_rate_degrees = config.player.yaw_rate_degrees,
+            .pitch_rate_degrees = config.player.pitch_rate_degrees,
+            .pitch_limit_degrees = config.player.pitch_limit_degrees,
         };
     }
 
@@ -851,14 +869,67 @@ namespace
         return true;
     }
 
+    [[nodiscard]] bool send_join_accepted(
+        simnet::TransportServer& transport,
+        PeerRuntimeState const& peer
+    )
+    {
+        auto const bytes = simnet::app::encode_app_message({
+            .kind = simnet::app::AppMessageKind::JoinAccepted,
+            .role = *peer.role,
+            .player_id = peer.player_id,
+        });
+        auto const sent = transport.send_application_control(peer.peer, bytes);
+        if (!sent.ok) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                "server join response send failed: " + sent.error.message);
+            return false;
+        }
+        return true;
+    }
+
+    [[nodiscard]] simnet::PlayerControlState player_control(
+        simnet::app::PlayerInputMessage input
+    ) noexcept
+    {
+        using simnet::app::PlayerButton;
+        return {
+            .pitch_up = simnet::app::button_down(input, PlayerButton::W),
+            .yaw_left = simnet::app::button_down(input, PlayerButton::A),
+            .pitch_down = simnet::app::button_down(input, PlayerButton::S),
+            .yaw_right = simnet::app::button_down(input, PlayerButton::D),
+            .accelerate = simnet::app::button_down(input, PlayerButton::Shift),
+            .decelerate = simnet::app::button_down(input, PlayerButton::Control),
+            .left_mouse = simnet::app::button_down(input, PlayerButton::LeftMouse),
+            .right_mouse = simnet::app::button_down(input, PlayerButton::RightMouse),
+        };
+    }
+
+    void remove_session_player(
+        flecs::world& world,
+        PeerRuntimeState const& peer,
+        CurrentSnapshotState& snapshot_state
+    )
+    {
+        if (peer.player_id != 0U
+            && simnet::delete_authoritative_player(world, peer.player_id)) {
+            snapshot_state.dirty = true;
+            simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+                "server deleted disconnected player_id="
+                    + std::to_string(peer.player_id));
+        }
+    }
+
     [[nodiscard]] bool poll_transport(
+        flecs::world& world,
         simnet::TransportServer& transport,
         std::optional<PeerRuntimeState>& peer,
         std::vector<simnet::TransportEvent>& events,
         std::uint32_t timeout_ms,
         bool delta_enabled,
         bool& simulation_paused,
-        bool& pause_state_changed
+        bool& pause_state_changed,
+        CurrentSnapshotState& snapshot_state
     )
     {
         events.clear();
@@ -877,12 +948,10 @@ namespace
                     peer = PeerRuntimeState { .peer = ready->peer };
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Info,
                         "server session ready peer=" + std::to_string(ready->peer));
-                    if (!send_pause_state(transport, peer, simulation_paused)) {
-                        return false;
-                    }
                 }
             } else if (auto const* disconnected = std::get_if<simnet::PeerDisconnected>(&event)) {
                 if (peer.has_value() && peer->peer == disconnected->peer) {
+                    remove_session_player(world, *peer, snapshot_state);
                     peer.reset();
                 }
             } else if (auto const* received = std::get_if<simnet::SnapshotAckReceived>(&event)) {
@@ -899,22 +968,78 @@ namespace
             } else if (auto const* control = std::get_if<simnet::ReceivedApplicationControl>(&event)) {
                 auto message = simnet::app::AppMessage {};
                 if (!peer.has_value() || control->peer != peer->peer
-                    || !simnet::app::decode_app_message(control->payload, message)
-                    || message.kind != simnet::app::AppMessageKind::PauseSetRequest) {
+                    || !simnet::app::decode_app_message(control->payload, message)) {
                     simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                         "server received invalid application-control message");
                     transport.disconnect(control->peer, simnet::DisconnectCode::ProtocolMismatch);
-                    return false;
+                    if (peer.has_value() && peer->peer == control->peer) {
+                        remove_session_player(world, *peer, snapshot_state);
+                        peer.reset();
+                    }
+                    continue;
                 }
-
-                pause_state_changed = pause_state_changed || simulation_paused != message.paused;
-                simulation_paused = message.paused;
-                if (pause_state_changed) {
+                if (message.kind == simnet::app::AppMessageKind::JoinRequest
+                    && !peer->role.has_value()) {
+                    peer->role = message.role;
+                    if (message.role == simnet::app::ClientRole::Player) {
+                        peer->player_id = simnet::spawn_authoritative_player(world);
+                        if (peer->player_id == 0U) {
+                            simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Error,
+                                "server failed to create authoritative player");
+                            transport.disconnect(control->peer, simnet::DisconnectCode::ServerFull);
+                            peer.reset();
+                            continue;
+                        }
+                        snapshot_state.dirty = true;
+                    }
                     simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
-                        simulation_paused ? "server simulation paused by client" : "server simulation resumed by client");
+                        "server accepted role="
+                            + std::string { message.role == simnet::app::ClientRole::Player
+                                ? "player" : "observer" }
+                            + " player_id=" + std::to_string(peer->player_id));
+                    if (!send_join_accepted(transport, *peer)
+                        || !send_pause_state(transport, peer, simulation_paused)) {
+                        return false;
+                    }
+                } else if (message.kind == simnet::app::AppMessageKind::PauseSetRequest
+                    && peer->role.has_value()) {
+                    pause_state_changed =
+                        pause_state_changed || simulation_paused != message.paused;
+                    simulation_paused = message.paused;
+                    if (pause_state_changed) {
+                        simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+                            simulation_paused ? "server simulation paused by client"
+                                              : "server simulation resumed by client");
+                    }
+                    if (!send_pause_state(transport, peer, simulation_paused)) {
+                        return false;
+                    }
+                } else {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "server rejected unauthorized or duplicate application-control message");
+                    transport.disconnect(control->peer, simnet::DisconnectCode::ProtocolMismatch);
+                    remove_session_player(world, *peer, snapshot_state);
+                    peer.reset();
+                    continue;
                 }
-                if (!send_pause_state(transport, peer, simulation_paused)) {
-                    return false;
+            } else if (auto const* input = std::get_if<simnet::ReceivedApplicationInput>(&event)) {
+                auto decoded = simnet::app::PlayerInputMessage {};
+                if (!peer.has_value() || input->peer != peer->peer
+                    || peer->role != simnet::app::ClientRole::Player
+                    || peer->player_id == 0U
+                    || !simnet::app::decode_player_input(input->payload, decoded)
+                    || !simnet::set_authoritative_player_input(
+                        world,
+                        peer->player_id,
+                        player_control(decoded)
+                    )) {
+                    simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                        "server rejected invalid or unauthorized player input");
+                    transport.disconnect(input->peer, simnet::DisconnectCode::ProtocolMismatch);
+                    if (peer.has_value() && peer->peer == input->peer) {
+                        remove_session_player(world, *peer, snapshot_state);
+                        peer.reset();
+                    }
                 }
             } else if (auto const* error = std::get_if<simnet::TransportErrorEvent>(&event)) {
                 simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
@@ -948,7 +1073,7 @@ namespace
             return false;
         }
         snapshot_state.dirty = true;
-        if (!peer.has_value()) {
+        if (!peer.has_value() || !peer->role.has_value()) {
             return true;
         }
 
@@ -1125,7 +1250,10 @@ namespace simnet::app
             }
 #endif
 
-            auto game = ServerGameRuntime { boid_settings(shared) };
+            auto game = ServerGameRuntime {
+                boid_settings(shared),
+                player_settings(shared),
+            };
             auto world = flecs::world {};
             register_server_game(world, game);
             auto const initialization_start = std::chrono::steady_clock::now();
@@ -1197,13 +1325,15 @@ namespace simnet::app
                 {
                     SIMNET_TRACE_SCOPE_CATEGORY("server.transport_poll", LogCategory::Transport);
                     transport_ok = poll_transport(
+                        world,
                         transport,
                         peer,
                         events,
                         1,
                         delta_enabled,
                         simulation_paused,
-                        pause_state_changed
+                        pause_state_changed,
+                        current_snapshot
                     );
                 }
                 if (!transport_ok) {

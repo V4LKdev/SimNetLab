@@ -48,6 +48,18 @@ export namespace simnet
         float hue_drift_rate { 0.02F };
     };
 
+    struct PlayerMovementSettings
+    {
+        float world_half { 400.0F };
+        float cruise_speed { 8.0F };
+        float boost_speed { 14.0F };
+        float slow_speed { 3.0F };
+        float speed_change_rate { 12.0F };
+        float yaw_rate_degrees { 90.0F };
+        float pitch_rate_degrees { 75.0F };
+        float pitch_limit_degrees { 80.0F };
+    };
+
     struct SelectedBoidDebug
     {
         EntityNetId id {};
@@ -139,7 +151,10 @@ export namespace simnet
     public:
         struct Impl;
 
-        explicit ServerGameRuntime(BoidSimulationSettings settings);
+        explicit ServerGameRuntime(
+            BoidSimulationSettings settings,
+            PlayerMovementSettings player_settings = {}
+        );
         ~ServerGameRuntime();
 
         ServerGameRuntime(ServerGameRuntime const&) = delete;

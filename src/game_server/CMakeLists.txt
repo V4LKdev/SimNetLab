@@ -6,6 +6,7 @@ target_sources(simnet_game_server
         BASE_DIRS import
         FILES
             import/game_server.cppm
+            import/game_server_player.cppm
             import/game_server_simulation.cppm
             import/game_server_snapshot.cppm
     PRIVATE

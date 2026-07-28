@@ -8,7 +8,7 @@
     "snapshot_delivery": "reliable_sequenced"
   },
   "gameplay": {
-    "role": "observer"
+    "role": "player"
   },
   "visualization": {
     "enabled": true,

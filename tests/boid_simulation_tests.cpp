@@ -271,6 +271,61 @@ TEST_CASE("boid rules produce deterministic local steering", "[boids]")
     }
 }
 
+TEST_CASE("authoritative player is replicated but excluded from flock simulation", "[boids][player]")
+{
+    auto settings = test_settings();
+    settings.enable_separation = false;
+    settings.enable_alignment = false;
+    settings.enable_cohesion = false;
+    settings.enable_containment = false;
+    auto player_settings = simnet::PlayerMovementSettings {
+        .world_half = 10.0F,
+        .cruise_speed = 2.0F,
+        .boost_speed = 4.0F,
+        .slow_speed = 1.0F,
+        .speed_change_rate = 10.0F,
+        .yaw_rate_degrees = 90.0F,
+        .pitch_rate_degrees = 60.0F,
+        .pitch_limit_degrees = 75.0F,
+    };
+    auto runtime = simnet::ServerGameRuntime { settings, player_settings };
+    auto world = flecs::world {};
+    simnet::register_server_game(world, runtime);
+    REQUIRE(append_boids(world, {
+        boid(1U, { -5.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
+        boid(2U, { 5.0F, 0.0F, 0.0F }, { -1.0F, 0.0F, 0.0F }),
+    }).success());
+
+    auto const player_id = simnet::spawn_authoritative_player(world);
+    REQUIRE(player_id == 3U);
+    CHECK(simnet::authoritative_boid_count(world) == 2U);
+    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
+        .pitch_up = true,
+        .yaw_right = true,
+        .accelerate = true,
+    }));
+
+    step(world, runtime, 0.25F);
+    CHECK(runtime.last_step_report().entity_count == 2U);
+    auto const after_move = snapshot(world, 1U);
+    REQUIRE(after_move.size() == 3U);
+    auto const found = std::ranges::find(after_move.ids, player_id);
+    REQUIRE(found != after_move.ids.end());
+    auto const offset = static_cast<std::size_t>(
+        std::distance(after_move.ids.begin(), found)
+    );
+    CHECK(after_move.positions[offset].z > 0.0F);
+    CHECK(after_move.headings[offset].x > 0.0F);
+    CHECK(after_move.headings[offset].y > 0.0F);
+    CHECK(simnet::is_normalized_heading(after_move.headings[offset]));
+
+    CHECK_FALSE(simnet::spawn_authoritative_player(world));
+    REQUIRE(simnet::delete_authoritative_player(world, player_id));
+    CHECK_FALSE(simnet::set_authoritative_player_input(world, player_id, {}));
+    CHECK(snapshot(world, 2U).size() == 2U);
+    CHECK(simnet::authoritative_boid_count(world) == 2U);
+}
+
 TEST_CASE("boid rule toggles remove their steering contribution", "[boids][config]")
 {
     auto settings = test_settings();

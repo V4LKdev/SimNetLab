@@ -60,6 +60,18 @@ export namespace simnet
         float hue_drift_rate { 0.02F };
     };
 
+    /// Deterministic authoritative Player movement parameters.
+    struct PlayerConfig
+    {
+        float cruise_speed { 8.0F };
+        float boost_speed { 14.0F };
+        float slow_speed { 3.0F };
+        float speed_change_rate { 12.0F };
+        float yaw_rate_degrees { 90.0F };
+        float pitch_rate_degrees { 75.0F };
+        float pitch_limit_degrees { 80.0F };
+    };
+
     /// Snapshot processing pipeline settings.
     struct PipelineConfig
     {
@@ -87,6 +99,12 @@ export namespace simnet
     struct FlecsConfig
     {
         std::uint32_t thread_count { 1 };
+    };
+
+    /// Client-local role requested after transport session readiness.
+    struct GameplayConfig
+    {
+        std::string role { "observer" };
     };
 
     /// Local visualization settings.
@@ -141,6 +159,7 @@ export namespace simnet
         SimulationConfig simulation {};
         SpatialConfig spatial {};
         BoidsConfig boids {};
+        PlayerConfig player {};
         PipelineConfig pipeline {};
     };
 
@@ -158,6 +177,7 @@ export namespace simnet
     struct ClientConfig
     {
         TransportConfig transport {};
+        GameplayConfig gameplay {};
         VisualizationConfig visualization {};
         TelemetryConfig telemetry {};
     };

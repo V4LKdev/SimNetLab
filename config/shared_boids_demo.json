@@ -38,6 +38,15 @@
     "hue_assimilation_rate": 0.25,
     "hue_drift_rate": 0.02
   },
+  "player": {
+    "cruise_speed": 8.0,
+    "boost_speed": 14.0,
+    "slow_speed": 3.0,
+    "speed_change_rate": 12.0,
+    "yaw_rate_degrees": 90.0,
+    "pitch_rate_degrees": 75.0,
+    "pitch_limit_degrees": 80.0
+  },
   "pipeline": {
     "enable_aoi": false,
     "enable_incremental": false,

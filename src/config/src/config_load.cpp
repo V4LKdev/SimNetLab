@@ -1,6 +1,7 @@
 module;
 
 #include <bit>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -258,6 +259,46 @@ namespace
         validate_positive("boids.hue_drift_rate", config.hue_drift_rate);
     }
 
+    void apply_player(Json const& json, simnet::PlayerConfig& config)
+    {
+        read_optional(json, "cruise_speed", config.cruise_speed);
+        read_optional(json, "boost_speed", config.boost_speed);
+        read_optional(json, "slow_speed", config.slow_speed);
+        read_optional(json, "speed_change_rate", config.speed_change_rate);
+        read_optional(json, "yaw_rate_degrees", config.yaw_rate_degrees);
+        read_optional(json, "pitch_rate_degrees", config.pitch_rate_degrees);
+        read_optional(json, "pitch_limit_degrees", config.pitch_limit_degrees);
+        if (!std::isfinite(config.slow_speed)
+            || !std::isfinite(config.cruise_speed)
+            || !std::isfinite(config.boost_speed)
+            || !std::isfinite(config.speed_change_rate)
+            || !std::isfinite(config.yaw_rate_degrees)
+            || !std::isfinite(config.pitch_rate_degrees)
+            || !std::isfinite(config.pitch_limit_degrees)
+            || config.slow_speed < 0.0F
+            || config.slow_speed > config.cruise_speed
+            || config.cruise_speed > config.boost_speed) {
+            throw std::runtime_error(
+                "invalid player speed limits: expected 0 <= slow_speed <= cruise_speed <= boost_speed"
+            );
+        }
+        validate_positive("player.boost_speed", config.boost_speed);
+        validate_positive("player.speed_change_rate", config.speed_change_rate);
+        validate_positive("player.yaw_rate_degrees", config.yaw_rate_degrees);
+        validate_positive("player.pitch_rate_degrees", config.pitch_rate_degrees);
+        if (config.pitch_limit_degrees <= 0.0F || config.pitch_limit_degrees >= 90.0F) {
+            throw std::runtime_error(
+                "invalid config field 'player.pitch_limit_degrees': expected (0, 90)"
+            );
+        }
+    }
+
+    void apply_gameplay(Json const& json, simnet::GameplayConfig& config)
+    {
+        read_optional(json, "role", config.role);
+        validate_one_of("gameplay.role", config.role, { "observer", "player" });
+    }
+
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
     {
         read_optional(json, "enable_aoi", config.enable_aoi);
@@ -413,6 +454,9 @@ namespace
         if (auto const* section = optional_object(json, "boids")) {
             apply_boids(*section, config.boids);
         }
+        if (auto const* section = optional_object(json, "player")) {
+            apply_player(*section, config.player);
+        }
         if (auto const* section = optional_object(json, "pipeline")) {
             apply_pipeline(*section, config.pipeline);
         }
@@ -455,6 +499,9 @@ namespace
 
         if (auto const* section = optional_object(json, "transport")) {
             apply_transport(*section, config.transport);
+        }
+        if (auto const* section = optional_object(json, "gameplay")) {
+            apply_gameplay(*section, config.gameplay);
         }
         if (auto const* section = optional_object(json, "visualization")) {
             apply_visualization(*section, config.visualization);
@@ -500,6 +547,13 @@ namespace
         hash_bytes(hash, config.boids.wander_frequency_hz);
         hash_bytes(hash, config.boids.hue_assimilation_rate);
         hash_bytes(hash, config.boids.hue_drift_rate);
+        hash_bytes(hash, config.player.cruise_speed);
+        hash_bytes(hash, config.player.boost_speed);
+        hash_bytes(hash, config.player.slow_speed);
+        hash_bytes(hash, config.player.speed_change_rate);
+        hash_bytes(hash, config.player.yaw_rate_degrees);
+        hash_bytes(hash, config.player.pitch_rate_degrees);
+        hash_bytes(hash, config.player.pitch_limit_degrees);
         hash_bytes(hash, config.pipeline.enable_aoi);
         hash_bytes(hash, config.pipeline.enable_incremental);
         hash_bytes(hash, config.pipeline.enable_quantization);
@@ -545,6 +599,13 @@ namespace
         hash_canonical_float(hash, config.boids.wander_frequency_hz);
         hash_canonical_float(hash, config.boids.hue_assimilation_rate);
         hash_canonical_float(hash, config.boids.hue_drift_rate);
+        hash_canonical_float(hash, config.player.cruise_speed);
+        hash_canonical_float(hash, config.player.boost_speed);
+        hash_canonical_float(hash, config.player.slow_speed);
+        hash_canonical_float(hash, config.player.speed_change_rate);
+        hash_canonical_float(hash, config.player.yaw_rate_degrees);
+        hash_canonical_float(hash, config.player.pitch_rate_degrees);
+        hash_canonical_float(hash, config.player.pitch_limit_degrees);
         hash_canonical_bool(hash, config.pipeline.enable_aoi);
         hash_canonical_bool(hash, config.pipeline.enable_incremental);
         hash_canonical_bool(hash, config.pipeline.enable_quantization);
@@ -658,6 +719,7 @@ namespace simnet
 
         hash_shared_native(hash, shared);
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
+        hash_string(hash, local.gameplay.role);
         hash_visualization(hash, local.visualization);
 
         return { .value = hash };

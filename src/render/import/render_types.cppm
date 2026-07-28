@@ -153,6 +153,15 @@ export namespace simnet
         float vertical_fov_degrees { 60.0F };
     };
 
+    /// Application-resolved camera pose. The viewer does not infer player semantics.
+    struct GameCameraView
+    {
+        Vec3f position {};
+        Vec3f target { .z = 1.0F };
+        Vec3f up { .y = 1.0F };
+        float vertical_fov_degrees { 70.0F };
+    };
+
     /// One non-owning occupied-cell view supplied by an application.
     struct SpatialCellView
     {
@@ -231,17 +240,21 @@ export namespace simnet
         RenderFrameInfo info {};
         std::optional<SelectedEntityDetails> selected_details {};
         std::optional<ObserverView> observer {};
+        std::optional<GameCameraView> game_camera {};
         std::optional<SpatialDebugView> spatial {};
         DebugPrimitiveView debug_primitives {};
     };
 
     struct PlayerViewInput
     {
-        float move_forward {};
-        float move_right {};
-        float move_up {};
-        float look_yaw {};
-        float look_pitch {};
+        bool pitch_up {};
+        bool yaw_left {};
+        bool pitch_down {};
+        bool yaw_right {};
+        bool accelerate {};
+        bool decelerate {};
+        bool left_mouse {};
+        bool right_mouse {};
     };
 
     struct RenderStats

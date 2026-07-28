@@ -26,6 +26,10 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     changed = baseline;
     changed.boids.alignment_radius += 1.0F;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.player.yaw_rate_degrees += 1.0F;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
 }
 
 TEST_CASE("visual interpolation is local runtime configuration", "[config]")
@@ -38,6 +42,17 @@ TEST_CASE("visual interpolation is local runtime configuration", "[config]")
 
     CHECK(simnet::fingerprint_runtime_config(shared, changed).value
         != simnet::fingerprint_runtime_config(shared, baseline).value);
+}
+
+TEST_CASE("client gameplay role is local runtime configuration", "[config][player]")
+{
+    auto const shared = simnet::default_shared_config();
+    auto const observer = simnet::default_client_config();
+    auto player = observer;
+    player.gameplay.role = "player";
+
+    CHECK(simnet::fingerprint_runtime_config(shared, player).value
+        != simnet::fingerprint_runtime_config(shared, observer).value);
 }
 
 TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")

@@ -7,6 +7,9 @@
     "send_size_policy": "allow_backend_fragmentation",
     "snapshot_delivery": "reliable_sequenced"
   },
+  "gameplay": {
+    "role": "observer"
+  },
   "visualization": {
     "enabled": false,
     "interpolation_enabled": true,

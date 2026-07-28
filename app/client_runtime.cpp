@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -34,6 +35,20 @@ import simnet.render;
 
 namespace
 {
+#if defined(SIMNET_ENABLE_RENDER)
+    [[nodiscard]] simnet::Vec3f cross(
+        simnet::Vec3f lhs,
+        simnet::Vec3f rhs
+    ) noexcept
+    {
+        return {
+            .x = lhs.y * rhs.z - lhs.z * rhs.y,
+            .y = lhs.z * rhs.x - lhs.x * rhs.z,
+            .z = lhs.x * rhs.y - lhs.y * rhs.x,
+        };
+    }
+#endif
+
     struct ClientOptions
     {
         std::optional<std::filesystem::path> config_path {};
@@ -57,6 +72,67 @@ namespace
     constexpr std::size_t retained_snapshot_limit = 64;
 
 #if defined(SIMNET_ENABLE_RENDER)
+    [[nodiscard]] std::optional<simnet::GameCameraView> player_game_camera(
+        simnet::WorldSnapshot const& snapshot,
+        simnet::EntityNetId player_id
+    )
+    {
+        if (player_id == 0U) {
+            return std::nullopt;
+        }
+        auto const found = std::ranges::find(snapshot.ids, player_id);
+        if (found == snapshot.ids.end()) {
+            return std::nullopt;
+        }
+        auto const offset = static_cast<std::size_t>(
+            std::distance(snapshot.ids.begin(), found)
+        );
+        auto const position = snapshot.positions[offset];
+        auto const forward = simnet::normalize_or(
+            snapshot.headings[offset],
+            simnet::Vec3f { .z = 1.0F }
+        );
+        auto reference_up = simnet::Vec3f { .y = 1.0F };
+        if (std::abs(simnet::dot(forward, reference_up)) > 0.98F) {
+            reference_up = { .x = 1.0F };
+        }
+        auto const right = simnet::normalize_or(
+            cross(reference_up, forward),
+            simnet::Vec3f { .x = 1.0F }
+        );
+        auto const up = simnet::normalize_or(
+            cross(forward, right),
+            reference_up
+        );
+        return simnet::GameCameraView {
+            .position = position - forward * 8.0F + up * 2.5F,
+            .target = position + forward * 4.0F,
+            .up = up,
+            .vertical_fov_degrees = 70.0F,
+        };
+    }
+
+    [[nodiscard]] simnet::app::PlayerInputMessage player_input_message(
+        simnet::PlayerViewInput input
+    ) noexcept
+    {
+        auto buttons = std::uint8_t {};
+        auto const set = [&buttons](bool down, simnet::app::PlayerButton button) {
+            if (down) {
+                buttons |= static_cast<std::uint8_t>(button);
+            }
+        };
+        set(input.pitch_up, simnet::app::PlayerButton::W);
+        set(input.yaw_left, simnet::app::PlayerButton::A);
+        set(input.pitch_down, simnet::app::PlayerButton::S);
+        set(input.yaw_right, simnet::app::PlayerButton::D);
+        set(input.accelerate, simnet::app::PlayerButton::Shift);
+        set(input.decelerate, simnet::app::PlayerButton::Control);
+        set(input.left_mouse, simnet::app::PlayerButton::LeftMouse);
+        set(input.right_mouse, simnet::app::PlayerButton::RightMouse);
+        return { .buttons = buttons };
+    }
+
     struct ClientPresentationState
     {
         simnet::Tick observed_tick {};
@@ -138,6 +214,17 @@ namespace
         return "unknown";
     }
 
+    [[nodiscard]] simnet::app::ClientRole configured_role(std::string_view role)
+    {
+        if (role == "observer") {
+            return simnet::app::ClientRole::Observer;
+        }
+        if (role == "player") {
+            return simnet::app::ClientRole::Player;
+        }
+        throw std::runtime_error("unsupported gameplay role: " + std::string { role });
+    }
+
 #if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] std::string_view client_connection_state_name(ClientConnectionState state) noexcept
     {
@@ -179,7 +266,8 @@ namespace
         ClientConnectionState connection_state,
         std::optional<simnet::PeerId> peer,
         simnet::SnapshotAck const& ack,
-        simnet::app::DebugObserverState const& observer
+        simnet::app::DebugObserverState const& observer,
+        std::optional<simnet::GameCameraView> game_camera
     )
     {
         auto replication = std::optional<simnet::RenderReplicationInfo> {};
@@ -224,6 +312,7 @@ namespace
                 .interest_radius = observer.interest_radius,
                 .vertical_fov_degrees = observer.vertical_fov_degrees,
             },
+            .game_camera = std::move(game_camera),
         };
     }
 #endif
@@ -455,19 +544,42 @@ namespace
 
     [[nodiscard]] bool apply_application_control(
         simnet::ReceivedApplicationControl const& control,
+        simnet::app::ClientRole requested_role,
+        flecs::world& world,
         bool& simulation_paused,
-        bool& pause_state_received
+        bool& pause_state_received,
+        bool& join_accepted,
+        simnet::EntityNetId& player_id
     )
     {
         auto message = simnet::app::AppMessage {};
-        if (!simnet::app::decode_app_message(control.payload, message)
-            || message.kind != simnet::app::AppMessageKind::PauseState) {
+        if (!simnet::app::decode_app_message(control.payload, message)) {
             simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
                 "client received invalid application-control message");
             return false;
         }
 
-        auto const changed = !pause_state_received || simulation_paused != message.paused;
+        if (message.kind == simnet::app::AppMessageKind::JoinAccepted
+            && !join_accepted
+            && message.role == requested_role) {
+            join_accepted = true;
+            player_id = message.player_id;
+            simnet::set_client_player_entity_id(world, player_id);
+            simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
+                "client join accepted role="
+                    + std::string { requested_role == simnet::app::ClientRole::Player
+                        ? "player" : "observer" }
+                    + " player_id=" + std::to_string(player_id));
+            return true;
+        }
+        if (message.kind != simnet::app::AppMessageKind::PauseState) {
+            simnet::log(simnet::LogCategory::Transport, simnet::LogLevel::Error,
+                "client received unauthorized or duplicate application-control message");
+            return false;
+        }
+
+        auto const changed =
+            !pause_state_received || simulation_paused != message.paused;
         simulation_paused = message.paused;
         pause_state_received = true;
         if (changed) {
@@ -489,6 +601,7 @@ namespace simnet::app
                 options.shared_config_path.value_or(default_shared_config_path())
             );
             auto const local = load_client_config(options.config_path.value_or(default_client_config_path()));
+            auto const requested_role = configured_role(local.gameplay.role);
             auto telemetry = TelemetryLifetime { local.telemetry };
 #if defined(SIMNET_ENABLE_TRACY)
             log(LogCategory::Telemetry, LogLevel::Info, "Tracy instrumentation compiled in");
@@ -550,6 +663,12 @@ namespace simnet::app
             auto server_peer = std::optional<PeerId> {};
             auto authoritative_pause_state = false;
             auto pause_state_received = false;
+            auto join_accepted = false;
+            auto player_id = EntityNetId {};
+#if defined(SIMNET_ENABLE_RENDER)
+            auto game_view_initialized = false;
+            auto player_input_was_active = false;
+#endif
 
             log(LogCategory::Simulation, LogLevel::Info, "client runtime started");
             while (!stop.requested()) {
@@ -582,8 +701,27 @@ namespace simnet::app
                         connection_state = ClientConnectionState::SessionReady;
                         server_peer = ready->peer;
                         pause_state_received = false;
+                        join_accepted = false;
+                        player_id = 0U;
+#if defined(SIMNET_ENABLE_RENDER)
+                        game_view_initialized = false;
+                        player_input_was_active = false;
+#endif
                         log(LogCategory::Transport, LogLevel::Info,
                             "client session ready peer=" + std::to_string(ready->peer));
+                        auto const joined = transport.send_application_control(
+                            app::encode_app_message({
+                                .kind = app::AppMessageKind::JoinRequest,
+                                .role = requested_role,
+                            })
+                        );
+                        if (!joined.ok) {
+                            log(LogCategory::Transport, LogLevel::Error,
+                                "client join request send failed: " + joined.error.message);
+                            stop_cause = ClientStopCause::ProtocolError;
+                            static_cast<void>(stop.request(ShutdownReason::FatalError));
+                            break;
+                        }
                     } else if (auto const* packet = std::get_if<ReceivedPacket>(&event)) {
                         if (connection_state != ClientConnectionState::SessionReady || !apply_packet(
                                 *packet,
@@ -604,8 +742,12 @@ namespace simnet::app
                     } else if (auto const* control = std::get_if<ReceivedApplicationControl>(&event)) {
                         if (connection_state != ClientConnectionState::SessionReady || !apply_application_control(
                                 *control,
+                                requested_role,
+                                world,
                                 authoritative_pause_state,
-                                pause_state_received
+                                pause_state_received,
+                                join_accepted,
+                                player_id
                             )) {
                             stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
@@ -695,6 +837,17 @@ namespace simnet::app
                             ? std::optional<SequenceId> {}
                             : std::optional<SequenceId> { latest_applied_sequence };
                         auto viewer_result = ViewerResult {};
+                        auto game_camera = player_game_camera(
+                            *displayed_snapshot,
+                            player_id
+                        );
+                        if (requested_role == app::ClientRole::Player
+                            && join_accepted
+                            && game_camera.has_value()
+                            && !game_view_initialized) {
+                            viewer->set_view_mode(ViewMode::Game);
+                            game_view_initialized = true;
+                        }
                         {
                             SIMNET_TRACE_SCOPE_CATEGORY("client.viewer_draw", LogCategory::Render);
                             viewer_result = viewer->draw(
@@ -711,7 +864,8 @@ namespace simnet::app
                                     connection_state,
                                     server_peer,
                                     ack_tracker.value,
-                                    debug_observer
+                                    debug_observer,
+                                    std::move(game_camera)
                                 )
                             );
                         }
@@ -736,6 +890,28 @@ namespace simnet::app
                                 stop_cause = ClientStopCause::ProtocolError;
                                 static_cast<void>(stop.request(ShutdownReason::FatalError));
                             }
+                        }
+                        if (!stop.requested()
+                            && requested_role == app::ClientRole::Player
+                            && join_accepted) {
+                            auto const input_active =
+                                viewer_result.view_mode == ViewMode::Game;
+                            auto const input = input_active
+                                ? player_input_message(viewer_result.player_input)
+                                : app::PlayerInputMessage {};
+                            if (input_active || player_input_was_active) {
+                                auto const sent = transport.send_application_input(
+                                    app::encode_player_input(input)
+                                );
+                                if (!sent.ok) {
+                                    log(LogCategory::Transport, LogLevel::Error,
+                                        "client player-input send failed: "
+                                            + sent.error.message);
+                                    stop_cause = ClientStopCause::ProtocolError;
+                                    static_cast<void>(stop.request(ShutdownReason::FatalError));
+                                }
+                            }
+                            player_input_was_active = input_active;
                         }
                     }
                 }

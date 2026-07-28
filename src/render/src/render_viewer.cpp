@@ -402,7 +402,7 @@ namespace simnet
                 Vector2 { static_cast<float>(scene_rect_.x), static_cast<float>(scene_rect_.y) },
                 WHITE
             );
-            draw_help_overlay();
+            draw_help_overlay(frame);
             {
                 SIMNET_TRACE_SCOPE_CATEGORY("render.present_wait", simnet::LogCategory::Render);
                 EndDrawing();
@@ -526,8 +526,15 @@ namespace simnet
                 camera_initialized_ = true;
             }
 
-            if (frame.observer.has_value() && IsKeyPressed(KEY_F4)) {
-                mode_ = mode_ == ViewMode::Observer ? ViewMode::Overview : ViewMode::Observer;
+            if (IsKeyPressed(KEY_F4)) {
+                if (frame.game_camera.has_value()) {
+                    mode_ = mode_ == ViewMode::Game ? ViewMode::Overview : ViewMode::Game;
+                } else if (frame.observer.has_value()) {
+                    mode_ = mode_ == ViewMode::Observer ? ViewMode::Overview : ViewMode::Observer;
+                }
+            }
+            if (mode_ == ViewMode::Game && !frame.game_camera.has_value()) {
+                mode_ = ViewMode::Overview;
             }
             if (frame.observer.has_value()) {
                 result.debug_observer_yaw_axis = (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F)
@@ -573,7 +580,24 @@ namespace simnet
             if (IsKeyPressed(KEY_BACKSPACE) && mode_ == ViewMode::EntityDetail) {
                 clear_selection(result);
             }
-            if (mode_ == ViewMode::Observer && frame.observer.has_value()) {
+            if (mode_ == ViewMode::Game && frame.game_camera.has_value()) {
+                camera_.position = to_raylib(frame.game_camera->position);
+                camera_.target = to_raylib(frame.game_camera->target);
+                camera_.up = to_raylib(frame.game_camera->up);
+                camera_.fovy = frame.game_camera->vertical_fov_degrees;
+                result.player_input = {
+                    .pitch_up = IsKeyDown(KEY_W),
+                    .yaw_left = IsKeyDown(KEY_A),
+                    .pitch_down = IsKeyDown(KEY_S),
+                    .yaw_right = IsKeyDown(KEY_D),
+                    .accelerate = IsKeyDown(KEY_LEFT_SHIFT)
+                        || IsKeyDown(KEY_RIGHT_SHIFT),
+                    .decelerate = IsKeyDown(KEY_LEFT_CONTROL)
+                        || IsKeyDown(KEY_RIGHT_CONTROL),
+                    .left_mouse = IsMouseButtonDown(MOUSE_BUTTON_LEFT),
+                    .right_mouse = IsMouseButtonDown(MOUSE_BUTTON_RIGHT),
+                };
+            } else if (mode_ == ViewMode::Observer && frame.observer.has_value()) {
                 auto const forward = normalized_or_forward(frame.observer->forward);
                 auto reference_up = Vec3f { .y = 1.0F };
                 if (std::abs(dot(forward, reference_up)) > 0.98F) {
@@ -664,6 +688,9 @@ namespace simnet
 
         void update_selection(RenderEntityView const& entities, ViewerResult& result)
         {
+            if (mode_ == ViewMode::Game) {
+                return;
+            }
             if (IsKeyPressed(KEY_LEFT_BRACKET)) {
                 select_adjacent_entity(entities, -1, result);
                 return;
@@ -1450,7 +1477,7 @@ namespace simnet
             static_cast<void>(result);
         }
 
-        void draw_help_overlay() const
+        void draw_help_overlay(RenderFrame const& frame) const
         {
             auto const hint_position = Vector2 {
                 static_cast<float>(scene_rect_.x + scene_rect_.width - 150),
@@ -1464,7 +1491,7 @@ namespace simnet
                 static_cast<float>(scene_rect_.x + 36),
                 48.0F,
                 420.0F,
-                300.0F,
+                frame.game_camera.has_value() ? 370.0F : 300.0F,
             };
             DrawRectangleRec(rect, Color { 20, 25, 33, 245 });
             DrawRectangleLinesEx(rect, 1.0F, Color { 91, 113, 140, 255 });
@@ -1481,7 +1508,15 @@ namespace simnet
             line("[ / ]    Previous or next entity");
             line("Right drag  Orbit");
             line("Wheel     Zoom");
-            line("F4        Toggle observer view");
+            line(frame.game_camera.has_value()
+                ? "F4        Toggle Game / Overview"
+                : "F4        Toggle observer view");
+            if (frame.game_camera.has_value()) {
+                line("W / S     Pitch fish");
+                line("A / D     Yaw fish");
+                line("Shift     Accelerate");
+                line("Ctrl      Slow down");
+            }
             line("F5        Reset camera");
             line("Arrows    Rotate debug observer");
             line("Backspace Clear selection and overview");
