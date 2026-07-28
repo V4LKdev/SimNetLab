@@ -93,6 +93,7 @@ export namespace simnet
     struct VisualizationConfig
     {
         bool enabled {};
+        bool interpolation_enabled { true };
         std::uint32_t window_width { 1800 };
         std::uint32_t window_height { 1080 };
         std::uint32_t panel_width { 360 };

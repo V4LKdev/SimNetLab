@@ -28,6 +28,18 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
 }
 
+TEST_CASE("visual interpolation is local runtime configuration", "[config]")
+{
+    auto const shared = simnet::default_shared_config();
+    auto const baseline = simnet::default_server_config();
+    auto changed = baseline;
+    changed.visualization.interpolation_enabled =
+        !changed.visualization.interpolation_enabled;
+
+    CHECK(simnet::fingerprint_runtime_config(shared, changed).value
+        != simnet::fingerprint_runtime_config(shared, baseline).value);
+}
+
 TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")
 {
     auto const path = simnet::default_shared_config_path().parent_path()

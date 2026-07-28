@@ -325,6 +325,7 @@ namespace
     void apply_visualization(Json const& json, simnet::VisualizationConfig& config)
     {
         read_optional(json, "enabled", config.enabled);
+        read_optional(json, "interpolation_enabled", config.interpolation_enabled);
         read_optional(json, "window_width", config.window_width);
         read_optional(json, "window_height", config.window_height);
         read_optional(json, "panel_width", config.panel_width);
@@ -572,6 +573,7 @@ namespace
     void hash_visualization(std::uint64_t& hash, simnet::VisualizationConfig const& visualization) noexcept
     {
         hash_bytes(hash, visualization.enabled);
+        hash_bytes(hash, visualization.interpolation_enabled);
         hash_bytes(hash, visualization.window_width);
         hash_bytes(hash, visualization.window_height);
         hash_bytes(hash, visualization.panel_width);

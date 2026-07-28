@@ -54,7 +54,58 @@ namespace
         simnet::WorldSnapshot snapshot {};
     };
 
+    struct ClientPresentationState
+    {
+        simnet::SequenceId observed_sequence {};
+        simnet::NS elapsed {};
+        simnet::WorldSnapshot interpolated {};
+    };
+
     constexpr std::size_t retained_snapshot_limit = 64;
+
+    [[nodiscard]] simnet::WorldSnapshot const* presentation_snapshot(
+        std::deque<RetainedClientSnapshot> const& history,
+        ClientPresentationState& state,
+        simnet::NS frame_delta,
+        double tick_rate_hz,
+        bool interpolation_enabled,
+        bool paused,
+        double& alpha
+    )
+    {
+        alpha = 1.0;
+        if (history.empty()) {
+            return nullptr;
+        }
+
+        auto const& current = history.back();
+        if (state.observed_sequence != current.sequence) {
+            state.observed_sequence = current.sequence;
+            state.elapsed = {};
+        } else if (!paused) {
+            state.elapsed += std::max(frame_delta, simnet::NS {});
+        }
+        if (!interpolation_enabled || paused || history.size() < 2U) {
+            return &current.snapshot;
+        }
+
+        auto const& previous = history[history.size() - 2U];
+        if (previous.snapshot.tick >= current.snapshot.tick || tick_rate_hz <= 0.0) {
+            return &current.snapshot;
+        }
+        auto const tick_span = current.snapshot.tick - previous.snapshot.tick;
+        auto const interval_seconds = static_cast<double>(tick_span) / tick_rate_hz;
+        auto const elapsed_seconds =
+            std::chrono::duration<double>(state.elapsed).count();
+        alpha = std::clamp(elapsed_seconds / interval_seconds, 0.0, 1.0);
+        auto const interpolated = simnet::interpolate_world_snapshots(
+            previous.snapshot,
+            current.snapshot,
+            alpha,
+            state.interpolated
+        );
+        return interpolated.valid ? &state.interpolated : nullptr;
+    }
 
     enum class ClientConnectionState : std::uint8_t
     {
@@ -467,7 +518,8 @@ namespace simnet::app
             register_client_game(world);
 #if defined(SIMNET_ENABLE_RENDER)
             auto viewer = std::optional<Viewer> {};
-            auto render_snapshot = WorldSnapshot {};
+            auto presentation = ClientPresentationState {};
+            auto empty_presentation = WorldSnapshot {};
             auto debug_observer = DebugObserverState {
                 .position = {},
                 .interest_radius = local.visualization.debug_observer_interest_radius,
@@ -593,17 +645,26 @@ namespace simnet::app
 
 #if defined(SIMNET_ENABLE_RENDER)
                 if (!stop.requested() && viewer.has_value()) {
-                    auto extracted = ClientSnapshotExtractionReport {};
-                    {
-                        SIMNET_TRACE_SCOPE_CATEGORY("client.render_snapshot_extraction", LogCategory::Snapshot);
-                        extracted = extract_client_world_snapshot(world, stats.ticks, render_snapshot);
+                    auto interpolation_alpha = 1.0;
+                    auto const* displayed_snapshot = presentation_snapshot(
+                        snapshot_history,
+                        presentation,
+                        delta,
+                        shared.simulation.tick_rate_hz,
+                        local.visualization.interpolation_enabled,
+                        pause_state_received && authoritative_pause_state,
+                        interpolation_alpha
+                    );
+                    if (displayed_snapshot == nullptr && snapshot_history.empty()) {
+                        displayed_snapshot = &empty_presentation;
                     }
-                    if (!extracted.valid) {
-                        log(LogCategory::Simulation, LogLevel::Error,
-                            "client render snapshot extraction failed: " + extracted.error);
+                    if (!snapshot_history.empty() && displayed_snapshot == nullptr) {
+                        log(LogCategory::Render, LogLevel::Error,
+                            "client presentation interpolation failed");
                         stop_cause = ClientStopCause::ProtocolError;
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
-                    } else {
+                    } else if (displayed_snapshot != nullptr) {
+                        static_cast<void>(interpolation_alpha);
                         auto const sequence = latest_applied_sequence == 0
                             ? std::optional<SequenceId> {}
                             : std::optional<SequenceId> { latest_applied_sequence };
@@ -612,7 +673,7 @@ namespace simnet::app
                             SIMNET_TRACE_SCOPE_CATEGORY("client.viewer_draw", LogCategory::Render);
                             viewer_result = viewer->draw(
                                 render_frame(
-                                    render_snapshot,
+                                    *displayed_snapshot,
                                     shared,
                                     delta,
                                     sequence,

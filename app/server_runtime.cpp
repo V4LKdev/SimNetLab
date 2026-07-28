@@ -189,6 +189,15 @@ namespace
         bool dirty { true };
     };
 
+    struct PresentationSnapshotState
+    {
+        simnet::WorldSnapshot previous {};
+        simnet::WorldSnapshot current {};
+        simnet::WorldSnapshot interpolated {};
+        bool has_previous {};
+        bool has_current {};
+    };
+
     struct PeerRuntimeState
     {
         simnet::PeerId peer {};
@@ -708,6 +717,44 @@ namespace
         std::copy(source.hues.begin(), source.hues.end(), destination.hues.begin());
     }
 
+    void retain_presentation_snapshot(
+        PresentationSnapshotState& state,
+        simnet::WorldSnapshot const& snapshot
+    )
+    {
+        if (state.has_current && state.current.tick == snapshot.tick) {
+            return;
+        }
+        if (state.has_current) {
+            std::swap(state.previous, state.current);
+            state.has_previous = true;
+        }
+        copy_snapshot_reusing_capacity(snapshot, state.current);
+        state.has_current = true;
+    }
+
+    [[nodiscard]] simnet::WorldSnapshot const* presentation_snapshot(
+        PresentationSnapshotState& state,
+        bool interpolation_enabled,
+        bool paused,
+        double alpha
+    )
+    {
+        if (!state.has_current) {
+            return nullptr;
+        }
+        if (!interpolation_enabled || paused || !state.has_previous) {
+            return &state.current;
+        }
+        auto const interpolated = simnet::interpolate_world_snapshots(
+            state.previous,
+            state.current,
+            alpha,
+            state.interpolated
+        );
+        return interpolated.valid ? &state.interpolated : nullptr;
+    }
+
     void retain_snapshot(
         PeerRuntimeState& peer,
         simnet::SequenceId sequence,
@@ -1121,6 +1168,7 @@ namespace simnet::app
 #if defined(SIMNET_ENABLE_RENDER)
             auto spatial_render = SpatialRenderStorage {};
             auto selected_debug_render = SelectedDebugRenderStorage {};
+            auto presentation = PresentationSnapshotState {};
             auto spatial_snapshot_tick = std::optional<Tick> {};
             auto selected_entity = std::optional<EntityNetId> {};
             if (viewer.has_value()) {
@@ -1186,6 +1234,25 @@ namespace simnet::app
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;
                     }
+#if defined(SIMNET_ENABLE_RENDER)
+                    if (viewer.has_value() && local.visualization.interpolation_enabled) {
+                        auto const extracted = ensure_current_snapshot(
+                            world,
+                            tick,
+                            current_snapshot
+                        );
+                        if (!extracted.valid) {
+                            log(LogCategory::Simulation, LogLevel::Error,
+                                "presentation snapshot extraction failed: " + extracted.error);
+                            static_cast<void>(stop.request(ShutdownReason::FatalError));
+                            break;
+                        }
+                        retain_presentation_snapshot(
+                            presentation,
+                            current_snapshot.snapshot
+                        );
+                    }
+#endif
                     boid_csv.sample(tick, game.last_step_report());
                 }
 
@@ -1212,12 +1279,33 @@ namespace simnet::app
                         );
                     }
                     if (!stop.requested() && current_snapshot.valid) {
+                        if (local.visualization.interpolation_enabled) {
+                            retain_presentation_snapshot(
+                                presentation,
+                                current_snapshot.snapshot
+                            );
+                        }
+                        auto const* displayed_snapshot =
+                            local.visualization.interpolation_enabled
+                            ? presentation_snapshot(
+                                presentation,
+                                local.visualization.interpolation_enabled,
+                                simulation_paused,
+                                frame.interpolation_alpha
+                            )
+                            : &current_snapshot.snapshot;
+                        if (displayed_snapshot == nullptr) {
+                            log(LogCategory::Render, LogLevel::Error,
+                                "server presentation interpolation failed");
+                            static_cast<void>(stop.request(ShutdownReason::FatalError));
+                            continue;
+                        }
                         auto viewer_result = ViewerResult {};
                         {
                             SIMNET_TRACE_SCOPE_CATEGORY("server.viewer_draw", LogCategory::Render);
                             viewer_result = viewer->draw(
                                 render_frame(
-                                    current_snapshot.snapshot,
+                                    *displayed_snapshot,
                                     shared,
                                     frame_delta,
                                     simulation_paused,
