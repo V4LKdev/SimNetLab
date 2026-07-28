@@ -57,7 +57,10 @@ namespace
     {
         std::vector<simnet::EntityNetId> ids {};
         std::vector<flecs::entity_t> entities {};
+        std::size_t boid_count {};
+        simnet::EntityNetId next_id { 1U };
         mutable flecs::query<
+            const simnet::EntityKindComponent,
             const simnet::NetIdentity,
             const simnet::Position,
             const simnet::Heading,
@@ -75,7 +78,8 @@ namespace
 
     [[nodiscard]] bool valid_index(AuthoritativeReplicationIndex const& index) noexcept
     {
-        return index.ids.size() == index.entities.size();
+        return index.ids.size() == index.entities.size()
+            && index.boid_count <= index.ids.size();
     }
 
     [[nodiscard]] bool valid_boid_state(simnet::BoidState const& boid) noexcept
@@ -93,6 +97,7 @@ namespace
 
     void set_authoritative_boid_components(flecs::entity entity, simnet::BoidState const& boid)
     {
+        entity.set<simnet::EntityKindComponent>({ .value = simnet::EntityKind::Boid });
         entity.set<simnet::NetIdentity>({ .id = boid.id });
         entity.set<simnet::Position>({ .value = boid.position });
         entity.set<simnet::Heading>({ .value = boid.heading });
@@ -115,13 +120,16 @@ namespace
     void remap_rows(
         flecs::world& world,
         AuthoritativeReplicationIndex const& index,
-        std::size_t first
+        std::size_t
     )
     {
-        for (auto row = first; row < index.entities.size(); ++row) {
-            flecs::entity { world, index.entities[row] }.set<FlockRow>({
-                .value = static_cast<std::uint32_t>(row),
-            });
+        auto row = std::uint32_t {};
+        for (auto const entity_id : index.entities) {
+            auto entity = flecs::entity { world, entity_id };
+            if (entity.has<FlockRow>()
+                && entity.get<simnet::EntityKindComponent>().value == simnet::EntityKind::Boid) {
+                entity.set<FlockRow>({ .value = row++ });
+            }
         }
     }
 
@@ -222,6 +230,7 @@ namespace simnet
         WorkerScratch inspection {};
         std::vector<std::uint8_t> capture_seen {};
         flecs::query<
+            const EntityKindComponent,
             const NetIdentity,
             const Position,
             const Heading,
@@ -1070,6 +1079,7 @@ namespace simnet
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
         index.cruise_speed = impl->settings.cruise_speed;
         index.snapshot_query = world.query_builder<
+            const EntityKindComponent,
             const NetIdentity,
             const Position,
             const Heading,
@@ -1077,6 +1087,7 @@ namespace simnet
             .cache_kind(flecs::QueryCacheAll)
             .build();
         impl->capture_query = world.query_builder<
+            const EntityKindComponent,
             const NetIdentity,
             const Position,
             const Heading,
@@ -1136,13 +1147,14 @@ namespace simnet
                     std::ranges::fill(impl->capture_seen, std::uint8_t {});
                     impl->capture_query.run([&](flecs::iter& query_iterator) {
                         while (query_iterator.next() && impl->phase_valid) {
-                            auto const identities = query_iterator.field<const NetIdentity>(0);
-                            auto const positions = query_iterator.field<const Position>(1);
-                            auto const headings = query_iterator.field<const Heading>(2);
-                            auto const velocities = query_iterator.field<const Velocity>(3);
-                            auto const hues = query_iterator.field<const HueState>(4);
-                            auto const quantized_hues = query_iterator.field<const Hue>(5);
-                            auto const rows = query_iterator.field<const FlockRow>(6);
+                            auto const kinds = query_iterator.field<const EntityKindComponent>(0);
+                            auto const identities = query_iterator.field<const NetIdentity>(1);
+                            auto const positions = query_iterator.field<const Position>(2);
+                            auto const headings = query_iterator.field<const Heading>(3);
+                            auto const velocities = query_iterator.field<const Velocity>(4);
+                            auto const hues = query_iterator.field<const HueState>(5);
+                            auto const quantized_hues = query_iterator.field<const Hue>(6);
+                            auto const rows = query_iterator.field<const FlockRow>(7);
                             for (auto query_row : query_iterator) {
                                 auto const row = rows[query_row].value;
                                 if (row >= impl->prepared_entity_count || impl->capture_seen[row] != 0U) {
@@ -1155,7 +1167,8 @@ namespace simnet
                                 auto const heading = headings[query_row].value;
                                 auto const velocity = velocities[query_row].value;
                                 auto const hue = hues[query_row].value;
-                                if (id == 0U || !is_finite(position) || !is_finite(heading)
+                                if (kinds[query_row].value != EntityKind::Boid
+                                    || id == 0U || !is_finite(position) || !is_finite(heading)
                                     || !is_normalized_heading(heading) || !is_finite(velocity)
                                     || !std::isfinite(hue) || hue < 0.0F || hue >= 1.0F) {
                                     impl->phase_valid = false;
@@ -1438,13 +1451,15 @@ namespace simnet
         auto offset = static_cast<std::size_t>(position - index.ids.begin());
         if (position != index.ids.end() && *position == boid.id) {
             auto entity = flecs::entity { world, index.entities[offset] };
-            if (!entity.is_alive()) {
+            if (!entity.is_alive()
+                || !entity.has<EntityKindComponent>()
+                || entity.get<EntityKindComponent>().value != EntityKind::Boid) {
                 return {};
             }
             set_authoritative_simulation_components(
                 entity,
                 boid,
-                static_cast<std::uint32_t>(offset),
+                entity.get<FlockRow>().value,
                 index.cruise_speed
             );
             return entity;
@@ -1460,12 +1475,14 @@ namespace simnet
         set_authoritative_simulation_components(
             entity,
             boid,
-            static_cast<std::uint32_t>(offset),
+            0U,
             index.cruise_speed
         );
         index.ids.insert(position, boid.id);
         index.entities.insert(index.entities.begin() + static_cast<std::ptrdiff_t>(offset), entity.id());
-        remap_rows(world, index, offset + 1U);
+        ++index.boid_count;
+        index.next_id = std::max(index.next_id, static_cast<EntityNetId>(boid.id + (boid.id != std::numeric_limits<EntityNetId>::max())));
+        remap_rows(world, index, 0U);
         world.modified<AuthoritativeReplicationIndex>();
         return entity;
     }
@@ -1524,6 +1541,7 @@ namespace simnet
             }
         }
 
+        auto kinds = std::vector<EntityKindComponent> {};
         auto identities = std::vector<NetIdentity> {};
         auto positions = std::vector<Position> {};
         auto headings = std::vector<Heading> {};
@@ -1534,6 +1552,7 @@ namespace simnet
         auto entities = std::vector<flecs::entity_t> {};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("game_server.bulk_spawn_component_arrays", LogCategory::Simulation);
+            kinds.reserve(boids.size());
             identities.reserve(boids.size());
             positions.reserve(boids.size());
             headings.reserve(boids.size());
@@ -1545,6 +1564,7 @@ namespace simnet
             index.reserve(index.ids.size() + boids.size());
             for (std::size_t offset = 0; offset < boids.size(); ++offset) {
                 auto const& boid = boids[offset];
+                kinds.push_back({ .value = EntityKind::Boid });
                 identities.push_back({ .id = boid.id });
                 positions.push_back({ .value = boid.position });
                 headings.push_back({ .value = boid.heading });
@@ -1554,12 +1574,13 @@ namespace simnet
                     .value = static_cast<float>(boid.hue) / 256.0F,
                 });
                 rows.push_back({
-                    .value = static_cast<std::uint32_t>(index.ids.size() + offset),
+                    .value = static_cast<std::uint32_t>(index.boid_count + offset),
                 });
             }
         }
 
-        auto ids = std::array<ecs_id_t, 7> {
+        auto ids = std::array<ecs_id_t, 8> {
+            world.id<EntityKindComponent>(),
             world.id<NetIdentity>(),
             world.id<Position>(),
             world.id<Heading>(),
@@ -1568,7 +1589,8 @@ namespace simnet
             world.id<HueState>(),
             world.id<FlockRow>(),
         };
-        auto data = std::array<void*, 7> {
+        auto data = std::array<void*, 8> {
+            kinds.data(),
             identities.data(),
             positions.data(),
             headings.data(),
@@ -1597,6 +1619,14 @@ namespace simnet
                 index.ids.push_back(boids[offset].id);
                 index.entities.push_back(entities[offset]);
             }
+            index.boid_count += boids.size();
+            auto const maximum = boids.back().id;
+            index.next_id = std::max(
+                index.next_id,
+                static_cast<EntityNetId>(
+                    maximum + (maximum != std::numeric_limits<EntityNetId>::max())
+                )
+            );
             world.modified<AuthoritativeReplicationIndex>();
         }
         report.spawned_count = boids.size();
@@ -1619,10 +1649,16 @@ namespace simnet
         if (!ecs_is_alive(world.c_ptr(), entity)) {
             return false;
         }
+        auto const handle = flecs::entity { world, entity };
+        if (!handle.has<EntityKindComponent>()
+            || handle.get<EntityKindComponent>().value != EntityKind::Boid) {
+            return false;
+        }
         ecs_delete(world.c_ptr(), entity);
         index.ids.erase(position);
         index.entities.erase(index.entities.begin() + static_cast<std::ptrdiff_t>(offset));
-        remap_rows(world, index, offset);
+        --index.boid_count;
+        remap_rows(world, index, 0U);
         world.modified<AuthoritativeReplicationIndex>();
         return true;
     }
@@ -1630,7 +1666,7 @@ namespace simnet
     std::size_t authoritative_boid_count(flecs::world const& world) noexcept
     {
         auto const& index = world.get<AuthoritativeReplicationIndex>();
-        return valid_index(index) ? index.ids.size() : 0U;
+        return valid_index(index) ? index.boid_count : 0U;
     }
 
     ServerSnapshotExtractionReport extract_world_snapshot(
@@ -1658,13 +1694,20 @@ namespace simnet
             SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.query_iteration", LogCategory::Snapshot);
             index.snapshot_query.run([&](flecs::iter& iterator) {
                 while (iterator.next()) {
-                    auto const identities = iterator.field<const NetIdentity>(0);
-                    auto const positions = iterator.field<const Position>(1);
-                    auto const headings = iterator.field<const Heading>(2);
-                    auto const hues = iterator.field<const Hue>(3);
+                    auto const kinds = iterator.field<const EntityKindComponent>(0);
+                    auto const identities = iterator.field<const NetIdentity>(1);
+                    auto const positions = iterator.field<const Position>(2);
+                    auto const headings = iterator.field<const Heading>(3);
+                    auto const hues = iterator.field<const Hue>(4);
                     auto const entities = iterator.entities();
 
                     for (auto row : iterator) {
+                        if (kinds[row].value != EntityKind::Boid
+                            && kinds[row].value != EntityKind::Player) {
+                            report.valid = false;
+                            report.error = "world snapshot entity kind is unknown";
+                            return;
+                        }
                         auto const id = identities[row].id;
                         auto const position = positions[row].value;
                         auto const heading = headings[row].value;

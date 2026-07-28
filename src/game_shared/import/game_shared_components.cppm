@@ -10,6 +10,18 @@ import simnet.core;
 
 export namespace simnet
 {
+    /// Stored semantic kind for replicated game entities.
+    enum class EntityKind : std::uint8_t
+    {
+        Boid,
+        Player
+    };
+
+    struct EntityKindComponent
+    {
+        EntityKind value { EntityKind::Boid };
+    };
+
     /// Network identity attached to replicated entities.
     struct NetIdentity
     {

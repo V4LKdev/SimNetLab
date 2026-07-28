@@ -10,6 +10,7 @@ namespace simnet
 {
     void register_game_components(flecs::world& world)
     {
+        world.component<EntityKindComponent>("simnet::EntityKind");
         world.component<NetIdentity>("simnet::NetIdentity");
         world.component<Position>("simnet::Position");
         world.component<Heading>("simnet::Heading");

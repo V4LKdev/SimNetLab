@@ -1,7 +1,9 @@
 module;
 
+#include <algorithm>
 #include <cstdint>
 #include <flecs.h>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +24,7 @@ namespace simnet
             std::vector<EntityNetId> ids;
             std::vector<flecs::entity_t> entities;
             Tick latest_tick {};
+            EntityNetId player_id {};
 
             [[nodiscard]] std::size_t size() const noexcept
             {
@@ -35,9 +38,21 @@ namespace simnet
             }
         };
 
-        [[nodiscard]] flecs::entity make_replicated_entity(flecs::world& world, BoidState const& boid)
+        [[nodiscard]] EntityKind entity_kind(ClientReplicationState const& state, EntityNetId id) noexcept
+        {
+            return state.player_id != 0U && state.player_id == id
+                ? EntityKind::Player
+                : EntityKind::Boid;
+        }
+
+        [[nodiscard]] flecs::entity make_replicated_entity(
+            flecs::world& world,
+            ClientReplicationState const& state,
+            BoidState const& boid
+        )
         {
             return world.entity()
+                .set<EntityKindComponent>({ .value = entity_kind(state, boid.id) })
                 .set<NetIdentity>({ .id = boid.id })
                 .set<Position>({ .value = boid.position })
                 .set<Heading>({ .value = boid.heading })
@@ -122,6 +137,39 @@ namespace simnet
         return world.get<ClientReplicationState>().latest_tick;
     }
 
+    void set_client_player_entity_id(flecs::world& world, EntityNetId id)
+    {
+        auto& state = world.ensure<ClientReplicationState>();
+        state.player_id = id;
+        for (std::size_t index = 0; index < state.ids.size(); ++index) {
+            auto entity = flecs::entity { world, state.entities[index] };
+            if (entity.is_alive()) {
+                entity.set<EntityKindComponent>({
+                    .value = entity_kind(state, state.ids[index]),
+                });
+            }
+        }
+        world.modified<ClientReplicationState>();
+    }
+
+    std::optional<EntityKind> client_entity_kind(
+        flecs::world const& world,
+        EntityNetId id
+    ) noexcept
+    {
+        auto const& state = world.get<ClientReplicationState>();
+        auto const position = std::lower_bound(state.ids.begin(), state.ids.end(), id);
+        if (position == state.ids.end() || *position != id) {
+            return std::nullopt;
+        }
+        auto const offset = static_cast<std::size_t>(position - state.ids.begin());
+        auto const entity = flecs::entity { world, state.entities[offset] };
+        if (!entity.is_alive() || !entity.has<EntityKindComponent>()) {
+            return std::nullopt;
+        }
+        return entity.get<EntityKindComponent>().value;
+    }
+
     ApplyPatchReport apply_client_snapshot_patch(flecs::world& world, ClientSnapshotPatch const& patch)
     {
         auto report = ApplyPatchReport {
@@ -153,6 +201,7 @@ namespace simnet
 
         if (patch.kind == SnapshotKind::Patch) {
             auto next_state = ClientReplicationState {};
+            next_state.player_id = state.player_id;
             next_state.reserve(state.size() + patch.upserts.size());
 
             auto current_index = std::size_t {};
@@ -164,7 +213,7 @@ namespace simnet
 
                 while (upsert_before_current(patch, upsert_index, current_id)) {
                     auto const& boid = patch.upserts[upsert_index];
-                    auto entity = make_replicated_entity(world, boid);
+                    auto entity = make_replicated_entity(world, next_state, boid);
                     append_entity(next_state, boid.id, entity.id());
                     ++upsert_index;
                 }
@@ -190,7 +239,7 @@ namespace simnet
 
             while (upsert_index < patch.upserts.size()) {
                 auto const& boid = patch.upserts[upsert_index];
-                auto entity = make_replicated_entity(world, boid);
+                auto entity = make_replicated_entity(world, next_state, boid);
                 append_entity(next_state, boid.id, entity.id());
                 ++upsert_index;
             }
@@ -208,10 +257,11 @@ namespace simnet
         }
 
         auto next_state = ClientReplicationState {};
+        next_state.player_id = state.player_id;
         next_state.reserve(patch.upserts.size());
 
         for (auto const& boid : patch.upserts) {
-            auto entity = make_replicated_entity(world, boid);
+            auto entity = make_replicated_entity(world, next_state, boid);
             append_entity(next_state, boid.id, entity.id());
         }
 
@@ -251,7 +301,7 @@ namespace simnet
             }
 
             auto const entity = flecs::entity { world, entity_id };
-            if (!entity.has<NetIdentity>() || !entity.has<Position>()
+            if (!entity.has<EntityKindComponent>() || !entity.has<NetIdentity>() || !entity.has<Position>()
                 || !entity.has<Heading>() || !entity.has<Hue>()) {
                 reset_failed_snapshot(out_snapshot, tick);
                 report.valid = false;

@@ -170,6 +170,9 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     CHECK(client_extraction.entity_count == boid_count);
     CHECK(extracted_client_snapshot.tick == 4);
     CHECK(extracted_client_snapshot.ids.size() == boid_count);
+    for (auto const id : extracted_client_snapshot.ids) {
+        CHECK(simnet::client_entity_kind(client_world, id) == simnet::EntityKind::Boid);
+    }
 }
 
 TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[replication]")
@@ -186,6 +189,16 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
     REQUIRE(appended.success());
     CHECK(appended.spawned_count == 3U);
     CHECK(simnet::authoritative_boid_count(world) == 3U);
+    auto kind_query = world.query_builder<
+        const simnet::EntityKindComponent,
+        const simnet::NetIdentity>()
+        .build();
+    auto kind_count = std::size_t {};
+    kind_query.each([&](simnet::EntityKindComponent const& kind, simnet::NetIdentity const&) {
+        CHECK(kind.value == simnet::EntityKind::Boid);
+        ++kind_count;
+    });
+    CHECK(kind_count == 3U);
 
     auto updated = test_boid(2, 9, 4);
     updated.hue = 201U;
