@@ -318,8 +318,12 @@ namespace
             .boost_speed = config.player.boost_speed,
             .slow_speed = config.player.slow_speed,
             .speed_change_rate = config.player.speed_change_rate,
-            .yaw_rate_degrees = config.player.yaw_rate_degrees,
-            .pitch_rate_degrees = config.player.pitch_rate_degrees,
+            .yaw_acceleration_degrees = config.player.yaw_acceleration_degrees,
+            .pitch_acceleration_degrees = config.player.pitch_acceleration_degrees,
+            .yaw_damping = config.player.yaw_damping,
+            .pitch_damping = config.player.pitch_damping,
+            .max_yaw_rate_degrees = config.player.max_yaw_rate_degrees,
+            .max_pitch_rate_degrees = config.player.max_pitch_rate_degrees,
             .pitch_limit_degrees = config.player.pitch_limit_degrees,
         };
     }

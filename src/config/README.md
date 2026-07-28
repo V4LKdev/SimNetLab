@@ -18,6 +18,13 @@ Visualization is local-only configuration shared by Server and Client. It contro
 
 Client-local `gameplay.role` is either `observer` or `player`. It is negotiated after transport session readiness and is part of the Client runtime fingerprint, not network compatibility. Observer receives no owned entity. Player receives the ID of one Server-owned replicated fish. `client_player_visual.json` is the maintained visual Player profile; the other Client profiles remain observers.
 
+Shared `player` settings define smooth authoritative movement. Input accelerates
+private yaw and pitch velocities; damping reduces them after release, maximum
+angular rates bound the turn, and `pitch_limit_degrees` bounds orientation.
+Speed continues to approach the configured slow, cruise, or boost target at
+`speed_change_rate`. These are deterministic simulation settings and therefore
+participate in network compatibility.
+
 Benchmark, JSON telemetry export, area-of-interest, LOD, and compression configuration vocabulary is retained for planned work. The Server's small sampled boid CSV is implemented; it is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled by the CMake build option. Unsupported pipeline selections are rejected during app startup instead of being ignored.
 
 Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.

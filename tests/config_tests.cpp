@@ -28,7 +28,7 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
 
     changed = baseline;
-    changed.player.yaw_rate_degrees += 1.0F;
+    changed.player.yaw_acceleration_degrees += 1.0F;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
 }
 
@@ -71,4 +71,8 @@ TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[co
     CHECK(config.boids.cohesion_radius == 18.0F);
     CHECK(config.boids.enable_wander);
     CHECK(config.boids.enable_hue_assimilation);
+    CHECK(config.player.yaw_acceleration_degrees == 360.0F);
+    CHECK(config.player.pitch_acceleration_degrees == 300.0F);
+    CHECK(config.player.max_yaw_rate_degrees == 120.0F);
+    CHECK(config.player.max_pitch_rate_degrees == 90.0F);
 }

@@ -55,8 +55,12 @@ export namespace simnet
         float boost_speed { 14.0F };
         float slow_speed { 3.0F };
         float speed_change_rate { 12.0F };
-        float yaw_rate_degrees { 90.0F };
-        float pitch_rate_degrees { 75.0F };
+        float yaw_acceleration_degrees { 360.0F };
+        float pitch_acceleration_degrees { 300.0F };
+        float yaw_damping { 8.0F };
+        float pitch_damping { 8.0F };
+        float max_yaw_rate_degrees { 120.0F };
+        float max_pitch_rate_degrees { 90.0F };
         float pitch_limit_degrees { 80.0F };
     };
 

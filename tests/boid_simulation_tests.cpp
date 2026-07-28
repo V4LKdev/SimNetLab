@@ -284,8 +284,12 @@ TEST_CASE("authoritative player is replicated but excluded from flock simulation
         .boost_speed = 4.0F,
         .slow_speed = 1.0F,
         .speed_change_rate = 10.0F,
-        .yaw_rate_degrees = 90.0F,
-        .pitch_rate_degrees = 60.0F,
+        .yaw_acceleration_degrees = 360.0F,
+        .pitch_acceleration_degrees = 300.0F,
+        .yaw_damping = 8.0F,
+        .pitch_damping = 8.0F,
+        .max_yaw_rate_degrees = 120.0F,
+        .max_pitch_rate_degrees = 90.0F,
         .pitch_limit_degrees = 75.0F,
     };
     auto runtime = simnet::ServerGameRuntime { settings, player_settings };
@@ -335,8 +339,12 @@ TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
         .boost_speed = 4.0F,
         .slow_speed = 1.0F,
         .speed_change_rate = 10.0F,
-        .yaw_rate_degrees = 90.0F,
-        .pitch_rate_degrees = 60.0F,
+        .yaw_acceleration_degrees = 360.0F,
+        .pitch_acceleration_degrees = 300.0F,
+        .yaw_damping = 8.0F,
+        .pitch_damping = 8.0F,
+        .max_yaw_rate_degrees = 120.0F,
+        .max_pitch_rate_degrees = 90.0F,
         .pitch_limit_degrees = 75.0F,
     };
     auto runtime = simnet::ServerGameRuntime { settings, player_settings };
@@ -363,6 +371,127 @@ TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
     state = snapshot(world, 2U);
     REQUIRE(state.size() == 1U);
     CHECK(state.headings.front().x > 0.0F);
+}
+
+TEST_CASE("player steering accelerates, damps, and respects angular limits", "[player]")
+{
+    auto settings = test_settings();
+    auto player_settings = simnet::PlayerMovementSettings {
+        .world_half = 100.0F,
+        .cruise_speed = 2.0F,
+        .boost_speed = 4.0F,
+        .slow_speed = 1.0F,
+        .speed_change_rate = 10.0F,
+        .yaw_acceleration_degrees = 360.0F,
+        .pitch_acceleration_degrees = 300.0F,
+        .yaw_damping = 8.0F,
+        .pitch_damping = 8.0F,
+        .max_yaw_rate_degrees = 120.0F,
+        .max_pitch_rate_degrees = 90.0F,
+        .pitch_limit_degrees = 80.0F,
+    };
+    auto runtime = simnet::ServerGameRuntime { settings, player_settings };
+    auto world = flecs::world {};
+    simnet::register_server_game(world, runtime);
+    auto const player_id = simnet::spawn_authoritative_player(world);
+    REQUIRE(player_id != 0U);
+    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
+        .yaw_right = true,
+    }));
+
+    auto yaw_at = [&](simnet::Tick tick) {
+        auto const state = snapshot(world, tick);
+        REQUIRE(state.size() == 1U);
+        return std::atan2(state.headings.front().x, state.headings.front().z);
+    };
+
+    step(world, runtime);
+    auto previous_yaw = yaw_at(1U);
+    CHECK(previous_yaw < 0.0F);
+    CHECK(std::abs(previous_yaw) < 0.01F);
+
+    auto previous_delta = std::abs(previous_yaw);
+    for (auto tick = simnet::Tick { 2U }; tick <= 12U; ++tick) {
+        step(world, runtime);
+        auto const yaw = yaw_at(tick);
+        auto const delta = std::abs(yaw - previous_yaw);
+        CHECK(delta + 0.000001F >= previous_delta);
+        previous_delta = delta;
+        previous_yaw = yaw;
+    }
+
+    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {}));
+    step(world, runtime);
+    auto yaw = yaw_at(13U);
+    auto released_delta = std::abs(yaw - previous_yaw);
+    CHECK(released_delta < previous_delta);
+    previous_yaw = yaw;
+    for (auto tick = simnet::Tick { 14U }; tick <= 20U; ++tick) {
+        step(world, runtime);
+        yaw = yaw_at(tick);
+        auto const delta = std::abs(yaw - previous_yaw);
+        CHECK(delta < released_delta);
+        released_delta = delta;
+        previous_yaw = yaw;
+    }
+
+    auto const paused_heading = snapshot(world, 21U).headings.front();
+    auto const still_paused_heading = snapshot(world, 22U).headings.front();
+    CHECK(paused_heading.x == still_paused_heading.x);
+    CHECK(paused_heading.y == still_paused_heading.y);
+    CHECK(paused_heading.z == still_paused_heading.z);
+    step(world, runtime);
+    CHECK(simnet::is_normalized_heading(snapshot(world, 23U).headings.front()));
+}
+
+TEST_CASE("player yaw and pitch rates and pitch angle are bounded", "[player]")
+{
+    auto settings = test_settings();
+    auto player_settings = simnet::PlayerMovementSettings {
+        .world_half = 100.0F,
+        .cruise_speed = 2.0F,
+        .boost_speed = 4.0F,
+        .slow_speed = 1.0F,
+        .speed_change_rate = 10.0F,
+        .yaw_acceleration_degrees = 10000.0F,
+        .pitch_acceleration_degrees = 10000.0F,
+        .yaw_damping = 8.0F,
+        .pitch_damping = 8.0F,
+        .max_yaw_rate_degrees = 10.0F,
+        .max_pitch_rate_degrees = 12.0F,
+        .pitch_limit_degrees = 5.0F,
+    };
+    auto runtime = simnet::ServerGameRuntime { settings, player_settings };
+    auto world = flecs::world {};
+    simnet::register_server_game(world, runtime);
+    auto const player_id = simnet::spawn_authoritative_player(world);
+    REQUIRE(player_id != 0U);
+    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
+        .pitch_up = true,
+        .yaw_right = true,
+    }));
+
+    auto previous_yaw = 0.0F;
+    auto previous_pitch = 0.0F;
+    auto constexpr delta_time = 0.1F;
+    auto constexpr maximum_yaw_step = 0.017454F;
+    auto constexpr maximum_pitch_step = 0.020945F;
+    auto constexpr pitch_limit = 0.087267F;
+    for (auto tick = simnet::Tick { 1U }; tick <= 20U; ++tick) {
+        step(world, runtime, delta_time);
+        auto const state = snapshot(world, tick);
+        REQUIRE(state.size() == 1U);
+        auto const heading = state.headings.front();
+        auto const yaw = std::atan2(heading.x, heading.z);
+        auto const pitch = std::asin(heading.y);
+        CHECK(std::abs(yaw - previous_yaw) <= maximum_yaw_step);
+        CHECK(std::abs(pitch - previous_pitch) <= maximum_pitch_step);
+        CHECK(std::abs(pitch) <= pitch_limit);
+        previous_yaw = yaw;
+        previous_pitch = pitch;
+    }
+    CHECK(previous_yaw < 0.0F);
+    CHECK(previous_pitch == Catch::Approx(pitch_limit).margin(0.00001F));
 }
 
 TEST_CASE("boid rule toggles remove their steering contribution", "[boids][config]")

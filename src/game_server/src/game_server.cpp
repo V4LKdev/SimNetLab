@@ -50,6 +50,8 @@ namespace
         float speed {};
         float yaw {};
         float pitch {};
+        float yaw_velocity {};
+        float pitch_velocity {};
     };
 
     struct PlayerLatestInput
@@ -986,10 +988,16 @@ namespace
             && settings.boost_speed >= settings.cruise_speed
             && std::isfinite(settings.speed_change_rate)
             && settings.speed_change_rate > 0.0F
-            && std::isfinite(settings.yaw_rate_degrees)
-            && settings.yaw_rate_degrees > 0.0F
-            && std::isfinite(settings.pitch_rate_degrees)
-            && settings.pitch_rate_degrees > 0.0F
+            && std::isfinite(settings.yaw_acceleration_degrees)
+            && settings.yaw_acceleration_degrees > 0.0F
+            && std::isfinite(settings.pitch_acceleration_degrees)
+            && settings.pitch_acceleration_degrees > 0.0F
+            && std::isfinite(settings.yaw_damping) && settings.yaw_damping > 0.0F
+            && std::isfinite(settings.pitch_damping) && settings.pitch_damping > 0.0F
+            && std::isfinite(settings.max_yaw_rate_degrees)
+            && settings.max_yaw_rate_degrees > 0.0F
+            && std::isfinite(settings.max_pitch_rate_degrees)
+            && settings.max_pitch_rate_degrees > 0.0F
             && std::isfinite(settings.pitch_limit_degrees)
             && settings.pitch_limit_degrees > 0.0F
             && settings.pitch_limit_degrees < 90.0F;
@@ -1209,14 +1217,49 @@ namespace simnet
                     - static_cast<float>(input.pitch_down);
                 auto constexpr degrees_to_radians = std::numbers::pi_v<float> / 180.0F;
                 auto next_motion = motion;
-                next_motion.yaw += yaw_axis * settings.yaw_rate_degrees
-                    * degrees_to_radians * delta_time;
-                next_motion.pitch = std::clamp(
-                    next_motion.pitch + pitch_axis * settings.pitch_rate_degrees
-                        * degrees_to_radians * delta_time,
-                    -settings.pitch_limit_degrees * degrees_to_radians,
-                    settings.pitch_limit_degrees * degrees_to_radians
+                if (yaw_axis != 0.0F) {
+                    next_motion.yaw_velocity += yaw_axis
+                        * settings.yaw_acceleration_degrees
+                        * degrees_to_radians * delta_time;
+                } else {
+                    next_motion.yaw_velocity *= std::exp(
+                        -settings.yaw_damping * delta_time
+                    );
+                }
+                if (pitch_axis != 0.0F) {
+                    next_motion.pitch_velocity += pitch_axis
+                        * settings.pitch_acceleration_degrees
+                        * degrees_to_radians * delta_time;
+                } else {
+                    next_motion.pitch_velocity *= std::exp(
+                        -settings.pitch_damping * delta_time
+                    );
+                }
+                next_motion.yaw_velocity = std::clamp(
+                    next_motion.yaw_velocity,
+                    -settings.max_yaw_rate_degrees * degrees_to_radians,
+                    settings.max_yaw_rate_degrees * degrees_to_radians
                 );
+                next_motion.pitch_velocity = std::clamp(
+                    next_motion.pitch_velocity,
+                    -settings.max_pitch_rate_degrees * degrees_to_radians,
+                    settings.max_pitch_rate_degrees * degrees_to_radians
+                );
+                next_motion.yaw += next_motion.yaw_velocity * delta_time;
+                auto const pitch_limit =
+                    settings.pitch_limit_degrees * degrees_to_radians;
+                auto const unclamped_pitch =
+                    next_motion.pitch + next_motion.pitch_velocity * delta_time;
+                next_motion.pitch = std::clamp(
+                    unclamped_pitch,
+                    -pitch_limit,
+                    pitch_limit
+                );
+                if (next_motion.pitch != unclamped_pitch
+                    && std::signbit(next_motion.pitch_velocity)
+                        == std::signbit(next_motion.pitch)) {
+                    next_motion.pitch_velocity = 0.0F;
+                }
                 auto target_speed = settings.cruise_speed;
                 if (input.accelerate != input.decelerate) {
                     target_speed = input.accelerate
@@ -1259,7 +1302,9 @@ namespace simnet
                     && is_normalized_heading(next_heading)
                     && std::isfinite(next_motion.speed)
                     && std::isfinite(next_motion.yaw)
-                    && std::isfinite(next_motion.pitch)) {
+                    && std::isfinite(next_motion.pitch)
+                    && std::isfinite(next_motion.yaw_velocity)
+                    && std::isfinite(next_motion.pitch_velocity)) {
                     position.value = next_position;
                     heading.value = next_heading;
                     motion = next_motion;

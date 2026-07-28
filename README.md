@@ -76,8 +76,10 @@ To join as the one supported Player instead of an Observer:
 build/debug/app/Client --config config/client_player_visual.json
 ```
 
-The Player camera is locked behind and above the replicated fish. `W`/`S` pitch,
-`A`/`D` yaw, Shift accelerates, and Ctrl slows; Shift+Ctrl selects cruise speed.
+The Player camera is locked behind and above the replicated fish. `W`/`S` apply
+pitch steering, `A`/`D` apply yaw steering, Shift accelerates, and Ctrl slows;
+angular velocity, damping, and rate limits give steering inertia, while
+Shift+Ctrl selects cruise speed.
 Input is latest-state unreliable-sequenced data, while join and pause remain
 reliable controls. `F4` switches locally between Game and Overview and sends one
 neutral input state when leaving Game. There is no client prediction yet.

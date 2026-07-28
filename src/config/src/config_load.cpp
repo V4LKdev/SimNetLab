@@ -265,15 +265,23 @@ namespace
         read_optional(json, "boost_speed", config.boost_speed);
         read_optional(json, "slow_speed", config.slow_speed);
         read_optional(json, "speed_change_rate", config.speed_change_rate);
-        read_optional(json, "yaw_rate_degrees", config.yaw_rate_degrees);
-        read_optional(json, "pitch_rate_degrees", config.pitch_rate_degrees);
+        read_optional(json, "yaw_acceleration_degrees", config.yaw_acceleration_degrees);
+        read_optional(json, "pitch_acceleration_degrees", config.pitch_acceleration_degrees);
+        read_optional(json, "yaw_damping", config.yaw_damping);
+        read_optional(json, "pitch_damping", config.pitch_damping);
+        read_optional(json, "max_yaw_rate_degrees", config.max_yaw_rate_degrees);
+        read_optional(json, "max_pitch_rate_degrees", config.max_pitch_rate_degrees);
         read_optional(json, "pitch_limit_degrees", config.pitch_limit_degrees);
         if (!std::isfinite(config.slow_speed)
             || !std::isfinite(config.cruise_speed)
             || !std::isfinite(config.boost_speed)
             || !std::isfinite(config.speed_change_rate)
-            || !std::isfinite(config.yaw_rate_degrees)
-            || !std::isfinite(config.pitch_rate_degrees)
+            || !std::isfinite(config.yaw_acceleration_degrees)
+            || !std::isfinite(config.pitch_acceleration_degrees)
+            || !std::isfinite(config.yaw_damping)
+            || !std::isfinite(config.pitch_damping)
+            || !std::isfinite(config.max_yaw_rate_degrees)
+            || !std::isfinite(config.max_pitch_rate_degrees)
             || !std::isfinite(config.pitch_limit_degrees)
             || config.slow_speed < 0.0F
             || config.slow_speed > config.cruise_speed
@@ -284,8 +292,12 @@ namespace
         }
         validate_positive("player.boost_speed", config.boost_speed);
         validate_positive("player.speed_change_rate", config.speed_change_rate);
-        validate_positive("player.yaw_rate_degrees", config.yaw_rate_degrees);
-        validate_positive("player.pitch_rate_degrees", config.pitch_rate_degrees);
+        validate_positive("player.yaw_acceleration_degrees", config.yaw_acceleration_degrees);
+        validate_positive("player.pitch_acceleration_degrees", config.pitch_acceleration_degrees);
+        validate_positive("player.yaw_damping", config.yaw_damping);
+        validate_positive("player.pitch_damping", config.pitch_damping);
+        validate_positive("player.max_yaw_rate_degrees", config.max_yaw_rate_degrees);
+        validate_positive("player.max_pitch_rate_degrees", config.max_pitch_rate_degrees);
         if (config.pitch_limit_degrees <= 0.0F || config.pitch_limit_degrees >= 90.0F) {
             throw std::runtime_error(
                 "invalid config field 'player.pitch_limit_degrees': expected (0, 90)"
@@ -551,8 +563,12 @@ namespace
         hash_bytes(hash, config.player.boost_speed);
         hash_bytes(hash, config.player.slow_speed);
         hash_bytes(hash, config.player.speed_change_rate);
-        hash_bytes(hash, config.player.yaw_rate_degrees);
-        hash_bytes(hash, config.player.pitch_rate_degrees);
+        hash_bytes(hash, config.player.yaw_acceleration_degrees);
+        hash_bytes(hash, config.player.pitch_acceleration_degrees);
+        hash_bytes(hash, config.player.yaw_damping);
+        hash_bytes(hash, config.player.pitch_damping);
+        hash_bytes(hash, config.player.max_yaw_rate_degrees);
+        hash_bytes(hash, config.player.max_pitch_rate_degrees);
         hash_bytes(hash, config.player.pitch_limit_degrees);
         hash_bytes(hash, config.pipeline.enable_aoi);
         hash_bytes(hash, config.pipeline.enable_incremental);
@@ -603,8 +619,12 @@ namespace
         hash_canonical_float(hash, config.player.boost_speed);
         hash_canonical_float(hash, config.player.slow_speed);
         hash_canonical_float(hash, config.player.speed_change_rate);
-        hash_canonical_float(hash, config.player.yaw_rate_degrees);
-        hash_canonical_float(hash, config.player.pitch_rate_degrees);
+        hash_canonical_float(hash, config.player.yaw_acceleration_degrees);
+        hash_canonical_float(hash, config.player.pitch_acceleration_degrees);
+        hash_canonical_float(hash, config.player.yaw_damping);
+        hash_canonical_float(hash, config.player.pitch_damping);
+        hash_canonical_float(hash, config.player.max_yaw_rate_degrees);
+        hash_canonical_float(hash, config.player.max_pitch_rate_degrees);
         hash_canonical_float(hash, config.player.pitch_limit_degrees);
         hash_canonical_bool(hash, config.pipeline.enable_aoi);
         hash_canonical_bool(hash, config.pipeline.enable_incremental);
