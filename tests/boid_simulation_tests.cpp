@@ -315,7 +315,7 @@ TEST_CASE("authoritative player is replicated but excluded from flock simulation
         std::distance(after_move.ids.begin(), found)
     );
     CHECK(after_move.positions[offset].z > 0.0F);
-    CHECK(after_move.headings[offset].x > 0.0F);
+    CHECK(after_move.headings[offset].x < 0.0F);
     CHECK(after_move.headings[offset].y > 0.0F);
     CHECK(simnet::is_normalized_heading(after_move.headings[offset]));
 
@@ -326,39 +326,43 @@ TEST_CASE("authoritative player is replicated but excluded from flock simulation
     CHECK(simnet::authoritative_boid_count(world) == 2U);
 }
 
-TEST_CASE("player yaw maps D to positive X and A to negative X", "[player]")
+TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
 {
-    auto const run_yaw = [](bool left, bool right) {
-        auto settings = test_settings();
-        auto player_settings = simnet::PlayerMovementSettings {
-            .world_half = 10.0F,
-            .cruise_speed = 2.0F,
-            .boost_speed = 4.0F,
-            .slow_speed = 1.0F,
-            .speed_change_rate = 10.0F,
-            .yaw_rate_degrees = 90.0F,
-            .pitch_rate_degrees = 60.0F,
-            .pitch_limit_degrees = 75.0F,
-        };
-        auto runtime = simnet::ServerGameRuntime { settings, player_settings };
-        auto world = flecs::world {};
-        simnet::register_server_game(world, runtime);
-        auto const player_id = simnet::spawn_authoritative_player(world);
-        REQUIRE(player_id != 0U);
-        REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
-            .yaw_left = left,
-            .yaw_right = right,
-        }));
-
-        step(world, runtime, 1.0F / 60.0F);
-        auto const state = snapshot(world, 1U);
-        REQUIRE(state.size() == 1U);
-        REQUIRE(state.ids.front() == player_id);
-        return state.headings.front();
+    auto settings = test_settings();
+    auto player_settings = simnet::PlayerMovementSettings {
+        .world_half = 10.0F,
+        .cruise_speed = 2.0F,
+        .boost_speed = 4.0F,
+        .slow_speed = 1.0F,
+        .speed_change_rate = 10.0F,
+        .yaw_rate_degrees = 90.0F,
+        .pitch_rate_degrees = 60.0F,
+        .pitch_limit_degrees = 75.0F,
     };
+    auto runtime = simnet::ServerGameRuntime { settings, player_settings };
+    auto world = flecs::world {};
+    simnet::register_server_game(world, runtime);
 
-    CHECK(run_yaw(false, true).x > 0.0F);
-    CHECK(run_yaw(true, false).x < 0.0F);
+    auto player_id = simnet::spawn_authoritative_player(world);
+    REQUIRE(player_id != 0U);
+    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
+        .yaw_right = true,
+    }));
+    step(world, runtime, 1.0F / 60.0F);
+    auto state = snapshot(world, 1U);
+    REQUIRE(state.size() == 1U);
+    CHECK(state.headings.front().x < 0.0F);
+
+    REQUIRE(simnet::delete_authoritative_player(world, player_id));
+    player_id = simnet::spawn_authoritative_player(world);
+    REQUIRE(player_id != 0U);
+    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
+        .yaw_left = true,
+    }));
+    step(world, runtime, 1.0F / 60.0F);
+    state = snapshot(world, 2U);
+    REQUIRE(state.size() == 1U);
+    CHECK(state.headings.front().x > 0.0F);
 }
 
 TEST_CASE("boid rule toggles remove their steering contribution", "[boids][config]")

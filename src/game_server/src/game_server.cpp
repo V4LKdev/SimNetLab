@@ -1200,11 +1200,11 @@ namespace simnet
                 auto const delta_time = iterator.delta_time();
                 auto const& settings = impl->player_settings;
                 auto const& input = latest_input.value;
-                // In the +Z-forward, +Y-up world convention, right/D is +yaw
-                // toward +X and left/A is -yaw toward -X.
+                // Raylib uses a right-handed world. With +Z forward and +Y up,
+                // the fish's local right is -X and its local left is +X.
                 auto const yaw_axis =
-                    (input.yaw_right ? 1.0F : 0.0F)
-                    + (input.yaw_left ? -1.0F : 0.0F);
+                    (input.yaw_left ? 1.0F : 0.0F)
+                    + (input.yaw_right ? -1.0F : 0.0F);
                 auto const pitch_axis = static_cast<float>(input.pitch_up)
                     - static_cast<float>(input.pitch_down);
                 auto constexpr degrees_to_radians = std::numbers::pi_v<float> / 180.0F;
