@@ -55,6 +55,9 @@ export namespace simnet
         /// Sends a bounded opaque application-control payload on the reliable Control lane.
         [[nodiscard]] TransportResult send_application_control(std::span<Byte const> payload);
 
+        /// Sends bounded opaque latest-state input unreliably and sequenced on the Input lane.
+        [[nodiscard]] TransportResult send_application_input(std::span<Byte const> payload);
+
         [[nodiscard]] TransportStats stats() const;
         [[nodiscard]] PeerStats server_stats() const;
 

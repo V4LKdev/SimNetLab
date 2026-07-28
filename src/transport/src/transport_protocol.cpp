@@ -139,6 +139,8 @@ std::vector<Byte> encode_session_message(SessionMessage const &message) {
     write_u32(payload, message.snapshot_ack.newest_applied_snapshot);
   } else if (message.kind == SessionMessageKind::ApplicationControl) {
     payload = message.application_control;
+  } else if (message.kind == SessionMessageKind::ApplicationInput) {
+    payload = message.application_input;
   }
 
   auto bytes = std::vector<Byte>{};
@@ -193,6 +195,13 @@ bool decode_session_message(Byte const *data, std::size_t size, SessionMessage &
       return false;
     }
     message.application_control.assign(data + offset, data + offset + payload_size);
+    return true;
+  }
+  if (message.kind == SessionMessageKind::ApplicationInput) {
+    if (payload_size > max_application_input_bytes) {
+      return false;
+    }
+    message.application_input.assign(data + offset, data + offset + payload_size);
     return true;
   }
   return false;

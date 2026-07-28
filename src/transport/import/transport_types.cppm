@@ -147,6 +147,13 @@ export namespace simnet
         std::vector<Byte> payload;
     };
 
+    /// Opaque unreliable-sequenced latest-state input received after session readiness.
+    struct ReceivedApplicationInput
+    {
+        PeerId peer {};
+        std::vector<Byte> payload;
+    };
+
     struct TransportErrorEvent
     {
         std::string message {};
@@ -158,6 +165,7 @@ export namespace simnet
         PeerDisconnected,
         SnapshotAckReceived,
         ReceivedApplicationControl,
+        ReceivedApplicationInput,
         ReceivedPacket,
         TransportErrorEvent
     >;

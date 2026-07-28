@@ -225,6 +225,47 @@ struct TransportTestSettings {
     return false;
   }
 
+  auto const player_input = std::array<simnet::Byte, 2> {
+      simnet::Byte { 1U },
+      simnet::Byte { 0x15U },
+  };
+  auto const input_sent = client.send_application_input(player_input);
+  if (!input_sent.ok) {
+    std::cerr << "application input send failed: " << input_sent.error.message << '\n';
+    return false;
+  }
+  {
+    auto events = std::vector<simnet::TransportEvent> {};
+    auto const poll = client.poll(events, 0);
+    if (!poll.ok) {
+      std::cerr << "client application input service poll failed: " << poll.error.message << '\n';
+      return false;
+    }
+  }
+  auto input_seen = false;
+  auto const input_deadline = std::chrono::steady_clock::now() + poll_timeout;
+  while (!input_seen && std::chrono::steady_clock::now() < input_deadline) {
+    auto events = std::vector<simnet::TransportEvent> {};
+    auto poll = server.poll(events, 10);
+    if (!poll.ok) {
+      std::cerr << "server application input poll failed: " << poll.error.message << '\n';
+      return false;
+    }
+    for (auto const& event : events) {
+      if (auto const* input = std::get_if<simnet::ReceivedApplicationInput>(&event)) {
+        input_seen = input->peer == handshake.server_peer
+            && input->payload == std::vector<simnet::Byte> {
+                player_input.begin(),
+                player_input.end(),
+            };
+      }
+    }
+  }
+  if (!input_seen) {
+    std::cerr << "application input was not received intact\n";
+    return false;
+  }
+
   auto const client_control = std::array<simnet::Byte, 2>{simnet::Byte{1U}, simnet::Byte{1U}};
   auto control_sent = client.send_application_control(client_control);
   if (!control_sent.ok) {

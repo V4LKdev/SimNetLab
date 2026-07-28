@@ -386,7 +386,7 @@ private:
     auto const size_allowed = lane == Lane::Control
         ? event.packet->dataLength <= max_control_message_bytes
         : lane == Lane::Input
-            ? event.packet->dataLength <= max_session_message_bytes
+            ? event.packet->dataLength <= max_input_message_bytes
             : payload_size_allowed(event.packet->dataLength, settings_.limits);
     if (!size_allowed) {
       ++counters_.oversize_drops;
@@ -429,11 +429,17 @@ private:
       auto message = SessionMessage{};
       auto const *data = reinterpret_cast<Byte const *>(event.packet->data);
       if (!slot->session_ready || !decode_session_message(data, event.packet->dataLength, message) ||
-          message.kind != SessionMessageKind::SnapshotAck) {
+          (message.kind != SessionMessageKind::SnapshotAck
+           && message.kind != SessionMessageKind::ApplicationInput)) {
         out_events.push_back(TransportErrorEvent{
-            .message = "invalid snapshot ACK message",
+            .message = "invalid Input-lane message",
         });
         disconnect(peer, DisconnectCode::ProtocolMismatch);
+      } else if (message.kind == SessionMessageKind::ApplicationInput) {
+        out_events.push_back(ReceivedApplicationInput{
+            .peer = peer,
+            .payload = std::move(message.application_input),
+        });
       } else {
         out_events.push_back(SnapshotAckReceived{
             .peer = peer,
@@ -661,6 +667,33 @@ public:
     });
   }
 
+  TransportResult send_application_input(std::span<Byte const> payload) {
+    if (host_ == nullptr || server_ == nullptr) {
+      return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+    }
+    if (!session_ready_) {
+      return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
+    }
+    if (payload.size() > max_application_input_bytes) {
+      return fail(TransportErrorCode::PayloadTooLarge, "application-input payload exceeds transport limit");
+    }
+    auto bytes = encode_session_message({
+        .kind = SessionMessageKind::ApplicationInput,
+        .application_input = {payload.begin(), payload.end()},
+    });
+    return send_to_peer(
+        server_,
+        counters_,
+        {
+            .max_payload_bytes = settings_.limits.max_payload_bytes,
+            .size_policy = SendSizePolicy::AllowBackendFragmentation,
+        },
+        Lane::Input,
+        Delivery::UnreliableSequenced,
+        bytes
+    );
+  }
+
   TransportStats stats() const { return counters_; }
 
   PeerStats server_stats() const { return make_peer_stats(server_); }
@@ -687,7 +720,7 @@ private:
     auto const size_allowed = lane == Lane::Control
         ? event.packet->dataLength <= max_control_message_bytes
         : lane == Lane::Input
-            ? event.packet->dataLength <= max_session_message_bytes
+            ? event.packet->dataLength <= max_input_message_bytes
             : payload_size_allowed(event.packet->dataLength, settings_.limits);
     if (!size_allowed) {
       ++counters_.oversize_drops;
@@ -913,6 +946,13 @@ TransportResult TransportClient::send_application_control(std::span<Byte const> 
     return fail(TransportErrorCode::NotStarted, "transport client is not connected");
   }
   return impl_->send_application_control(payload);
+}
+
+TransportResult TransportClient::send_application_input(std::span<Byte const> payload) {
+  if (impl_ == nullptr) {
+    return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+  }
+  return impl_->send_application_input(payload);
 }
 
 TransportStats TransportClient::stats() const { return impl_ == nullptr ? TransportStats{} : impl_->stats(); }
