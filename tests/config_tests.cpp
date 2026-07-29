@@ -1,6 +1,38 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
+#include <fstream>
+#include <string_view>
+
 import simnet.config;
+
+namespace
+{
+    class TemporaryConfig
+    {
+    public:
+        TemporaryConfig(std::string_view name, std::string_view contents)
+            : path_(std::filesystem::temp_directory_path() / name)
+        {
+            auto file = std::ofstream { path_ };
+            file << contents;
+        }
+
+        ~TemporaryConfig()
+        {
+            std::error_code error {};
+            std::filesystem::remove(path_, error);
+        }
+
+        [[nodiscard]] std::filesystem::path const& path() const noexcept
+        {
+            return path_;
+        }
+
+    private:
+        std::filesystem::path path_;
+    };
+}
 
 TEST_CASE("network compatibility fingerprint covers shared configuration", "[config]")
 {
@@ -53,6 +85,40 @@ TEST_CASE("client gameplay role is local runtime configuration", "[config][playe
 
     CHECK(simnet::fingerprint_runtime_config(shared, player).value
         != simnet::fingerprint_runtime_config(shared, observer).value);
+}
+
+TEST_CASE("legacy observer configuration normalizes to stationary observer", "[config]")
+{
+    auto const legacy = TemporaryConfig {
+        "simnet_legacy_observer_config.json",
+        R"({
+            "gameplay": { "role": "observer" },
+            "visualization": {
+                "debug_observer_interest_radius": 42.0,
+                "debug_observer_vertical_fov_degrees": 55.0
+            }
+        })"
+    };
+    auto const config = simnet::load_client_config(legacy.path());
+
+    CHECK(config.gameplay.role == "stationary_observer");
+    CHECK(config.visualization.stationary_observer_interest_radius == 42.0F);
+    CHECK(config.visualization.stationary_observer_vertical_fov_degrees == 55.0F);
+}
+
+TEST_CASE("canonical and legacy observer visualization keys conflict", "[config]")
+{
+    auto const conflicting = TemporaryConfig {
+        "simnet_conflicting_observer_config.json",
+        R"({
+            "visualization": {
+                "stationary_observer_interest_radius": 42.0,
+                "debug_observer_interest_radius": 42.0
+            }
+        })"
+    };
+
+    CHECK_THROWS(simnet::load_client_config(conflicting.path()));
 }
 
 TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")

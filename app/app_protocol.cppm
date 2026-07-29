@@ -16,8 +16,8 @@ export namespace simnet::app
 
     enum class ClientRole : std::uint8_t
     {
-        Observer,
-        Player
+        StationaryObserver = 0,
+        Player = 1
     };
 
     enum class AppMessageKind : std::uint8_t
@@ -31,7 +31,7 @@ export namespace simnet::app
     struct AppMessage
     {
         AppMessageKind kind {};
-        ClientRole role { ClientRole::Observer };
+        ClientRole role { ClientRole::StationaryObserver };
         EntityNetId player_id {};
         bool paused {};
     };
@@ -63,7 +63,7 @@ export namespace simnet::app
 
     [[nodiscard]] inline bool valid_role(ClientRole role) noexcept
     {
-        return role == ClientRole::Observer || role == ClientRole::Player;
+        return role == ClientRole::StationaryObserver || role == ClientRole::Player;
     }
 
     inline void write_u32(std::vector<Byte>& bytes, std::uint32_t value)
@@ -148,7 +148,7 @@ export namespace simnet::app
             }
             decoded.role = static_cast<ClientRole>(bytes[2]);
             if (!valid_role(decoded.role)
-                || (decoded.role == ClientRole::Observer && player_id != 0U)
+                || (decoded.role == ClientRole::StationaryObserver && player_id != 0U)
                 || (decoded.role == ClientRole::Player && player_id == 0U)) {
                 return false;
             }

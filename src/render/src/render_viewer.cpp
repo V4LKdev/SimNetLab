@@ -65,9 +65,9 @@ namespace
         if (config.entity_scale <= 0.0F || config.picking_radius <= 0.0F) {
             throw std::runtime_error("viewer entity_scale and picking_radius must be positive");
         }
-        if (config.debug_observer_interest_radius <= 0.0F
-            || config.debug_observer_vertical_fov_degrees <= 0.0F
-            || config.debug_observer_vertical_fov_degrees >= 180.0F
+        if (config.stationary_observer_interest_radius <= 0.0F
+            || config.stationary_observer_vertical_fov_degrees <= 0.0F
+            || config.stationary_observer_vertical_fov_degrees >= 180.0F
             || config.max_visible_spatial_cells == 0U) {
             throw std::runtime_error("viewer observer and spatial settings are invalid");
         }
@@ -529,17 +529,23 @@ namespace simnet
             if (IsKeyPressed(KEY_F4)) {
                 if (frame.game_camera.has_value()) {
                     mode_ = mode_ == ViewMode::Game ? ViewMode::Overview : ViewMode::Game;
-                } else if (frame.observer.has_value()) {
-                    mode_ = mode_ == ViewMode::Observer ? ViewMode::Overview : ViewMode::Observer;
+                } else if (frame.stationary_observer.has_value()) {
+                    mode_ = mode_ == ViewMode::StationaryObserver
+                        ? ViewMode::Overview
+                        : ViewMode::StationaryObserver;
                 }
             }
             if (mode_ == ViewMode::Game && !frame.game_camera.has_value()) {
                 mode_ = ViewMode::Overview;
             }
-            if (frame.observer.has_value()) {
-                result.debug_observer_yaw_axis = (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F)
+            if (mode_ == ViewMode::StationaryObserver
+                && !frame.stationary_observer.has_value()) {
+                mode_ = ViewMode::Overview;
+            }
+            if (frame.stationary_observer.has_value()) {
+                result.stationary_observer_yaw_axis = (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F)
                     - (IsKeyDown(KEY_RIGHT) ? 1.0F : 0.0F);
-                result.debug_observer_pitch_axis = (IsKeyDown(KEY_UP) ? 1.0F : 0.0F)
+                result.stationary_observer_pitch_axis = (IsKeyDown(KEY_UP) ? 1.0F : 0.0F)
                     - (IsKeyDown(KEY_DOWN) ? 1.0F : 0.0F);
             }
 
@@ -597,17 +603,20 @@ namespace simnet
                     .left_mouse = IsMouseButtonDown(MOUSE_BUTTON_LEFT),
                     .right_mouse = IsMouseButtonDown(MOUSE_BUTTON_RIGHT),
                 };
-            } else if (mode_ == ViewMode::Observer && frame.observer.has_value()) {
-                auto const forward = normalized_or_forward(frame.observer->forward);
+            } else if (mode_ == ViewMode::StationaryObserver
+                && frame.stationary_observer.has_value()) {
+                auto const forward = normalized_or_forward(
+                    frame.stationary_observer->forward
+                );
                 auto reference_up = Vec3f { .y = 1.0F };
                 if (std::abs(dot(forward, reference_up)) > 0.98F) {
                     reference_up = { .x = 1.0F };
                 }
                 auto const right = normalized_or_forward(cross(reference_up, forward));
-                camera_.position = to_raylib(frame.observer->position);
-                camera_.target = to_raylib(frame.observer->position + forward);
+                camera_.position = to_raylib(frame.stationary_observer->position);
+                camera_.target = to_raylib(frame.stationary_observer->position + forward);
                 camera_.up = to_raylib(cross(forward, right));
-                camera_.fovy = frame.observer->vertical_fov_degrees;
+                camera_.fovy = frame.stationary_observer->vertical_fov_degrees;
             } else if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
                 target_ = to_raylib(selected_entity_frame_->position);
                 detail_min_distance_ = std::max(0.5F, config_.entity_scale * 1.5F);
@@ -811,7 +820,7 @@ namespace simnet
             }
             auto const button_count = page_ == PanelPage::Entity
                 ? (selected_entity_.has_value() ? 2.0F : 0.0F)
-                : 3.0F + (frame.observer.has_value() ? 3.0F : 0.0F)
+                : 3.0F + (frame.stationary_observer.has_value() ? 3.0F : 0.0F)
                     + (frame.spatial.has_value() ? 1.0F : 0.0F)
                     + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
             if (button_count == 0.0F) {
@@ -841,18 +850,25 @@ namespace simnet
                     auto const center = Vec3f { target_.x, target_.y, target_.z };
                     reset_overview_camera(center);
                 }
-            } else if (frame.observer.has_value() && CheckCollisionPointRec(mouse, button_at(3))) {
-                show_observer_ = !show_observer_;
-            } else if (frame.observer.has_value() && CheckCollisionPointRec(mouse, button_at(4))) {
-                show_observer_radius_ = !show_observer_radius_;
-            } else if (frame.observer.has_value() && CheckCollisionPointRec(mouse, button_at(5))) {
-                show_observer_frustum_ = !show_observer_frustum_;
+            } else if (frame.stationary_observer.has_value()
+                && CheckCollisionPointRec(mouse, button_at(3))) {
+                show_stationary_observer_ = !show_stationary_observer_;
+            } else if (frame.stationary_observer.has_value()
+                && CheckCollisionPointRec(mouse, button_at(4))) {
+                show_stationary_observer_radius_ = !show_stationary_observer_radius_;
+            } else if (frame.stationary_observer.has_value()
+                && CheckCollisionPointRec(mouse, button_at(5))) {
+                show_stationary_observer_frustum_ = !show_stationary_observer_frustum_;
             } else if (frame.spatial.has_value()
-                && CheckCollisionPointRec(mouse, button_at(3 + (frame.observer.has_value() ? 3 : 0)))) {
+                && CheckCollisionPointRec(
+                    mouse,
+                    button_at(3 + (frame.stationary_observer.has_value() ? 3 : 0))
+                )) {
                 show_spatial_cells_ = !show_spatial_cells_;
             } else if (frame.info.capabilities.can_pause_simulation
                 && CheckCollisionPointRec(mouse, button_at(
-                    3 + (frame.observer.has_value() ? 3 : 0) + (frame.spatial.has_value() ? 1 : 0)
+                    3 + (frame.stationary_observer.has_value() ? 3 : 0)
+                        + (frame.spatial.has_value() ? 1 : 0)
                 ))) {
                 result.toggle_simulation_pause_requested = true;
             }
@@ -895,18 +911,24 @@ namespace simnet
             }
         }
 
-        void draw_observer(ObserverView const& observer, RenderStats& stats)
+        void draw_stationary_observer(
+            StationaryObserverView const& observer,
+            RenderStats& stats
+        )
         {
-            SIMNET_TRACE_SCOPE_CATEGORY("render.observer_geometry", simnet::LogCategory::Render);
+            SIMNET_TRACE_SCOPE_CATEGORY(
+                "render.stationary_observer_geometry",
+                simnet::LogCategory::Render
+            );
             auto const position = to_raylib(observer.position);
             auto const forward = normalized_or_forward(observer.forward);
             auto const direction_end = to_raylib(observer.position + forward * observer.interest_radius);
             DrawSphere(position, std::max(config_.entity_scale, 1.0F) * 1.5F, Color { 247, 184, 74, 255 });
             DrawLine3D(position, direction_end, Color { 247, 184, 74, 255 });
-            if (show_observer_radius_) {
+            if (show_stationary_observer_radius_) {
                 DrawSphereWires(position, observer.interest_radius, 20, 20, Color { 247, 184, 74, 110 });
             }
-            if (show_observer_frustum_) {
+            if (show_stationary_observer_frustum_) {
                 auto reference_up = Vec3f { .y = 1.0F };
                 if (std::abs(dot(forward, reference_up)) > 0.98F) {
                     reference_up = { .x = 1.0F };
@@ -1050,8 +1072,10 @@ namespace simnet
                 DrawLine3D({ 0.0F, 0.0F, 0.0F }, { 0.0F, 10.0F, 0.0F }, GREEN);
                 DrawLine3D({ 0.0F, 0.0F, 0.0F }, { 0.0F, 0.0F, 10.0F }, BLUE);
             }
-            if (frame.observer.has_value() && mode_ != ViewMode::Observer && show_observer_) {
-                draw_observer(*frame.observer, stats);
+            if (frame.stationary_observer.has_value()
+                && mode_ != ViewMode::StationaryObserver
+                && show_stationary_observer_) {
+                draw_stationary_observer(*frame.stationary_observer, stats);
             }
             if (frame.spatial.has_value() && show_spatial_cells_) {
                 draw_spatial_cells(*frame.spatial, stats);
@@ -1113,7 +1137,7 @@ namespace simnet
                 switch (mode) {
                 case ViewMode::Overview: return "Overview";
                 case ViewMode::EntityDetail: return "Entity detail";
-                case ViewMode::Observer: return "Observer";
+                case ViewMode::StationaryObserver: return "Stationary observer";
                 case ViewMode::Game: return "Game";
                 }
                 return "Unknown";
@@ -1229,17 +1253,36 @@ namespace simnet
                 text(line);
 
                 auto constexpr button_height = 26.0F;
-                auto const button_count = 3.0F + (frame.observer.has_value() ? 3.0F : 0.0F)
+                auto const button_count = 3.0F
+                    + (frame.stationary_observer.has_value() ? 3.0F : 0.0F)
                     + (frame.spatial.has_value() ? 1.0F : 0.0F)
                     + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
                 auto button_y = static_cast<float>(config_.window_height) - button_count * (button_height + 8.0F) - 18.0F;
                 button(button_y, show_bounds_ ? "Hide bounds" : "Show bounds", show_bounds_);
                 button(button_y, show_axes_ ? "Hide axes" : "Show axes", show_axes_);
                 button(button_y, "Reset camera", false);
-                if (frame.observer.has_value()) {
-                    button(button_y, show_observer_ ? "Hide observer" : "Show observer", show_observer_);
-                    button(button_y, show_observer_radius_ ? "Hide observer radius" : "Show observer radius", show_observer_radius_);
-                    button(button_y, show_observer_frustum_ ? "Hide observer frustum" : "Show observer frustum", show_observer_frustum_);
+                if (frame.stationary_observer.has_value()) {
+                    button(
+                        button_y,
+                        show_stationary_observer_
+                            ? "Hide stationary observer"
+                            : "Show stationary observer",
+                        show_stationary_observer_
+                    );
+                    button(
+                        button_y,
+                        show_stationary_observer_radius_
+                            ? "Hide observer radius"
+                            : "Show observer radius",
+                        show_stationary_observer_radius_
+                    );
+                    button(
+                        button_y,
+                        show_stationary_observer_frustum_
+                            ? "Hide observer frustum"
+                            : "Show observer frustum",
+                        show_stationary_observer_frustum_
+                    );
                 }
                 if (frame.spatial.has_value()) {
                     button(button_y, show_spatial_cells_ ? "Hide spatial cells" : "Show spatial cells", show_spatial_cells_);
@@ -1510,7 +1553,9 @@ namespace simnet
             line("Wheel     Zoom");
             line(frame.game_camera.has_value()
                 ? "F4        Toggle Game / Overview"
-                : "F4        Toggle observer view");
+                : frame.stationary_observer.has_value()
+                    ? "F4        Toggle stationary observer"
+                    : "F4        No special view");
             if (frame.game_camera.has_value()) {
                 line("W / S     Pitch fish");
                 line("A / D     Yaw fish");
@@ -1518,7 +1563,9 @@ namespace simnet
                 line("Ctrl      Slow down");
             }
             line("F5        Reset camera");
-            line("Arrows    Rotate debug observer");
+            if (frame.stationary_observer.has_value()) {
+                line("Arrows    Rotate stationary observer");
+            }
             line("Backspace Clear selection and overview");
             line("F12       Close help");
         }
@@ -1537,9 +1584,9 @@ namespace simnet
         bool camera_initialized_ {};
         bool show_bounds_ { true };
         bool show_axes_ { true };
-        bool show_observer_ { true };
-        bool show_observer_radius_ { true };
-        bool show_observer_frustum_ { true };
+        bool show_stationary_observer_ { true };
+        bool show_stationary_observer_radius_ { true };
+        bool show_stationary_observer_frustum_ { true };
         bool show_spatial_cells_ {};
         bool show_selected_debug_ { true };
         bool show_help_ {};

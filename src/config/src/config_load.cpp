@@ -96,6 +96,23 @@ namespace
         }
     }
 
+    template <typename Value>
+    void read_optional_alias(
+        Json const& object,
+        char const* key,
+        char const* legacy_key,
+        Value& value
+    )
+    {
+        if (object.contains(key) && object.contains(legacy_key)) {
+            throw std::runtime_error(
+                std::string { "conflicting config fields '" } + key
+                + "' and legacy alias '" + legacy_key + "'"
+            );
+        }
+        read_optional(object, object.contains(key) ? key : legacy_key, value);
+    }
+
     Json const* optional_object(Json const& object, char const* key)
     {
         auto const found = object.find(key);
@@ -308,7 +325,14 @@ namespace
     void apply_gameplay(Json const& json, simnet::GameplayConfig& config)
     {
         read_optional(json, "role", config.role);
-        validate_one_of("gameplay.role", config.role, { "observer", "player" });
+        if (config.role == "observer") {
+            config.role = "stationary_observer";
+        }
+        validate_one_of(
+            "gameplay.role",
+            config.role,
+            { "stationary_observer", "player" }
+        );
     }
 
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
@@ -385,8 +409,18 @@ namespace
         read_optional(json, "target_fps", config.target_fps);
         read_optional(json, "entity_scale", config.entity_scale);
         read_optional(json, "picking_radius", config.picking_radius);
-        read_optional(json, "debug_observer_interest_radius", config.debug_observer_interest_radius);
-        read_optional(json, "debug_observer_vertical_fov_degrees", config.debug_observer_vertical_fov_degrees);
+        read_optional_alias(
+            json,
+            "stationary_observer_interest_radius",
+            "debug_observer_interest_radius",
+            config.stationary_observer_interest_radius
+        );
+        read_optional_alias(
+            json,
+            "stationary_observer_vertical_fov_degrees",
+            "debug_observer_vertical_fov_degrees",
+            config.stationary_observer_vertical_fov_degrees
+        );
         read_optional(json, "max_visible_spatial_cells", config.max_visible_spatial_cells);
         read_optional(json, "entity_mesh_path", config.entity_mesh_path);
 
@@ -405,12 +439,16 @@ namespace
         if (config.picking_radius <= 0.0F) {
             throw std::runtime_error("invalid visualization picking_radius: expected positive value");
         }
-        if (config.debug_observer_interest_radius <= 0.0F) {
-            throw std::runtime_error("invalid visualization debug_observer_interest_radius: expected positive value");
+        if (config.stationary_observer_interest_radius <= 0.0F) {
+            throw std::runtime_error(
+                "invalid visualization stationary_observer_interest_radius: expected positive value"
+            );
         }
-        if (config.debug_observer_vertical_fov_degrees <= 0.0F
-            || config.debug_observer_vertical_fov_degrees >= 180.0F) {
-            throw std::runtime_error("invalid visualization debug_observer_vertical_fov_degrees: expected range (0, 180)");
+        if (config.stationary_observer_vertical_fov_degrees <= 0.0F
+            || config.stationary_observer_vertical_fov_degrees >= 180.0F) {
+            throw std::runtime_error(
+                "invalid visualization stationary_observer_vertical_fov_degrees: expected range (0, 180)"
+            );
         }
         if (config.max_visible_spatial_cells == 0U) {
             throw std::runtime_error("invalid visualization max_visible_spatial_cells: expected non-zero value");
@@ -661,8 +699,8 @@ namespace
         hash_bytes(hash, visualization.target_fps);
         hash_bytes(hash, visualization.entity_scale);
         hash_bytes(hash, visualization.picking_radius);
-        hash_bytes(hash, visualization.debug_observer_interest_radius);
-        hash_bytes(hash, visualization.debug_observer_vertical_fov_degrees);
+        hash_bytes(hash, visualization.stationary_observer_interest_radius);
+        hash_bytes(hash, visualization.stationary_observer_vertical_fov_degrees);
         hash_bytes(hash, visualization.max_visible_spatial_cells);
         hash_string(hash, visualization.entity_mesh_path);
     }

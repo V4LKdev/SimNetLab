@@ -19,7 +19,7 @@ export namespace simnet
     {
         Overview,
         EntityDetail,
-        Observer,
+        StationaryObserver,
         Game
     };
 
@@ -144,8 +144,8 @@ export namespace simnet
         std::optional<bool> replicated {};
     };
 
-    /// Local debug observer supplied by the application for this draw call.
-    struct ObserverView
+    /// Local stationary interest/debug view supplied by the application.
+    struct StationaryObserverView
     {
         Vec3f position {};
         Vec3f forward { .z = 1.0F };
@@ -239,7 +239,7 @@ export namespace simnet
         RenderEntityView entities {};
         RenderFrameInfo info {};
         std::optional<SelectedEntityDetails> selected_details {};
-        std::optional<ObserverView> observer {};
+        std::optional<StationaryObserverView> stationary_observer {};
         std::optional<GameCameraView> game_camera {};
         std::optional<SpatialDebugView> spatial {};
         DebugPrimitiveView debug_primitives {};
@@ -276,8 +276,8 @@ export namespace simnet
         ViewMode view_mode { ViewMode::Overview };
         std::optional<EntityNetId> selected_entity {};
         bool selected_entity_changed {};
-        float debug_observer_yaw_axis {};
-        float debug_observer_pitch_axis {};
+        float stationary_observer_yaw_axis {};
+        float stationary_observer_pitch_axis {};
         PlayerViewInput player_input {};
         RenderStats stats {};
     };
@@ -290,8 +290,8 @@ export namespace simnet
         std::uint32_t target_frame_rate { 60 };
         float entity_scale { 1.0F };
         float picking_radius { 1.0F };
-        float debug_observer_interest_radius { 150.0F };
-        float debug_observer_vertical_fov_degrees { 60.0F };
+        float stationary_observer_interest_radius { 150.0F };
+        float stationary_observer_vertical_fov_degrees { 60.0F };
         std::uint32_t max_visible_spatial_cells { 2048 };
         std::string entity_mesh_path {};
         std::string title { "SimNet" };

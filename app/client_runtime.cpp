@@ -216,8 +216,8 @@ namespace
 
     [[nodiscard]] simnet::app::ClientRole configured_role(std::string_view role)
     {
-        if (role == "observer") {
-            return simnet::app::ClientRole::Observer;
+        if (role == "stationary_observer") {
+            return simnet::app::ClientRole::StationaryObserver;
         }
         if (role == "player") {
             return simnet::app::ClientRole::Player;
@@ -247,8 +247,10 @@ namespace
             .target_frame_rate = config.target_fps,
             .entity_scale = config.entity_scale,
             .picking_radius = config.picking_radius,
-            .debug_observer_interest_radius = config.debug_observer_interest_radius,
-            .debug_observer_vertical_fov_degrees = config.debug_observer_vertical_fov_degrees,
+            .stationary_observer_interest_radius =
+                config.stationary_observer_interest_radius,
+            .stationary_observer_vertical_fov_degrees =
+                config.stationary_observer_vertical_fov_degrees,
             .max_visible_spatial_cells = config.max_visible_spatial_cells,
             .entity_mesh_path = config.entity_mesh_path,
             .title = "SimNet Client",
@@ -266,7 +268,7 @@ namespace
         ClientConnectionState connection_state,
         std::optional<simnet::PeerId> peer,
         simnet::SnapshotAck const& ack,
-        simnet::app::DebugObserverState const& observer,
+        std::optional<simnet::StationaryObserverView> stationary_observer,
         std::optional<simnet::GameCameraView> game_camera
     )
     {
@@ -306,12 +308,7 @@ namespace
                 },
                 .replication = std::move(replication),
             },
-            .observer = simnet::ObserverView {
-                .position = observer.position,
-                .forward = simnet::app::debug_observer_forward(observer),
-                .interest_radius = observer.interest_radius,
-                .vertical_fov_degrees = observer.vertical_fov_degrees,
-            },
+            .stationary_observer = std::move(stationary_observer),
             .game_camera = std::move(game_camera),
         };
     }
@@ -568,7 +565,7 @@ namespace
             simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
                 "client join accepted role="
                     + std::string { requested_role == simnet::app::ClientRole::Player
-                        ? "player" : "observer" }
+                        ? "player" : "stationary_observer" }
                     + " player_id=" + std::to_string(player_id));
             return true;
         }
@@ -638,11 +635,16 @@ namespace simnet::app
             auto viewer = std::optional<Viewer> {};
             auto presentation = ClientPresentationState {};
             auto empty_presentation = WorldSnapshot {};
-            auto debug_observer = DebugObserverState {
-                .position = {},
-                .interest_radius = local.visualization.debug_observer_interest_radius,
-                .vertical_fov_degrees = local.visualization.debug_observer_vertical_fov_degrees,
-            };
+            auto stationary_observer = std::optional<StationaryObserverState> {};
+            if (requested_role == app::ClientRole::StationaryObserver) {
+                stationary_observer = StationaryObserverState {
+                    .position = {},
+                    .interest_radius =
+                        local.visualization.stationary_observer_interest_radius,
+                    .vertical_fov_degrees =
+                        local.visualization.stationary_observer_vertical_fov_degrees,
+                };
+            }
             if (local.visualization.enabled) {
                 viewer.emplace(viewer_config(local.visualization));
             }
@@ -837,10 +839,22 @@ namespace simnet::app
                             ? std::optional<SequenceId> {}
                             : std::optional<SequenceId> { latest_applied_sequence };
                         auto viewer_result = ViewerResult {};
-                        auto game_camera = player_game_camera(
-                            *displayed_snapshot,
-                            player_id
-                        );
+                        auto game_camera = requested_role == app::ClientRole::Player
+                            ? player_game_camera(*displayed_snapshot, player_id)
+                            : std::optional<GameCameraView> {};
+                        auto stationary_observer_view =
+                            std::optional<StationaryObserverView> {};
+                        if (stationary_observer.has_value()) {
+                            stationary_observer_view = StationaryObserverView {
+                                .position = stationary_observer->position,
+                                .forward = app::stationary_observer_forward(
+                                    *stationary_observer
+                                ),
+                                .interest_radius = stationary_observer->interest_radius,
+                                .vertical_fov_degrees =
+                                    stationary_observer->vertical_fov_degrees,
+                            };
+                        }
                         if (requested_role == app::ClientRole::Player
                             && join_accepted
                             && game_camera.has_value()
@@ -864,7 +878,7 @@ namespace simnet::app
                                     connection_state,
                                     server_peer,
                                     ack_tracker.value,
-                                    debug_observer,
+                                    std::move(stationary_observer_view),
                                     std::move(game_camera)
                                 )
                             );
@@ -872,12 +886,14 @@ namespace simnet::app
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }
-                        apply_debug_observer_rotation(
-                            debug_observer,
-                            viewer_result.debug_observer_yaw_axis,
-                            viewer_result.debug_observer_pitch_axis,
-                            delta
-                        );
+                        if (stationary_observer.has_value()) {
+                            apply_stationary_observer_rotation(
+                                *stationary_observer,
+                                viewer_result.stationary_observer_yaw_axis,
+                                viewer_result.stationary_observer_pitch_axis,
+                                delta
+                            );
+                        }
                         if (viewer_result.toggle_simulation_pause_requested && pause_state_received) {
                             auto const bytes = app::encode_app_message({
                                 .kind = app::AppMessageKind::PauseSetRequest,

@@ -22,8 +22,8 @@ import simnet.transport;
 
 export namespace simnet::app
 {
-    /// App-local observer state for visualization debugging only.
-    struct DebugObserverState
+    /// App-local stationary interest/debug view state.
+    struct StationaryObserverState
     {
         Vec3f position {};
         float yaw {};
@@ -32,8 +32,13 @@ export namespace simnet::app
         float vertical_fov_degrees { 60.0F };
     };
 
-    [[nodiscard]] Vec3f debug_observer_forward(DebugObserverState const& state) noexcept;
-    void apply_debug_observer_rotation(DebugObserverState& state, float yaw_axis, float pitch_axis, NS frame_delta) noexcept;
+    [[nodiscard]] Vec3f stationary_observer_forward(StationaryObserverState const& state) noexcept;
+    void apply_stationary_observer_rotation(
+        StationaryObserverState& state,
+        float yaw_axis,
+        float pitch_axis,
+        NS frame_delta
+    ) noexcept;
 
     class SignalHandlers
     {
@@ -113,7 +118,7 @@ namespace
 
 namespace simnet::app
 {
-    Vec3f debug_observer_forward(DebugObserverState const& state) noexcept
+    Vec3f stationary_observer_forward(StationaryObserverState const& state) noexcept
     {
         auto const cosine_pitch = std::cos(state.pitch);
         return {
@@ -123,8 +128,8 @@ namespace simnet::app
         };
     }
 
-    void apply_debug_observer_rotation(
-        DebugObserverState& state,
+    void apply_stationary_observer_rotation(
+        StationaryObserverState& state,
         float yaw_axis,
         float pitch_axis,
         NS frame_delta

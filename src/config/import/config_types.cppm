@@ -108,7 +108,7 @@ export namespace simnet
     /// Client-local role requested after transport session readiness.
     struct GameplayConfig
     {
-        std::string role { "observer" };
+        std::string role { "stationary_observer" };
     };
 
     /// Local visualization settings.
@@ -122,8 +122,8 @@ export namespace simnet
         std::uint32_t target_fps { 60 };
         float entity_scale { 1.0F };
         float picking_radius { 1.0F };
-        float debug_observer_interest_radius { 150.0F };
-        float debug_observer_vertical_fov_degrees { 60.0F };
+        float stationary_observer_interest_radius { 150.0F };
+        float stationary_observer_vertical_fov_degrees { 60.0F };
         std::uint32_t max_visible_spatial_cells { 2048 };
         std::string entity_mesh_path {};
     };

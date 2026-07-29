@@ -338,8 +338,10 @@ namespace
             .target_frame_rate = config.target_fps,
             .entity_scale = config.entity_scale,
             .picking_radius = config.picking_radius,
-            .debug_observer_interest_radius = config.debug_observer_interest_radius,
-            .debug_observer_vertical_fov_degrees = config.debug_observer_vertical_fov_degrees,
+            .stationary_observer_interest_radius =
+                config.stationary_observer_interest_radius,
+            .stationary_observer_vertical_fov_degrees =
+                config.stationary_observer_vertical_fov_degrees,
             .max_visible_spatial_cells = config.max_visible_spatial_cells,
             .entity_mesh_path = config.entity_mesh_path,
             .title = "SimNet Server",
@@ -353,7 +355,6 @@ namespace
         bool paused,
         simnet::RenderInterpolationInfo interpolation,
         std::optional<PeerRuntimeState> const& peer,
-        simnet::app::DebugObserverState const& observer,
         SpatialRenderStorage const& spatial,
         SelectedDebugRenderStorage& debug_storage,
         std::optional<simnet::SelectedBoidDebug> const& selected_debug
@@ -505,12 +506,6 @@ namespace
                 .replication = std::move(replication),
             },
             .selected_details = std::move(selected_details),
-            .observer = simnet::ObserverView {
-                .position = observer.position,
-                .forward = simnet::app::debug_observer_forward(observer),
-                .interest_radius = observer.interest_radius,
-                .vertical_fov_degrees = observer.vertical_fov_degrees,
-            },
             .spatial = simnet::SpatialDebugView {
                 .cells = spatial.displayed_cells,
                 .occupied_cell_count = spatial.grid.stats.occupied_cell_count,
@@ -531,7 +526,7 @@ namespace
         SpatialRenderStorage& storage,
         simnet::WorldSnapshot const& snapshot,
         simnet::SharedConfig const& config,
-        simnet::Vec3f observer_position,
+        simnet::Vec3f display_anchor,
         std::uint32_t visible_cell_limit
     )
     {
@@ -566,7 +561,7 @@ namespace
                     .key = range.key,
                     .bounds = bounds,
                     .entity_count = range.count,
-                    .distance_squared = simnet::length_squared(center - observer_position),
+                    .distance_squared = simnet::length_squared(center - display_anchor),
                 });
             }
         }
@@ -999,7 +994,7 @@ namespace
                     simnet::log(simnet::LogCategory::Simulation, simnet::LogLevel::Info,
                         "server accepted role="
                             + std::string { message.role == simnet::app::ClientRole::Player
-                                ? "player" : "observer" }
+                                ? "player" : "stationary_observer" }
                             + " player_id=" + std::to_string(peer->player_id));
                     if (!send_join_accepted(transport, *peer)
                         || !send_pause_state(transport, peer, simulation_paused)) {
@@ -1231,11 +1226,6 @@ namespace simnet::app
 
 #if defined(SIMNET_ENABLE_RENDER)
             auto viewer = std::optional<Viewer> {};
-            auto debug_observer = app::DebugObserverState {
-                .position = {},
-                .interest_radius = local.visualization.debug_observer_interest_radius,
-                .vertical_fov_degrees = local.visualization.debug_observer_vertical_fov_degrees,
-            };
             if (local.visualization.enabled) {
                 viewer.emplace(viewer_config(local.visualization));
                 static_cast<void>(viewer->draw({
@@ -1243,12 +1233,6 @@ namespace simnet::app
                         .world_bounds = make_centered_bounds(shared.simulation.world_half),
                         .fixed_tick_rate_hz = shared.simulation.tick_rate_hz,
                         .status_message = "Initializing authoritative world",
-                    },
-                    .observer = ObserverView {
-                        .position = debug_observer.position,
-                        .forward = app::debug_observer_forward(debug_observer),
-                        .interest_radius = debug_observer.interest_radius,
-                        .vertical_fov_degrees = debug_observer.vertical_fov_degrees,
                     },
                 }));
             }
@@ -1415,7 +1399,7 @@ namespace simnet::app
                             spatial_render,
                             current_snapshot.snapshot,
                             shared,
-                            debug_observer.position,
+                            Vec3f {},
                             local.visualization.max_visible_spatial_cells
                         );
                     }
@@ -1471,7 +1455,6 @@ namespace simnet::app
                                     simulation_paused,
                                     interpolation,
                                     peer,
-                                    debug_observer,
                                     spatial_render,
                                     selected_debug_render,
                                     game.selected_boid_debug()
@@ -1483,12 +1466,6 @@ namespace simnet::app
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }
-                        app::apply_debug_observer_rotation(
-                            debug_observer,
-                            viewer_result.debug_observer_yaw_axis,
-                            viewer_result.debug_observer_pitch_axis,
-                            frame_delta
-                        );
                         if (viewer_result.toggle_simulation_pause_requested) {
                             simulation_paused = !simulation_paused;
                             clock.accumulator = NS {};

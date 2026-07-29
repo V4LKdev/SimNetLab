@@ -14,8 +14,8 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
 - 1,000-entity Server to Client replication in the bounded runtime path
-- Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local debug observer views, and authoritative remote pause
-- Observer and authoritative Player join roles with one Server-owned Player fish and a locked third-person Client chase camera
+- Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local stationary-observer views, and authoritative remote pause
+- StationaryObserver and authoritative Player join roles with one Server-owned Player fish and a locked third-person Client chase camera
 
 ## Planned work
 
@@ -70,7 +70,7 @@ build/debug/app/Server --config config/server_visual.json
 build/debug/app/Client --config config/client_visual.json
 ```
 
-To join as the one supported Player instead of an Observer:
+To join as the one supported Player instead of a StationaryObserver:
 
 ```sh
 build/debug/app/Client --config config/client_player_visual.json
@@ -110,7 +110,7 @@ The Server writes a small boid-tuning CSV under `telemetry.log_directory` when
 second and is not the future benchmark runner. JSON metrics export and benchmark
 settings remain parsed vocabulary without runtime execution.
 
-Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the Player role; Observer remains the default.
+Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the Player role; StationaryObserver remains the default.
 
 Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded; they do not parallelize queries or application code automatically.
 

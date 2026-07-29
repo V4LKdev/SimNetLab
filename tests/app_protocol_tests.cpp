@@ -54,12 +54,19 @@ TEST_CASE("application protocol rejects malformed roles and versions", "[app_pro
         },
         decoded
     ));
-    auto invalid_observer = simnet::app::encode_app_message({
+    auto invalid_stationary_observer = simnet::app::encode_app_message({
         .kind = simnet::app::AppMessageKind::JoinAccepted,
-        .role = simnet::app::ClientRole::Observer,
+        .role = simnet::app::ClientRole::StationaryObserver,
         .player_id = 1U,
     });
-    CHECK_FALSE(simnet::app::decode_app_message(invalid_observer, decoded));
+    CHECK_FALSE(simnet::app::decode_app_message(invalid_stationary_observer, decoded));
+
+    auto const stationary_observer = simnet::app::encode_app_message({
+        .kind = simnet::app::AppMessageKind::JoinRequest,
+        .role = simnet::app::ClientRole::StationaryObserver,
+    });
+    REQUIRE(stationary_observer.size() == 3U);
+    CHECK(stationary_observer[2] == simnet::Byte { 0U });
 }
 
 TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
