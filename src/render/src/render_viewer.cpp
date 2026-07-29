@@ -6,6 +6,7 @@ module;
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -31,6 +32,7 @@ namespace
     using Clock = std::chrono::steady_clock;
 
     constexpr std::size_t hue_bucket_count = 32;
+    constexpr std::size_t selected_trail_max_points = 240;
     constexpr float pi = 3.14159265358979323846F;
     constexpr float min_pitch = -pi * 0.48F;
     constexpr float max_pitch = pi * 0.48F;
@@ -391,6 +393,7 @@ namespace simnet
                 update_camera(frame, result);
                 update_selection(frame.entities, result);
                 update_controls(frame, result);
+                update_selected_trail();
             }
             stats.input_cpu_time = elapsed_ns(input_start);
 
@@ -441,6 +444,10 @@ namespace simnet
             SIMNET_TRACE_PLOT("render.skipped_entities", static_cast<double>(stats.skipped_entity_count));
             SIMNET_TRACE_PLOT("render.draw_calls", static_cast<double>(stats.draw_calls));
             SIMNET_TRACE_PLOT("render.active_hue_buckets", static_cast<double>(stats.active_hue_buckets));
+            SIMNET_TRACE_PLOT(
+                "render.selected_trail_points",
+                static_cast<double>(selected_trail_.size())
+            );
             if (frame.spatial.has_value()) {
                 SIMNET_TRACE_PLOT("render.displayed_spatial_cells", static_cast<double>(frame.spatial->cells.size()));
             }
@@ -527,6 +534,7 @@ namespace simnet
                 result.selected_entity_changed = true;
             }
             selected_entity_frame_.reset();
+            selected_trail_.clear();
             mode_ = ViewMode::Overview;
         }
 
@@ -767,12 +775,34 @@ namespace simnet
         {
             if (selected_entity_ != selected.id) {
                 result.selected_entity_changed = true;
+                selected_trail_.clear();
             }
             selected_entity_ = selected.id;
             selected_entity_frame_ = selected;
             navigation_anchor_.reset();
             mode_ = ViewMode::EntityDetail;
             detail_distance_ = 0.0F;
+        }
+
+        void update_selected_trail()
+        {
+            if (!selected_entity_frame_.has_value()) {
+                return;
+            }
+            auto const position = selected_entity_frame_->position;
+            auto const minimum_distance = std::max(
+                0.05F,
+                config_.entity_scale * 0.15F
+            );
+            if (!selected_trail_.empty()
+                && length_squared(position - selected_trail_.back())
+                    < minimum_distance * minimum_distance) {
+                return;
+            }
+            selected_trail_.push_back(position);
+            if (selected_trail_.size() > selected_trail_max_points) {
+                selected_trail_.pop_front();
+            }
         }
 
         void select_adjacent_entity(RenderEntityView const& entities, int direction, ViewerResult& result)
@@ -840,7 +870,7 @@ namespace simnet
                 return;
             }
             auto const button_count = page_ == PanelPage::Entity
-                ? (selected_entity_.has_value() ? 2.0F : 0.0F)
+                ? (selected_entity_.has_value() ? 3.0F : 0.0F)
                 : 3.0F + (frame.stationary_observer.has_value() ? 3.0F : 0.0F)
                     + (frame.spatial.has_value() ? 1.0F : 0.0F)
                     + (frame.info.capabilities.can_pause_simulation ? 1.0F : 0.0F);
@@ -856,6 +886,8 @@ namespace simnet
                 if (selected_entity_.has_value() && CheckCollisionPointRec(mouse, button_at(0))) {
                     show_selected_debug_ = !show_selected_debug_;
                 } else if (selected_entity_.has_value() && CheckCollisionPointRec(mouse, button_at(1))) {
+                    show_selected_trail_ = !show_selected_trail_;
+                } else if (selected_entity_.has_value() && CheckCollisionPointRec(mouse, button_at(2))) {
                     clear_selection(result);
                 }
                 return;
@@ -1066,6 +1098,28 @@ namespace simnet
             }
         }
 
+        void draw_selected_trail(RenderStats& stats) const
+        {
+            if (!show_selected_trail_ || selected_trail_.size() < 2U) {
+                return;
+            }
+            rlBegin(RL_LINES);
+            for (std::size_t index = 1; index < selected_trail_.size(); ++index) {
+                auto const alpha = static_cast<unsigned char>(
+                    55.0F + 190.0F
+                        * static_cast<float>(index)
+                        / static_cast<float>(selected_trail_.size() - 1U)
+                );
+                auto const start = selected_trail_[index - 1U];
+                auto const end = selected_trail_[index];
+                rlColor4ub(255U, 205U, 90U, alpha);
+                rlVertex3f(start.x, start.y, start.z);
+                rlVertex3f(end.x, end.y, end.z);
+            }
+            rlEnd();
+            ++stats.draw_calls;
+        }
+
         void draw_scene(RenderFrame const& frame, RenderStats& stats)
         {
             BeginTextureMode(scene_);
@@ -1101,6 +1155,7 @@ namespace simnet
             if (show_selected_debug_ && !frame.debug_primitives.empty()) {
                 draw_debug_primitives(frame.debug_primitives, stats);
             }
+            draw_selected_trail(stats);
 
             if (instancing_available_) {
                 for (std::size_t index = 0; index < transform_buckets_.size(); ++index) {
@@ -1526,11 +1581,16 @@ namespace simnet
                 if (selected_entity_.has_value()) {
                     auto constexpr button_height = 26.0F;
                     auto button_y = static_cast<float>(config_.window_height)
-                        - 2.0F * (button_height + 8.0F) - 18.0F;
+                        - 3.0F * (button_height + 8.0F) - 18.0F;
                     button(
                         button_y,
                         show_selected_debug_ ? "Hide selected debug" : "Show selected debug",
                         show_selected_debug_
+                    );
+                    button(
+                        button_y,
+                        show_selected_trail_ ? "Hide selected trail" : "Show selected trail",
+                        show_selected_trail_
                     );
                     button(button_y, "Return to overview", false);
                 }
@@ -1607,6 +1667,7 @@ namespace simnet
         bool show_stationary_observer_frustum_ { true };
         bool show_spatial_cells_ {};
         bool show_selected_debug_ { true };
+        bool show_selected_trail_ { true };
         bool show_help_ {};
         PanelPage page_ { PanelPage::Overview };
         float overview_yaw_ { pi * 0.25F };
@@ -1622,6 +1683,7 @@ namespace simnet
         std::optional<EntityNetId> selected_entity_ {};
         std::optional<EntityNetId> navigation_anchor_ {};
         std::optional<SelectedEntity> selected_entity_frame_ {};
+        std::deque<Vec3f> selected_trail_ {};
         std::array<std::vector<Matrix>, hue_bucket_count> transform_buckets_;
     };
 

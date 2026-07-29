@@ -9,11 +9,11 @@ The private panel uses the embedded JetBrains Mono Regular font from
 
 The Phase 1 viewer creates one fixed `1800 x 1080` window per process. A `360` pixel Raylib panel occupies the left side. The right `1440 x 1080` region draws a 4:3 scene render texture. The procedural wedge mesh points along local `+Z` with local `+Y` up.
 
-The viewer uses 32 persistent hue buckets and one instanced draw per non-empty bucket. It renders world bounds, optional axes, and an overview orbit camera. Right drag orbits, the wheel zooms, and `R` resets the active camera. The Server viewer can pause locally. A ready Client viewer requests an authoritative pause state and continues applying snapshots while paused.
+The viewer uses 32 persistent hue buckets and one instanced draw per non-empty bucket. It renders world bounds, optional axes, and an overview orbit camera. Right drag orbits, the wheel zooms, and `F5` resets the active camera. The Server viewer can pause locally. A ready Client viewer requests an authoritative pause state and continues applying snapshots while paused.
 
 `ViewerConfig::entity_mesh_path` optionally selects an OBJ model loaded once during Viewer construction. Every mesh in a loaded model uses the same instanced hue buckets. An empty or failed path uses the procedural wedge, which points along local `+Z` with local `+Y` up. The reference `boid.obj` already uses local `+Z` forward and centimeter-sized coordinates, so the private loader bakes its static scale into mesh vertices once. The caller's `entity_scale` remains the final visual scale.
 
-The Viewer owns three local panel pages. `F1` shows overview and rendering facts, `F2` shows optional connection and replication facts, and `F3` shows the selected entity. `H` or `?` opens the scene help overlay with the complete control list.
+The Viewer owns three local panel pages. `F1` shows overview and rendering facts, `F2` shows optional connection and replication facts, and `F3` shows the selected entity. `F12` opens the scene help overlay with the complete control list.
 
 Applications may supply presentation interpolation facts for F1. The renderer still consumes one already-resolved entity view and has no snapshot-history policy. Server and Client application code interpolate presentation snapshots before `Viewer::draw()`.
 
@@ -26,6 +26,8 @@ Applications can also supply bounded occupied-cell data through `SpatialDebugVie
 Interpolated entity meshes may trail authoritative Server spatial cells and rule data by at most one simulation tick. Selected-boid vector origins use the displayed interpolated position so the gizmos remain readable.
 
 Left click in the scene viewport performs a nearest-hit ray-to-sphere selection using the configured picking radius. The Viewer stores the stable `EntityNetId`, not a frame-local array index. A hit enters Entity Detail mode with an independent orbit camera and a wire highlight. Empty scene clicks preserve the current selection. `Backspace` or Return to overview clears it. If the selected ID is absent from a later valid frame, the Viewer clears it and returns to Overview. `[` and `]` select the previous and next valid visible IDs with wrapping. Optional `SelectedEntityDetails` are shown only when their ID matches the current selection. The authoritative Server can supply velocity, acceleration, neighbour counts, and steering contributions without giving the renderer simulation ownership.
+
+The Viewer also keeps a presentation-only trail for the selected entity. It samples the already-resolved displayed position after meaningful movement, retains at most 240 points in a deque, and submits the fading path as one line batch. Changing or clearing selection resets it; paused frames do not add duplicate points. The F3 panel can hide the trail without discarding its bounded history. This state never feeds simulation, snapshots, networking, or spatial queries.
 
 The viewer returns user intent and aggregate CPU timings. It does not own simulation, pause state, transport, snapshots, Flecs, telemetry, or configuration loading.
 
