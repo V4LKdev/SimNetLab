@@ -2,6 +2,13 @@
 
 `simnet_render` is a generic Raylib viewer for caller-owned entity SoA data. Its public API depends only on `simnet_core`. Raylib is a private implementation dependency.
 
+The implementation is divided by responsibility: `render_viewer.cpp` owns
+window/resource lifetime, cameras, input, and selection;
+`render_viewer_scene.cpp` prepares and submits entity and debug geometry; and
+`render_viewer_panel.cpp` owns sidebar/help interaction and drawing. The shared
+private implementation header contains only Viewer state and internal helpers;
+it is not part of the module's public API.
+
 The private panel uses the embedded JetBrains Mono Regular font from
 `assets/jetbrains_mono_regular.hpp`. JetBrains Mono is licensed under Apache-2.0.
 
