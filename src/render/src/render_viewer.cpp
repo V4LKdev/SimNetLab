@@ -32,7 +32,7 @@ namespace
     using Clock = std::chrono::steady_clock;
 
     constexpr std::size_t hue_bucket_count = 32;
-    constexpr std::size_t selected_trail_max_points = 240;
+    constexpr std::size_t selected_trail_max_points = 2400;
     constexpr float pi = 3.14159265358979323846F;
     constexpr float min_pitch = -pi * 0.48F;
     constexpr float max_pitch = pi * 0.48F;
