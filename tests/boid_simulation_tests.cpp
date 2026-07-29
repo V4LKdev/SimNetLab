@@ -571,6 +571,24 @@ TEST_CASE("hue rules use circular deterministic updates", "[boids][hue]")
         CHECK(debug->applied_hue_step > 0.0F);
     }
 
+    SECTION("a tiny negative wrap remains inside the canonical hue range")
+    {
+        auto settings = test_settings();
+        settings.enable_hue_assimilation = true;
+        settings.enable_hue_drift = false;
+        settings.hue_assimilation_rate = 1.0e-8F;
+        settings.field_of_view_degrees = 360.0F;
+        auto runtime = simnet::ServerGameRuntime { settings };
+        auto world = flecs::world {};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {
+            hued_boid(1U, {}, { 1.0F, 0.0F, 0.0F }, 0U),
+            hued_boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 255U),
+        }).success());
+
+        step(world, runtime, 1.0F);
+    }
+
     SECTION("an isolated boid drifts toward its stable target")
     {
         auto settings = test_settings();

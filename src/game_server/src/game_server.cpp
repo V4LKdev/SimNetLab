@@ -405,7 +405,10 @@ namespace
     [[nodiscard]] float wrap_hue(float hue) noexcept
     {
         hue -= std::floor(hue);
-        return hue < 0.0F ? hue + 1.0F : hue;
+        if (hue < 0.0F || hue >= 1.0F) {
+            return 0.0F;
+        }
+        return hue;
     }
 
     [[nodiscard]] float hue_delta(float from, float to) noexcept
