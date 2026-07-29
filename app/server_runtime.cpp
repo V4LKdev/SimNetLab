@@ -396,6 +396,7 @@ namespace
                 .velocity = selected_debug->velocity,
                 .acceleration = selected_debug->acceleration,
                 .speed = selected_debug->speed,
+                .maximum_speed = config.boids.max_speed,
                 .raw_candidate_count = selected_debug->raw_candidate_count,
                 .retained_neighbor_count = selected_debug->retained_neighbor_count,
                 .separation_neighbor_count = selected_debug->separation_neighbor_count,
@@ -410,6 +411,10 @@ namespace
                 .queried_cell_count = static_cast<std::uint32_t>(
                     selected_debug->queried_cell_bounds.size()
                 ),
+                .displayed_queried_cell_count = static_cast<std::uint32_t>(
+                    selected_debug->queried_cell_bounds.size()
+                ),
+                .query_visualization_capped = false,
                 .separation_radius = selected_debug->separation_radius,
                 .alignment_radius = selected_debug->alignment_radius,
                 .cohesion_radius = selected_debug->cohesion_radius,
@@ -501,7 +506,16 @@ namespace
                 .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
                 .simulation_paused = paused,
                 .interpolation = interpolation,
-                .capabilities = { .can_pause_simulation = true },
+                .context = {
+                    .application = "Server",
+                    .role = "Authoritative",
+                },
+                .capabilities = {
+                    .can_pause_simulation = true,
+                    .has_networking = true,
+                    .has_entity_diagnostics = true,
+                    .has_spatial_visualization = true,
+                },
                 .connection = connection,
                 .replication = std::move(replication),
             },
@@ -511,6 +525,11 @@ namespace
                 .occupied_cell_count = spatial.grid.stats.occupied_cell_count,
                 .max_cell_occupancy = spatial.grid.stats.max_cell_occupancy,
                 .average_occupied_cell_load = spatial.grid.stats.average_occupied_cell_load,
+                .query_radius = std::max({
+                    config.boids.separation_radius,
+                    config.boids.alignment_radius,
+                    config.boids.cohesion_radius,
+                }),
                 .display_capped = spatial.displayed_cells.size() < spatial.grid.occupied_cells.size(),
             },
             .debug_primitives = {

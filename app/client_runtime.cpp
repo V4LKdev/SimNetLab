@@ -242,6 +242,7 @@ namespace
         ClientConnectionState connection_state,
         std::optional<simnet::PeerId> peer,
         simnet::SnapshotAck const& ack,
+        std::string_view role,
         std::optional<simnet::StationaryObserverView> stationary_observer,
         std::optional<simnet::GameCameraView> game_camera
     )
@@ -273,7 +274,16 @@ namespace
                 .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
                 .simulation_paused = simulation_paused,
                 .interpolation = interpolation,
-                .capabilities = { .can_pause_simulation = session_ready && simulation_paused.has_value() },
+                .context = {
+                    .application = "Client",
+                    .role = role,
+                },
+                .capabilities = {
+                    .can_pause_simulation = session_ready && simulation_paused.has_value(),
+                    .has_networking = true,
+                    .has_stationary_observer = role == "Stationary observer",
+                    .has_game_camera = role == "Player",
+                },
                 .connection = std::optional<simnet::RenderConnectionInfo> {
                     simnet::RenderConnectionInfo {
                         .state = client_connection_state_name(connection_state),
@@ -833,7 +843,7 @@ namespace simnet::app
                             && join_accepted
                             && game_camera.has_value()
                             && !game_view_initialized) {
-                            viewer->set_view_mode(ViewMode::Game);
+                            viewer->set_camera_mode(CameraMode::Game);
                             game_view_initialized = true;
                         }
                         {
@@ -852,6 +862,9 @@ namespace simnet::app
                                     connection_state,
                                     server_peer,
                                     ack_tracker.value,
+                                    requested_role == app::ClientRole::Player
+                                        ? std::string_view { "Player" }
+                                        : std::string_view { "Stationary observer" },
                                     std::move(stationary_observer_view),
                                     std::move(game_camera)
                                 )
@@ -885,7 +898,7 @@ namespace simnet::app
                             && requested_role == app::ClientRole::Player
                             && join_accepted) {
                             auto const input_active =
-                                viewer_result.view_mode == ViewMode::Game;
+                                viewer_result.camera_mode == CameraMode::Game;
                             auto const input = input_active
                                 ? player_input_message(viewer_result.player_input)
                                 : app::PlayerInputMessage {};

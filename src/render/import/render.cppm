@@ -22,7 +22,7 @@ export namespace simnet
 
         /// All RenderEntityView spans must remain valid for this call.
         [[nodiscard]] ViewerResult draw(RenderFrame const& frame);
-        void set_view_mode(ViewMode mode);
+        void set_camera_mode(CameraMode mode);
 
     private:
         class Impl;

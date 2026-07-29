@@ -1,5 +1,7 @@
 #pragma once
 
+#include "render_ui.hpp"
+
 namespace simnet::render_detail {
 inline constexpr std::size_t hue_bucket_count = 32;
 inline constexpr std::size_t selected_trail_max_points = 2400;
@@ -7,13 +9,6 @@ inline constexpr float pi = 3.14159265358979323846F;
 inline constexpr float min_pitch = -pi * 0.48F;
 inline constexpr float max_pitch = pi * 0.48F;
 inline constexpr float minimum_distance = 2.0F;
-
-struct SceneRect {
-  int x{};
-  int y{};
-  int width{};
-  int height{};
-};
 
 [[nodiscard]] inline Vector3 to_raylib(Vec3f value) noexcept {
   return {value.x, value.y, value.z};
@@ -112,11 +107,9 @@ public:
   ~Impl();
 
   [[nodiscard]] ViewerResult draw(RenderFrame const &frame);
-  void set_view_mode(ViewMode mode) noexcept;
+  void set_camera_mode(CameraMode mode) noexcept;
 
 private:
-  enum class PanelPage : std::uint8_t { Overview, Network, Entity };
-
   struct SelectedEntity {
     EntityNetId id{};
     Vec3f position{};
@@ -130,6 +123,7 @@ private:
   void clear_selection(ViewerResult &result,
                        bool preserve_navigation_anchor = false);
   void update_camera(RenderFrame const &frame, ViewerResult &result);
+  void cycle_camera(RenderFrame const &frame) noexcept;
   void update_camera_position(float yaw, float pitch, float distance) noexcept;
   void reset_overview_camera(Vec3f center) noexcept;
   void reset_detail_camera(float world_extent) noexcept;
@@ -142,11 +136,12 @@ private:
   void select_adjacent_entity(RenderEntityView const &entities, int direction,
                               ViewerResult &result);
 
-  void update_panel_input() noexcept;
-  void update_controls(RenderFrame const &frame, ViewerResult &result);
+  void update_panel_input(RenderFrame const &frame, ViewerResult &result);
+  void build_panel_model(RenderFrame const &frame, bool valid_entities);
   void draw_panel(RenderFrame const &frame, bool valid_entities,
                   RenderStats const &stats, ViewerResult const &result);
   void draw_help_overlay(RenderFrame const &frame) const;
+  void draw_viewport_ui(RenderFrame const &frame, ViewerResult const &result);
 
   void clear_instances();
   void prepare_instances(RenderEntityView const &entities, RenderStats &stats);
@@ -155,6 +150,7 @@ private:
   void draw_spatial_cells(SpatialDebugView const &spatial, RenderStats &stats);
   void draw_debug_primitives(DebugPrimitiveView const &debug,
                              RenderStats &stats);
+  void draw_debug_labels(DebugPrimitiveView const &debug) const;
   void draw_selected_trail(RenderStats &stats) const;
   void draw_scene(RenderFrame const &frame, RenderStats &stats);
 
@@ -167,19 +163,13 @@ private:
   Shader shader_{};
   Camera3D camera_{};
   Vector3 target_{};
-  ViewMode mode_{ViewMode::Overview};
+  CameraMode mode_{CameraMode::OverviewOrbit};
   bool instancing_available_{};
   bool camera_initialized_{};
-  bool show_bounds_{true};
-  bool show_axes_{true};
-  bool show_stationary_observer_{true};
-  bool show_stationary_observer_radius_{true};
-  bool show_stationary_observer_frustum_{true};
-  bool show_spatial_cells_{};
-  bool show_selected_debug_{true};
-  bool show_selected_trail_{true};
-  bool show_help_{};
-  PanelPage page_{PanelPage::Overview};
+  render_detail::OverlayState overlays_{};
+  render_detail::UiState ui_{};
+  render_detail::PanelModel panel_model_{};
+  RenderStats completed_stats_{};
   float overview_yaw_{render_detail::pi * 0.25F};
   float overview_pitch_{render_detail::pi / 6.0F};
   float overview_distance_{10.0F};

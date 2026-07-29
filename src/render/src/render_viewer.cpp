@@ -312,10 +312,9 @@ Viewer::Impl::~Impl() {
   auto const input_start = Clock::now();
   {
     SIMNET_TRACE_SCOPE_CATEGORY("render.input", simnet::LogCategory::Render);
-    update_panel_input();
+    update_panel_input(frame, result);
     update_camera(frame, result);
     update_selection(frame.entities, result);
-    update_controls(frame, result);
     update_selected_trail();
   }
   stats.input_cpu_time = elapsed_ns(input_start);
@@ -342,7 +341,7 @@ Viewer::Impl::~Impl() {
   stats.scene_submit_cpu_time = elapsed_ns(scene_start);
 
   BeginDrawing();
-  ClearBackground(Color{18, 21, 27, 255});
+  ClearBackground(render_detail::palette.window);
   auto const panel_start = Clock::now();
   {
     SIMNET_TRACE_SCOPE_CATEGORY("render.panel", simnet::LogCategory::Render);
@@ -355,6 +354,7 @@ Viewer::Impl::~Impl() {
                  Vector2{static_cast<float>(scene_rect_.x),
                          static_cast<float>(scene_rect_.y)},
                  WHITE);
+  draw_viewport_ui(frame, result);
   draw_help_overlay(frame);
   {
     SIMNET_TRACE_SCOPE_CATEGORY("render.present_wait",
@@ -363,9 +363,10 @@ Viewer::Impl::~Impl() {
   }
 
   result.close_requested = WindowShouldClose();
-  result.view_mode = mode_;
+  result.camera_mode = mode_;
   result.selected_entity = selected_entity_;
   result.stats = stats;
+  completed_stats_ = stats;
   SIMNET_TRACE_PLOT("render.instances",
                     static_cast<double>(stats.instance_count));
   SIMNET_TRACE_PLOT("render.skipped_entities",
@@ -382,10 +383,23 @@ Viewer::Impl::~Impl() {
   return result;
 }
 
-void Viewer::Impl::set_view_mode(ViewMode mode) noexcept {
-  mode_ = mode == ViewMode::EntityDetail && !selected_entity_.has_value()
-              ? ViewMode::Overview
+void Viewer::Impl::set_camera_mode(CameraMode mode) noexcept {
+  mode_ = mode == CameraMode::EntityFollow && !selected_entity_.has_value()
+              ? CameraMode::OverviewOrbit
               : mode;
+}
+
+void Viewer::Impl::cycle_camera(RenderFrame const &frame) noexcept {
+  if (mode_ == CameraMode::OverviewOrbit && selected_entity_.has_value()) {
+    mode_ = CameraMode::EntityFollow;
+  } else if (mode_ != CameraMode::StationaryObserver &&
+             frame.stationary_observer.has_value()) {
+    mode_ = CameraMode::StationaryObserver;
+  } else if (mode_ != CameraMode::Game && frame.game_camera.has_value()) {
+    mode_ = CameraMode::Game;
+  } else {
+    mode_ = CameraMode::OverviewOrbit;
+  }
 }
 
 void Viewer::Impl::load_entity_model() {
@@ -443,7 +457,8 @@ void Viewer::Impl::clear_selection(ViewerResult &result,
   }
   selected_entity_frame_.reset();
   selected_trail_.clear();
-  mode_ = ViewMode::Overview;
+  mode_ = CameraMode::OverviewOrbit;
+  ui_.page = render_detail::InspectorPage::Overview;
 }
 
 void Viewer::Impl::update_camera(RenderFrame const &frame,
@@ -468,20 +483,14 @@ void Viewer::Impl::update_camera(RenderFrame const &frame,
   }
 
   if (IsKeyPressed(KEY_F4)) {
-    if (frame.game_camera.has_value()) {
-      mode_ = mode_ == ViewMode::Game ? ViewMode::Overview : ViewMode::Game;
-    } else if (frame.stationary_observer.has_value()) {
-      mode_ = mode_ == ViewMode::StationaryObserver
-                  ? ViewMode::Overview
-                  : ViewMode::StationaryObserver;
-    }
+    cycle_camera(frame);
   }
-  if (mode_ == ViewMode::Game && !frame.game_camera.has_value()) {
-    mode_ = ViewMode::Overview;
+  if (mode_ == CameraMode::Game && !frame.game_camera.has_value()) {
+    mode_ = CameraMode::OverviewOrbit;
   }
-  if (mode_ == ViewMode::StationaryObserver &&
+  if (mode_ == CameraMode::StationaryObserver &&
       !frame.stationary_observer.has_value()) {
-    mode_ = ViewMode::Overview;
+    mode_ = CameraMode::OverviewOrbit;
   }
   if (frame.stationary_observer.has_value()) {
     result.stationary_observer_yaw_axis = (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F) -
@@ -500,41 +509,44 @@ void Viewer::Impl::update_camera(RenderFrame const &frame,
       mouse.x >= static_cast<float>(scene_rect_.x) &&
       mouse.x < static_cast<float>(scene_rect_.x + scene_rect_.width) &&
       mouse.y >= 0.0F && mouse.y < static_cast<float>(scene_rect_.height);
-  if ((mode_ == ViewMode::Overview || mode_ == ViewMode::EntityDetail) &&
+  if ((mode_ == CameraMode::OverviewOrbit ||
+       mode_ == CameraMode::EntityFollow) &&
       in_scene && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
     auto const delta = GetMouseDelta();
-    auto &yaw = mode_ == ViewMode::EntityDetail ? detail_yaw_ : overview_yaw_;
+    auto &yaw = mode_ == CameraMode::EntityFollow ? detail_yaw_ : overview_yaw_;
     auto &pitch =
-        mode_ == ViewMode::EntityDetail ? detail_pitch_ : overview_pitch_;
+        mode_ == CameraMode::EntityFollow ? detail_pitch_ : overview_pitch_;
     yaw -= delta.x * 0.006F;
     pitch = std::clamp(pitch + delta.y * 0.006F, min_pitch, max_pitch);
   }
-  if ((mode_ == ViewMode::Overview || mode_ == ViewMode::EntityDetail) &&
+  if ((mode_ == CameraMode::OverviewOrbit ||
+       mode_ == CameraMode::EntityFollow) &&
       in_scene) {
     auto const wheel = GetMouseWheelMove();
     if (wheel != 0.0F) {
-      auto &distance = mode_ == ViewMode::EntityDetail ? detail_distance_
-                                                       : overview_distance_;
-      auto const minimum = mode_ == ViewMode::EntityDetail
+      auto &distance = mode_ == CameraMode::EntityFollow ? detail_distance_
+                                                         : overview_distance_;
+      auto const minimum = mode_ == CameraMode::EntityFollow
                                ? detail_min_distance_
                                : min_distance_;
-      auto const maximum = mode_ == ViewMode::EntityDetail
+      auto const maximum = mode_ == CameraMode::EntityFollow
                                ? detail_max_distance_
                                : max_distance_;
       distance = std::clamp(distance * (1.0F - wheel * 0.1F), minimum, maximum);
     }
   }
   if (IsKeyPressed(KEY_F5)) {
-    if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
+    if (mode_ == CameraMode::EntityFollow &&
+        selected_entity_frame_.has_value()) {
       reset_detail_camera(extent);
     } else {
       reset_overview_camera(center);
     }
   }
-  if (IsKeyPressed(KEY_BACKSPACE) && mode_ == ViewMode::EntityDetail) {
+  if (IsKeyPressed(KEY_BACKSPACE) && selected_entity_.has_value()) {
     clear_selection(result);
   }
-  if (mode_ == ViewMode::Game && frame.game_camera.has_value()) {
+  if (mode_ == CameraMode::Game && frame.game_camera.has_value()) {
     camera_.position = to_raylib(frame.game_camera->position);
     camera_.target = to_raylib(frame.game_camera->target);
     camera_.up = to_raylib(frame.game_camera->up);
@@ -550,7 +562,7 @@ void Viewer::Impl::update_camera(RenderFrame const &frame,
         .left_mouse = IsMouseButtonDown(MOUSE_BUTTON_LEFT),
         .right_mouse = IsMouseButtonDown(MOUSE_BUTTON_RIGHT),
     };
-  } else if (mode_ == ViewMode::StationaryObserver &&
+  } else if (mode_ == CameraMode::StationaryObserver &&
              frame.stationary_observer.has_value()) {
     auto const forward =
         normalized_or_forward(frame.stationary_observer->forward);
@@ -559,7 +571,7 @@ void Viewer::Impl::update_camera(RenderFrame const &frame,
     camera_.target = to_raylib(frame.stationary_observer->position + forward);
     camera_.up = to_raylib(basis.up);
     camera_.fovy = frame.stationary_observer->vertical_fov_degrees;
-  } else if (mode_ == ViewMode::EntityDetail &&
+  } else if (mode_ == CameraMode::EntityFollow &&
              selected_entity_frame_.has_value()) {
     target_ = to_raylib(selected_entity_frame_->position);
     detail_min_distance_ = std::max(0.5F, config_.entity_scale * 1.5F);
@@ -634,7 +646,10 @@ Viewer::Impl::ray_sphere_hit_distance(Ray ray, Vector3 center,
 
 void Viewer::Impl::update_selection(RenderEntityView const &entities,
                                     ViewerResult &result) {
-  if (mode_ == ViewMode::Game) {
+  if (mode_ == CameraMode::Game) {
+    return;
+  }
+  if (ui_.pointer_captured) {
     return;
   }
   if (IsKeyPressed(KEY_LEFT_BRACKET)) {
@@ -691,7 +706,10 @@ void Viewer::Impl::select_entity(SelectedEntity selected,
   selected_entity_ = selected.id;
   selected_entity_frame_ = selected;
   navigation_anchor_.reset();
-  mode_ = ViewMode::EntityDetail;
+  mode_ = CameraMode::EntityFollow;
+  ui_.page = render_detail::InspectorPage::Entity;
+  ui_.page_scroll[static_cast<std::size_t>(
+      render_detail::InspectorPage::Entity)] = 0.0F;
   detail_distance_ = 0.0F;
 }
 
@@ -767,10 +785,10 @@ ViewerResult Viewer::draw(RenderFrame const &frame) {
   return impl_->draw(frame);
 }
 
-void Viewer::set_view_mode(ViewMode mode) {
+void Viewer::set_camera_mode(CameraMode mode) {
   if (!impl_) {
     throw std::runtime_error("cannot configure a moved-from Viewer");
   }
-  impl_->set_view_mode(mode);
+  impl_->set_camera_mode(mode);
 }
 } // namespace simnet

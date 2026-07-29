@@ -75,11 +75,11 @@ void Viewer::Impl::draw_stationary_observer(
   DrawSphere(position, std::max(config_.entity_scale, 1.0F) * 1.5F,
              Color{247, 184, 74, 255});
   DrawLine3D(position, direction_end, Color{247, 184, 74, 255});
-  if (show_stationary_observer_radius_) {
+  if (overlays_.observer_radius) {
     DrawSphereWires(position, observer.interest_radius, 20, 20,
                     Color{247, 184, 74, 110});
   }
-  if (show_stationary_observer_frustum_) {
+  if (overlays_.observer_frustum) {
     auto const basis = world_up_basis(forward);
     auto const aspect = static_cast<float>(scene_rect_.width) /
                         static_cast<float>(scene_rect_.height);
@@ -132,73 +132,117 @@ void Viewer::Impl::draw_debug_primitives(DebugPrimitiveView const &debug,
                                          RenderStats &stats) {
   SIMNET_TRACE_SCOPE_CATEGORY("render.selected_debug_geometry",
                               simnet::LogCategory::Render);
-  for (auto const &sphere : debug.spheres) {
-    if (sphere.radius <= 0.0F || !std::isfinite(sphere.radius) ||
-        !finite(sphere.center)) {
-      continue;
+  if (overlays_.rule_radii) {
+    for (auto const &sphere : debug.spheres) {
+      if (sphere.radius <= 0.0F || !std::isfinite(sphere.radius) ||
+          !finite(sphere.center)) {
+        continue;
+      }
+      DrawSphereWires(to_raylib(sphere.center), sphere.radius, 24, 12,
+                      to_raylib(sphere.color));
+      ++stats.draw_calls;
     }
-    DrawSphereWires(to_raylib(sphere.center), sphere.radius, 24, 12,
-                    to_raylib(sphere.color));
-    ++stats.draw_calls;
+  }
+  if (overlays_.steering_vectors) {
+    for (auto const &vector : debug.vectors) {
+      if (!finite(vector.origin) || !finite(vector.vector) ||
+          simnet::length_squared(vector.vector) <= 0.000001F) {
+        continue;
+      }
+      DrawLine3D(to_raylib(vector.origin),
+                 to_raylib(vector.origin + vector.vector),
+                 to_raylib(vector.color));
+      ++stats.draw_calls;
+    }
+  }
+  if (overlays_.queried_cells) {
+    for (auto const &box : debug.boxes) {
+      if (!finite(box.bounds.min) || !finite(box.bounds.max)) {
+        continue;
+      }
+      DrawBoundingBox(
+          {.min = to_raylib(box.bounds.min), .max = to_raylib(box.bounds.max)},
+          to_raylib(box.color));
+      ++stats.draw_calls;
+    }
+  }
+  if (overlays_.field_of_view) {
+    for (auto const &cone : debug.cones) {
+      if (!finite(cone.apex) || !finite(cone.direction) ||
+          cone.length <= 0.0F || !std::isfinite(cone.length) ||
+          cone.half_angle_degrees <= 0.0F ||
+          cone.half_angle_degrees >= 180.0F ||
+          !std::isfinite(cone.half_angle_degrees)) {
+        continue;
+      }
+      auto const forward = normalized_or_forward(cone.direction);
+      auto right = cross(forward, {0.0F, 1.0F, 0.0F});
+      if (simnet::length_squared(right) <= 0.000001F) {
+        right = cross(forward, {1.0F, 0.0F, 0.0F});
+      }
+      right = normalized_or_forward(right);
+      auto const up = normalized_or_forward(cross(right, forward));
+      auto const angle = cone.half_angle_degrees * pi / 180.0F;
+      auto const forward_scale = std::cos(angle);
+      auto const lateral_scale = std::sin(angle);
+      auto previous = simnet::Vec3f{};
+      auto constexpr segments = 12;
+      for (auto index = 0; index <= segments; ++index) {
+        auto const around = 2.0F * pi * static_cast<float>(index) /
+                            static_cast<float>(segments);
+        auto const lateral = right * std::cos(around) + up * std::sin(around);
+        auto const direction = normalized_or_forward(forward * forward_scale +
+                                                     lateral * lateral_scale);
+        auto const point = cone.apex + direction * cone.length;
+        DrawLine3D(to_raylib(cone.apex), to_raylib(point),
+                   to_raylib(cone.color));
+        if (index != 0) {
+          DrawLine3D(to_raylib(previous), to_raylib(point),
+                     to_raylib(cone.color));
+        }
+        previous = point;
+      }
+      ++stats.draw_calls;
+    }
+  }
+}
+
+void Viewer::Impl::draw_debug_labels(DebugPrimitiveView const &debug) const {
+  if (!overlays_.debug_labels) {
+    return;
+  }
+  auto drawn = std::size_t{};
+  auto constexpr label_limit = std::size_t{12};
+  auto label = [&](Vec3f position, std::string_view value, DebugColor color) {
+    if (value.empty() || drawn >= label_limit || !finite(position)) {
+      return;
+    }
+    auto const screen = GetWorldToScreenEx(
+        to_raylib(position), camera_, scene_rect_.width, scene_rect_.height);
+    char text[64]{};
+    std::snprintf(text, sizeof(text), "%.*s", static_cast<int>(value.size()),
+                  value.data());
+    DrawTextEx(font_, text, {screen.x + 5.0F, screen.y - 7.0F}, 11.0F, 0.5F,
+               to_raylib(color));
+    ++drawn;
+  };
+  for (auto const &sphere : debug.spheres) {
+    label(sphere.center, sphere.label, sphere.color);
   }
   for (auto const &vector : debug.vectors) {
-    if (!finite(vector.origin) || !finite(vector.vector) ||
-        simnet::length_squared(vector.vector) <= 0.000001F) {
-      continue;
-    }
-    DrawLine3D(to_raylib(vector.origin),
-               to_raylib(vector.origin + vector.vector),
-               to_raylib(vector.color));
-    ++stats.draw_calls;
+    label(vector.origin + vector.vector, vector.label, vector.color);
   }
   for (auto const &box : debug.boxes) {
-    if (!finite(box.bounds.min) || !finite(box.bounds.max)) {
-      continue;
-    }
-    DrawBoundingBox(
-        {.min = to_raylib(box.bounds.min), .max = to_raylib(box.bounds.max)},
-        to_raylib(box.color));
-    ++stats.draw_calls;
+    label((box.bounds.min + box.bounds.max) * 0.5F, box.label, box.color);
   }
   for (auto const &cone : debug.cones) {
-    if (!finite(cone.apex) || !finite(cone.direction) || cone.length <= 0.0F ||
-        !std::isfinite(cone.length) || cone.half_angle_degrees <= 0.0F ||
-        cone.half_angle_degrees >= 180.0F ||
-        !std::isfinite(cone.half_angle_degrees)) {
-      continue;
-    }
-    auto const forward = normalized_or_forward(cone.direction);
-    auto right = cross(forward, {0.0F, 1.0F, 0.0F});
-    if (simnet::length_squared(right) <= 0.000001F) {
-      right = cross(forward, {1.0F, 0.0F, 0.0F});
-    }
-    right = normalized_or_forward(right);
-    auto const up = normalized_or_forward(cross(right, forward));
-    auto const angle = cone.half_angle_degrees * pi / 180.0F;
-    auto const forward_scale = std::cos(angle);
-    auto const lateral_scale = std::sin(angle);
-    auto previous = simnet::Vec3f{};
-    auto constexpr segments = 12;
-    for (auto index = 0; index <= segments; ++index) {
-      auto const around =
-          2.0F * pi * static_cast<float>(index) / static_cast<float>(segments);
-      auto const lateral = right * std::cos(around) + up * std::sin(around);
-      auto const direction = normalized_or_forward(forward * forward_scale +
-                                                   lateral * lateral_scale);
-      auto const point = cone.apex + direction * cone.length;
-      DrawLine3D(to_raylib(cone.apex), to_raylib(point), to_raylib(cone.color));
-      if (index != 0) {
-        DrawLine3D(to_raylib(previous), to_raylib(point),
-                   to_raylib(cone.color));
-      }
-      previous = point;
-    }
-    ++stats.draw_calls;
+    label(cone.apex + normalized_or_forward(cone.direction) * cone.length,
+          cone.label, cone.color);
   }
 }
 
 void Viewer::Impl::draw_selected_trail(RenderStats &stats) const {
-  if (!show_selected_trail_ || selected_trail_.size() < 2U) {
+  if (!overlays_.selected_trail || selected_trail_.size() < 2U) {
     return;
   }
   rlBegin(RL_LINES);
@@ -227,7 +271,7 @@ void Viewer::Impl::draw_scene(RenderFrame const &frame, RenderStats &stats) {
   rlSetMatrixModelview(
       MatrixLookAt(camera_.position, camera_.target, camera_.up));
 
-  if (show_bounds_) {
+  if (overlays_.world_bounds) {
     auto const bounds = frame.info.world_bounds;
     auto const center = Vector3{
         (bounds.min.x + bounds.max.x) * 0.5F,
@@ -236,21 +280,21 @@ void Viewer::Impl::draw_scene(RenderFrame const &frame, RenderStats &stats) {
     };
     DrawCubeWires(center, bounds.max.x - bounds.min.x,
                   bounds.max.y - bounds.min.y, bounds.max.z - bounds.min.z,
-                  Color{95, 112, 136, 180});
+                  Color{95, 112, 136, 72});
   }
-  if (show_axes_) {
+  if (overlays_.origin_axes) {
     DrawLine3D({0.0F, 0.0F, 0.0F}, {10.0F, 0.0F, 0.0F}, RED);
     DrawLine3D({0.0F, 0.0F, 0.0F}, {0.0F, 10.0F, 0.0F}, GREEN);
     DrawLine3D({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 10.0F}, BLUE);
   }
   if (frame.stationary_observer.has_value() &&
-      mode_ != ViewMode::StationaryObserver && show_stationary_observer_) {
+      mode_ != CameraMode::StationaryObserver && overlays_.observer_marker) {
     draw_stationary_observer(*frame.stationary_observer, stats);
   }
-  if (frame.spatial.has_value() && show_spatial_cells_) {
+  if (frame.spatial.has_value() && overlays_.spatial_cells) {
     draw_spatial_cells(*frame.spatial, stats);
   }
-  if (show_selected_debug_ && !frame.debug_primitives.empty()) {
+  if (!frame.debug_primitives.empty()) {
     draw_debug_primitives(frame.debug_primitives, stats);
   }
   draw_selected_trail(stats);
@@ -277,14 +321,15 @@ void Viewer::Impl::draw_scene(RenderFrame const &frame, RenderStats &stats) {
       ++stats.active_hue_buckets;
     }
   }
-  if (selected_entity_frame_.has_value()) {
+  if (selected_entity_frame_.has_value() && overlays_.selected_marker) {
     auto const radius =
         std::max(config_.picking_radius, config_.entity_scale * 1.5F);
     DrawSphereWires(to_raylib(selected_entity_frame_->position), radius, 8, 12,
-                    YELLOW);
+                    render_detail::palette.selection);
     ++stats.draw_calls;
   }
   EndMode3D();
+  draw_debug_labels(frame.debug_primitives);
   EndTextureMode();
 }
 } // namespace simnet

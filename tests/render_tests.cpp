@@ -24,3 +24,17 @@ TEST_CASE("render entity views require matching SoA lengths", "[render]")
     view.hues = std::span { hues }.first(1);
     CHECK_FALSE(view.valid());
 }
+
+TEST_CASE("viewer contracts keep camera state separate from capabilities", "[render]")
+{
+    auto const result = simnet::ViewerResult {};
+    CHECK(result.camera_mode == simnet::CameraMode::OverviewOrbit);
+
+    auto const capabilities = simnet::ViewerCapabilities {
+        .has_networking = true,
+        .has_game_camera = true,
+    };
+    CHECK(capabilities.has_networking);
+    CHECK(capabilities.has_game_camera);
+    CHECK_FALSE(capabilities.has_stationary_observer);
+}

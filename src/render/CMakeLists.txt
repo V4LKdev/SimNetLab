@@ -11,7 +11,9 @@ target_sources(simnet_render
             import/render_types.cppm
     PRIVATE
         private/render_viewer_impl.hpp
+        private/render_ui.hpp
         src/render_viewer.cpp
+        src/render_ui_model.cpp
         src/render_viewer_panel.cpp
         src/render_viewer_scene.cpp
 )

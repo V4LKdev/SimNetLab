@@ -15,10 +15,10 @@ import simnet.core;
 
 export namespace simnet
 {
-    enum class ViewMode : std::uint8_t
+    enum class CameraMode : std::uint8_t
     {
-        Overview,
-        EntityDetail,
+        OverviewOrbit,
+        EntityFollow,
         StationaryObserver,
         Game
     };
@@ -46,6 +46,18 @@ export namespace simnet
     struct ViewerCapabilities
     {
         bool can_pause_simulation {};
+        bool has_networking {};
+        bool has_entity_diagnostics {};
+        bool has_spatial_visualization {};
+        bool has_stationary_observer {};
+        bool has_game_camera {};
+        bool has_selected_trail { true };
+    };
+
+    struct ViewerContext
+    {
+        std::string_view application {};
+        std::string_view role {};
     };
 
     /// Presentation-only interpolation facts supplied by the application.
@@ -88,6 +100,7 @@ export namespace simnet
         std::optional<double> fixed_tick_rate_hz {};
         std::optional<bool> simulation_paused {};
         std::optional<RenderInterpolationInfo> interpolation {};
+        ViewerContext context {};
         ViewerCapabilities capabilities {};
         std::optional<RenderConnectionInfo> connection {};
         std::optional<RenderReplicationInfo> replication {};
@@ -109,6 +122,7 @@ export namespace simnet
         std::optional<Vec3f> velocity {};
         std::optional<Vec3f> acceleration {};
         std::optional<float> speed {};
+        std::optional<float> maximum_speed {};
         std::optional<std::uint32_t> raw_candidate_count {};
         std::optional<std::uint32_t> retained_neighbor_count {};
         std::optional<std::uint32_t> separation_neighbor_count {};
@@ -117,6 +131,8 @@ export namespace simnet
         std::optional<std::uint32_t> hue_neighbor_count {};
         std::optional<SelectedCellCoord> current_cell {};
         std::optional<std::uint32_t> queried_cell_count {};
+        std::optional<std::uint32_t> displayed_queried_cell_count {};
+        std::optional<bool> query_visualization_capped {};
         std::optional<float> separation_radius {};
         std::optional<float> alignment_radius {};
         std::optional<float> cohesion_radius {};
@@ -176,6 +192,7 @@ export namespace simnet
         std::uint32_t occupied_cell_count {};
         std::uint32_t max_cell_occupancy {};
         float average_occupied_cell_load {};
+        std::optional<float> query_radius {};
         bool display_capped {};
     };
 
@@ -273,7 +290,7 @@ export namespace simnet
     {
         bool close_requested {};
         bool toggle_simulation_pause_requested {};
-        ViewMode view_mode { ViewMode::Overview };
+        CameraMode camera_mode { CameraMode::OverviewOrbit };
         std::optional<EntityNetId> selected_entity {};
         bool selected_entity_changed {};
         float stationary_observer_yaw_axis {};
