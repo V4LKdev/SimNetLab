@@ -81,8 +81,9 @@ pitch steering, `A`/`D` apply yaw steering, Shift accelerates, and Ctrl slows;
 angular velocity, damping, and rate limits give steering inertia, while
 Shift+Ctrl selects cruise speed.
 Input is latest-state unreliable-sequenced data, while join and pause remain
-reliable controls. `F4` switches locally between Game and Overview and sends one
-neutral input state when leaving Game. There is no client prediction yet.
+reliable controls. `F4` cycles the camera modes available to the current role
+and selection, and leaving Game sends one neutral input state. There is no
+client prediction yet.
 
 The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set the local `visualization.entity_mesh_path` to another OBJ file to replace it. An empty or unavailable path keeps the instanced wedge fallback.
 
