@@ -20,6 +20,7 @@
 #include <simnet/telemetry_trace.hpp>
 
 import simnet.config;
+import simnet.app_camera;
 import simnet.app_common;
 import simnet.app_protocol;
 import simnet.core;
@@ -35,20 +36,6 @@ import simnet.render;
 
 namespace
 {
-#if defined(SIMNET_ENABLE_RENDER)
-    [[nodiscard]] simnet::Vec3f cross(
-        simnet::Vec3f lhs,
-        simnet::Vec3f rhs
-    ) noexcept
-    {
-        return {
-            .x = lhs.y * rhs.z - lhs.z * rhs.y,
-            .y = lhs.z * rhs.x - lhs.x * rhs.z,
-            .z = lhs.x * rhs.y - lhs.y * rhs.x,
-        };
-    }
-#endif
-
     struct ClientOptions
     {
         std::optional<std::filesystem::path> config_path {};
@@ -87,27 +74,14 @@ namespace
         auto const offset = static_cast<std::size_t>(
             std::distance(snapshot.ids.begin(), found)
         );
-        auto const position = snapshot.positions[offset];
-        auto const forward = simnet::normalize_or(
-            snapshot.headings[offset],
-            simnet::Vec3f { .z = 1.0F }
-        );
-        auto reference_up = simnet::Vec3f { .y = 1.0F };
-        if (std::abs(simnet::dot(forward, reference_up)) > 0.98F) {
-            reference_up = { .x = 1.0F };
-        }
-        auto const right = simnet::normalize_or(
-            cross(reference_up, forward),
-            simnet::Vec3f { .x = 1.0F }
-        );
-        auto const up = simnet::normalize_or(
-            cross(forward, right),
-            reference_up
+        auto const pose = simnet::app::locked_chase_camera_pose(
+            snapshot.positions[offset],
+            snapshot.headings[offset]
         );
         return simnet::GameCameraView {
-            .position = position - forward * 8.0F + up * 2.5F,
-            .target = position + forward * 4.0F,
-            .up = up,
+            .position = pose.position,
+            .target = pose.target,
+            .up = pose.up,
             .vertical_fov_degrees = 70.0F,
         };
     }

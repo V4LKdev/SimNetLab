@@ -1000,7 +1000,7 @@ namespace
             && settings.max_pitch_rate_degrees > 0.0F
             && std::isfinite(settings.pitch_limit_degrees)
             && settings.pitch_limit_degrees > 0.0F
-            && settings.pitch_limit_degrees < 90.0F;
+            && settings.pitch_limit_degrees <= 85.0F;
     }
 }
 

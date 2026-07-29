@@ -106,6 +106,31 @@ namespace
         };
     }
 
+    struct WorldUpBasis
+    {
+        simnet::Vec3f right { .x = 1.0F };
+        simnet::Vec3f up { .y = 1.0F };
+    };
+
+    [[nodiscard]] WorldUpBasis world_up_basis(simnet::Vec3f forward) noexcept
+    {
+        auto const horizontal = simnet::normalize_or(
+            simnet::Vec3f { .x = forward.x, .z = forward.z },
+            simnet::Vec3f { .z = 1.0F }
+        );
+        auto const right = simnet::normalize_or(
+            cross(simnet::Vec3f { .y = 1.0F }, horizontal),
+            simnet::Vec3f { .x = 1.0F }
+        );
+        return {
+            .right = right,
+            .up = simnet::normalize_or(
+                cross(forward, right),
+                simnet::Vec3f { .y = 1.0F }
+            ),
+        };
+    }
+
     [[nodiscard]] Matrix entity_transform(simnet::Vec3f position, simnet::Vec3f heading, float scale) noexcept
     {
         auto const forward = normalized_or_forward(heading);
@@ -608,14 +633,10 @@ namespace simnet
                 auto const forward = normalized_or_forward(
                     frame.stationary_observer->forward
                 );
-                auto reference_up = Vec3f { .y = 1.0F };
-                if (std::abs(dot(forward, reference_up)) > 0.98F) {
-                    reference_up = { .x = 1.0F };
-                }
-                auto const right = normalized_or_forward(cross(reference_up, forward));
+                auto const basis = world_up_basis(forward);
                 camera_.position = to_raylib(frame.stationary_observer->position);
                 camera_.target = to_raylib(frame.stationary_observer->position + forward);
-                camera_.up = to_raylib(cross(forward, right));
+                camera_.up = to_raylib(basis.up);
                 camera_.fovy = frame.stationary_observer->vertical_fov_degrees;
             } else if (mode_ == ViewMode::EntityDetail && selected_entity_frame_.has_value()) {
                 target_ = to_raylib(selected_entity_frame_->position);
@@ -929,19 +950,16 @@ namespace simnet
                 DrawSphereWires(position, observer.interest_radius, 20, 20, Color { 247, 184, 74, 110 });
             }
             if (show_stationary_observer_frustum_) {
-                auto reference_up = Vec3f { .y = 1.0F };
-                if (std::abs(dot(forward, reference_up)) > 0.98F) {
-                    reference_up = { .x = 1.0F };
-                }
-                auto const right = normalized_or_forward(cross(reference_up, forward));
-                auto const up = cross(forward, right);
+                auto const basis = world_up_basis(forward);
                 auto const aspect = static_cast<float>(scene_rect_.width) / static_cast<float>(scene_rect_.height);
                 auto const vertical = observer.vertical_fov_degrees * DEG2RAD;
                 auto const vertical_half = std::tan(vertical * 0.5F) * observer.interest_radius;
                 auto const horizontal_half = vertical_half * aspect;
                 auto const center = observer.position + forward * observer.interest_radius;
                 auto const corner = [&](float horizontal, float vertical_offset) {
-                    return to_raylib(center + right * horizontal + up * vertical_offset);
+                    return to_raylib(
+                        center + basis.right * horizontal + basis.up * vertical_offset
+                    );
                 };
                 auto const top_left = corner(-horizontal_half, vertical_half);
                 auto const top_right = corner(horizontal_half, vertical_half);

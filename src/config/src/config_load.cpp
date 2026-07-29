@@ -315,9 +315,9 @@ namespace
         validate_positive("player.pitch_damping", config.pitch_damping);
         validate_positive("player.max_yaw_rate_degrees", config.max_yaw_rate_degrees);
         validate_positive("player.max_pitch_rate_degrees", config.max_pitch_rate_degrees);
-        if (config.pitch_limit_degrees <= 0.0F || config.pitch_limit_degrees >= 90.0F) {
+        if (config.pitch_limit_degrees <= 0.0F || config.pitch_limit_degrees > 85.0F) {
             throw std::runtime_error(
-                "invalid config field 'player.pitch_limit_degrees': expected (0, 90)"
+                "invalid config field 'player.pitch_limit_degrees': expected (0, 85]"
             );
         }
     }

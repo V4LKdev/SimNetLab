@@ -20,7 +20,8 @@ Client-local `gameplay.role` is either `stationary_observer` or `player`. The le
 
 Shared `player` settings define smooth authoritative movement. Input accelerates
 private yaw and pitch velocities; damping reduces them after release, maximum
-angular rates bound the turn, and `pitch_limit_degrees` bounds orientation.
+angular rates bound the turn, and `pitch_limit_degrees` bounds orientation to at
+most 85 degrees so the locked chase camera stays clear of vertical singularities.
 Speed continues to approach the configured slow, cruise, or boost target at
 `speed_change_rate`. These are deterministic simulation settings and therefore
 participate in network compatibility.

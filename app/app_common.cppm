@@ -137,7 +137,7 @@ namespace simnet::app
     {
         auto const seconds = std::chrono::duration<float>(frame_delta).count();
         auto constexpr rotation_speed = 1.5F;
-        auto constexpr pitch_limit = 1.507F;
+        auto constexpr pitch_limit = 1.483529864F;
         state.yaw += yaw_axis * rotation_speed * seconds;
         state.pitch = std::clamp(state.pitch + pitch_axis * rotation_speed * seconds, -pitch_limit, pitch_limit);
     }

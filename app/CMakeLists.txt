@@ -16,7 +16,11 @@ endif ()
 simnet_configure_target(Server)
 
 add_executable(Client client_main.cpp client_runtime.cpp)
-target_sources(Client PRIVATE FILE_SET CXX_MODULES FILES app_common.cppm app_protocol.cppm)
+target_sources(Client
+    PRIVATE
+        FILE_SET CXX_MODULES
+        FILES app_camera.cppm app_common.cppm app_protocol.cppm
+)
 target_link_libraries(Client
     PRIVATE
         simnet_config

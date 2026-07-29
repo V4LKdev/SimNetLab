@@ -121,6 +121,22 @@ TEST_CASE("canonical and legacy observer visualization keys conflict", "[config]
     CHECK_THROWS(simnet::load_client_config(conflicting.path()));
 }
 
+TEST_CASE("player pitch limit stays clear of the vertical camera singularity", "[config][player]")
+{
+    auto const accepted = TemporaryConfig {
+        "simnet_player_pitch_accepted.json",
+        R"({ "player": { "pitch_limit_degrees": 85.0 } })"
+    };
+    CHECK(simnet::load_shared_config(accepted.path()).player.pitch_limit_degrees
+        == 85.0F);
+
+    auto const rejected = TemporaryConfig {
+        "simnet_player_pitch_rejected.json",
+        R"({ "player": { "pitch_limit_degrees": 85.1 } })"
+    };
+    CHECK_THROWS(simnet::load_shared_config(rejected.path()));
+}
+
 TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")
 {
     auto const path = simnet::default_shared_config_path().parent_path()
