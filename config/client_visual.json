@@ -22,7 +22,7 @@
     "stationary_observer_interest_radius": 150.0,
     "stationary_observer_vertical_fov_degrees": 60.0,
     "max_visible_spatial_cells": 2048,
-    "entity_mesh_path": ""
+    "entity_mesh_path": "assets/render/boid.obj"
   },
   "telemetry": {
     "console_log_enabled": true,

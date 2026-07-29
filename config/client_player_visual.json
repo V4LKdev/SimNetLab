@@ -20,7 +20,7 @@
     "entity_scale": 1.0,
     "picking_radius": 1.0,
     "max_visible_spatial_cells": 2048,
-    "entity_mesh_path": ""
+    "entity_mesh_path": "assets/render/boid.obj"
   },
   "telemetry": {
     "console_log_enabled": true,

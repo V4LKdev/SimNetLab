@@ -3,12 +3,12 @@
     "seed": 12345
   },
   "simulation": {
-    "tick_rate_hz": 60.0,
-    "world_half": 65.0,
-    "initial_boid_count": 1000
+    "tick_rate_hz": 60,
+    "world_half": 170,
+    "initial_boid_count": 1500
   },
   "spatial": {
-    "cell_size": 18.0,
+    "cell_size": 18,
     "max_neighbors": 64
   },
   "boids": {
@@ -24,19 +24,19 @@
     "max_speed": 10.0,
     "max_acceleration": 12.0,
     "separation_radius": 3.6,
-    "alignment_radius": 18.0,
-    "cohesion_radius": 18.0,
-    "field_of_view_degrees": 240.0,
+    "alignment_radius": 12,
+    "cohesion_radius": 24,
+    "field_of_view_degrees": 240,
     "containment_prediction_seconds": 0.75,
     "containment_margin": 22.5,
-    "separation_acceleration": 10.0,
-    "containment_acceleration": 9.0,
-    "alignment_acceleration": 3.0,
-    "cohesion_acceleration": 2.0,
-    "wander_acceleration": 0.35,
+    "separation_acceleration": 10,
+    "containment_acceleration": 9,
+    "alignment_acceleration": 1.1,
+    "cohesion_acceleration": 2.2,
+    "wander_acceleration": 0.75,
     "wander_frequency_hz": 0.35,
-    "hue_assimilation_rate": 0.25,
-    "hue_drift_rate": 0.02
+    "hue_assimilation_rate": 0.04,
+    "hue_drift_rate": 0.006
   },
   "player": {
     "cruise_speed": 8.0,

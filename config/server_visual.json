@@ -8,7 +8,7 @@
     "snapshot_delivery": "reliable_sequenced"
   },
   "flecs": {
-    "thread_count": 1
+    "thread_count": 8
   },
   "visualization": {
     "enabled": true,
