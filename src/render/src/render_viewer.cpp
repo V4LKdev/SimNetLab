@@ -21,8 +21,6 @@ module;
 
 #include <simnet/telemetry_trace.hpp>
 
-#include "../assets/jetbrains_mono_regular.hpp"
-
 module simnet.render;
 
 import simnet.telemetry;
@@ -39,6 +37,28 @@ constexpr float max_pitch = pi * 0.48F;
 constexpr float minimum_distance = 2.0F;
 
 bool viewer_active = false;
+
+constexpr auto viewer_glyphs() noexcept {
+  constexpr std::array icon_codepoints{
+      0xf04b, // play
+      0xf04c, // pause
+      0xf030, // camera
+      0xf03a, // overlays list
+      0xf059, // help
+      0xf201, // overview chart
+      0xf1eb, // network
+      0xf1b2, // entity cube
+      0xf06e, // eye
+      0xf11c, // keyboard
+  };
+  auto result = std::array<int, 95U + icon_codepoints.size()>{};
+  for (auto index = std::size_t{}; index < 95U; ++index) {
+    result[index] = static_cast<int>(32U + index);
+  }
+  std::copy(icon_codepoints.begin(), icon_codepoints.end(),
+            result.begin() + 95);
+  return result;
+}
 
 [[nodiscard]] simnet::NS elapsed_ns(Clock::time_point start) noexcept {
   return std::chrono::duration_cast<simnet::NS>(Clock::now() - start);
@@ -247,9 +267,9 @@ Viewer::Impl::Impl(ViewerConfig config)
   if (!IsWindowReady()) {
     throw std::runtime_error("failed to create viewer window");
   }
-  font_ = LoadFontFromMemory(".ttf", JetBrainsMono_Regular_ttf,
-                             static_cast<int>(JetBrainsMono_Regular_ttf_len),
-                             32, nullptr, 0);
+  static constexpr auto glyphs = viewer_glyphs();
+  font_ = LoadFontEx(SIMNET_NERD_FONT_PATH, 40, glyphs.data(),
+                     static_cast<int>(glyphs.size()));
   if (font_.texture.id == 0) {
     CloseWindow();
     throw std::runtime_error("failed to load viewer font");

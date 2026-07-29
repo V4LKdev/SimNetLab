@@ -26,4 +26,9 @@ target_link_libraries(simnet_render
         simnet_telemetry
 )
 
+target_compile_definitions(simnet_render
+    PRIVATE
+        SIMNET_NERD_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/JetBrainsMonoNerdFont-Regular.ttf"
+)
+
 simnet_configure_target(simnet_render)

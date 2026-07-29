@@ -303,7 +303,7 @@ export namespace simnet
     {
         std::uint32_t window_width { 1800 };
         std::uint32_t window_height { 1080 };
-        std::uint32_t panel_width { 360 };
+        std::uint32_t panel_width { 420 };
         std::uint32_t target_frame_rate { 60 };
         float entity_scale { 1.0F };
         float picking_radius { 1.0F };

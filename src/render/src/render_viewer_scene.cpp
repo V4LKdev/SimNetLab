@@ -222,8 +222,8 @@ void Viewer::Impl::draw_debug_labels(DebugPrimitiveView const &debug) const {
     char text[64]{};
     std::snprintf(text, sizeof(text), "%.*s", static_cast<int>(value.size()),
                   value.data());
-    DrawTextEx(font_, text, {screen.x + 5.0F, screen.y - 7.0F}, 11.0F, 0.5F,
-               to_raylib(color));
+    DrawTextEx(font_, text, {screen.x + 6.0F, screen.y - 8.0F},
+               typography.debug_label, 0.75F, to_raylib(color));
     ++drawn;
   };
   for (auto const &sphere : debug.spheres) {

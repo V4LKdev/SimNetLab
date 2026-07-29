@@ -88,6 +88,33 @@ struct UiPalette {
 
 inline constexpr UiPalette palette{};
 
+struct UiTypography {
+  float application_title{24.0F};
+  float context{15.0F};
+  float page{16.0F};
+  float section{15.0F};
+  float body{16.0F};
+  float secondary{14.0F};
+  float toolbar{15.0F};
+  float context_card{16.0F};
+  float debug_label{14.0F};
+};
+
+inline constexpr UiTypography typography{};
+
+namespace icon {
+inline constexpr char play[] = "\uf04b";
+inline constexpr char pause[] = "\uf04c";
+inline constexpr char camera[] = "\uf030";
+inline constexpr char overlays[] = "\uf03a";
+inline constexpr char help[] = "\uf059";
+inline constexpr char overview[] = "\uf201";
+inline constexpr char network[] = "\uf1eb";
+inline constexpr char entity[] = "\uf1b2";
+inline constexpr char view[] = "\uf06e";
+inline constexpr char controls[] = "\uf11c";
+} // namespace icon
+
 struct ViewportUiLayout {
   std::array<Rectangle, 4> toolbar_buttons{};
   Rectangle popover{};
@@ -95,8 +122,8 @@ struct ViewportUiLayout {
 
 [[nodiscard]] inline ViewportUiLayout
 viewport_ui_layout(SceneRect scene) noexcept {
-  auto constexpr button_width = 82.0F;
-  auto constexpr button_height = 30.0F;
+  auto constexpr button_width = 108.0F;
+  auto constexpr button_height = 38.0F;
   auto constexpr gap = 6.0F;
   auto const right = static_cast<float>(scene.x + scene.width) - 14.0F;
   auto layout = ViewportUiLayout{};
@@ -109,7 +136,7 @@ viewport_ui_layout(SceneRect scene) noexcept {
         button_height,
     };
   }
-  layout.popover = {right - 286.0F, 52.0F, 286.0F, 430.0F};
+  layout.popover = {right - 320.0F, 60.0F, 320.0F, 430.0F};
   return layout;
 }
 } // namespace simnet::render_detail

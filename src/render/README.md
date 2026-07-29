@@ -11,12 +11,18 @@ sidebar, and help drawing. The shared
 private implementation header contains only Viewer state and internal helpers;
 it is not part of the module's public API.
 
-The private panel uses the embedded JetBrains Mono Regular font from
-`assets/jetbrains_mono_regular.hpp`. JetBrains Mono is licensed under Apache-2.0.
+The private panel uses the tracked JetBrains Mono Nerd Font Regular resource
+from `assets/JetBrainsMonoNerdFont-Regular.ttf`. The viewer loads a bounded
+ASCII and interface-icon glyph set at startup rather than building an atlas for
+the entire patched font. The font is distributed under the SIL Open Font
+License 1.1 in `assets/JetBrainsMonoNerdFont-OFL.txt`.
 
 `RenderEntityView` does not own state. Its identifier, position, heading, and hue spans must remain valid for the duration of `Viewer::draw()`. Mismatched span lengths reject the entity frame without reading it. Entities with non-finite position or heading values are skipped during preparation.
 
-The Phase 1 viewer creates one fixed `1800 x 1080` window per process. A `360` pixel Raylib panel occupies the left side. The right `1440 x 1080` region draws a 4:3 scene render texture. The procedural wedge mesh points along local `+Z` with local `+Y` up.
+The viewer creates one fixed `1800 x 1080` window per process. A `420` pixel
+Raylib panel provides room for the 16-pixel body type scale; the remaining
+`1380 x 1080` region draws the scene render texture. The procedural wedge mesh
+points along local `+Z` with local `+Y` up.
 
 The viewer uses 32 persistent hue buckets and one instanced draw per non-empty bucket. It renders world bounds, optional axes, and an overview orbit camera. Right drag orbits, the wheel zooms, and `F5` resets the active camera. The Server viewer can pause locally. A ready Client viewer requests an authoritative pause state and continues applying snapshots while paused.
 
