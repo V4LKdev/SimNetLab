@@ -13,7 +13,10 @@
       "generator": "Ninja",
       "toolchainFile": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "SIMNET_WARNINGS_AS_ERRORS": true,
+        "SIMNET_ENABLE_ASAN": false,
+        "SIMNET_ENABLE_UBSAN": false
       }
     },
     {
@@ -22,7 +25,9 @@
       "inherits": "vcpkg-base",
       "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SIMNET_ENABLE_ASAN": true,
+        "SIMNET_ENABLE_UBSAN": true
       }
     },
     {
