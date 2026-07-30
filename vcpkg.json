@@ -11,7 +11,6 @@
     "spdlog",
     "nlohmann-json",
     "catch2",
-    "tracy",
-    "benchmark"
+    "tracy"
   ]
 }

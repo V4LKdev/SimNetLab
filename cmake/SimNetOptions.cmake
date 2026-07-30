@@ -1,4 +1,5 @@
-option(SIMNET_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(SIMNET_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(SIMNET_ENABLE_TRACY "Enable Tracy profiling integration" ON)
 option(SIMNET_ENABLE_RENDER "Build render support" ON)
-option(SIMNET_ENABLE_BENCHMARKING "Build the placeholder benchmarking support" OFF)
+option(SIMNET_ENABLE_ASAN "Enable AddressSanitizer" ON)
+option(SIMNET_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" ON)

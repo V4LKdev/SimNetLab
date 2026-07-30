@@ -1,16 +1,28 @@
-function(simnet_configure_target TARGET)
-    target_compile_features(${TARGET} PUBLIC cxx_std_23)
-    set_target_properties(${TARGET} PROPERTIES
-        CXX_EXTENSIONS OFF
-    )
+function(simnet_configure_target target)
+    target_compile_features(${target} PUBLIC cxx_std_23)
+    set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
 
-    target_compile_options(${TARGET}
-        PRIVATE
-            $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
-            $<$<AND:$<BOOL:${SIMNET_WARNINGS_AS_ERRORS}>,$<CXX_COMPILER_ID:GNU,Clang,AppleClang>>:-Werror>
-            $<$<CXX_COMPILER_ID:MSVC>:/W4>
-            $<$<AND:$<BOOL:${SIMNET_WARNINGS_AS_ERRORS}>,$<CXX_COMPILER_ID:MSVC>>:/WX>
-    )
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 
-    target_enable_sanitizers(${TARGET})
+        if (SIMNET_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif ()
+
+        if (SIMNET_ENABLE_ASAN)
+            target_compile_options(${target} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+            target_link_options(${target} PRIVATE -fsanitize=address)
+        endif ()
+
+        if (SIMNET_ENABLE_UBSAN)
+            target_compile_options(${target} PRIVATE -fsanitize=undefined)
+            target_link_options(${target} PRIVATE -fsanitize=undefined)
+        endif ()
+    elseif (MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+
+        if (SIMNET_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE /WX)
+        endif ()
+    endif ()
 endfunction()

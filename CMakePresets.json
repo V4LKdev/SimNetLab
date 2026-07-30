@@ -2,8 +2,8 @@
   "version": 10,
   "$schema": "https://cmake.org/cmake/help/latest/manual/presets/schema.json",
   "cmakeMinimumRequired": {
-    "major": 4,
-    "minor": 3,
+    "major": 3,
+    "minor": 31,
     "patch": 0
   },
   "configurePresets": [
@@ -11,6 +11,7 @@
       "name": "vcpkg-base",
       "hidden": true,
       "generator": "Ninja",
+      "toolchainFile": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": true
       }
