@@ -49,8 +49,9 @@ simnet_configure_target(SimNetTests)
 
 include(Catch)
 catch_discover_tests(SimNetTests
-    TEST_PREFIX "simnet."
-    PROPERTIES
+        DISCOVERY_MODE PRE_TEST
+        TEST_PREFIX "simnet."
+        PROPERTIES
         LABELS "safety-net"
         TIMEOUT 10
 )

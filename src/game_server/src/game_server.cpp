@@ -257,15 +257,7 @@ namespace simnet
         std::vector<WorkerScratch> workers {};
         WorkerScratch inspection {};
         std::vector<std::uint8_t> capture_seen {};
-        flecs::query<
-            const EntityKindComponent,
-            const NetIdentity,
-            const Position,
-            const Heading,
-            const Velocity,
-            const HueState,
-            const Hue,
-            const FlockRow> capture_query {};
+        flecs::entity_t capture_query_entity {};
         std::optional<EntityNetId> selected_id {};
         std::optional<SelectedBoidDebug> selected_debug {};
         ServerGameStepReport report {};
@@ -1153,7 +1145,7 @@ namespace simnet
             const Hue>()
             .cache_kind(flecs::QueryCacheAll)
             .build();
-        impl->capture_query = world.query_builder<
+        auto const capture_query = world.query_builder<
             const EntityKindComponent,
             const NetIdentity,
             const Position,
@@ -1161,9 +1153,10 @@ namespace simnet
             const Velocity,
             const HueState,
             const Hue,
-            const FlockRow>()
+            const FlockRow>("simnet::FlockCaptureQuery")
             .cache_kind(flecs::QueryCacheAll)
             .build();
+        impl->capture_query_entity = capture_query.entity();
 
         auto const player_phase = world.entity("simnet::PlayerMovementPhase")
             .add(flecs::Phase)
@@ -1342,7 +1335,11 @@ namespace simnet
                     }
 
                     std::ranges::fill(impl->capture_seen, std::uint8_t {});
-                    impl->capture_query.run([&](flecs::iter& query_iterator) {
+                    auto const query_world = system_iterator.world();
+                    auto const capture_query = query_world.query(
+                        query_world.entity(impl->capture_query_entity)
+                    );
+                    capture_query.run([&](flecs::iter& query_iterator) {
                         while (query_iterator.next() && impl->phase_valid) {
                             auto const kinds = query_iterator.field<const EntityKindComponent>(0);
                             auto const identities = query_iterator.field<const NetIdentity>(1);
@@ -1594,8 +1591,8 @@ namespace simnet
                     }
                     impl->report.phases.commit_ms = elapsed_ms(impl->commit_started);
                     impl->report.phases.progress_ms = elapsed_ms(impl->progress_started);
-                    auto const& diagnostics = impl->report.diagnostics;
-                    auto const& phases = impl->report.phases;
+        [[maybe_unused]] auto const& diagnostics = impl->report.diagnostics;
+        [[maybe_unused]] auto const& phases = impl->report.phases;
                     SIMNET_TRACE_PLOT("boids.neighbors.raw_mean", diagnostics.raw_candidates_mean);
                     SIMNET_TRACE_PLOT(
                         "boids.neighbors.raw_max",

@@ -8,6 +8,7 @@ module;
 #include <cstdio>
 #include <deque>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include <raylib.h>
