@@ -1,3 +1,4 @@
+# game_client
 add_library(simnet_game_client)
 
 target_sources(simnet_game_client

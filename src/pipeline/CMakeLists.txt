@@ -1,3 +1,4 @@
+#pipeline
 add_library(simnet_pipeline)
 
 target_sources(simnet_pipeline

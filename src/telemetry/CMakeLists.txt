@@ -1,3 +1,4 @@
+# telemetry
 find_package(spdlog CONFIG REQUIRED)
 
 if (SIMNET_ENABLE_TRACY)

@@ -1,3 +1,4 @@
+# synthetic
 add_library(simnet_synthetic)
 
 target_sources(simnet_synthetic

@@ -1,3 +1,4 @@
+# game_shared
 find_package(flecs CONFIG REQUIRED)
 
 add_library(simnet_game_shared)
