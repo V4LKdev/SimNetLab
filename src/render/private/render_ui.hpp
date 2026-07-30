@@ -8,7 +8,8 @@ struct SceneRect {
   int height{};
 };
 
-enum class InspectorPage : std::uint8_t { Overview, Network, Entity };
+enum class InspectorPage : std::uint8_t { Overview, Network, Entity, Setup };
+enum class OpenPopover : std::uint8_t { None, Camera, Overlays, Help };
 enum class UiValueState : std::uint8_t {
   Normal,
   Muted,
@@ -28,6 +29,8 @@ struct PanelSection {
   std::array<char, 36> title{};
   std::uint16_t first_row{};
   std::uint16_t row_count{};
+  bool collapsible{};
+  bool expanded{true};
 };
 
 struct PanelModel {
@@ -47,13 +50,13 @@ struct PanelModel {
 
 struct OverlayState {
   bool world_bounds{true};
-  bool origin_axes{true};
+  bool origin_axes{};
   bool spatial_cells{};
   bool observer_marker{true};
   bool observer_radius{};
   bool observer_frustum{};
   bool selected_marker{true};
-  bool rule_radii{true};
+  bool rule_radii{};
   bool steering_vectors{true};
   bool queried_cells{};
   bool field_of_view{};
@@ -61,11 +64,76 @@ struct OverlayState {
   bool debug_labels{};
 };
 
+inline constexpr float overlay_row_height = 36.0F;
+
+struct OverlayOption {
+  char const *group;
+  char const *label;
+  bool *value;
+  bool available;
+};
+
+[[nodiscard]] inline auto overlay_options(OverlayState &state,
+                                          RenderFrame const &frame,
+                                          bool has_selection) noexcept {
+  return std::array{
+      OverlayOption{"GENERAL", "World bounds", &state.world_bounds, true},
+      OverlayOption{"GENERAL", "World origin axes", &state.origin_axes, true},
+      OverlayOption{"GENERAL", "Spatial cells", &state.spatial_cells,
+                    frame.info.capabilities.has_spatial_visualization},
+      OverlayOption{"OBSERVER", "Observer marker", &state.observer_marker,
+                    frame.info.capabilities.has_stationary_observer},
+      OverlayOption{"OBSERVER", "Observer radius", &state.observer_radius,
+                    frame.info.capabilities.has_stationary_observer},
+      OverlayOption{"OBSERVER", "Observer frustum", &state.observer_frustum,
+                    frame.info.capabilities.has_stationary_observer},
+      OverlayOption{"SELECTION", "Selected marker", &state.selected_marker,
+                    has_selection},
+      OverlayOption{"SELECTION", "Rule radii", &state.rule_radii,
+                    has_selection &&
+                        frame.info.capabilities.has_entity_diagnostics},
+      OverlayOption{"SELECTION", "Steering vectors", &state.steering_vectors,
+                    has_selection &&
+                        frame.info.capabilities.has_entity_diagnostics},
+      OverlayOption{"SELECTION", "Queried cells", &state.queried_cells,
+                    has_selection &&
+                        frame.info.capabilities.has_entity_diagnostics},
+      OverlayOption{"SELECTION", "Field of view", &state.field_of_view,
+                    has_selection &&
+                        frame.info.capabilities.has_entity_diagnostics},
+      OverlayOption{"SELECTION", "Selected trail", &state.selected_trail,
+                    has_selection &&
+                        frame.info.capabilities.has_selected_trail},
+      OverlayOption{"SELECTION", "Debug labels", &state.debug_labels,
+                    has_selection &&
+                        frame.info.capabilities.has_entity_diagnostics},
+  };
+}
+
+struct CameraOption {
+  char const *label;
+  CameraMode mode;
+  bool available;
+};
+
+[[nodiscard]] inline auto camera_options(RenderFrame const &frame,
+                                         bool has_selection) noexcept {
+  return std::array{
+      CameraOption{"Overview orbit", CameraMode::OverviewOrbit, true},
+      CameraOption{"Follow selected entity", CameraMode::EntityFollow,
+                   has_selection},
+      CameraOption{"Stationary observer", CameraMode::StationaryObserver,
+                   frame.stationary_observer.has_value()},
+      CameraOption{"Game camera", CameraMode::Game,
+                   frame.game_camera.has_value()},
+  };
+}
+
 struct UiState {
   InspectorPage page{InspectorPage::Overview};
-  std::array<float, 3> page_scroll{};
-  bool overlay_menu_open{};
-  bool help_open{};
+  std::array<float, 4> page_scroll{};
+  OpenPopover popover{OpenPopover::None};
+  std::array<std::uint32_t, 4> expanded_sections{0U, 0U, 0U, 3U};
   bool pointer_captured{};
 };
 
@@ -111,6 +179,7 @@ inline constexpr char help[] = "\uf059";
 inline constexpr char overview[] = "\uf201";
 inline constexpr char network[] = "\uf1eb";
 inline constexpr char entity[] = "\uf1b2";
+inline constexpr char setup[] = "\uf013";
 inline constexpr char view[] = "\uf06e";
 inline constexpr char controls[] = "\uf11c";
 } // namespace icon
@@ -119,6 +188,19 @@ struct ViewportUiLayout {
   std::array<Rectangle, 4> toolbar_buttons{};
   Rectangle popover{};
 };
+
+[[nodiscard]] inline Rectangle help_overlay_rect(SceneRect scene,
+                                                 RenderFrame const &frame) noexcept {
+  auto lines = 9.0F;
+  if (frame.game_camera.has_value()) {
+    lines += 2.0F;
+  }
+  if (frame.stationary_observer.has_value()) {
+    lines += 1.0F;
+  }
+  return {static_cast<float>(scene.x + 32), 70.0F, 540.0F,
+          56.0F + lines * 29.0F};
+}
 
 [[nodiscard]] inline ViewportUiLayout
 viewport_ui_layout(SceneRect scene) noexcept {

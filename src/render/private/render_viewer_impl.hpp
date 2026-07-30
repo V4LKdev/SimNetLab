@@ -123,7 +123,7 @@ private:
   void clear_selection(ViewerResult &result,
                        bool preserve_navigation_anchor = false);
   void update_camera(RenderFrame const &frame, ViewerResult &result);
-  void cycle_camera(RenderFrame const &frame) noexcept;
+  void reset_active_camera(RenderFrame const &frame) noexcept;
   void update_camera_position(float yaw, float pitch, float distance) noexcept;
   void reset_overview_camera(Vec3f center) noexcept;
   void reset_detail_camera(float world_extent) noexcept;
@@ -142,6 +142,7 @@ private:
                   RenderStats const &stats, ViewerResult const &result);
   void draw_help_overlay(RenderFrame const &frame) const;
   void draw_viewport_ui(RenderFrame const &frame, ViewerResult const &result);
+  void draw_orientation_gizmo() const;
 
   void clear_instances();
   void prepare_instances(RenderEntityView const &entities, RenderStats &stats);
@@ -169,6 +170,8 @@ private:
   render_detail::OverlayState overlays_{};
   render_detail::UiState ui_{};
   render_detail::PanelModel panel_model_{};
+  render_detail::PanelModel setup_panel_model_{};
+  std::optional<std::uint64_t> setup_revision_{};
   RenderStats completed_stats_{};
   float overview_yaw_{render_detail::pi * 0.25F};
   float overview_pitch_{render_detail::pi / 6.0F};

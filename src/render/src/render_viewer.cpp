@@ -48,8 +48,13 @@ constexpr auto viewer_glyphs() noexcept {
       0xf201, // overview chart
       0xf1eb, // network
       0xf1b2, // entity cube
+      0xf013, // setup gear
       0xf06e, // eye
       0xf11c, // keyboard
+      0xf00c, // check
+      0xf054, // chevron right
+      0xf078, // chevron down
+      0xf2f9, // reset
   };
   auto result = std::array<int, 95U + icon_codepoints.size()>{};
   for (auto index = std::size_t{}; index < 95U; ++index) {
@@ -327,6 +332,7 @@ Viewer::Impl::~Impl() {
 [[nodiscard]] ViewerResult Viewer::Impl::draw(RenderFrame const &frame) {
   SIMNET_TRACE_SCOPE_CATEGORY("render.viewer_frame",
                               simnet::LogCategory::Render);
+  auto const viewer_cpu_start = Clock::now();
   auto result = ViewerResult{};
   auto stats = RenderStats{};
   auto const input_start = Clock::now();
@@ -376,6 +382,7 @@ Viewer::Impl::~Impl() {
                  WHITE);
   draw_viewport_ui(frame, result);
   draw_help_overlay(frame);
+  stats.viewer_cpu_time = elapsed_ns(viewer_cpu_start);
   {
     SIMNET_TRACE_SCOPE_CATEGORY("render.present_wait",
                                 simnet::LogCategory::Render);
@@ -409,16 +416,23 @@ void Viewer::Impl::set_camera_mode(CameraMode mode) noexcept {
               : mode;
 }
 
-void Viewer::Impl::cycle_camera(RenderFrame const &frame) noexcept {
-  if (mode_ == CameraMode::OverviewOrbit && selected_entity_.has_value()) {
-    mode_ = CameraMode::EntityFollow;
-  } else if (mode_ != CameraMode::StationaryObserver &&
-             frame.stationary_observer.has_value()) {
-    mode_ = CameraMode::StationaryObserver;
-  } else if (mode_ != CameraMode::Game && frame.game_camera.has_value()) {
-    mode_ = CameraMode::Game;
-  } else {
-    mode_ = CameraMode::OverviewOrbit;
+void Viewer::Impl::reset_active_camera(RenderFrame const &frame) noexcept {
+  auto const bounds = frame.info.world_bounds;
+  auto const center = Vec3f{
+      .x = (bounds.min.x + bounds.max.x) * 0.5F,
+      .y = (bounds.min.y + bounds.max.y) * 0.5F,
+      .z = (bounds.min.z + bounds.max.z) * 0.5F,
+  };
+  auto const extent = std::max({
+      std::abs(bounds.max.x - bounds.min.x),
+      std::abs(bounds.max.y - bounds.min.y),
+      std::abs(bounds.max.z - bounds.min.z),
+      1.0F,
+  });
+  if (mode_ == CameraMode::EntityFollow && selected_entity_frame_.has_value()) {
+    reset_detail_camera(extent);
+  } else if (mode_ == CameraMode::OverviewOrbit) {
+    reset_overview_camera(center);
   }
 }
 
@@ -502,9 +516,6 @@ void Viewer::Impl::update_camera(RenderFrame const &frame,
     camera_initialized_ = true;
   }
 
-  if (IsKeyPressed(KEY_F4)) {
-    cycle_camera(frame);
-  }
   if (mode_ == CameraMode::Game && !frame.game_camera.has_value()) {
     mode_ = CameraMode::OverviewOrbit;
   }
@@ -554,17 +565,6 @@ void Viewer::Impl::update_camera(RenderFrame const &frame,
                                : max_distance_;
       distance = std::clamp(distance * (1.0F - wheel * 0.1F), minimum, maximum);
     }
-  }
-  if (IsKeyPressed(KEY_F5)) {
-    if (mode_ == CameraMode::EntityFollow &&
-        selected_entity_frame_.has_value()) {
-      reset_detail_camera(extent);
-    } else {
-      reset_overview_camera(center);
-    }
-  }
-  if (IsKeyPressed(KEY_BACKSPACE) && selected_entity_.has_value()) {
-    clear_selection(result);
   }
   if (mode_ == CameraMode::Game && frame.game_camera.has_value()) {
     camera_.position = to_raylib(frame.game_camera->position);

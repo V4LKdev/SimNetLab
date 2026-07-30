@@ -31,6 +31,7 @@ import simnet.snapshot;
 import simnet.telemetry;
 import simnet.transport;
 #if defined(SIMNET_ENABLE_RENDER)
+import simnet.app_visual_setup;
 import simnet.render;
 #endif
 
@@ -244,7 +245,8 @@ namespace
         simnet::SnapshotAck const& ack,
         std::string_view role,
         std::optional<simnet::StationaryObserverView> stationary_observer,
-        std::optional<simnet::GameCameraView> game_camera
+        std::optional<simnet::GameCameraView> game_camera,
+        simnet::RunSetupView setup
     )
     {
         auto replication = std::optional<simnet::RenderReplicationInfo> {};
@@ -256,6 +258,7 @@ namespace
                 .latest_applied_sequence = ack.newest_applied_snapshot != 0
                     ? std::optional<simnet::SequenceId> { ack.newest_applied_snapshot }
                     : std::optional<simnet::SequenceId> {},
+                .latest_snapshot_tick = snapshot.tick,
             };
         }
         return {
@@ -275,8 +278,8 @@ namespace
                 .simulation_paused = simulation_paused,
                 .interpolation = interpolation,
                 .context = {
-                    .application = "Client",
-                    .role = role,
+                    .kind = simnet::ViewerKind::Client,
+                    .client_role = role,
                 },
                 .capabilities = {
                     .can_pause_simulation = session_ready && simulation_paused.has_value(),
@@ -294,6 +297,7 @@ namespace
             },
             .stationary_observer = std::move(stationary_observer),
             .game_camera = std::move(game_camera),
+            .setup = setup,
         };
     }
 #endif
@@ -578,10 +582,12 @@ namespace simnet::app
     {
         try {
             auto const options = parse_options(argc, argv);
-            auto const shared = load_shared_config(
-                options.shared_config_path.value_or(default_shared_config_path())
-            );
-            auto const local = load_client_config(options.config_path.value_or(default_client_config_path()));
+            auto const shared_config_source =
+                options.shared_config_path.value_or(default_shared_config_path());
+            auto const local_config_source =
+                options.config_path.value_or(default_client_config_path());
+            auto const shared = load_shared_config(shared_config_source);
+            auto const local = load_client_config(local_config_source);
             auto const requested_role = configured_role(local.gameplay.role);
             auto telemetry = TelemetryLifetime { local.telemetry };
 #if defined(SIMNET_ENABLE_TRACY)
@@ -591,6 +597,15 @@ namespace simnet::app
 #endif
             auto signals = SignalHandlers {};
             auto const pipeline = make_snapshot_pipeline(shared, local.transport);
+#if defined(SIMNET_ENABLE_RENDER)
+            auto const run_setup = RunSetupStorage {
+                shared,
+                local,
+                pipeline,
+                shared_config_source,
+                local_config_source,
+            };
+#endif
 
             auto transport = TransportClient {};
             auto const connected = transport.connect({
@@ -866,7 +881,8 @@ namespace simnet::app
                                         ? std::string_view { "Player" }
                                         : std::string_view { "Stationary observer" },
                                     std::move(stationary_observer_view),
-                                    std::move(game_camera)
+                                    std::move(game_camera),
+                                    run_setup.view()
                                 )
                             );
                         }

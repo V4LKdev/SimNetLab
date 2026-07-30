@@ -23,6 +23,12 @@ export namespace simnet
         Game
     };
 
+    enum class ViewerKind : std::uint8_t
+    {
+        Server,
+        Client
+    };
+
     struct RenderEntityView
     {
         std::span<const EntityNetId> ids {};
@@ -56,8 +62,9 @@ export namespace simnet
 
     struct ViewerContext
     {
-        std::string_view application {};
-        std::string_view role {};
+        ViewerKind kind { ViewerKind::Server };
+        /// Client role such as "Stationary observer" or "Player"; empty for Server.
+        std::string_view client_role {};
     };
 
     /// Presentation-only interpolation facts supplied by the application.
@@ -75,6 +82,8 @@ export namespace simnet
     {
         std::string_view state {};
         std::optional<PeerId> peer {};
+        std::optional<std::uint32_t> connected_peer_count {};
+        std::optional<std::uint32_t> peer_capacity {};
     };
 
     /// Optional replication facts supplied by an application that owns them.
@@ -251,6 +260,26 @@ export namespace simnet
         }
     };
 
+    struct SetupRowView
+    {
+        std::string_view label {};
+        std::string_view value {};
+    };
+
+    struct SetupSectionView
+    {
+        std::string_view title {};
+        std::span<const SetupRowView> rows {};
+        bool initially_expanded {};
+    };
+
+    /// Application-owned, effective run configuration prepared once for presentation.
+    struct RunSetupView
+    {
+        std::uint64_t revision {};
+        std::span<const SetupSectionView> sections {};
+    };
+
     struct RenderFrame
     {
         RenderEntityView entities {};
@@ -259,6 +288,7 @@ export namespace simnet
         std::optional<StationaryObserverView> stationary_observer {};
         std::optional<GameCameraView> game_camera {};
         std::optional<SpatialDebugView> spatial {};
+        std::optional<RunSetupView> setup {};
         DebugPrimitiveView debug_primitives {};
     };
 
@@ -276,6 +306,8 @@ export namespace simnet
 
     struct RenderStats
     {
+        /// Complete viewer CPU work excluding EndDrawing presentation wait.
+        NS viewer_cpu_time {};
         NS input_cpu_time {};
         NS preparation_cpu_time {};
         NS scene_submit_cpu_time {};

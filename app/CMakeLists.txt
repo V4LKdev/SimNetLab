@@ -1,3 +1,4 @@
+# app
 add_executable(Server server_main.cpp server_runtime.cpp)
 target_sources(Server PRIVATE FILE_SET CXX_MODULES FILES app_common.cppm app_protocol.cppm)
 target_link_libraries(Server
@@ -11,7 +12,11 @@ target_link_libraries(Server
 )
 if (SIMNET_ENABLE_RENDER)
     target_link_libraries(Server PRIVATE simnet_render simnet_spatial)
-    target_compile_definitions(Server PRIVATE SIMNET_ENABLE_RENDER=1)
+    target_sources(Server PRIVATE FILE_SET CXX_MODULES FILES app_visual_setup.cppm)
+    target_compile_definitions(Server PRIVATE
+        SIMNET_ENABLE_RENDER=1
+        SIMNET_BUILD_CONFIG="$<CONFIG>"
+    )
 endif ()
 simnet_configure_target(Server)
 
@@ -32,6 +37,10 @@ target_link_libraries(Client
 )
 if (SIMNET_ENABLE_RENDER)
     target_link_libraries(Client PRIVATE simnet_render)
-    target_compile_definitions(Client PRIVATE SIMNET_ENABLE_RENDER=1)
+    target_sources(Client PRIVATE FILE_SET CXX_MODULES FILES app_visual_setup.cppm)
+    target_compile_definitions(Client PRIVATE
+        SIMNET_ENABLE_RENDER=1
+        SIMNET_BUILD_CONFIG="$<CONFIG>"
+    )
 endif ()
 simnet_configure_target(Client)

@@ -1,3 +1,4 @@
+# render
 find_package(raylib REQUIRED)
 
 add_library(simnet_render)
@@ -16,6 +17,7 @@ target_sources(simnet_render
         src/render_ui_model.cpp
         src/render_viewer_panel.cpp
         src/render_viewer_scene.cpp
+        src/render_viewer_viewport_ui.cpp
 )
 
 target_link_libraries(simnet_render

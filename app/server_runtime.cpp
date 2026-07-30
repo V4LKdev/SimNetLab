@@ -34,6 +34,7 @@ import simnet.snapshot;
 import simnet.telemetry;
 import simnet.transport;
 #if defined(SIMNET_ENABLE_RENDER)
+import simnet.app_visual_setup;
 import simnet.render;
 import simnet.spatial;
 #endif
@@ -357,11 +358,14 @@ namespace
         std::optional<PeerRuntimeState> const& peer,
         SpatialRenderStorage const& spatial,
         SelectedDebugRenderStorage& debug_storage,
-        std::optional<simnet::SelectedBoidDebug> const& selected_debug
+        std::optional<simnet::SelectedBoidDebug> const& selected_debug,
+        simnet::RunSetupView setup
     )
     {
         auto connection = simnet::RenderConnectionInfo {
-            .state = peer.has_value() ? "session ready" : "waiting for client",
+            .state = peer.has_value() ? "1 client connected" : "No clients connected",
+            .connected_peer_count = peer.has_value() ? 1U : 0U,
+            .peer_capacity = 1U,
         };
         auto replication = std::optional<simnet::RenderReplicationInfo> {};
         if (peer.has_value()) {
@@ -507,8 +511,7 @@ namespace
                 .simulation_paused = paused,
                 .interpolation = interpolation,
                 .context = {
-                    .application = "Server",
-                    .role = "Authoritative",
+                    .kind = simnet::ViewerKind::Server,
                 },
                 .capabilities = {
                     .can_pause_simulation = true,
@@ -532,6 +535,7 @@ namespace
                 }),
                 .display_capped = spatial.displayed_cells.size() < spatial.grid.occupied_cells.size(),
             },
+            .setup = setup,
             .debug_primitives = {
                 .spheres = debug_storage.spheres,
                 .vectors = debug_storage.vectors,
@@ -1195,10 +1199,12 @@ namespace simnet::app
     {
         try {
             auto const options = parse_options(argc, argv);
-            auto const shared = load_shared_config(
-                options.shared_config_path.value_or(default_shared_config_path())
-            );
-            auto const local = load_server_config(options.config_path.value_or(default_server_config_path()));
+            auto const shared_config_source =
+                options.shared_config_path.value_or(default_shared_config_path());
+            auto const local_config_source =
+                options.config_path.value_or(default_server_config_path());
+            auto const shared = load_shared_config(shared_config_source);
+            auto const local = load_server_config(local_config_source);
             if (local.transport.max_clients > 1U) {
                 throw std::runtime_error("server currently supports one client");
             }
@@ -1210,6 +1216,15 @@ namespace simnet::app
 #endif
             auto signals = SignalHandlers {};
             auto const pipeline = make_snapshot_pipeline(shared, local.transport);
+#if defined(SIMNET_ENABLE_RENDER)
+            auto const run_setup = RunSetupStorage {
+                shared,
+                local,
+                pipeline,
+                shared_config_source,
+                local_config_source,
+            };
+#endif
 
             auto transport = TransportServer {};
             auto const started = transport.start({
@@ -1476,7 +1491,8 @@ namespace simnet::app
                                     peer,
                                     spatial_render,
                                     selected_debug_render,
-                                    game.selected_boid_debug()
+                                    game.selected_boid_debug(),
+                                    run_setup.view()
                                 )
                             );
                         }
