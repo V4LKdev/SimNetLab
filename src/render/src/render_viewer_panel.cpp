@@ -15,9 +15,9 @@ module;
 
 module simnet.render;
 
+import :ui;
+import :viewer_impl;
 import simnet.core;
-
-#include "../private/render_viewer_impl.hpp"
 
 namespace simnet {
 namespace {

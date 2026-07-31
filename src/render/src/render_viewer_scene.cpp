@@ -19,10 +19,10 @@ module;
 
 module simnet.render;
 
+import :ui;
+import :viewer_impl;
 import simnet.core;
 import simnet.telemetry;
-
-#include "../private/render_viewer_impl.hpp"
 
 namespace simnet {
 using namespace render_detail;

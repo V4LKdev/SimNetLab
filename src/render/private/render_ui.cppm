@@ -1,4 +1,14 @@
-#pragma once
+module;
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+#include <raylib.h>
+
+module simnet.render:ui;
+
+import :types;
 
 namespace simnet::render_detail {
 struct SceneRect {

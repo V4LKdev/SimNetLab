@@ -1,6 +1,21 @@
-#pragma once
+module;
 
-#include "render_ui.hpp"
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <optional>
+#include <vector>
+
+#include <raylib.h>
+
+module simnet.render:viewer_impl;
+
+import :types;
+import :ui;
+import :viewer;
+import simnet.core;
 
 namespace simnet::render_detail {
 inline constexpr std::size_t hue_bucket_count = 32;

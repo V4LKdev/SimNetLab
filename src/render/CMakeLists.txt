@@ -10,9 +10,15 @@ target_sources(simnet_render
         FILES
             import/render.cppm
             import/render_types.cppm
+            import/render_viewer.cppm
     PRIVATE
-        private/render_viewer_impl.hpp
-        private/render_ui.hpp
+        FILE_SET private_modules
+        TYPE CXX_MODULES
+        BASE_DIRS private
+        FILES
+            private/render_ui.cppm
+            private/render_viewer_impl.cppm
+    PRIVATE
         src/render_viewer.cpp
         src/render_ui_model.cpp
         src/render_viewer_panel.cpp
