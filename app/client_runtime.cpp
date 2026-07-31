@@ -645,7 +645,10 @@ namespace simnet::app
                 };
             }
             if (local.visualization.enabled) {
-                viewer.emplace(viewer_config(local.visualization));
+                viewer.emplace(
+                    viewer_config(local.visualization),
+                    local.telemetry.log_directory
+                );
             }
 #endif
 

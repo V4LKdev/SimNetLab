@@ -79,7 +79,8 @@ void toggle_popover(UiState &ui, OpenPopover requested) noexcept {
 } // namespace
 
 void Viewer::Impl::update_panel_input(RenderFrame const &frame,
-                                      ViewerResult &result) {
+                                      ViewerResult &result,
+                                      bool &screenshot_requested) {
   ui_.pointer_captured = false;
   if (IsKeyPressed(KEY_F1)) {
     ui_.page = InspectorPage::Overview;
@@ -101,6 +102,12 @@ void Viewer::Impl::update_panel_input(RenderFrame const &frame,
   }
   if (IsKeyPressed(KEY_R)) {
     reset_active_camera(frame);
+  }
+  if (IsKeyPressed(KEY_O)) {
+    automatic_orbit_enabled_ = !automatic_orbit_enabled_;
+  }
+  if (IsKeyPressed(KEY_F12)) {
+    screenshot_requested = true;
   }
   if (IsKeyPressed(KEY_P) && frame.info.capabilities.can_pause_simulation) {
     result.toggle_simulation_pause_requested = true;
@@ -191,7 +198,8 @@ void Viewer::Impl::update_panel_input(RenderFrame const &frame,
     ui_.pointer_captured = true;
   }
   if (ui_.popover == OpenPopover::Help &&
-      CheckCollisionPointRec(mouse, help_overlay_rect(scene_rect_, frame))) {
+      CheckCollisionPointRec(mouse,
+                             help_overlay_rect(scene_rect_, frame, mode_))) {
     ui_.pointer_captured = true;
   }
 

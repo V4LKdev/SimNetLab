@@ -1261,7 +1261,10 @@ namespace simnet::app
 #if defined(SIMNET_ENABLE_RENDER)
             auto viewer = std::optional<Viewer> {};
             if (local.visualization.enabled) {
-                viewer.emplace(viewer_config(local.visualization));
+                viewer.emplace(
+                    viewer_config(local.visualization),
+                    local.telemetry.log_directory
+                );
                 static_cast<void>(viewer->draw({
                     .info = {
                         .world_bounds = make_centered_bounds(shared.simulation.world_half),

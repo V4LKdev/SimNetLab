@@ -1,6 +1,7 @@
 module;
 
 #include <memory>
+#include <string>
 
 export module simnet.render:viewer;
 
@@ -11,7 +12,8 @@ export namespace simnet
     class Viewer
     {
     public:
-        explicit Viewer(ViewerConfig config = {});
+        /// Empty output_directory saves screenshots in the current working directory.
+        explicit Viewer(ViewerConfig config = {}, std::string output_directory = {});
         ~Viewer();
 
         Viewer(Viewer const&) = delete;

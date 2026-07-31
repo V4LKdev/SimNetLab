@@ -12,6 +12,7 @@ module;
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -36,6 +37,7 @@ constexpr float pi = 3.14159265358979323846F;
 constexpr float min_pitch = -pi * 0.48F;
 constexpr float max_pitch = pi * 0.48F;
 constexpr float minimum_distance = 2.0F;
+constexpr float automatic_orbit_angular_speed = pi / 18.0F;
 
 bool viewer_active = false;
 
@@ -68,6 +70,35 @@ constexpr auto viewer_glyphs() noexcept {
 
 [[nodiscard]] simnet::Nanoseconds elapsed_ns(Clock::time_point start) noexcept {
   return std::chrono::duration_cast<simnet::Nanoseconds>(Clock::now() - start);
+}
+
+[[nodiscard]] float advance_orbit_yaw(float yaw,
+                                      simnet::Nanoseconds frame_delta) noexcept {
+  auto const elapsed = std::max(frame_delta, simnet::Nanoseconds{});
+  auto const seconds = std::chrono::duration<float>{elapsed}.count();
+  return std::remainder(yaw + automatic_orbit_angular_speed * seconds,
+                        2.0F * pi);
+}
+
+[[nodiscard]] std::filesystem::path
+next_screenshot_path(std::string const &output_directory) {
+  auto const directory = output_directory.empty()
+                             ? std::filesystem::current_path()
+                             : std::filesystem::absolute(output_directory)
+                                   .lexically_normal();
+  std::filesystem::create_directories(directory);
+  auto const stamp =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count();
+  auto const stem = "screenshot_" + std::to_string(stamp);
+  auto candidate = directory / (stem + ".png");
+  for (auto suffix = std::uint32_t{1}; std::filesystem::exists(candidate);
+       ++suffix) {
+    candidate =
+        directory / (stem + "_" + std::to_string(suffix) + ".png");
+  }
+  return candidate;
 }
 
 void validate_config(simnet::ViewerConfig const &config) {
@@ -255,8 +286,9 @@ void main()
 } // namespace
 
 namespace simnet {
-Viewer::Impl::Impl(ViewerConfig config)
+Viewer::Impl::Impl(ViewerConfig config, std::string output_directory)
     : config_(std::move(config)),
+      output_directory_(std::move(output_directory)),
       scene_rect_{
           .x = static_cast<int>(config_.panel_width),
           .y = 0,
@@ -336,10 +368,11 @@ Viewer::Impl::~Impl() {
   auto const viewer_cpu_start = Clock::now();
   auto result = ViewerResult{};
   auto stats = RenderStats{};
+  auto screenshot_requested = false;
   auto const input_start = Clock::now();
   {
     SIMNET_TRACE_SCOPE_CATEGORY("render.input", simnet::LogCategory::Render);
-    update_panel_input(frame, result);
+    update_panel_input(frame, result, screenshot_requested);
     update_camera(frame, result);
     update_selection(frame.entities, result);
     update_selected_trail();
@@ -384,6 +417,9 @@ Viewer::Impl::~Impl() {
   draw_viewport_ui(frame, result);
   draw_help_overlay(frame);
   stats.viewer_cpu_time = elapsed_ns(viewer_cpu_start);
+  if (screenshot_requested) {
+    capture_screenshot();
+  }
   {
     SIMNET_TRACE_SCOPE_CATEGORY("render.present_wait",
                                 simnet::LogCategory::Render);
@@ -565,6 +601,13 @@ void Viewer::Impl::update_camera(RenderFrame const &frame,
                                ? detail_max_distance_
                                : max_distance_;
       distance = std::clamp(distance * (1.0F - wheel * 0.1F), minimum, maximum);
+    }
+  }
+  if (automatic_orbit_enabled_) {
+    if (mode_ == CameraMode::OverviewOrbit) {
+      overview_yaw_ = advance_orbit_yaw(overview_yaw_, frame.info.frame_delta);
+    } else if (mode_ == CameraMode::EntityFollow) {
+      detail_yaw_ = advance_orbit_yaw(detail_yaw_, frame.info.frame_delta);
     }
   }
   if (mode_ == CameraMode::Game && frame.game_camera.has_value()) {
@@ -792,8 +835,29 @@ void Viewer::Impl::select_adjacent_entity(RenderEntityView const &entities,
   }
 }
 
-Viewer::Viewer(ViewerConfig config)
-    : impl_(std::make_unique<Impl>(std::move(config))) {}
+void Viewer::Impl::capture_screenshot() const {
+  try {
+    auto const path = next_screenshot_path(output_directory_);
+    // The back buffer holds the complete current frame before EndDrawing swaps it.
+    rlDrawRenderBatchActive();
+    TakeScreenshot(path.string().c_str());
+    auto error = std::error_code{};
+    if (!std::filesystem::is_regular_file(path, error) || error) {
+      log(LogCategory::Render, LogLevel::Error,
+          "viewer screenshot failed path=" + path.string());
+      return;
+    }
+    log(LogCategory::Render, LogLevel::Info,
+        "viewer screenshot saved path=" + path.string());
+  } catch (std::exception const &error) {
+    log(LogCategory::Render, LogLevel::Error,
+        "viewer screenshot failed: " + std::string{error.what()});
+  }
+}
+
+Viewer::Viewer(ViewerConfig config, std::string output_directory)
+    : impl_(std::make_unique<Impl>(std::move(config),
+                                  std::move(output_directory))) {}
 
 Viewer::~Viewer() = default;
 Viewer::Viewer(Viewer &&) noexcept = default;

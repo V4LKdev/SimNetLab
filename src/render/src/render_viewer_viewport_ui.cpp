@@ -191,7 +191,7 @@ void Viewer::Impl::draw_help_overlay(RenderFrame const &frame) const {
   if (ui_.popover != OpenPopover::Help) {
     return;
   }
-  auto const rect = help_overlay_rect(scene_rect_, frame);
+  auto const rect = help_overlay_rect(scene_rect_, frame, mode_);
   DrawRectangleRec(rect, palette.raised);
   DrawRectangleLinesEx(rect, 1.0F, palette.border);
   auto y = rect.y + 17.0F;
@@ -211,9 +211,14 @@ void Viewer::Impl::draw_help_overlay(RenderFrame const &frame) const {
     line("RMB + drag             Orbit around entity");
     line("Wheel                  Follow distance");
   }
+  if (mode_ == CameraMode::OverviewOrbit ||
+      mode_ == CameraMode::EntityFollow) {
+    line("O                      Toggle automatic orbit");
+  }
   line("C / R                   Camera menu / reset");
   line("M / H                   Overlays / close help");
   line("P                       Pause / resume");
+  line("F12                     Save full-window screenshot");
   if (mode_ == CameraMode::Game && frame.game_camera.has_value()) {
     line("WASD                    Steer player fish");
     line("Shift / Ctrl            Accelerate / slow");

@@ -188,13 +188,18 @@ struct ViewportUiLayout {
   Rectangle popover{};
 };
 
-[[nodiscard]] inline Rectangle help_overlay_rect(SceneRect scene,
-                                                 RenderFrame const &frame) noexcept {
-  auto lines = 9.0F;
-  if (frame.game_camera.has_value()) {
+[[nodiscard]] inline Rectangle
+help_overlay_rect(SceneRect scene, RenderFrame const &frame,
+                  CameraMode mode) noexcept {
+  auto lines = 7.0F;
+  if (mode == CameraMode::OverviewOrbit) {
+    lines += 4.0F;
+  } else if (mode == CameraMode::EntityFollow) {
+    lines += 5.0F;
+  } else if (mode == CameraMode::Game && frame.game_camera.has_value()) {
     lines += 2.0F;
-  }
-  if (frame.stationary_observer.has_value()) {
+  } else if (mode == CameraMode::StationaryObserver &&
+             frame.stationary_observer.has_value()) {
     lines += 1.0F;
   }
   return {static_cast<float>(scene.x + 32), 70.0F, 540.0F,

@@ -6,6 +6,7 @@ module;
 #include <cstdint>
 #include <deque>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <raylib.h>
@@ -118,7 +119,7 @@ struct WorldUpBasis {
 namespace simnet {
 class Viewer::Impl {
 public:
-  explicit Impl(ViewerConfig config);
+  explicit Impl(ViewerConfig config, std::string output_directory);
   ~Impl();
 
   [[nodiscard]] ViewerResult draw(RenderFrame const &frame);
@@ -151,13 +152,15 @@ private:
   void select_adjacent_entity(RenderEntityView const &entities, int direction,
                               ViewerResult &result);
 
-  void update_panel_input(RenderFrame const &frame, ViewerResult &result);
+  void update_panel_input(RenderFrame const &frame, ViewerResult &result,
+                          bool &screenshot_requested);
   void build_panel_model(RenderFrame const &frame, bool valid_entities);
   void draw_panel(RenderFrame const &frame, bool valid_entities,
                   RenderStats const &stats, ViewerResult const &result);
   void draw_help_overlay(RenderFrame const &frame) const;
   void draw_viewport_ui(RenderFrame const &frame, ViewerResult const &result);
   void draw_orientation_gizmo() const;
+  void capture_screenshot() const;
 
   void clear_instances();
   void prepare_instances(RenderEntityView const &entities, RenderStats &stats);
@@ -171,6 +174,7 @@ private:
   void draw_scene(RenderFrame const &frame, RenderStats &stats);
 
   ViewerConfig config_;
+  std::string output_directory_;
   render_detail::SceneRect scene_rect_{};
   RenderTexture2D scene_{};
   Font font_{};
@@ -180,6 +184,7 @@ private:
   Camera3D camera_{};
   Vector3 target_{};
   CameraMode mode_{CameraMode::OverviewOrbit};
+  bool automatic_orbit_enabled_{};
   bool instancing_available_{};
   bool camera_initialized_{};
   render_detail::OverlayState overlays_{};
