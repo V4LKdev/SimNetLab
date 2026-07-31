@@ -19,8 +19,8 @@ target_link_libraries(simnet_game_server
         simnet_core
         simnet_snapshot
         simnet_game_shared
-    PRIVATE
         simnet_spatial
+    PRIVATE
         simnet_telemetry
 )
 
