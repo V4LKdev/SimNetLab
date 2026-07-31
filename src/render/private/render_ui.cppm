@@ -62,9 +62,9 @@ struct OverlayState {
   bool world_bounds{true};
   bool origin_axes{};
   bool spatial_cells{};
-  bool observer_marker{true};
-  bool observer_radius{};
-  bool observer_frustum{};
+  bool stationary_observer_marker{true};
+  bool stationary_observer_radius{};
+  bool stationary_observer_frustum{};
   bool selected_marker{true};
   bool rule_radii{};
   bool steering_vectors{true};
@@ -91,11 +91,14 @@ struct OverlayOption {
       OverlayOption{"GENERAL", "World origin axes", &state.origin_axes, true},
       OverlayOption{"GENERAL", "Spatial cells", &state.spatial_cells,
                     frame.info.capabilities.has_spatial_visualization},
-      OverlayOption{"OBSERVER", "Observer marker", &state.observer_marker,
+      OverlayOption{"STATIONARY OBSERVER", "Stationary observer marker",
+                    &state.stationary_observer_marker,
                     frame.info.capabilities.has_stationary_observer},
-      OverlayOption{"OBSERVER", "Observer radius", &state.observer_radius,
+      OverlayOption{"STATIONARY OBSERVER", "Stationary observer radius",
+                    &state.stationary_observer_radius,
                     frame.info.capabilities.has_stationary_observer},
-      OverlayOption{"OBSERVER", "Observer frustum", &state.observer_frustum,
+      OverlayOption{"STATIONARY OBSERVER", "Stationary observer frustum",
+                    &state.stationary_observer_frustum,
                     frame.info.capabilities.has_stationary_observer},
       OverlayOption{"SELECTION", "Selected marker", &state.selected_marker,
                     has_selection},
@@ -179,20 +182,6 @@ struct UiTypography {
 };
 
 inline constexpr UiTypography typography{};
-
-namespace icon {
-inline constexpr char play[] = "\uf04b";
-inline constexpr char pause[] = "\uf04c";
-inline constexpr char camera[] = "\uf030";
-inline constexpr char overlays[] = "\uf03a";
-inline constexpr char help[] = "\uf059";
-inline constexpr char overview[] = "\uf201";
-inline constexpr char network[] = "\uf1eb";
-inline constexpr char entity[] = "\uf1b2";
-inline constexpr char setup[] = "\uf013";
-inline constexpr char view[] = "\uf06e";
-inline constexpr char controls[] = "\uf11c";
-} // namespace icon
 
 struct ViewportUiLayout {
   std::array<Rectangle, 4> toolbar_buttons{};

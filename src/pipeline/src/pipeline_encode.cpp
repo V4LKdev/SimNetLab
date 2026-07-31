@@ -190,8 +190,6 @@ namespace simnet
             .payload_bytes     = payload_bytes,
         };
 
-        // --- Serialise ---
-
         scratch.bytes.clear();
         scratch.bytes.reserve(pipeline_wire::header_bytes + payload_bytes);
         pipeline_wire::write_header(scratch.bytes, header);

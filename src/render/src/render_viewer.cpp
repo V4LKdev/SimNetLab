@@ -90,7 +90,7 @@ void validate_config(simnet::ViewerConfig const &config) {
       config.stationary_observer_vertical_fov_degrees >= 180.0F ||
       config.max_visible_spatial_cells == 0U) {
     throw std::runtime_error(
-        "viewer observer and spatial settings are invalid");
+        "viewer stationary observer and spatial settings are invalid");
   }
 }
 

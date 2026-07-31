@@ -2,7 +2,7 @@ module;
 
 #include <flecs.h>
 
-/// @brief Authoritative session-owned Player lifecycle and semantic input.
+/// @brief Authoritative session-owned player lifecycle and semantic input.
 export module simnet.game_server:player;
 
 import :simulation;
@@ -22,17 +22,17 @@ export namespace simnet
         bool right_mouse {};
     };
 
-    /// Spawns the one supported authoritative Player. Returns zero on failure.
+    /// Spawns the one supported authoritative player. Returns zero on failure.
     [[nodiscard]] EntityNetId spawn_authoritative_player(flecs::world& world);
 
-    /// Replaces the latest-state input owned by the authoritative Player.
+    /// Replaces the latest-state input owned by the authoritative player.
     [[nodiscard]] bool set_authoritative_player_input(
         flecs::world& world,
         EntityNetId id,
         PlayerControlState input
     );
 
-    /// Deletes the session-owned Player and its replication index entry.
+    /// Deletes the session-owned player and its replication index entry.
     [[nodiscard]] bool delete_authoritative_player(
         flecs::world& world,
         EntityNetId id

@@ -2,7 +2,7 @@
 
 ## Profiles
 
-- `shared_demo_network.json`: use for Server + Client + Player demo. Small enough to replicate cleanly.
+- `shared_demo_network.json`: use for Server + Client + player demo. Small enough to replicate cleanly.
 - `shared_demo_visual.json`: use for a nicer medium-size Server visual demo.
 - `shared_stress_100k.json`: use for Server-only render/simulation stress. Do not present this as realistic current network replication.
 - `shared_default.json`: conservative fallback baseline.

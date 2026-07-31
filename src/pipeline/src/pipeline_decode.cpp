@@ -184,8 +184,6 @@ namespace simnet
         if (!validation.valid)
             return invalid_update("decoded update is invalid: " + validation.message);
 
-        // --- Finalise ---
-
         client_state.latest_remote_sequence = header.sequence;
 
         DecodeReport report {};

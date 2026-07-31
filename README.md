@@ -14,8 +14,8 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
 - 1,000-entity Server to Client replication in the bounded runtime path
-- Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local stationary-observer views, and authoritative remote pause
-- StationaryObserver and authoritative Player join roles with one Server-owned Player fish and a locked third-person Client chase camera
+- Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local stationary observer views, and authoritative remote pause
+- Stationary observer and authoritative player join roles with one Server-owned player fish and a locked third-person Client chase camera
 
 ## Planned work
 
@@ -70,19 +70,19 @@ build/debug/app/Server --config config/server_visual.json
 build/debug/app/Client --config config/client_visual.json
 ```
 
-To join as the one supported Player instead of a StationaryObserver:
+To join as the one supported player instead of a stationary observer:
 
 ```sh
 build/debug/app/Client --config config/client_player_visual.json
 ```
 
-The Player camera is locked behind and above the replicated fish. `W`/`S` apply
-pitch steering, `A`/`D` apply yaw steering, Shift accelerates, and Ctrl slows;
-angular velocity, damping, and rate limits give steering inertia, while
+The player camera is locked behind and above the replicated fish. `W`/`S` apply
+pitch steering, `A`/`D` apply yaw steering, Shift accelerates, and Ctrl slows.
+Angular velocity, damping, and rate limits give steering inertia, while
 Shift+Ctrl selects cruise speed.
 Input is latest-state unreliable-sequenced data, while join and pause remain
 reliable controls. `C` opens the cameras available to the current role and
-selection; `F4` opens the read-only Setup inspector. Leaving Game sends one
+selection. `F4` opens the read-only Setup inspector. Leaving Game sends one
 neutral input state. There is no
 client prediction yet.
 
@@ -112,9 +112,9 @@ The Server writes a small boid-tuning CSV under `telemetry.log_directory` when
 second and is not the future benchmark runner. JSON metrics export and benchmark
 settings remain parsed vocabulary without runtime execution.
 
-Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the Player role; StationaryObserver remains the default.
+Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the player role. Stationary observer remains the default.
 
-Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded; they do not parallelize queries or application code automatically.
+Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded. They do not parallelize queries or application code automatically.
 
 For the conservative 1,000-boid visual demonstration:
 
@@ -123,9 +123,9 @@ build/relWithDebInfo/app/Server --config config/server_visual.json --shared-conf
 build/relWithDebInfo/app/Client --config config/client_visual.json --shared-config config/shared_boids_demo.json
 ```
 
-The Server keeps velocity, precise hue phase, and neighbour-computation state private. Replication remains the stable ID, position, normalized heading, and one-byte hue snapshot contract. The Server selected-entity panel remains available while paused and shows velocity, acceleration, query and neighbour counts, rule settings, flags, hue decisions, and steering contributions. Its optional generic gizmos show the queried cells, rule radii, FOV, and steering vectors; the Client does not receive those private facts.
+The Server keeps velocity, precise hue phase, and neighbor-computation state private. Replication remains the stable ID, position, normalized heading, and one-byte hue snapshot contract. The Server selected-entity panel remains available while paused and shows velocity, acceleration, query and neighbor counts, rule settings, flags, hue decisions, and steering contributions. Its optional generic gizmos show the queried cells, rule radii, FOV, and steering vectors. The Client does not receive those private facts.
 
-Visual interpolation is local and presentation-only. The Server blends adjacent authoritative ticks with the fixed-step alpha. The Client renders directly from retained reconstructed snapshots and derives its interval from snapshot ticks; it does not query the replicated Flecs world every frame. Pause snaps both viewers to their latest exact state. Set `visualization.interpolation_enabled` to `false` for exact snapshot debugging.
+Visual interpolation is local and presentation-only. The Server blends adjacent authoritative ticks with the fixed-step alpha. The Client renders directly from retained reconstructed snapshots and derives its interval from snapshot ticks. It does not query the replicated Flecs world every frame. Pause snaps both viewers to their latest exact state. Set `visualization.interpolation_enabled` to `false` for exact snapshot debugging.
 
 For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
 

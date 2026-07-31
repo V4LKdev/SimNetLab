@@ -66,29 +66,31 @@ void Viewer::Impl::prepare_instances(RenderEntityView const &entities,
 }
 
 void Viewer::Impl::draw_stationary_observer(
-    StationaryObserverView const &observer, RenderStats &stats) {
+    StationaryObserverView const &stationary_observer, RenderStats &stats) {
   SIMNET_TRACE_SCOPE_CATEGORY("render.stationary_observer_geometry",
                               simnet::LogCategory::Render);
-  auto const position = to_raylib(observer.position);
-  auto const forward = normalized_or_forward(observer.forward);
+  auto const position = to_raylib(stationary_observer.position);
+  auto const forward = normalized_or_forward(stationary_observer.forward);
   auto const direction_end =
-      to_raylib(observer.position + forward * observer.interest_radius);
+      to_raylib(stationary_observer.position +
+                forward * stationary_observer.interest_radius);
   DrawSphere(position, std::max(config_.entity_scale, 1.0F) * 1.5F,
              Color{247, 184, 74, 255});
   DrawLine3D(position, direction_end, Color{247, 184, 74, 255});
-  if (overlays_.observer_radius) {
-    DrawSphereWires(position, observer.interest_radius, 20, 20,
+  if (overlays_.stationary_observer_radius) {
+    DrawSphereWires(position, stationary_observer.interest_radius, 20, 20,
                     Color{247, 184, 74, 110});
   }
-  if (overlays_.observer_frustum) {
+  if (overlays_.stationary_observer_frustum) {
     auto const basis = world_up_basis(forward);
     auto const aspect = static_cast<float>(scene_rect_.width) /
                         static_cast<float>(scene_rect_.height);
-    auto const vertical = observer.vertical_fov_degrees * DEG2RAD;
+    auto const vertical = stationary_observer.vertical_fov_degrees * DEG2RAD;
     auto const vertical_half =
-        std::tan(vertical * 0.5F) * observer.interest_radius;
+        std::tan(vertical * 0.5F) * stationary_observer.interest_radius;
     auto const horizontal_half = vertical_half * aspect;
-    auto const center = observer.position + forward * observer.interest_radius;
+    auto const center = stationary_observer.position +
+                        forward * stationary_observer.interest_radius;
     auto const corner = [&](float horizontal, float vertical_offset) {
       return to_raylib(center + basis.right * horizontal +
                        basis.up * vertical_offset);
@@ -289,7 +291,8 @@ void Viewer::Impl::draw_scene(RenderFrame const &frame, RenderStats &stats) {
     DrawLine3D({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 10.0F}, BLUE);
   }
   if (frame.stationary_observer.has_value() &&
-      mode_ != CameraMode::StationaryObserver && overlays_.observer_marker) {
+      mode_ != CameraMode::StationaryObserver &&
+      overlays_.stationary_observer_marker) {
     draw_stationary_observer(*frame.stationary_observer, stats);
   }
   if (frame.spatial.has_value() && overlays_.spatial_cells) {

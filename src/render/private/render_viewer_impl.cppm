@@ -161,8 +161,8 @@ private:
 
   void clear_instances();
   void prepare_instances(RenderEntityView const &entities, RenderStats &stats);
-  void draw_stationary_observer(StationaryObserverView const &observer,
-                                RenderStats &stats);
+  void draw_stationary_observer(
+      StationaryObserverView const &stationary_observer, RenderStats &stats);
   void draw_spatial_cells(SpatialDebugView const &spatial, RenderStats &stats);
   void draw_debug_primitives(DebugPrimitiveView const &debug,
                              RenderStats &stats);

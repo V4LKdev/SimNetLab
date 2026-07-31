@@ -62,7 +62,7 @@ export namespace simnet
     struct ViewerContext
     {
         ViewerKind kind { ViewerKind::Server };
-        /// Client role such as "Stationary observer" or "Player"; empty for Server.
+        /// Client role such as "stationary observer" or "player". Empty for Server.
         std::string_view client_role {};
     };
 

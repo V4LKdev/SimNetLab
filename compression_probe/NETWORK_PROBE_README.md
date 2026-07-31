@@ -35,7 +35,7 @@ Each encoding is tested as:
 - trained-dictionary Zstd over the whole snapshot, then fragmented
 - trained-dictionary Zstd independently per packet
 
-The dictionaries are trained on separate simulation trajectories and packet-sized samples. This is the practical interpretation of the proposed "pre-trained static dictionary" technique. It is not a separate hand-written static Huffman codec; Zstd dictionaries initialize both history and entropy-compression state.
+The dictionaries are trained on separate simulation trajectories and packet-sized samples. This is the practical interpretation of the proposed "pre-trained static dictionary" technique. It is not a separate hand-written static Huffman codec. Zstd dictionaries initialize both history and entropy-compression state.
 
 ## Arch Linux setup
 
@@ -87,16 +87,16 @@ mkdir -p results
 
 - `src B`: encoded bytes before compression.
 - `out B`: transmitted application payload bytes after compression.
-- `ratio`: `out B / src B`; lower is better.
+- `ratio`: `out B / src B`. Lower is better.
 - `pkts`: packets or fragments needed under the configured payload ceiling.
 - `boids/pkt`: average entities represented by each packet.
 - `comp us`, `decomp us`: mean snapshot cost on the machine running the probe, including output-buffer allocation.
 - `complete%`: probability every packet arrives without loss under the illustrative loss rate.
 - `usable%`:
-  - whole-snapshot compression: same as `complete%`, because an incomplete compressed frame cannot be decoded;
+  - whole-snapshot compression: same as `complete%`, because an incomplete compressed frame cannot be decoded.
   - per-packet compression: expected independently usable entity fraction, approximately `1 - packet_loss`.
 
-With reliable ENet delivery, a missing fragment normally causes retransmission and delay rather than permanent data loss. The whole compressed snapshot is not "garbage"; it is simply unavailable until complete. The table's loss model is therefore most directly relevant to unreliable snapshot delivery, while `complete%` can also be read as the chance of avoiding retransmission delay.
+With reliable ENet delivery, a missing fragment normally causes retransmission and delay rather than permanent data loss. The whole compressed snapshot is not "garbage". It is simply unavailable until complete. The table's loss model is therefore most directly relevant to unreliable snapshot delivery, while `complete%` can also be read as the chance of avoiding retransmission delay.
 
 ## Decision rule
 

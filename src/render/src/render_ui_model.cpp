@@ -324,7 +324,7 @@ void Viewer::Impl::build_panel_model(RenderFrame const &frame,
             magnitude(*details->acceleration));
   }
 
-  add_section(panel_model_, "NEIGHBOUR QUERY");
+  add_section(panel_model_, "NEIGHBOR QUERY");
   if (details->raw_candidate_count.has_value()) {
     add_row(panel_model_, "Candidates", Normal, "%u",
             *details->raw_candidate_count);
@@ -369,7 +369,7 @@ void Viewer::Impl::build_panel_model(RenderFrame const &frame,
     add_text(panel_model_, "None", Success);
   } else {
     if (details->neighbor_cap_hit.value_or(false)) {
-      add_text(panel_model_, "Neighbour limit reached", Warning);
+      add_text(panel_model_, "Neighbor limit reached", Warning);
     }
     if (details->overlap_recovery.value_or(false)) {
       add_text(panel_model_, "Overlap recovery active", Warning);

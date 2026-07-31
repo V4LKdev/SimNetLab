@@ -284,8 +284,8 @@ namespace
                 .capabilities = {
                     .can_pause_simulation = session_ready && simulation_paused.has_value(),
                     .has_networking = true,
-                    .has_stationary_observer = role == "Stationary observer",
-                    .has_game_camera = role == "Player",
+                    .has_stationary_observer = role == "stationary observer",
+                    .has_game_camera = role == "player",
                 },
                 .connection = std::optional<simnet::RenderConnectionInfo> {
                     simnet::RenderConnectionInfo {
@@ -878,8 +878,8 @@ namespace simnet::app
                                     server_peer,
                                     ack_tracker.value,
                                     requested_role == app::ClientRole::Player
-                                        ? std::string_view { "Player" }
-                                        : std::string_view { "Stationary observer" },
+                                        ? std::string_view { "player" }
+                                        : std::string_view { "stationary observer" },
                                     std::move(stationary_observer_view),
                                     std::move(game_camera),
                                     run_setup.view()

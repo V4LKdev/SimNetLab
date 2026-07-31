@@ -96,23 +96,6 @@ namespace
         }
     }
 
-    template <typename Value>
-    void read_optional_alias(
-        Json const& object,
-        char const* key,
-        char const* legacy_key,
-        Value& value
-    )
-    {
-        if (object.contains(key) && object.contains(legacy_key)) {
-            throw std::runtime_error(
-                std::string { "conflicting config fields '" } + key
-                + "' and legacy alias '" + legacy_key + "'"
-            );
-        }
-        read_optional(object, object.contains(key) ? key : legacy_key, value);
-    }
-
     Json const* optional_object(Json const& object, char const* key)
     {
         auto const found = object.find(key);
@@ -325,9 +308,6 @@ namespace
     void apply_gameplay(Json const& json, simnet::GameplayConfig& config)
     {
         read_optional(json, "role", config.role);
-        if (config.role == "observer") {
-            config.role = "stationary_observer";
-        }
         validate_one_of(
             "gameplay.role",
             config.role,
@@ -409,16 +389,14 @@ namespace
         read_optional(json, "target_fps", config.target_fps);
         read_optional(json, "entity_scale", config.entity_scale);
         read_optional(json, "picking_radius", config.picking_radius);
-        read_optional_alias(
+        read_optional(
             json,
             "stationary_observer_interest_radius",
-            "debug_observer_interest_radius",
             config.stationary_observer_interest_radius
         );
-        read_optional_alias(
+        read_optional(
             json,
             "stationary_observer_vertical_fov_degrees",
-            "debug_observer_vertical_fov_degrees",
             config.stationary_observer_vertical_fov_degrees
         );
         read_optional(json, "max_visible_spatial_cells", config.max_visible_spatial_cells);

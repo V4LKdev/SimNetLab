@@ -17,7 +17,7 @@ export namespace simnet
     /// Builds a presentation snapshot using the current snapshot's entity set.
     ///
     /// Matching entities interpolate position, normalized heading, and circular
-    /// hue. New entities use their current state; removed entities are absent.
+    /// hue. New entities use their current state. Removed entities are absent.
     /// Inputs and output must be distinct objects.
     [[nodiscard]] inline SnapshotValidationResult interpolate_world_snapshots(
         WorldSnapshot const& previous,

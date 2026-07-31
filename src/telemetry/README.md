@@ -13,7 +13,7 @@
 ### simnet.telemetry:log
 - `initialize_telemetry` - sets up logging sinks. Requires a `TelemetryConfig`.
 - `shutdown_telemetry` - flushes and releases all sinks. Safe to call multiple times.
-- `log` - writes a message to the active logger. Creates a default stdout logger if called before initialisation.
+- `log` - writes a message to the active logger. Creates a default stdout logger if called before initialization.
 - `flush_telemetry` - forces any buffered log output to be written immediately.
 
 ### simnet.telemetry:metrics
@@ -25,7 +25,7 @@
 - `format_metric_record_key_value` - formats a record as a single line of `stream tick=... field=value...`.
 
 The metrics API currently provides in-memory storage only. The Server and Client
-do not yet submit tick metrics or export CSV/JSON files; the corresponding JSON
+do not yet submit tick metrics or export CSV/JSON files. The corresponding JSON
 settings are reserved configuration vocabulary.
 
 ## Trace Macros
@@ -33,7 +33,7 @@ settings are reserved configuration vocabulary.
 Include `<simnet/telemetry_trace.hpp>` to use these macros. They expand to no-ops unless the build system sets `SIMNET_ENABLE_TRACY=1` and links `Tracy::TracyClient`.
 
 - `SIMNET_TRACE_SCOPE(name)` - scoped profiling zone.
-- `SIMNET_TRACE_SCOPE_C(name, color)` - scoped zone with a user-defined RGBA colour.
+- `SIMNET_TRACE_SCOPE_C(name, color)` - scoped zone with a user-defined RGBA color.
 - `SIMNET_TRACE_PLOT(name, value)` - plots a value on a timeline.
 - `SIMNET_TRACE_FRAME(name)` - marks a frame boundary.
 
@@ -45,6 +45,6 @@ Tracy instrumentation is controlled by the CMake `SIMNET_ENABLE_TRACY` option. I
 
 - All public API functions in the `log` and `metrics` partitions are thread-safe. Initialization and shutdown must be serialized externally.
 - `TickMetrics` and `MetricRecord` are stored in heap-allocated vectors. Submission functions (`submit_*`) take constant time. retrieval functions (`take_*`) allocate new vectors for the results.
-- `log()` always has a valid spdlog logger. If telemetry is never initialised, a default console logger is used automatically.
+- `log()` always has a valid spdlog logger. If telemetry is never initialized, a default console logger is used automatically.
 - `parse_log_level` performs case-insensitive comparison. Unrecognized strings map to `LogLevel::Info`.
 - The color palette returned by `category_trace_color` is based on Tableau 10 and is tuned for distinctness in the profiler.

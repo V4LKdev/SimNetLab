@@ -171,7 +171,7 @@ void Viewer::Impl::draw_viewport_ui(RenderFrame const &frame,
         frame.selected_details->id == selected_entity_frame_->id) {
       std::snprintf(
           value, sizeof(value),
-          "Entity %u   |   Speed %.2f   |   Neighbours %u",
+          "Entity %u   |   Speed %.2f   |   Neighbors %u",
           selected_entity_frame_->id,
           frame.selected_details->speed.value_or(0.0F),
           frame.selected_details->retained_neighbor_count.value_or(0U));
@@ -220,7 +220,7 @@ void Viewer::Impl::draw_help_overlay(RenderFrame const &frame) const {
   }
   if (mode_ == CameraMode::StationaryObserver &&
       frame.stationary_observer.has_value()) {
-    line("Arrow keys              Rotate observer");
+    line("Arrow keys              Rotate stationary observer");
   }
   line("Escape                  Quit application");
 }

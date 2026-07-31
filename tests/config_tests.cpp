@@ -79,46 +79,13 @@ TEST_CASE("visual interpolation is local runtime configuration", "[config]")
 TEST_CASE("client gameplay role is local runtime configuration", "[config][player]")
 {
     auto const shared = simnet::default_shared_config();
-    auto const observer = simnet::default_client_config();
-    auto player = observer;
+    auto const stationary_observer_config = simnet::default_client_config();
+    auto player = stationary_observer_config;
     player.gameplay.role = "player";
 
     CHECK(simnet::fingerprint_runtime_config(shared, player).value
-        != simnet::fingerprint_runtime_config(shared, observer).value);
-}
-
-TEST_CASE("legacy observer configuration normalizes to stationary observer", "[config]")
-{
-    auto const legacy = TemporaryConfig {
-        "simnet_legacy_observer_config.json",
-        R"({
-            "gameplay": { "role": "observer" },
-            "visualization": {
-                "debug_observer_interest_radius": 42.0,
-                "debug_observer_vertical_fov_degrees": 55.0
-            }
-        })"
-    };
-    auto const config = simnet::load_client_config(legacy.path());
-
-    CHECK(config.gameplay.role == "stationary_observer");
-    CHECK(config.visualization.stationary_observer_interest_radius == 42.0F);
-    CHECK(config.visualization.stationary_observer_vertical_fov_degrees == 55.0F);
-}
-
-TEST_CASE("canonical and legacy observer visualization keys conflict", "[config]")
-{
-    auto const conflicting = TemporaryConfig {
-        "simnet_conflicting_observer_config.json",
-        R"({
-            "visualization": {
-                "stationary_observer_interest_radius": 42.0,
-                "debug_observer_interest_radius": 42.0
-            }
-        })"
-    };
-
-    CHECK_THROWS(simnet::load_client_config(conflicting.path()));
+        != simnet::fingerprint_runtime_config(
+            shared, stationary_observer_config).value);
 }
 
 TEST_CASE("player pitch limit stays clear of the vertical camera singularity", "[config][player]")

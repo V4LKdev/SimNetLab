@@ -60,7 +60,7 @@ export namespace simnet
         float hue_drift_rate { 0.02F };
     };
 
-    /// Deterministic authoritative Player movement parameters.
+    /// Deterministic authoritative player movement parameters.
     struct PlayerConfig
     {
         float cruise_speed { 8.0F };
@@ -136,7 +136,7 @@ export namespace simnet
         std::string log_directory { "logs" };
         std::string min_level { "info" };
         bool metrics_csv_enabled { true };   /// Enables sampled Server boid evidence CSV.
-        bool metrics_json_enabled { false }; /// Parsed; export is not implemented.
+        bool metrics_json_enabled { false }; /// Parsed. Export is not implemented.
     };
 
     /// Reserved load-ramp settings. Application behavior is not implemented.

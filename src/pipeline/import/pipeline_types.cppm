@@ -20,7 +20,7 @@ export namespace simnet
         None = 0,
         SendInterval = 1U << 0U,    /// adjust snapshot cadence.
         Incremental = 1U << 1U,     /// partial round-robin upserts.
-        Quantization = 1U << 2U,    /// position and heading quantisation.
+        Quantization = 1U << 2U,    /// position and heading quantization.
         OctHeading = 1U << 3U,      /// octahedral heading quantization.
         Delta = 1U << 4U,           /// baseline-relative patch selection.
         Aoi = 1U << 5U,             /// unsupported area-of-interest filtering.

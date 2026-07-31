@@ -64,7 +64,7 @@ export namespace simnet
     {
         // Yes, I used a color palette for this, programmers are artists too!!!
         switch (category) {
-            case LogCategory::Core:       return 0xAAAAAAFF; // mid-grey
+            case LogCategory::Core:       return 0xAAAAAAFF; // mid-gray
             case LogCategory::Config:     return 0xEDC948FF; // muted yellow
             case LogCategory::Telemetry:  return 0x76B7B2FF; // teal
             case LogCategory::Simulation: return 0xF28E2BFF; // orange

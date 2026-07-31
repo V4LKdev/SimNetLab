@@ -183,7 +183,7 @@ namespace simnet::app
         begin_section("SPATIAL PARTITION", false);
         add_row("Implementation", "Deterministic uniform grid");
         add_row("Cell size", format_float(shared.spatial.cell_size));
-        add_row("Maximum neighbours", format_u64(shared.spatial.max_neighbors));
+        add_row("Maximum neighbors", format_u64(shared.spatial.max_neighbors));
         add_row("Query radius", format_float(std::max({
                                     shared.boids.separation_radius,
                                     shared.boids.alignment_radius,

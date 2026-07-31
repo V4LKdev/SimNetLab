@@ -56,7 +56,7 @@ export namespace simnet
     }
 
 
-     /// Creates a FixedStepClock pre-initialised with the correct fixed_dt.
+     /// Creates a FixedStepClock pre-initialized with the correct fixed_dt.
      /// `accumulator` and `tick` start at zero.
     [[nodiscard]] constexpr FixedStepClock make_clock(
         const FixedStepSettings &settings) noexcept
