@@ -98,7 +98,7 @@ namespace
             && index.boid_count <= index.ids.size();
     }
 
-    [[nodiscard]] bool valid_boid_state(simnet::BoidState const& boid) noexcept
+    [[nodiscard]] bool valid_boid_state(simnet::EntityState const& boid) noexcept
     {
         return boid.id != 0U
             && simnet::is_finite(boid.position)
@@ -118,7 +118,7 @@ namespace
             : static_cast<simnet::EntityNetId>(id + 1U);
     }
 
-    void set_authoritative_boid_components(flecs::entity entity, simnet::BoidState const& boid)
+    void set_authoritative_boid_components(flecs::entity entity, simnet::EntityState const& boid)
     {
         entity.set<simnet::EntityKindComponent>({ .value = simnet::EntityKind::Boid });
         entity.set<simnet::NetIdentity>({ .id = boid.id });
@@ -129,7 +129,7 @@ namespace
 
     void set_authoritative_simulation_components(
         flecs::entity entity,
-        simnet::BoidState const& boid,
+        simnet::EntityState const& boid,
         std::uint32_t row,
         float cruise_speed
     )
@@ -1734,7 +1734,7 @@ namespace simnet
         return true;
     }
 
-    flecs::entity upsert_authoritative_boid(flecs::world& world, BoidState const& boid)
+    flecs::entity upsert_authoritative_boid(flecs::world& world, EntityState const& boid)
     {
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
         if (!valid_index(index) || !valid_boid_state(boid)) {
@@ -1783,7 +1783,7 @@ namespace simnet
 
     AuthoritativeSpawnReport append_authoritative_boids(
         flecs::world& world,
-        std::span<const BoidState> boids
+        std::span<const EntityState> boids
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("game_server.bulk_spawn", LogCategory::Simulation);

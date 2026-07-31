@@ -176,7 +176,7 @@ namespace simnet::pipeline_records
     [[nodiscard]] bool read_bitpacked_record(
         ByteSpan bytes,
         Aabb3f bounds,
-        BoidState& boid
+        EntityState& boid
     )
     {
         auto reader = pipeline_bitpack::BitReader { .bytes = bytes };
@@ -243,7 +243,7 @@ namespace simnet::pipeline_records
         ByteSpan bytes,
         std::size_t& offset,
         RecordLayout const& layout,
-        BoidState& boid
+        EntityState& boid
     )
     {
         if (layout.bitpacked) {

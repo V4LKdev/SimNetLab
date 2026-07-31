@@ -92,7 +92,7 @@ export namespace simnet
     /// Result of `decode_packet`.
     struct DecodeOutput
     {
-        ClientSnapshotPatch patch {};
+        SnapshotUpdate patch {};
         DecodeReport report {};
     };
 }

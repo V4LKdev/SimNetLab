@@ -16,8 +16,8 @@ export namespace simnet
     /// Must exceed octahedral dequantization error.
     inline constexpr float heading_normalization_tolerance = 0.01F;
 
-    /// Per-entity replicated boid state.
-    struct BoidState
+    /// Per-entity replicated state.
+    struct EntityState
     {
         /// Network identifier.
         EntityNetId id {};
@@ -83,29 +83,29 @@ export namespace simnet
         }
     };
 
-    /// Logical snapshot patch kind.
+    /// Logical snapshot update kind.
     enum class SnapshotKind : std::uint8_t
     {
         FullReplace,
         Patch
     };
 
-    /// Logical client-side changes for one simulation tick.
-    struct ClientSnapshotPatch
+    /// Generic full or partial state update for one simulation tick.
+    struct SnapshotUpdate
     {
-        /// Simulation tick for this patch.
+        /// Simulation tick for this update.
         Tick tick {};
 
-        /// How to apply the patch.
+        /// How to apply the update.
         SnapshotKind kind { SnapshotKind::Patch };
 
         /// Entities to insert or update (ids strictly ascending).
-        std::vector<BoidState> upserts;
+        std::vector<EntityState> upserts;
 
         /// Entities to delete (ids strictly ascending).
         std::vector<EntityNetId> deletes;
 
-        /// Returns true when the patch contains no changes.
+        /// Returns true when the update carries no upserts or deletes.
         [[nodiscard]] bool empty() const noexcept
         {
             return upserts.empty() && deletes.empty();
@@ -118,7 +118,7 @@ export namespace simnet
             deletes.reserve(delete_count);
         }
 
-        /// Clears patch data while preserving capacity and current patch kind.
+        /// Clears update data while preserving capacity and current update kind.
         void clear() noexcept
         {
             tick = {};

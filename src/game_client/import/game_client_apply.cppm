@@ -35,6 +35,6 @@ export namespace simnet
     /// Call register_client_game once during setup. Older ticks reject, equal ticks are accepted.
     [[nodiscard]] ApplyPatchReport apply_client_snapshot_patch(
         flecs::world& world,
-        ClientSnapshotPatch const& patch
+        SnapshotUpdate const& patch
     );
 }

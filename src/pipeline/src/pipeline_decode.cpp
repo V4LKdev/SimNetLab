@@ -156,7 +156,7 @@ namespace simnet
         // --- Decode records ---
 
         std::size_t offset = pipeline_wire::header_bytes;
-        ClientSnapshotPatch patch {};
+        SnapshotUpdate patch {};
         patch.tick = header.tick;
         patch.kind = header.snapshot_kind;
         patch.reserve(header.upsert_count, header.delete_count);
@@ -169,7 +169,7 @@ namespace simnet
         }
 
         for (std::uint32_t i = 0; i < header.upsert_count; ++i) {
-            BoidState boid {};
+            EntityState boid {};
             if (!pipeline_records::read_record(bytes, offset, layout, boid))
                 return invalid_packet("truncated upsert record data");
             patch.upserts.push_back(boid);

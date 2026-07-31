@@ -17,7 +17,7 @@ export namespace simnet
     /// baseline using the strictly ascending snapshot and patch contracts.
     [[nodiscard]] inline SnapshotValidationResult reconstruct_world_snapshot(
         WorldSnapshot const* baseline,
-        ClientSnapshotPatch const& patch,
+        SnapshotUpdate const& patch,
         WorldSnapshot& out_snapshot
     )
     {
@@ -43,7 +43,7 @@ export namespace simnet
                 : baseline->size() + patch.upserts.size()
         );
 
-        auto append = [&reconstructed](BoidState const& boid) {
+        auto append = [&reconstructed](EntityState const& boid) {
             reconstructed.ids.push_back(boid.id);
             reconstructed.positions.push_back(boid.position);
             reconstructed.headings.push_back(boid.heading);

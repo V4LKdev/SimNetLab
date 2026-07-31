@@ -29,7 +29,7 @@ export namespace simnet
         FixedStepSettings fixed_step {};
         std::uint64_t max_frames {};
         Tick max_ticks {};
-        NS max_runtime {};
+        Nanoseconds max_runtime {};
     };
 
     /// Result of planning one outer runtime frame.
@@ -38,11 +38,11 @@ export namespace simnet
         std::uint64_t frame {};
         Tick first_tick {};
         std::uint16_t step_count {};
-        NS raw_delta {};
-        NS accepted_delta {};
-        NS clamped_time {};
-        NS dropped_time {};
-        NS accumulator {};
+        Nanoseconds raw_delta {};
+        Nanoseconds accepted_delta {};
+        Nanoseconds clamped_time {};
+        Nanoseconds dropped_time {};
+        Nanoseconds accumulator {};
         double interpolation_alpha {};
         bool frame_delta_clamped {};
         bool step_limit_reached {};
@@ -54,10 +54,10 @@ export namespace simnet
         std::uint64_t frames {};
         Tick ticks {};
         std::uint64_t capped_frames {};
-        NS raw_time {};
-        NS accepted_time {};
-        NS clamped_time {};
-        NS dropped_time {};
+        Nanoseconds raw_time {};
+        Nanoseconds accepted_time {};
+        Nanoseconds clamped_time {};
+        Nanoseconds dropped_time {};
     };
 
     /// First-wins stop request owned by runtime control code.
@@ -94,7 +94,7 @@ export namespace simnet
     /// State used to sample monotonic nanosecond frame deltas.
     struct RuntimeFrameTimer
     {
-        NS previous {};
+        Nanoseconds previous {};
         bool initialized {};
     };
 }

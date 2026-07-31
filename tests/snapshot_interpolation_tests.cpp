@@ -13,7 +13,7 @@ namespace
 {
     [[nodiscard]] simnet::WorldSnapshot snapshot(
         simnet::Tick tick,
-        std::initializer_list<simnet::BoidState> boids
+        std::initializer_list<simnet::EntityState> boids
     )
     {
         auto result = simnet::WorldSnapshot {};

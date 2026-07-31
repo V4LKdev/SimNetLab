@@ -4,9 +4,9 @@
 ## Exported Types
 
 ### simnet.snapshot:types
-- `BoidState` - per-entity state (id, position, heading, hue).
+- `EntityState` - generic per-entity replicated state (id, position, heading, hue).
 - `WorldSnapshot` - SoA representation of full world state.
-- `ClientSnapshotPatch` - logical client change (upserts, deletes, kind).
+- `SnapshotUpdate` - generic full or partial state update (upserts, deletes, kind).
 - `SnapshotKind` - FullReplace or Patch.
 - `SnapshotValidationResult` - boolean valid and error message.
 
@@ -22,10 +22,10 @@
 - `interpolate_world_snapshots` - builds a reusable presentation snapshot from two validated complete snapshots.
 
 ## Notes
-- Both `WorldSnapshot` and `ClientSnapshotPatch` require strictly ascending entity IDs.
+- Both `WorldSnapshot` and `SnapshotUpdate` require strictly ascending entity IDs.
 - Validation returns the first contract violation. Error messages are heap-allocated.
 - `WorldSnapshot` uses SoA layout for cache efficiency.
-- `ClientSnapshotPatch::clear` preserves the `kind` field. Tick is reset to zero.
+- `SnapshotUpdate::clear` preserves the `kind` field. Tick is reset to zero.
 - Heading normalization tolerance is `0.01F` (defined in types).
 - Delta reconstruction is storage-independent. The caller owns retained snapshots and resolves the sequence declared by the decoded packet.
 - Presentation interpolation uses the current entity set, normalized heading interpolation, and circular hue interpolation. It does not mutate either authoritative input.

@@ -48,7 +48,7 @@ namespace simnet
         [[nodiscard]] flecs::entity make_replicated_entity(
             flecs::world& world,
             ClientReplicationState const& state,
-            BoidState const& boid
+            EntityState const& boid
         )
         {
             return world.entity()
@@ -59,7 +59,7 @@ namespace simnet
                 .set<Hue>({ .value = boid.hue });
         }
 
-        void update_replicated_entity(flecs::world& world, flecs::entity_t entity_id, BoidState const& boid)
+        void update_replicated_entity(flecs::world& world, flecs::entity_t entity_id, EntityState const& boid)
         {
             auto entity = flecs::entity { world, entity_id };
             entity.set<Position>({ .value = boid.position });
@@ -75,7 +75,7 @@ namespace simnet
         }
 
         [[nodiscard]] bool delete_matches(
-            ClientSnapshotPatch const& patch,
+            SnapshotUpdate const& patch,
             std::size_t& delete_index,
             EntityNetId id
         ) noexcept
@@ -91,7 +91,7 @@ namespace simnet
         }
 
         [[nodiscard]] bool upsert_before_current(
-            ClientSnapshotPatch const& patch,
+            SnapshotUpdate const& patch,
             std::size_t upsert_index,
             EntityNetId id
         ) noexcept
@@ -100,7 +100,7 @@ namespace simnet
         }
 
         [[nodiscard]] bool upsert_matches(
-            ClientSnapshotPatch const& patch,
+            SnapshotUpdate const& patch,
             std::size_t upsert_index,
             EntityNetId id
         ) noexcept
@@ -170,7 +170,7 @@ namespace simnet
         return entity.get<EntityKindComponent>().value;
     }
 
-    ApplyPatchReport apply_client_snapshot_patch(flecs::world& world, ClientSnapshotPatch const& patch)
+    ApplyPatchReport apply_client_snapshot_patch(flecs::world& world, SnapshotUpdate const& patch)
     {
         auto report = ApplyPatchReport {
             .tick = patch.tick,

@@ -20,7 +20,7 @@ namespace
 {
     constexpr auto boid_count = std::uint32_t { 10 };
 
-    [[nodiscard]] simnet::BoidState test_boid(
+    [[nodiscard]] simnet::EntityState test_boid(
         simnet::EntityNetId id,
         std::uint32_t index,
         simnet::Tick tick
@@ -181,7 +181,7 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
     auto world = flecs::world {};
     simnet::register_server_game(world, game);
 
-    auto boids = std::vector<simnet::BoidState> {};
+    auto boids = std::vector<simnet::EntityState> {};
     boids.push_back(test_boid(1, 0, 0));
     boids.push_back(test_boid(2, 1, 0));
     boids.push_back(test_boid(3, 2, 0));
@@ -227,7 +227,7 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
     CHECK(snapshot.hues[1] == 99U);
     CHECK(snapshot.ids.capacity() >= ids_capacity);
 
-    auto invalid = std::vector<simnet::BoidState> {
+    auto invalid = std::vector<simnet::EntityState> {
         test_boid(4, 3, 4),
         test_boid(4, 4, 4),
     };
@@ -236,14 +236,14 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
     CHECK(rejected.error == simnet::AuthoritativeSpawnError::NonAscendingIds);
     CHECK(simnet::authoritative_boid_count(world) == 2U);
 
-    auto overlapping = std::vector<simnet::BoidState> { test_boid(3, 3, 4) };
+    auto overlapping = std::vector<simnet::EntityState> { test_boid(3, 3, 4) };
     auto const overlap_rejected = simnet::append_authoritative_boids(world, overlapping);
     CHECK_FALSE(overlap_rejected.success());
     CHECK(overlap_rejected.error == simnet::AuthoritativeSpawnError::ExistingIdOverlap);
     CHECK(overlap_rejected.failing_index == std::optional<std::size_t> { 0U });
     CHECK(simnet::authoritative_boid_count(world) == 2U);
 
-    auto malformed = std::vector<simnet::BoidState> { test_boid(4, 3, 4) };
+    auto malformed = std::vector<simnet::EntityState> { test_boid(4, 3, 4) };
     malformed.front().heading = {};
     auto const malformed_rejected = simnet::append_authoritative_boids(world, malformed);
     CHECK_FALSE(malformed_rejected.success());
@@ -265,7 +265,7 @@ TEST_CASE("authoritative extraction validates query ownership before snapshot co
     auto world = flecs::world {};
     simnet::register_server_game(world, game);
 
-    auto initial = std::vector<simnet::BoidState> {
+    auto initial = std::vector<simnet::EntityState> {
         test_boid(2, 1, 0),
         test_boid(3, 2, 0),
     };

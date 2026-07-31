@@ -12,7 +12,7 @@ export namespace simnet
     using Tick = std::uint64_t;
 
     /// Nanosecond alias.
-    using NS = std::chrono::nanoseconds;
+    using Nanoseconds = std::chrono::nanoseconds;
 
     /// Fixed-step simulation configuration.
     struct FixedStepSettings
@@ -21,7 +21,7 @@ export namespace simnet
         double tick_rate_hz{ 60.0 };
 
         /// Ceiling applied to incoming frame deltas.
-        NS max_frame_time{ std::chrono::milliseconds(250) };
+        Nanoseconds max_frame_time{ std::chrono::milliseconds(250) };
 
         /// Hard limit on the number of ticks consumed in one frame.
         std::uint16_t max_steps_per_frame{ 5 };
@@ -31,26 +31,26 @@ export namespace simnet
     struct FixedStepClock
     {
         /// Fractional wall-time not yet consumed by a tick.
-        NS    accumulator{};
+        Nanoseconds    accumulator{};
         /// Duration of one tick, derived from tick_rate_hz.
-        NS    fixed_dt{};
+        Nanoseconds    fixed_dt{};
         /// Current tick index (monotonic).
         Tick  tick{};
     };
 
      /// Computes the duration of one fixed step for the given tick rate.
      /// @return The fixed timestep, or zero if `tick_rate_hz <= 0`.
-    [[nodiscard]] constexpr NS fixed_dt_from_tick_rate(
+    [[nodiscard]] constexpr Nanoseconds fixed_dt_from_tick_rate(
         const FixedStepSettings &settings) noexcept
     {
         if (settings.tick_rate_hz <= 0.0) {
-            return NS{ 0 };
+            return Nanoseconds{ 0 };
         }
 
         const double seconds = 1.0 / settings.tick_rate_hz;
 
         // Round to nearest nanosecond
-        return std::chrono::round<NS>(
+        return std::chrono::round<Nanoseconds>(
             std::chrono::duration<double>(seconds)
         );
     }
@@ -71,11 +71,11 @@ export namespace simnet
      /// @return Number of ticks performed this frame.
     [[nodiscard]] constexpr std::uint16_t advance(
         FixedStepClock       &state,
-        NS                    delta,
+        Nanoseconds                    delta,
         const FixedStepSettings &settings) noexcept
     {
         // Refuse to run with a non-positive timestep
-        if (state.fixed_dt <= NS{ 0 }) {
+        if (state.fixed_dt <= Nanoseconds{ 0 }) {
             return 0;
         }
 

@@ -37,7 +37,7 @@ export namespace simnet
     );
 
     /**
-     * Decodes pipeline-owned bytes into a 'ClientSnapshotPatch'.
+     * Decodes pipeline-owned bytes into a 'SnapshotUpdate'.
      *
      * - Validates the wire header and sequence numbers against 'client_state'.
      * - Reuses 'scratch' internal buffers.

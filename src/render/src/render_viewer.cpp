@@ -66,8 +66,8 @@ constexpr auto viewer_glyphs() noexcept {
   return result;
 }
 
-[[nodiscard]] simnet::NS elapsed_ns(Clock::time_point start) noexcept {
-  return std::chrono::duration_cast<simnet::NS>(Clock::now() - start);
+[[nodiscard]] simnet::Nanoseconds elapsed_ns(Clock::time_point start) noexcept {
+  return std::chrono::duration_cast<simnet::Nanoseconds>(Clock::now() - start);
 }
 
 void validate_config(simnet::ViewerConfig const &config) {

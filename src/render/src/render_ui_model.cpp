@@ -66,7 +66,7 @@ void add_text(PanelModel &model, std::string_view text,
   ++model.sections[model.section_count - 1U].row_count;
 }
 
-double milliseconds(NS value) noexcept {
+double milliseconds(Nanoseconds value) noexcept {
   return static_cast<double>(value.count()) / 1'000'000.0;
 }
 

@@ -37,7 +37,7 @@ export namespace simnet::app
         StationaryObserverState& state,
         float yaw_axis,
         float pitch_axis,
-        NS frame_delta
+        Nanoseconds frame_delta
     ) noexcept;
 
     class SignalHandlers
@@ -132,7 +132,7 @@ namespace simnet::app
         StationaryObserverState& state,
         float yaw_axis,
         float pitch_axis,
-        NS frame_delta
+        Nanoseconds frame_delta
     ) noexcept
     {
         auto const seconds = std::chrono::duration<float>(frame_delta).count();

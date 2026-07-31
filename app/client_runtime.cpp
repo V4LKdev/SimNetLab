@@ -43,7 +43,7 @@ namespace
         std::optional<std::filesystem::path> shared_config_path {};
         std::uint64_t max_frames {};
         simnet::Tick max_ticks {};
-        simnet::NS max_runtime {};
+        simnet::Nanoseconds max_runtime {};
     };
 
     struct SnapshotAckTracker
@@ -111,14 +111,14 @@ namespace
     struct ClientPresentationState
     {
         simnet::Tick observed_tick {};
-        simnet::NS elapsed {};
+        simnet::Nanoseconds elapsed {};
         simnet::WorldSnapshot interpolated {};
     };
 
     [[nodiscard]] simnet::WorldSnapshot const* presentation_snapshot(
         std::deque<RetainedClientSnapshot> const& history,
         ClientPresentationState& state,
-        simnet::NS frame_delta,
+        simnet::Nanoseconds frame_delta,
         double tick_rate_hz,
         bool interpolation_enabled,
         bool paused,
@@ -135,7 +135,7 @@ namespace
             state.observed_tick = current.snapshot.tick;
             state.elapsed = {};
         } else if (!paused) {
-            state.elapsed += std::max(frame_delta, simnet::NS {});
+            state.elapsed += std::max(frame_delta, simnet::Nanoseconds {});
         }
         if (!interpolation_enabled || paused || history.size() < 2U) {
             return &current.snapshot;
@@ -235,7 +235,7 @@ namespace
     [[nodiscard]] simnet::RenderFrame render_frame(
         simnet::WorldSnapshot const& snapshot,
         simnet::SharedConfig const& config,
-        simnet::NS frame_delta,
+        simnet::Nanoseconds frame_delta,
         std::optional<simnet::SequenceId> sequence,
         bool session_ready,
         std::optional<bool> simulation_paused,
@@ -390,11 +390,11 @@ namespace
         });
     }
 
-    [[nodiscard]] simnet::ClientSnapshotPatch make_full_replace_patch(
+    [[nodiscard]] simnet::SnapshotUpdate make_full_replace_patch(
         simnet::WorldSnapshot const& snapshot
     )
     {
-        auto patch = simnet::ClientSnapshotPatch {
+        auto patch = simnet::SnapshotUpdate {
             .tick = snapshot.tick,
             .kind = simnet::SnapshotKind::FullReplace,
         };
@@ -483,7 +483,7 @@ namespace
         auto const baseline_is_current = baseline != nullptr
             && !snapshot_history.empty()
             && baseline == &snapshot_history.back().snapshot;
-        auto replacement = simnet::ClientSnapshotPatch {};
+        auto replacement = simnet::SnapshotUpdate {};
         auto const* patch_to_apply = &decoded.patch;
         if (decoded.patch.kind == simnet::SnapshotKind::Patch && !baseline_is_current) {
             replacement = make_full_replace_patch(reconstructed);

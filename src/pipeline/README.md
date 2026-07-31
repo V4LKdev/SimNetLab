@@ -1,6 +1,6 @@
 # simnet_pipeline
 
-`simnet_pipeline` selects snapshot data, transforms it, encodes packet bytes, and decodes them into `ClientSnapshotPatch` values. It does not depend on transport, Flecs, configuration, telemetry, rendering, or client storage.
+`simnet_pipeline` selects snapshot data, transforms it, encodes packet bytes, and decodes them into `SnapshotUpdate` values. It does not depend on transport, Flecs, configuration, telemetry, rendering, or client storage.
 
 ## Public API
 
@@ -10,7 +10,7 @@
 - `make_snapshot_pipeline` creates a default definition.
 - `validate_pipeline_definition` rejects unsupported technique combinations and invalid settings.
 - `encode_snapshot` produces a packet or a skipped result.
-- `decode_packet` validates bytes and returns a patch or an error report.
+- `decode_packet` validates bytes and returns a state update or an error report.
 - `pipeline_decode_signature` identifies the receiver-side representation.
 
 Each concurrent caller needs its own `ClientReplicationState` and `PipelineScratch`.

@@ -13,14 +13,14 @@ import simnet.core;
 
 namespace simnet
 {
-    NS steady_now_ns() noexcept
+    Nanoseconds steady_now_ns() noexcept
     {
-        return std::chrono::duration_cast<NS>(
+        return std::chrono::duration_cast<Nanoseconds>(
             std::chrono::steady_clock::now().time_since_epoch()
         );
     }
 
-    void reset_frame_timer(RuntimeFrameTimer& timer, NS now) noexcept
+    void reset_frame_timer(RuntimeFrameTimer& timer, Nanoseconds now) noexcept
     {
         timer.previous = now;
         timer.initialized = true;
@@ -31,22 +31,22 @@ namespace simnet
         reset_frame_timer(timer, steady_now_ns());
     }
 
-    NS sample_frame_delta(RuntimeFrameTimer& timer, NS now) noexcept
+    Nanoseconds sample_frame_delta(RuntimeFrameTimer& timer, Nanoseconds now) noexcept
     {
         if (!timer.initialized) {
             reset_frame_timer(timer, now);
-            return NS {};
+            return Nanoseconds {};
         }
 
         auto const previous = timer.previous;
         timer.previous = now;
         if (now <= previous) {
-            return NS {};
+            return Nanoseconds {};
         }
         return now - previous;
     }
 
-    NS sample_frame_delta(RuntimeFrameTimer& timer) noexcept
+    Nanoseconds sample_frame_delta(RuntimeFrameTimer& timer) noexcept
     {
         return sample_frame_delta(timer, steady_now_ns());
     }
@@ -54,7 +54,7 @@ namespace simnet
     RuntimeFramePlan plan_runtime_frame(
         FixedStepClock& clock,
         RuntimeStats& stats,
-        NS raw_delta,
+        Nanoseconds raw_delta,
         RuntimeSettings const& settings
     ) noexcept
     {
@@ -64,7 +64,7 @@ namespace simnet
             .raw_delta = raw_delta,
         };
 
-        auto accepted_delta = std::max(raw_delta, NS {});
+        auto accepted_delta = std::max(raw_delta, Nanoseconds {});
         if (accepted_delta > settings.fixed_step.max_frame_time) {
             plan.frame_delta_clamped = true;
             plan.clamped_time = accepted_delta - settings.fixed_step.max_frame_time;
@@ -88,7 +88,7 @@ namespace simnet
         }
 
         plan.step_count = advance(clock, accepted_delta, step_settings);
-        if (clock.fixed_dt > NS {} && clock.accumulator >= clock.fixed_dt) {
+        if (clock.fixed_dt > Nanoseconds {} && clock.accumulator >= clock.fixed_dt) {
             plan.step_limit_reached = true;
             auto const retained_remainder = clock.accumulator % clock.fixed_dt;
             plan.dropped_time = clock.accumulator - retained_remainder;
@@ -96,7 +96,7 @@ namespace simnet
         }
 
         plan.accumulator = clock.accumulator;
-        if (clock.fixed_dt > NS {}) {
+        if (clock.fixed_dt > Nanoseconds {}) {
             plan.interpolation_alpha =
                 static_cast<double>(clock.accumulator.count())
                 / static_cast<double>(clock.fixed_dt.count());
@@ -105,7 +105,7 @@ namespace simnet
         ++stats.frames;
         stats.ticks = clock.tick;
         stats.capped_frames += plan.step_limit_reached ? 1U : 0U;
-        stats.raw_time += std::max(raw_delta, NS {});
+        stats.raw_time += std::max(raw_delta, Nanoseconds {});
         stats.accepted_time += plan.accepted_delta;
         stats.clamped_time += plan.clamped_time;
         stats.dropped_time += plan.dropped_time;
@@ -123,7 +123,7 @@ namespace simnet
         if (settings.max_frames != 0U && stats.frames >= settings.max_frames) {
             return ShutdownReason::FrameLimit;
         }
-        if (settings.max_runtime > NS {} && stats.raw_time >= settings.max_runtime) {
+        if (settings.max_runtime > Nanoseconds {} && stats.raw_time >= settings.max_runtime) {
             return ShutdownReason::RuntimeLimit;
         }
         return ShutdownReason::None;

@@ -104,7 +104,7 @@ export namespace simnet
         std::optional<SequenceId> snapshot_sequence {};
         std::optional<bool> session_ready {};
         Aabb3f world_bounds {};
-        NS frame_delta {};
+        Nanoseconds frame_delta {};
         std::optional<double> fixed_tick_rate_hz {};
         std::optional<bool> simulation_paused {};
         std::optional<RenderInterpolationInfo> interpolation {};
@@ -306,11 +306,11 @@ export namespace simnet
     struct RenderStats
     {
         /// Complete viewer CPU work excluding EndDrawing presentation wait.
-        NS viewer_cpu_time {};
-        NS input_cpu_time {};
-        NS preparation_cpu_time {};
-        NS scene_submit_cpu_time {};
-        NS panel_cpu_time {};
+        Nanoseconds viewer_cpu_time {};
+        Nanoseconds input_cpu_time {};
+        Nanoseconds preparation_cpu_time {};
+        Nanoseconds scene_submit_cpu_time {};
+        Nanoseconds panel_cpu_time {};
         std::uint32_t instance_count {};
         std::uint32_t skipped_entity_count {};
         std::uint32_t draw_calls {};

@@ -11,7 +11,7 @@ namespace
 {
     [[nodiscard]] simnet::WorldSnapshot make_snapshot(
         simnet::Tick tick,
-        std::vector<simnet::BoidState> const& boids
+        std::vector<simnet::EntityState> const& boids
     )
     {
         auto snapshot = simnet::WorldSnapshot {};
@@ -28,7 +28,7 @@ namespace
 
     [[nodiscard]] simnet::WorldSnapshot make_linear_snapshot(simnet::Tick tick, std::uint32_t count)
     {
-        auto boids = std::vector<simnet::BoidState> {};
+        auto boids = std::vector<simnet::EntityState> {};
         boids.reserve(count);
         for (std::uint32_t index = 0; index < count; ++index) {
             boids.push_back({

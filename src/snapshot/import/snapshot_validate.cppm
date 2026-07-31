@@ -55,10 +55,10 @@ export namespace simnet
         return {};
     }
 
-    /// Validates the logical client patch contract.
-    [[nodiscard]] inline SnapshotValidationResult validate_client_snapshot_patch(ClientSnapshotPatch const& patch)
+    /// Validates the logical snapshot update contract.
+    [[nodiscard]] inline SnapshotValidationResult validate_client_snapshot_patch(SnapshotUpdate const& patch)
     {
-        // --- 1. Patch kind ---
+        // --- 1. Update kind ---
         if (patch.kind != SnapshotKind::FullReplace && patch.kind != SnapshotKind::Patch) {
             return { false, "client snapshot patch kind is unknown" };
         }

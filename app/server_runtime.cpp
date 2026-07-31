@@ -75,8 +75,8 @@ namespace
         std::optional<std::filesystem::path> shared_config_path {};
         std::uint64_t max_frames {};
         simnet::Tick max_ticks {};
-        simnet::NS max_runtime {};
-        simnet::NS max_frame_time { std::chrono::milliseconds(250) };
+        simnet::Nanoseconds max_runtime {};
+        simnet::Nanoseconds max_frame_time { std::chrono::milliseconds(250) };
         std::uint16_t max_steps_per_frame { 5 };
     };
 
@@ -352,7 +352,7 @@ namespace
     [[nodiscard]] simnet::RenderFrame render_frame(
         simnet::WorldSnapshot const& snapshot,
         simnet::SharedConfig const& config,
-        simnet::NS frame_delta,
+        simnet::Nanoseconds frame_delta,
         bool paused,
         simnet::RenderInterpolationInfo interpolation,
         std::optional<PeerRuntimeState> const& peer,
@@ -634,7 +634,7 @@ namespace
         return static_cast<float>(bits) / static_cast<float>(0xFFFFFFU);
     }
 
-    [[nodiscard]] simnet::BoidState initial_boid(
+    [[nodiscard]] simnet::EntityState initial_boid(
         std::uint32_t index,
         std::uint32_t count,
         simnet::SharedConfig const& config
@@ -681,7 +681,7 @@ namespace
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.initialize_world", simnet::LogCategory::Simulation);
-        auto boids = std::vector<simnet::BoidState> {};
+        auto boids = std::vector<simnet::EntityState> {};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("server.initial_state_generation", simnet::LogCategory::Simulation);
             boids.reserve(config.simulation.initial_boid_count);
@@ -702,7 +702,7 @@ namespace
     [[nodiscard]] bool advance_world(
         flecs::world& world,
         simnet::ServerGameRuntime& game,
-        simnet::NS fixed_dt
+        simnet::Nanoseconds fixed_dt
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_step.world_advance", simnet::LogCategory::Simulation);
@@ -1076,7 +1076,7 @@ namespace
         flecs::world& world,
         simnet::ServerGameRuntime& game,
         simnet::Tick tick,
-        simnet::NS fixed_dt,
+        simnet::Nanoseconds fixed_dt,
         simnet::PipelineDefinition const& pipeline,
         simnet::Delivery delivery,
         simnet::TransportServer& transport,
@@ -1254,7 +1254,7 @@ namespace simnet::app
                 .max_runtime = options.max_runtime,
             };
             auto clock = make_clock(settings.fixed_step);
-            if (clock.fixed_dt <= NS {} || settings.fixed_step.max_steps_per_frame == 0) {
+            if (clock.fixed_dt <= Nanoseconds {} || settings.fixed_step.max_steps_per_frame == 0) {
                 throw std::runtime_error("invalid fixed-step runtime settings");
             }
 
@@ -1288,7 +1288,7 @@ namespace simnet::app
                     + std::string { authoritative_spawn_error_name(population.error) }
                 );
             }
-            auto const initialization_elapsed = std::chrono::duration_cast<NS>(
+            auto const initialization_elapsed = std::chrono::duration_cast<Nanoseconds>(
                 std::chrono::steady_clock::now() - initialization_start
             );
             log(LogCategory::Simulation, LogLevel::Info,
@@ -1363,7 +1363,7 @@ namespace simnet::app
                     break;
                 }
                 if (pause_state_changed) {
-                    clock.accumulator = NS {};
+                    clock.accumulator = Nanoseconds {};
                 }
 
                 auto const frame_delta = sample_frame_delta(timer);
@@ -1372,7 +1372,7 @@ namespace simnet::app
                     ++stats.frames;
                     stats.raw_time += frame_delta;
                     stats.accepted_time += frame_delta;
-                    clock.accumulator = NS {};
+                    clock.accumulator = Nanoseconds {};
                 } else {
                     frame = plan_runtime_frame(clock, stats, frame_delta, settings);
                 }
@@ -1503,7 +1503,7 @@ namespace simnet::app
                         }
                         if (viewer_result.toggle_simulation_pause_requested) {
                             simulation_paused = !simulation_paused;
-                            clock.accumulator = NS {};
+                            clock.accumulator = Nanoseconds {};
                             log(LogCategory::Simulation, LogLevel::Info,
                                 simulation_paused ? "server simulation paused by viewer"
                                                   : "server simulation resumed by viewer");

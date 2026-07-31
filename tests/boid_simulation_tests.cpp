@@ -43,7 +43,7 @@ namespace
         return settings;
     }
 
-    [[nodiscard]] simnet::BoidState boid(
+    [[nodiscard]] simnet::EntityState boid(
         simnet::EntityNetId id,
         simnet::Vec3f position,
         simnet::Vec3f heading
@@ -59,14 +59,14 @@ namespace
 
     [[nodiscard]] simnet::AuthoritativeSpawnReport append_boids(
         flecs::world& world,
-        std::initializer_list<simnet::BoidState> values
+        std::initializer_list<simnet::EntityState> values
     )
     {
-        auto storage = std::vector<simnet::BoidState> { values };
+        auto storage = std::vector<simnet::EntityState> { values };
         return simnet::append_authoritative_boids(world, storage);
     }
 
-    [[nodiscard]] simnet::BoidState hued_boid(
+    [[nodiscard]] simnet::EntityState hued_boid(
         simnet::EntityNetId id,
         simnet::Vec3f position,
         simnet::Vec3f heading,
@@ -141,7 +141,7 @@ namespace
         auto world = flecs::world {};
         simnet::register_server_game(world, runtime);
 
-        auto boids = std::vector<simnet::BoidState> {};
+        auto boids = std::vector<simnet::EntityState> {};
         boids.reserve(256);
         auto constexpr headings = std::array {
             simnet::Vec3f { 1.0F, 0.0F, 0.0F },
