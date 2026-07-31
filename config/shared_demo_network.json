@@ -4,7 +4,7 @@
   },
   "simulation": {
     "tick_rate_hz": 60,
-    "world_half": 80,
+    "world_half": 70,
     "initial_boid_count": 100
   },
   "spatial": {
@@ -32,7 +32,7 @@
     "separation_acceleration": 10,
     "containment_acceleration": 9,
     "alignment_acceleration": 1.2,
-    "cohesion_acceleration": 2.0,
+    "cohesion_acceleration": 1.0,
     "wander_acceleration": 0.65,
     "wander_frequency_hz": 0.35,
     "hue_assimilation_rate": 0.04,
