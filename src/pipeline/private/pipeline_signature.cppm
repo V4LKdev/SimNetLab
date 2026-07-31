@@ -47,7 +47,7 @@ namespace simnet::pipeline_signature
         update_signature_u32(signature, std::bit_cast<std::uint32_t>(value));
     }
 
-    /// Returns the technique subset that changes raw packet interpretation.
+    /// Returns the technique subset that changes encoded update interpretation.
     [[nodiscard]] std::uint32_t decode_relevant_technique_mask(PipelineDefinition const& pipeline) noexcept
     {
         auto constexpr mask = static_cast<std::uint32_t>(

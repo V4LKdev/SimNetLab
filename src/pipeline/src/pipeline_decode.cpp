@@ -40,16 +40,16 @@ namespace
         output.report.sequence          = sequence;
         output.report.baseline_sequence = baseline_sequence;
         output.report.snapshot_kind     = snapshot_kind;
-        output.report.packet_bytes      = static_cast<std::uint32_t>(
+        output.report.encoded_update_bytes = static_cast<std::uint32_t>(
             std::min<std::size_t>(bytes.size(), std::numeric_limits<std::uint32_t>::max()));
         output.report.valid             = false;
         output.report.error             = std::move(error);
         return output;
     }
 
-    /// Verifies that the packet payload size matches the header claim.
+    /// Verifies that the encoded update payload size matches the header claim.
     [[nodiscard]] bool checked_payload_size(
-        simnet::pipeline_wire::PacketHeader const& header,
+        simnet::pipeline_wire::EncodedUpdateHeader const& header,
         std::size_t byte_count) noexcept
     {
         if (byte_count < simnet::pipeline_wire::header_bytes) {
@@ -59,11 +59,11 @@ namespace
     }
 }
 
-// --- Decode packet ---
+// --- Decode encoded update ---
 
 namespace simnet
 {
-    DecodeOutput decode_packet(
+    DecodeOutput decode_update(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
         PipelineScratch& scratch,
@@ -78,21 +78,21 @@ namespace simnet
         // --- Size sanity checks ---
 
         if (bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
-            return invalid_decode(bytes, "packet byte count exceeds uint32 range");
+            return invalid_decode(bytes, "encoded update byte count exceeds uint32 range");
         }
         if (bytes.size() < pipeline_wire::header_bytes) {
-            return invalid_decode(bytes, "packet is shorter than header");
+            return invalid_decode(bytes, "encoded update is shorter than header");
         }
 
         // --- Read header ---
 
-        pipeline_wire::PacketHeader header {};
+        pipeline_wire::EncodedUpdateHeader header {};
         if (!pipeline_wire::read_header(bytes, header)) {
-            return invalid_decode(bytes, "failed to read packet header");
+            return invalid_decode(bytes, "failed to read encoded update header");
         }
 
         // Helper that wraps invalid_decode with the parsed header fields.
-        auto invalid_packet = [&](std::string error) {
+        auto invalid_update = [&](std::string error) {
             DecodeOutput output = invalid_decode(
                 bytes, std::move(error),
                 header.tick, header.sequence,
@@ -104,22 +104,22 @@ namespace simnet
 
         // --- Header validation ---
 
-        if (header.magic != pipeline_wire::packet_magic)
-            return invalid_packet("invalid packet magic");
+        if (header.magic != pipeline_wire::encoded_update_magic)
+            return invalid_update("invalid encoded update magic");
         if (header.protocol != pipeline_wire::protocol_version
             || header.schema != pipeline_wire::schema_version)
-            return invalid_packet("unsupported packet version");
+            return invalid_update("unsupported encoded update version");
         if (header.decode_signature != pipeline_signature::make_pipeline_decode_signature(pipeline))
-            return invalid_packet("packet decode signature does not match local pipeline");
+            return invalid_update("encoded update signature does not match local pipeline");
         if (header.snapshot_kind != SnapshotKind::FullReplace
             && header.snapshot_kind != SnapshotKind::Patch)
-            return invalid_packet("unsupported snapshot kind");
+            return invalid_update("unsupported snapshot kind");
         if (header.sequence == 0U)
-            return invalid_packet("packet sequence 0 is reserved");
+            return invalid_update("encoded update sequence 0 is reserved");
         if (header.sequence <= client_state.latest_remote_sequence)
-            return invalid_packet("stale or out-of-order packet sequence");
+            return invalid_update("stale or out-of-order encoded update sequence");
         if (!checked_payload_size(header, bytes.size()))
-            return invalid_packet("packet payload size does not match header");
+            return invalid_update("encoded update payload size does not match header");
 
         // --- Patch-kind specific checks ---
 
@@ -127,19 +127,19 @@ namespace simnet
 
         if (header.snapshot_kind == SnapshotKind::FullReplace) {
             if (header.baseline_sequence != 0U)
-                return invalid_packet("full snapshot baseline sequence must be 0");
+                return invalid_update("full snapshot baseline sequence must be 0");
             if (header.delete_count != 0U)
-                return invalid_packet("full snapshot delete count must be 0");
+                return invalid_update("full snapshot delete count must be 0");
         } else if (delta_enabled) {
             if (header.baseline_sequence == 0U)
-                return invalid_packet("delta patch baseline sequence 0 is reserved");
+                return invalid_update("delta patch baseline sequence 0 is reserved");
             if (header.baseline_sequence >= header.sequence)
-                return invalid_packet("delta patch baseline must precede packet sequence");
+                return invalid_update("delta patch baseline must precede update sequence");
         } else {
             if (header.baseline_sequence != 0U)
-                return invalid_packet("non-delta patch baseline sequence must be 0");
+                return invalid_update("non-delta patch baseline sequence must be 0");
             if (header.delete_count != 0U)
-                return invalid_packet("non-delta patch delete count must be 0");
+                return invalid_update("non-delta patch delete count must be 0");
         }
 
         // --- Payload layout / size verification ---
@@ -151,7 +151,7 @@ namespace simnet
             static_cast<std::uint64_t>(header.delete_count) * pipeline_wire::delete_record_bytes
             + static_cast<std::uint64_t>(header.upsert_count) * record_bytes;
         if (expected_payload != header.payload_bytes)
-            return invalid_packet("packet payload counts do not match payload size");
+            return invalid_update("encoded update payload counts do not match payload size");
 
         // --- Decode records ---
 
@@ -164,25 +164,25 @@ namespace simnet
         for (std::uint32_t i = 0; i < header.delete_count; ++i) {
             EntityNetId id {};
             if (!pipeline_wire::read_u32(bytes, offset, id))
-                return invalid_packet("truncated delete id data");
+                return invalid_update("truncated delete id data");
             patch.deletes.push_back(id);
         }
 
         for (std::uint32_t i = 0; i < header.upsert_count; ++i) {
             EntityState boid {};
             if (!pipeline_records::read_record(bytes, offset, layout, boid))
-                return invalid_packet("truncated upsert record data");
+                return invalid_update("truncated upsert record data");
             patch.upserts.push_back(boid);
         }
 
         if (offset != bytes.size())
-            return invalid_packet("packet has trailing bytes");
+            return invalid_update("encoded update has trailing bytes");
 
-        // --- Patch validity ---
+        // --- Update validity ---
 
         SnapshotValidationResult const validation = validate_client_snapshot_patch(patch);
         if (!validation.valid)
-            return invalid_packet("decoded patch is invalid: " + validation.message);
+            return invalid_update("decoded update is invalid: " + validation.message);
 
         // --- Finalise ---
 
@@ -195,10 +195,10 @@ namespace simnet
         report.snapshot_kind     = header.snapshot_kind;
         report.upsert_count      = header.upsert_count;
         report.delete_count      = header.delete_count;
-        report.packet_bytes      = static_cast<std::uint32_t>(bytes.size());
+        report.encoded_update_bytes = static_cast<std::uint32_t>(bytes.size());
         report.delta             = delta_enabled && header.snapshot_kind == SnapshotKind::Patch;
         report.valid             = true;
 
-        return { .patch = std::move(patch), .report = std::move(report) };
+        return { .update = std::move(patch), .report = std::move(report) };
     }
 }

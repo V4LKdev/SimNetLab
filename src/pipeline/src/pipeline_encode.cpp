@@ -41,14 +41,14 @@ namespace
         report.skipped           = true;
         report.delta             = false;
         report.skip_reason       = reason;
-        report.budget_exceeded   = false;
+        report.size_target_exceeded = false;
         report.input_entities    = static_cast<std::uint32_t>(snapshot.size());
         // remaining fields stay zero
 
         return {
             .kind        = simnet::EncodeResultKind::Skipped,
             .skip_reason = reason,
-            .packet      = {},
+            .update      = {},
             .report      = report,
         };
     }
@@ -71,14 +71,6 @@ namespace
 
 namespace simnet
 {
-    PipelineDefinition make_snapshot_pipeline(PacketBudget budget)
-    {
-        return {
-            .techniques = PipelineTechniqueFlags::None,
-            .budget = budget,
-        };
-    }
-
     std::uint64_t pipeline_decode_signature(PipelineDefinition const& definition) noexcept
     {
         return pipeline_signature::make_pipeline_decode_signature(definition);
@@ -137,7 +129,7 @@ namespace simnet
             throw std::runtime_error("pipeline sequence would wrap to reserved 0");
         }
         if (input.baseline_snapshot != nullptr && input.baseline_sequence >= sequence) {
-            throw std::runtime_error("delta baseline sequence must precede packet sequence");
+            throw std::runtime_error("delta baseline sequence must precede update sequence");
         }
 
         // --- Entity selection ---
@@ -154,7 +146,7 @@ namespace simnet
                 scratch,
                 snapshot.size(),
                 client_state.incremental_cursor,
-                pipeline.incremental.max_entities_per_packet);
+                pipeline.incremental.max_entities_per_update);
         } else {
             scratch.selected_indices.clear();
             scratch.selected_delete_ids.clear();
@@ -180,12 +172,12 @@ namespace simnet
 
         if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
             || payload_byte_count + pipeline_wire::header_bytes > std::numeric_limits<std::uint32_t>::max()) {
-            throw std::runtime_error("encoded snapshot packet exceeds uint32 byte range");
+            throw std::runtime_error("encoded update exceeds uint32 byte range");
         }
         std::uint32_t const payload_bytes = static_cast<std::uint32_t>(payload_byte_count);
 
-        pipeline_wire::PacketHeader const header {
-            .magic             = pipeline_wire::packet_magic,
+        pipeline_wire::EncodedUpdateHeader const header {
+            .magic             = pipeline_wire::encoded_update_magic,
             .protocol          = pipeline_wire::protocol_version,
             .schema            = pipeline_wire::schema_version,
             .decode_signature  = pipeline_signature::make_pipeline_decode_signature(pipeline),
@@ -227,16 +219,16 @@ namespace simnet
             }
         }
 
-        // --- Packet / report ---
+        // --- Encoded update / report ---
 
-        EncodedPacket packet {
+        EncodedUpdate update {
             .tick              = snapshot.tick,
             .sequence          = sequence,
             .baseline_sequence = baseline_sequence,
             .bytes             = scratch.bytes,
         };
 
-        std::uint32_t const final_bytes = static_cast<std::uint32_t>(packet.bytes.size());
+        std::uint32_t const final_bytes = static_cast<std::uint32_t>(update.bytes.size());
 
         EncodeReport report {};
         report.tick              = snapshot.tick;
@@ -248,20 +240,21 @@ namespace simnet
         report.skipped           = false;
         report.delta             = emit_delta;
         report.skip_reason       = EncodeSkipReason::None;
-        report.budget_exceeded   = final_bytes > pipeline.budget.max_packet_bytes;
+        report.size_target_exceeded =
+            final_bytes > pipeline.encoded_update_size_target_bytes;
         report.input_entities    = static_cast<std::uint32_t>(snapshot.size());
         report.selected_entities = static_cast<std::uint32_t>(selected_count);
         report.upsert_count      = static_cast<std::uint32_t>(selected_count);
         report.delete_count      = static_cast<std::uint32_t>(delete_count);
-        report.packet_bytes      = final_bytes;
+        report.encoded_update_bytes = final_bytes;
         report.payload_bytes     = payload_bytes;
         report.uncompressed_bytes = final_bytes;
         report.final_bytes       = final_bytes;
 
         EncodeOutput output;
-        output.kind        = EncodeResultKind::Packet;
+        output.kind        = EncodeResultKind::Update;
         output.skip_reason = EncodeSkipReason::None;
-        output.packet      = std::move(packet);
+        output.update      = std::move(update);
         output.report      = report;
 
         // --- Update client state ---

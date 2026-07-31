@@ -74,7 +74,7 @@ namespace
 
 TEST_CASE("five-tick replication contract remains intact", "[replication]")
 {
-    auto pipeline = simnet::make_snapshot_pipeline();
+    auto pipeline = simnet::PipelineDefinition {};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
@@ -128,21 +128,21 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
         }
 
         REQUIRE(emitted_index < expected_sequences.size());
-        CHECK(encoded.packet.sequence == expected_sequences[emitted_index]);
+        CHECK(encoded.update.sequence == expected_sequences[emitted_index]);
         CHECK(encoded.report.baseline_sequence == expected_baselines[emitted_index]);
         CHECK(encoded.report.snapshot_kind == expected_kinds[emitted_index]);
 
-        auto const decoded = simnet::decode_packet(
+        auto const decoded = simnet::decode_update(
             pipeline,
             decode_state,
             decode_scratch,
             {
-                .bytes = encoded.packet.bytes,
+                .bytes = encoded.update.bytes,
             }
         );
         REQUIRE(decoded.report.valid);
 
-        auto const applied = simnet::apply_client_snapshot_patch(client_world, decoded.patch);
+        auto const applied = simnet::apply_client_snapshot_patch(client_world, decoded.update);
         REQUIRE(applied.valid);
 
         record_received(ack, decoded.report.sequence);
@@ -291,7 +291,7 @@ TEST_CASE("authoritative extraction validates query ownership before snapshot co
 
 TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replication]")
 {
-    auto pipeline = simnet::make_snapshot_pipeline();
+    auto pipeline = simnet::PipelineDefinition {};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
     auto encode_state = simnet::ClientReplicationState {};
     auto decode_state = simnet::ClientReplicationState {};
@@ -299,17 +299,17 @@ TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replicati
     auto decode_scratch = simnet::PipelineScratch {};
     auto const first_snapshot = single_boid_snapshot(1);
 
-    auto const first_packet = simnet::encode_snapshot(
+    auto const first_update = simnet::encode_snapshot(
         pipeline,
         encode_state,
         encode_scratch,
         { .snapshot = &first_snapshot }
     );
-    REQUIRE(first_packet.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+    REQUIRE(first_update.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
 
     auto retained_snapshots = std::deque<std::pair<simnet::SequenceId, simnet::WorldSnapshot>> {};
-    retained_snapshots.push_back({ first_packet.packet.sequence, first_snapshot });
-    auto acknowledged_baseline = std::optional { first_packet.packet.sequence };
+    retained_snapshots.push_back({ first_update.update.sequence, first_snapshot });
+    auto acknowledged_baseline = std::optional { first_update.update.sequence };
     retained_snapshots.clear();
 
     auto const retained = std::find_if(
@@ -322,7 +322,7 @@ TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replicati
     }
 
     auto const next_snapshot = single_boid_snapshot(2);
-    auto const next_packet = simnet::encode_snapshot(
+    auto const next_update = simnet::encode_snapshot(
         pipeline,
         encode_state,
         encode_scratch,
@@ -333,15 +333,15 @@ TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replicati
         }
     );
     CHECK_FALSE(acknowledged_baseline.has_value());
-    CHECK(next_packet.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
-    CHECK(next_packet.report.baseline_sequence == 0);
+    CHECK(next_update.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+    CHECK(next_update.report.baseline_sequence == 0);
 
-    auto const decoded = simnet::decode_packet(
+    auto const decoded = simnet::decode_update(
         pipeline,
         decode_state,
         decode_scratch,
         {
-            .bytes = next_packet.packet.bytes,
+            .bytes = next_update.update.bytes,
         }
     );
     CHECK(decoded.report.valid);

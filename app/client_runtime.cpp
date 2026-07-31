@@ -432,7 +432,7 @@ namespace
         auto decoded = simnet::DecodeOutput {};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_decode", simnet::LogCategory::Pipeline);
-            decoded = simnet::decode_packet(
+            decoded = simnet::decode_update(
                 pipeline,
                 decode_state,
                 scratch,
@@ -462,7 +462,7 @@ namespace
                         + std::to_string(decoded.report.baseline_sequence));
                 return false;
             }
-        } else if (decoded.patch.kind == simnet::SnapshotKind::Patch) {
+        } else if (decoded.update.kind == simnet::SnapshotKind::Patch) {
             baseline = snapshot_history.empty()
                 ? &empty_baseline
                 : &snapshot_history.back().snapshot;
@@ -471,7 +471,7 @@ namespace
         auto reconstructed = simnet::WorldSnapshot {};
         auto const reconstruction = simnet::reconstruct_world_snapshot(
             baseline,
-            decoded.patch,
+            decoded.update,
             reconstructed
         );
         if (!reconstruction.valid) {
@@ -484,8 +484,8 @@ namespace
             && !snapshot_history.empty()
             && baseline == &snapshot_history.back().snapshot;
         auto replacement = simnet::SnapshotUpdate {};
-        auto const* patch_to_apply = &decoded.patch;
-        if (decoded.patch.kind == simnet::SnapshotKind::Patch && !baseline_is_current) {
+        auto const* patch_to_apply = &decoded.update;
+        if (decoded.update.kind == simnet::SnapshotKind::Patch && !baseline_is_current) {
             replacement = make_full_replace_patch(reconstructed);
             patch_to_apply = &replacement;
         }

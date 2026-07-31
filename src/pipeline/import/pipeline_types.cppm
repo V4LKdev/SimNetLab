@@ -32,11 +32,11 @@ export namespace simnet
     /// Result kind for an encode call.
     enum class EncodeResultKind : std::uint8_t
     {
-        Packet,     /// a complete packet was produced.
-        Skipped     /// no packet was emitted by this call.
+        Update,     /// a complete encoded update was produced.
+        Skipped     /// no encoded update was emitted by this call.
     };
 
-    /// Reason an encode call produced no packet.
+    /// Reason an encode call produced no encoded update.
     enum class EncodeSkipReason : std::uint8_t
     {
         None,
@@ -86,12 +86,6 @@ export namespace simnet
 
     // --- Settings structs ---
 
-    /// Soft final encoded packet byte target for reports. Encode still emits oversized packets.
-    struct PacketBudget
-    {
-        std::uint32_t max_packet_bytes { 1200 };
-    };
-
     /// Configuration for the send-interval policy.
     struct SendIntervalSettings
     {
@@ -104,7 +98,7 @@ export namespace simnet
     /// Configuration for incremental round-robin selection.
     struct IncrementalSettings
     {
-        std::uint32_t max_entities_per_packet { 512 };
+        std::uint32_t max_entities_per_update { 512 };
     };
 
     /// Configuration for position/heading quantization
@@ -119,7 +113,8 @@ export namespace simnet
     struct PipelineDefinition
     {
         PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
-        PacketBudget budget {};
+        /// Soft final encoded update byte target for reports. Encode still emits oversized updates.
+        std::uint32_t encoded_update_size_target_bytes { 1200 };
         SendIntervalSettings send_interval {};
         IncrementalSettings incremental {};
         QuantizationSettings quantization {};
@@ -144,7 +139,7 @@ export namespace simnet
     /// Reusable scratch-memory for encode/decode. Stored externally to avoid allocations on hot path.
     struct PipelineScratch
     {
-        /// Indices of entities to send.
+        /// Indices of entities to include in the encoded update.
         std::vector<std::uint32_t> selected_indices;
         /// IDs to delete (for delta)
         std::vector<EntityNetId> selected_delete_ids;

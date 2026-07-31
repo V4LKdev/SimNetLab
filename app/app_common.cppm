@@ -226,9 +226,9 @@ namespace simnet::app
             throw std::runtime_error("pipeline heading_bits must be 16 until variable-width encoding is implemented");
         }
 
-        auto pipeline = simnet::make_snapshot_pipeline({
-            .max_packet_bytes = transport.max_payload_bytes,
-        });
+        auto pipeline = PipelineDefinition {
+            .encoded_update_size_target_bytes = transport.max_payload_bytes,
+        };
         if (shared.pipeline.enable_incremental) {
             pipeline.techniques |= PipelineTechniqueFlags::Incremental;
         }

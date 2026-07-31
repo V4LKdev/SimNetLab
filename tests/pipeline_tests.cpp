@@ -44,7 +44,7 @@ namespace
 
 TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][delta]")
 {
-    auto pipeline = simnet::make_snapshot_pipeline();
+    auto pipeline = simnet::PipelineDefinition {};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
 
     auto const baseline = make_snapshot(0, {
@@ -69,15 +69,15 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
         encode_scratch,
         { .snapshot = &baseline }
     );
-    REQUIRE(full.kind == simnet::EncodeResultKind::Packet);
+    REQUIRE(full.kind == simnet::EncodeResultKind::Update);
     REQUIRE(full.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
     REQUIRE(full.report.baseline_sequence == 0);
 
-    auto const full_decoded = simnet::decode_packet(
+    auto const full_decoded = simnet::decode_update(
         pipeline,
         decode_state,
         decode_scratch,
-        { .bytes = full.packet.bytes }
+        { .bytes = full.update.bytes }
     );
     REQUIRE(full_decoded.report.valid);
 
@@ -88,32 +88,32 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
         {
             .snapshot = &current,
             .baseline_snapshot = &baseline,
-            .baseline_sequence = full.packet.sequence,
+            .baseline_sequence = full.update.sequence,
         }
     );
-    REQUIRE(delta.kind == simnet::EncodeResultKind::Packet);
+    REQUIRE(delta.kind == simnet::EncodeResultKind::Update);
     REQUIRE(delta.report.delta);
     REQUIRE(delta.report.snapshot_kind == simnet::SnapshotKind::Patch);
-    REQUIRE(delta.report.baseline_sequence == full.packet.sequence);
+    REQUIRE(delta.report.baseline_sequence == full.update.sequence);
     REQUIRE(delta.report.upsert_count == 2);
     REQUIRE(delta.report.delete_count == 1);
 
-    auto const decoded = simnet::decode_packet(
+    auto const decoded = simnet::decode_update(
         pipeline,
         decode_state,
         decode_scratch,
-        { .bytes = delta.packet.bytes }
+        { .bytes = delta.update.bytes }
     );
     REQUIRE(decoded.report.valid);
-    REQUIRE(decoded.patch.upserts.size() == 2);
-    CHECK(decoded.patch.upserts[0].id == 2);
-    CHECK(decoded.patch.upserts[1].id == 4);
-    CHECK(decoded.patch.deletes == std::vector<simnet::EntityNetId> { 3 });
+    REQUIRE(decoded.update.upserts.size() == 2);
+    CHECK(decoded.update.upserts[0].id == 2);
+    CHECK(decoded.update.upserts[1].id == 4);
+    CHECK(decoded.update.deletes == std::vector<simnet::EntityNetId> { 3 });
 }
 
 TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][delta][replication]")
 {
-    auto pipeline = simnet::make_snapshot_pipeline();
+    auto pipeline = simnet::PipelineDefinition {};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
 
     auto const baseline = make_snapshot(10, {
@@ -147,7 +147,7 @@ TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][d
         {
             .snapshot = &tick_11,
             .baseline_snapshot = &baseline,
-            .baseline_sequence = full.packet.sequence,
+            .baseline_sequence = full.update.sequence,
         }
     );
     auto const second_delta = simnet::encode_snapshot(
@@ -157,53 +157,53 @@ TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][d
         {
             .snapshot = &tick_12,
             .baseline_snapshot = &baseline,
-            .baseline_sequence = full.packet.sequence,
+            .baseline_sequence = full.update.sequence,
         }
     );
-    REQUIRE(first_delta.report.baseline_sequence == full.packet.sequence);
-    REQUIRE(second_delta.report.baseline_sequence == full.packet.sequence);
+    REQUIRE(first_delta.report.baseline_sequence == full.update.sequence);
+    REQUIRE(second_delta.report.baseline_sequence == full.update.sequence);
 
-    auto const decoded_full = simnet::decode_packet(
+    auto const decoded_full = simnet::decode_update(
         pipeline,
         decode_state,
         decode_scratch,
-        { .bytes = full.packet.bytes }
+        { .bytes = full.update.bytes }
     );
     REQUIRE(decoded_full.report.valid);
     auto retained_baseline = simnet::WorldSnapshot {};
     REQUIRE(simnet::reconstruct_world_snapshot(
         nullptr,
-        decoded_full.patch,
+        decoded_full.update,
         retained_baseline
     ).valid);
 
-    auto const decoded_first = simnet::decode_packet(
+    auto const decoded_first = simnet::decode_update(
         pipeline,
         decode_state,
         decode_scratch,
-        { .bytes = first_delta.packet.bytes }
+        { .bytes = first_delta.update.bytes }
     );
     REQUIRE(decoded_first.report.valid);
     auto reconstructed_first = simnet::WorldSnapshot {};
     REQUIRE(simnet::reconstruct_world_snapshot(
         &retained_baseline,
-        decoded_first.patch,
+        decoded_first.update,
         reconstructed_first
     ).valid);
     CHECK(reconstructed_first.positions[0].x == 11.0F);
 
-    auto const decoded_second = simnet::decode_packet(
+    auto const decoded_second = simnet::decode_update(
         pipeline,
         decode_state,
         decode_scratch,
-        { .bytes = second_delta.packet.bytes }
+        { .bytes = second_delta.update.bytes }
     );
     REQUIRE(decoded_second.report.valid);
-    REQUIRE(decoded_second.report.baseline_sequence == full.packet.sequence);
+    REQUIRE(decoded_second.report.baseline_sequence == full.update.sequence);
     auto reconstructed_second = simnet::WorldSnapshot {};
     REQUIRE(simnet::reconstruct_world_snapshot(
         &retained_baseline,
-        decoded_second.patch,
+        decoded_second.update,
         reconstructed_second
     ).valid);
     CHECK(reconstructed_second.positions[0].x == 1.0F);
@@ -212,7 +212,7 @@ TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][d
 
 TEST_CASE("pipeline validation rejects unsupported technique combinations", "[pipeline]")
 {
-    auto pipeline = simnet::make_snapshot_pipeline();
+    auto pipeline = simnet::PipelineDefinition {};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Incremental;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
 
@@ -221,11 +221,11 @@ TEST_CASE("pipeline validation rejects unsupported technique combinations", "[pi
 
 TEST_CASE("incremental pipeline advances cursor only on scheduled emissions", "[pipeline][incremental]")
 {
-    auto pipeline = simnet::make_snapshot_pipeline();
+    auto pipeline = simnet::PipelineDefinition {};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Incremental;
     pipeline.send_interval.interval_ticks = 2;
-    pipeline.incremental.max_entities_per_packet = 4;
+    pipeline.incremental.max_entities_per_update = 4;
 
     auto encode_state = simnet::ClientReplicationState {};
     auto decode_state = simnet::ClientReplicationState {};
@@ -254,22 +254,22 @@ TEST_CASE("incremental pipeline advances cursor only on scheduled emissions", "[
         }
 
         REQUIRE(emitted_index < expected_ids.size());
-        REQUIRE(encoded.kind == simnet::EncodeResultKind::Packet);
-        CHECK(encoded.packet.sequence == emitted_index + 1U);
+        REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+        CHECK(encoded.update.sequence == emitted_index + 1U);
         CHECK(encoded.report.snapshot_kind == simnet::SnapshotKind::Patch);
         CHECK(encoded.report.selected_entities == 4);
 
-        auto const decoded = simnet::decode_packet(
+        auto const decoded = simnet::decode_update(
             pipeline,
             decode_state,
             decode_scratch,
-            { .bytes = encoded.packet.bytes }
+            { .bytes = encoded.update.bytes }
         );
         REQUIRE(decoded.report.valid);
 
         auto ids = std::vector<simnet::EntityNetId> {};
-        ids.reserve(decoded.patch.upserts.size());
-        for (auto const& boid : decoded.patch.upserts) {
+        ids.reserve(decoded.update.upserts.size());
+        for (auto const& boid : decoded.update.upserts) {
             ids.push_back(boid.id);
         }
         CHECK(ids == expected_ids[emitted_index]);
@@ -283,7 +283,7 @@ TEST_CASE("incremental pipeline advances cursor only on scheduled emissions", "[
 
 TEST_CASE("quantized octahedral bit-packed snapshots round-trip", "[pipeline][quantized][bitpacked]")
 {
-    auto pipeline = simnet::make_snapshot_pipeline();
+    auto pipeline = simnet::PipelineDefinition {};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::BitPacking;
@@ -305,22 +305,22 @@ TEST_CASE("quantized octahedral bit-packed snapshots round-trip", "[pipeline][qu
         encode_scratch,
         { .snapshot = &snapshot }
     );
-    REQUIRE(encoded.kind == simnet::EncodeResultKind::Packet);
+    REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
     CHECK(encoded.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
     CHECK(encoded.report.upsert_count == 3);
     CHECK(encoded.report.payload_bytes == 45);
 
-    auto const decoded = simnet::decode_packet(
+    auto const decoded = simnet::decode_update(
         pipeline,
         decode_state,
         decode_scratch,
-        { .bytes = encoded.packet.bytes }
+        { .bytes = encoded.update.bytes }
     );
     REQUIRE(decoded.report.valid);
-    REQUIRE(decoded.patch.upserts.size() == 3);
-    CHECK(decoded.patch.tick == 7);
-    CHECK(decoded.patch.upserts[0].id == 1);
-    CHECK(decoded.patch.upserts[1].id == 2);
-    CHECK(decoded.patch.upserts[2].id == 3);
-    CHECK(simnet::validate_client_snapshot_patch(decoded.patch).valid);
+    REQUIRE(decoded.update.upserts.size() == 3);
+    CHECK(decoded.update.tick == 7);
+    CHECK(decoded.update.upserts[0].id == 1);
+    CHECK(decoded.update.upserts[1].id == 2);
+    CHECK(decoded.update.upserts[2].id == 3);
+    CHECK(simnet::validate_client_snapshot_patch(decoded.update).valid);
 }

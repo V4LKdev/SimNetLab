@@ -85,8 +85,8 @@ namespace simnet::pipeline_validate
     void require_incremental_settings(PipelineDefinition const& pipeline)
     {
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental)
-            && pipeline.incremental.max_entities_per_packet == 0U) {
-            throw std::runtime_error("incremental max entities per packet must be greater than 0");
+            && pipeline.incremental.max_entities_per_update == 0U) {
+            throw std::runtime_error("incremental max entities per update must be greater than 0");
         }
     }
 

@@ -740,7 +740,7 @@ namespace
     {
         peer.acknowledged_baseline_sequence.reset();
         simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Warn,
-            "acknowledged snapshot no longer retained; next packet uses FullReplace");
+            "acknowledged snapshot no longer retained, next update uses FullReplace");
         simnet::log(simnet::LogCategory::Pipeline, simnet::LogLevel::Info,
             "delta unavailable; using FullReplace");
     }
@@ -1146,7 +1146,7 @@ namespace
                 .peer = peer->peer,
                 .lane = simnet::Lane::Snapshot,
                 .delivery = delivery,
-                .payload = encoded.packet.bytes,
+                .payload = encoded.update.bytes,
             });
         }
         if (!sent.ok) {
@@ -1155,8 +1155,8 @@ namespace
             return false;
         }
 
-        retain_snapshot(*peer, encoded.packet.sequence, snapshot_state.snapshot);
-        peer->newest_emitted_sequence = encoded.packet.sequence;
+        retain_snapshot(*peer, encoded.update.sequence, snapshot_state.snapshot);
+        peer->newest_emitted_sequence = encoded.update.sequence;
         return true;
     }
 

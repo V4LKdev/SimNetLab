@@ -10,9 +10,6 @@ import :messages;
 
 export namespace simnet
 {
-    /// Builds a default snapshot pipeline definition.
-    [[nodiscard]] PipelineDefinition make_snapshot_pipeline(PacketBudget budget = {});
-
     /// Validates a supported pipeline definition and its settings.
     void validate_pipeline_definition(PipelineDefinition const& pipeline);
 
@@ -22,12 +19,12 @@ export namespace simnet
     ) noexcept;
 
     /**
-     * Encodes an authoritative snapshot into a pipeline-owned packet.
+     * Encodes an authoritative snapshot into a pipeline-owned encoded update.
      *
      * - Reads settings from 'pipeline'.
      * - Mutates 'client_state'.
      * - Reuses 'scratch' internal buffers.
-     * - Returns 'EncodeOutput' with either a packet or skipped result.
+     * - Returns 'EncodeOutput' with either an encoded update or skipped result.
      */
     [[nodiscard]] EncodeOutput encode_snapshot(
         PipelineDefinition const& pipeline,
@@ -41,9 +38,9 @@ export namespace simnet
      *
      * - Validates the wire header and sequence numbers against 'client_state'.
      * - Reuses 'scratch' internal buffers.
-     * - Returns a 'DecodeOutput' with either valid patch or error report.
+     * - Returns a 'DecodeOutput' with either a valid update or error report.
      */
-    [[nodiscard]] DecodeOutput decode_packet(
+    [[nodiscard]] DecodeOutput decode_update(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
         PipelineScratch& scratch,

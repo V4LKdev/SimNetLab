@@ -1,16 +1,15 @@
 # simnet_pipeline
 
-`simnet_pipeline` selects snapshot data, transforms it, encodes packet bytes, and decodes them into `SnapshotUpdate` values. It does not depend on transport, Flecs, configuration, telemetry, rendering, or client storage.
+`simnet_pipeline` selects snapshot data, transforms it, produces encoded updates, and decodes them into `SnapshotUpdate` values. It does not depend on transport, Flecs, configuration, telemetry, rendering, or client storage.
 
 ## Public API
 
 - `PipelineDefinition` describes the enabled techniques and their settings.
 - `ClientReplicationState` holds per-client sequence and incremental cursor state.
 - `PipelineScratch` owns reusable encode and decode buffers.
-- `make_snapshot_pipeline` creates a default definition.
 - `validate_pipeline_definition` rejects unsupported technique combinations and invalid settings.
-- `encode_snapshot` produces a packet or a skipped result.
-- `decode_packet` validates bytes and returns a state update or an error report.
+- `encode_snapshot` produces an encoded update or a skipped result.
+- `decode_update` validates encoded update bytes and returns a state update or an error report.
 - `pipeline_decode_signature` identifies the receiver-side representation.
 
 Each concurrent caller needs its own `ClientReplicationState` and `PipelineScratch`.
@@ -26,7 +25,7 @@ Each concurrent caller needs its own `ClientReplicationState` and `PipelineScrat
 ## Contracts
 
 - Sequence zero is reserved. Encoding fails if allocation would wrap to zero.
-- Packet budgets are soft reporting targets. Transport owns actual send limits.
+- The encoded update size target is used only for reporting. Transport owns actual send limits.
 - `PipelineScratch` should be reused across calls to avoid recurring allocations.
 - The private wire header carries a magic value, protocol and schema versions, and a decode signature. Decode rejects mismatches and stale sequences.
 - Delta decoding reports the declared baseline sequence. Client storage must retain and resolve that exact reconstructed snapshot before applying the patch.

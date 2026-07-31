@@ -14,14 +14,14 @@ import simnet.snapshot;
 
 /**
  * Private wire encoding primitives. All integer fields are written in network byte order (MSB first).
- * Packet headers and records are serialized field-by-field. No memcopies.
+ * Encoded update headers and records are serialized field-by-field. No memcopies.
  */
 namespace simnet::pipeline_wire
 {
     // --- Constants ---
 
-    // Magic 'SNPL' (SimNet Packet Layout) used to reject garbage packets.
-    inline constexpr std::uint32_t packet_magic = 0x534E504Cu; // S N P L
+    // Magic 'SNPL' (SimNet Pipeline Layout) used to reject invalid encoded updates.
+    inline constexpr std::uint32_t encoded_update_magic = 0x534E504Cu; // S N P L
     inline constexpr std::uint16_t protocol_version = 1;
     inline constexpr std::uint16_t schema_version = 3;
 
@@ -93,8 +93,8 @@ namespace simnet::pipeline_wire
 
     // --- Header struct decoded ---
 
-    /// Private packet header serialized field-by-field in network byte order.
-    struct PacketHeader
+    /// Private encoded update header serialized field-by-field in network byte order.
+    struct EncodedUpdateHeader
     {
         std::uint32_t magic {};
         std::uint16_t protocol {};
@@ -146,8 +146,8 @@ namespace simnet::pipeline_wire
         write_u32(bytes, std::bit_cast<std::uint32_t>(value));
     }
 
-    /// Serializes full packet header.
-    void write_header(std::vector<Byte>& bytes, PacketHeader const& header)
+    /// Serializes the full encoded update header.
+    void write_header(std::vector<Byte>& bytes, EncodedUpdateHeader const& header)
     {
         write_u32(bytes, header.magic);
         write_u16(bytes, header.protocol);
@@ -238,8 +238,8 @@ namespace simnet::pipeline_wire
         return true;
     }
 
-    /// Reads a full packet header, advancing offset. Returns false on truncation.
-    bool read_header(ByteSpan bytes, PacketHeader& header)
+    /// Reads the full encoded update header, advancing offset. Returns false on truncation.
+    bool read_header(ByteSpan bytes, EncodedUpdateHeader& header)
     {
         auto offset = std::size_t {};
         auto snapshot_kind = std::uint8_t {};
