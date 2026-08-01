@@ -38,17 +38,14 @@ export namespace simnet
 
     /// Returns a traceability fingerprint for runtime configuration.
     /// (Raw-byte fingerprints are only stable within the same ABI/endian build.)
-    [[nodiscard]] ConfigFingerprint fingerprint_runtime_config(
-        SharedConfig const& shared,
-        ServerConfig const& local
-    ) noexcept;
+    [[nodiscard]] ConfigFingerprint
+    fingerprint_runtime_config(SharedConfig const& shared, ServerConfig const& local) noexcept;
 
     /// Returns a traceability fingerprint for runtime configuration.
-    [[nodiscard]] ConfigFingerprint fingerprint_runtime_config(
-        SharedConfig const& shared,
-        ClientConfig const& local
-    ) noexcept;
+    [[nodiscard]] ConfigFingerprint
+    fingerprint_runtime_config(SharedConfig const& shared, ClientConfig const& local) noexcept;
 
     /// Returns a compatibility fingerprint for network-relevant configuration.
-    [[nodiscard]] ConfigFingerprint fingerprint_network_compatibility(SharedConfig const& config) noexcept;
+    [[nodiscard]] ConfigFingerprint
+    fingerprint_network_compatibility(SharedConfig const& config) noexcept;
 }

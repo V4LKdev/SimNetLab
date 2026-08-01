@@ -15,7 +15,8 @@ import simnet.snapshot;
 namespace simnet::pipeline_selection
 {
     /// Returns true when send interval policy allows an emit on this tick.
-    [[nodiscard]] bool should_emit_for_send_interval(PipelineDefinition const& pipeline, Tick tick) noexcept
+    [[nodiscard]] bool
+    should_emit_for_send_interval(PipelineDefinition const& pipeline, Tick tick) noexcept
     {
         if (!has_all_flags(pipeline.techniques, PipelineTechniqueFlags::SendInterval)) {
             return true;
@@ -80,8 +81,8 @@ namespace simnet::pipeline_selection
         scratch.selected_indices.reserve(current.size());
         scratch.selected_delete_ids.reserve(baseline.size());
 
-        auto current_index = std::size_t {};
-        auto baseline_index = std::size_t {};
+        auto current_index = std::size_t{};
+        auto baseline_index = std::size_t{};
 
         while (current_index < current.size() && baseline_index < baseline.size()) {
             auto const current_id = current.ids[current_index];

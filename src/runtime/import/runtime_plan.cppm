@@ -11,19 +11,14 @@ export namespace simnet
     [[nodiscard]] Nanoseconds steady_now_ns() noexcept;
 
     /// Resets a frame timer to an explicit monotonic nanosecond timestamp.
-    void reset_frame_timer(
-        RuntimeFrameTimer& timer,
-        Nanoseconds now
-    ) noexcept;
+    void reset_frame_timer(RuntimeFrameTimer& timer, Nanoseconds now) noexcept;
 
     /// Resets a frame timer to the current steady-clock time.
     void reset_frame_timer(RuntimeFrameTimer& timer) noexcept;
 
     /// Samples a non-negative delta from an explicit monotonic timestamp.
-    [[nodiscard]] Nanoseconds sample_frame_delta(
-        RuntimeFrameTimer& timer,
-        Nanoseconds now
-    ) noexcept;
+    [[nodiscard]] Nanoseconds
+    sample_frame_delta(RuntimeFrameTimer& timer, Nanoseconds now) noexcept;
 
     /// Samples a nanosecond frame delta from std::chrono::steady_clock.
     [[nodiscard]] Nanoseconds sample_frame_delta(RuntimeFrameTimer& timer) noexcept;
@@ -43,8 +38,6 @@ export namespace simnet
     ) noexcept;
 
     /// Returns the first configured runtime limit reached, or None.
-    [[nodiscard]] ShutdownReason reached_runtime_limit(
-        RuntimeSettings const& settings,
-        RuntimeStats const& stats
-    ) noexcept;
+    [[nodiscard]] ShutdownReason
+    reached_runtime_limit(RuntimeSettings const& settings, RuntimeStats const& stats) noexcept;
 }

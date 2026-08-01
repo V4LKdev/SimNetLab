@@ -14,10 +14,10 @@ export namespace simnet
 {
     struct TransportClientSettings
     {
-        std::string server_address { "127.0.0.1" };
-        std::uint16_t server_port {};
-        SessionIdentity identity {};
-        TransportLimits limits {};
+        std::string server_address{"127.0.0.1"};
+        std::uint16_t server_port{};
+        SessionIdentity identity{};
+        TransportLimits limits{};
     };
 
     class TransportClient
@@ -38,16 +38,11 @@ export namespace simnet
         [[nodiscard]] bool is_connected() const noexcept;
         [[nodiscard]] bool is_session_ready() const noexcept;
 
-        [[nodiscard]] TransportResult poll(
-            std::vector<TransportEvent>& out_events,
-            std::uint32_t timeout_ms
-        );
+        [[nodiscard]] TransportResult
+        poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms);
 
-        [[nodiscard]] TransportResult send(
-            Lane lane,
-            Delivery delivery,
-            std::span<Byte const> payload
-        );
+        [[nodiscard]] TransportResult
+        send(Lane lane, Delivery delivery, std::span<Byte const> payload);
 
         /// Sends a semantic snapshot acknowledgement on the reserved Input lane.
         [[nodiscard]] TransportResult send_snapshot_ack(SnapshotAck const& ack);
@@ -63,6 +58,6 @@ export namespace simnet
 
     private:
         struct Impl;
-        Impl* impl_ {};
+        Impl* impl_{};
     };
 }

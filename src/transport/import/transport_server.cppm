@@ -15,11 +15,11 @@ export namespace simnet
 {
     struct TransportServerSettings
     {
-        std::string bind_address {};
-        std::uint16_t port {};
-        std::uint32_t max_peers { 32 };
-        SessionIdentity expected_identity {};
-        TransportLimits limits {};
+        std::string bind_address{};
+        std::uint16_t port{};
+        std::uint32_t max_peers{32};
+        SessionIdentity expected_identity{};
+        TransportLimits limits{};
     };
 
     class TransportServer
@@ -39,18 +39,14 @@ export namespace simnet
 
         [[nodiscard]] bool is_running() const noexcept;
 
-        [[nodiscard]] TransportResult poll(
-            std::vector<TransportEvent>& out_events,
-            std::uint32_t timeout_ms
-        );
+        [[nodiscard]] TransportResult
+        poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms);
 
         [[nodiscard]] TransportResult send(SendPacket const& packet);
 
         /// Sends a bounded opaque application-control payload on the reliable Control lane.
-        [[nodiscard]] TransportResult send_application_control(
-            PeerId peer,
-            std::span<Byte const> payload
-        );
+        [[nodiscard]] TransportResult
+        send_application_control(PeerId peer, std::span<Byte const> payload);
 
         void disconnect(PeerId peer, DisconnectCode code) noexcept;
 
@@ -59,6 +55,6 @@ export namespace simnet
 
     private:
         struct Impl;
-        Impl* impl_ {};
+        Impl* impl_{};
     };
 }

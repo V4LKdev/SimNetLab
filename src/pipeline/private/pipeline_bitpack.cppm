@@ -18,9 +18,9 @@ namespace simnet::pipeline_bitpack
         /// Reference to the byte vector to append to.
         std::vector<Byte>& bytes;
         /// Scratch byte for accumulating bits before flushing to the vector.
-        std::uint8_t scratch {};
+        std::uint8_t scratch{};
         /// Number of bits currently stored in the scratch byte (0-7).
-        std::uint8_t used_bits {};
+        std::uint8_t used_bits{};
     };
 
     /// Writes 'bit-count' bits from the MSB of 'value'.
@@ -47,7 +47,7 @@ namespace simnet::pipeline_bitpack
         if (writer.used_bits == 0U) {
             return;
         }
-        
+
         writer.scratch = static_cast<std::uint8_t>(writer.scratch << (8U - writer.used_bits));
         writer.bytes.push_back(static_cast<Byte>(writer.scratch));
         writer.scratch = 0;
@@ -60,7 +60,7 @@ namespace simnet::pipeline_bitpack
         /// Reference to the byte span to read from.
         ByteSpan bytes;
         /// Current bit offset from the start of the span (0-based).
-        std::size_t bit_offset {};
+        std::size_t bit_offset{};
     };
 
     /// Reads 'bit_count' bits from the current bit offset, storing the result in 'value'.

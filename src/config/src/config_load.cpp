@@ -27,8 +27,7 @@ namespace
     constexpr std::uint64_t fnv_offset_basis = 14695981039346656037ULL;
     constexpr std::uint64_t fnv_prime = 1099511628211ULL;
 
-    template <typename Value>
-    void hash_bytes(std::uint64_t& hash, Value const& value) noexcept
+    template <typename Value> void hash_bytes(std::uint64_t& hash, Value const& value) noexcept
     {
         static_assert(std::is_trivially_copyable_v<Value>);
         auto const* bytes = reinterpret_cast<unsigned char const*>(&value);
@@ -81,8 +80,7 @@ namespace
         hash_canonical_u64(hash, std::bit_cast<std::uint64_t>(value));
     }
 
-    template <typename Value>
-    void read_optional(Json const& object, char const* key, Value& value)
+    template <typename Value> void read_optional(Json const& object, char const* key, Value& value)
     {
         auto const found = object.find(key);
         if (found == object.end()) {
@@ -92,7 +90,9 @@ namespace
         try {
             value = found->get<Value>();
         } catch (nlohmann::json::exception const& error) {
-            throw std::runtime_error(std::string { "invalid config field '" } + key + "': " + error.what());
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + key + "': " + error.what()
+            );
         }
     }
 
@@ -103,14 +103,16 @@ namespace
             return nullptr;
         }
         if (!found->is_object()) {
-            throw std::runtime_error(std::string { "invalid config section '" } + key + "': expected object");
+            throw std::runtime_error(
+                std::string{"invalid config section '"} + key + "': expected object"
+            );
         }
         return &*found;
     }
 
     Json load_json(std::filesystem::path const& path)
     {
-        std::ifstream file { path };
+        std::ifstream file{path};
         if (!file) {
             throw std::runtime_error("failed to open config file: " + path.string());
         }
@@ -118,7 +120,9 @@ namespace
         try {
             return Json::parse(file);
         } catch (nlohmann::json::exception const& error) {
-            throw std::runtime_error("failed to parse config file '" + path.string() + "': " + error.what());
+            throw std::runtime_error(
+                "failed to parse config file '" + path.string() + "': " + error.what()
+            );
         }
     }
 
@@ -132,39 +136,53 @@ namespace
     void validate_positive(char const* name, double value)
     {
         if (value <= 0.0) {
-            throw std::runtime_error(std::string { "invalid config field '" } + name + "': expected positive value");
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + name + "': expected positive value"
+            );
         }
     }
 
     void validate_positive(char const* name, float value)
     {
         if (value <= 0.0F) {
-            throw std::runtime_error(std::string { "invalid config field '" } + name + "': expected positive value");
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + name + "': expected positive value"
+            );
         }
     }
 
     void validate_bits(char const* name, std::uint8_t value)
     {
         if (value == 0 || value > 32) {
-            throw std::runtime_error(std::string { "invalid config field '" } + name + "': expected 1..32");
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + name + "': expected 1..32"
+            );
         }
     }
 
     void validate_non_zero(char const* name, std::uint32_t value)
     {
         if (value == 0U) {
-            throw std::runtime_error(std::string { "invalid config field '" } + name + "': expected non-zero value");
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + name + "': expected non-zero value"
+            );
         }
     }
 
-    void validate_one_of(char const* name, std::string_view value, std::initializer_list<std::string_view> allowed)
+    void validate_one_of(
+        char const* name,
+        std::string_view value,
+        std::initializer_list<std::string_view> allowed
+    )
     {
         for (auto const option : allowed) {
             if (value == option) {
                 return;
             }
         }
-        throw std::runtime_error(std::string { "invalid config field '" } + name + "': unsupported value");
+        throw std::runtime_error(
+            std::string{"invalid config field '"} + name + "': unsupported value"
+        );
     }
 
     void apply_run(Json const& json, simnet::RunConfig& config)
@@ -212,7 +230,11 @@ namespace
         read_optional(json, "alignment_radius", config.alignment_radius);
         read_optional(json, "cohesion_radius", config.cohesion_radius);
         read_optional(json, "field_of_view_degrees", config.field_of_view_degrees);
-        read_optional(json, "containment_prediction_seconds", config.containment_prediction_seconds);
+        read_optional(
+            json,
+            "containment_prediction_seconds",
+            config.containment_prediction_seconds
+        );
         read_optional(json, "containment_margin", config.containment_margin);
         read_optional(json, "separation_acceleration", config.separation_acceleration);
         read_optional(json, "containment_acceleration", config.containment_acceleration);
@@ -223,8 +245,7 @@ namespace
         read_optional(json, "hue_assimilation_rate", config.hue_assimilation_rate);
         read_optional(json, "hue_drift_rate", config.hue_drift_rate);
 
-        if (config.min_speed < 0.0F
-            || config.min_speed > config.cruise_speed
+        if (config.min_speed < 0.0F || config.min_speed > config.cruise_speed
             || config.cruise_speed > config.max_speed) {
             throw std::runtime_error(
                 "invalid boids speed limits: expected 0 <= min_speed <= cruise_speed <= max_speed"
@@ -245,10 +266,8 @@ namespace
             config.containment_prediction_seconds
         );
         validate_positive("boids.containment_margin", config.containment_margin);
-        if (config.separation_acceleration < 0.0F
-            || config.containment_acceleration < 0.0F
-            || config.alignment_acceleration < 0.0F
-            || config.cohesion_acceleration < 0.0F
+        if (config.separation_acceleration < 0.0F || config.containment_acceleration < 0.0F
+            || config.alignment_acceleration < 0.0F || config.cohesion_acceleration < 0.0F
             || config.wander_acceleration < 0.0F) {
             throw std::runtime_error(
                 "invalid boids rule acceleration: expected non-negative values"
@@ -272,18 +291,14 @@ namespace
         read_optional(json, "max_yaw_rate_degrees", config.max_yaw_rate_degrees);
         read_optional(json, "max_pitch_rate_degrees", config.max_pitch_rate_degrees);
         read_optional(json, "pitch_limit_degrees", config.pitch_limit_degrees);
-        if (!std::isfinite(config.slow_speed)
-            || !std::isfinite(config.cruise_speed)
-            || !std::isfinite(config.boost_speed)
-            || !std::isfinite(config.speed_change_rate)
+        if (!std::isfinite(config.slow_speed) || !std::isfinite(config.cruise_speed)
+            || !std::isfinite(config.boost_speed) || !std::isfinite(config.speed_change_rate)
             || !std::isfinite(config.yaw_acceleration_degrees)
             || !std::isfinite(config.pitch_acceleration_degrees)
-            || !std::isfinite(config.yaw_damping)
-            || !std::isfinite(config.pitch_damping)
+            || !std::isfinite(config.yaw_damping) || !std::isfinite(config.pitch_damping)
             || !std::isfinite(config.max_yaw_rate_degrees)
             || !std::isfinite(config.max_pitch_rate_degrees)
-            || !std::isfinite(config.pitch_limit_degrees)
-            || config.slow_speed < 0.0F
+            || !std::isfinite(config.pitch_limit_degrees) || config.slow_speed < 0.0F
             || config.slow_speed > config.cruise_speed
             || config.cruise_speed > config.boost_speed) {
             throw std::runtime_error(
@@ -308,11 +323,7 @@ namespace
     void apply_gameplay(Json const& json, simnet::GameplayConfig& config)
     {
         read_optional(json, "role", config.role);
-        validate_one_of(
-            "gameplay.role",
-            config.role,
-            { "stationary_observer", "player" }
-        );
+        validate_one_of("gameplay.role", config.role, {"stationary_observer", "player"});
     }
 
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
@@ -349,14 +360,17 @@ namespace
         read_optional(json, "snapshot_delivery", config.snapshot_delivery);
 
         if (config.port == 0) {
-            throw std::runtime_error("invalid config field 'transport.port': expected non-zero port");
+            throw std::runtime_error(
+                "invalid config field 'transport.port': expected non-zero port"
+            );
         }
         validate_non_zero("transport.max_clients", config.max_clients);
         validate_non_zero("transport.max_payload_bytes", config.max_payload_bytes);
         validate_one_of(
             "transport.send_size_policy",
             config.send_size_policy,
-            { "enforce_limit", "allow_backend_fragmentation" });
+            {"enforce_limit", "allow_backend_fragmentation"}
+        );
         validate_one_of(
             "transport.snapshot_delivery",
             config.snapshot_delivery,
@@ -365,7 +379,8 @@ namespace
                 "unreliable_sequenced",
                 "unreliable_unsequenced",
                 "unreliable_fragmented",
-            });
+            }
+        );
     }
 
     void apply_flecs(Json const& json, simnet::FlecsConfig& config)
@@ -373,9 +388,7 @@ namespace
         read_optional(json, "thread_count", config.thread_count);
         validate_non_zero("flecs.thread_count", config.thread_count);
         if (config.thread_count > 64U) {
-            throw std::runtime_error(
-                "invalid config field 'flecs.thread_count': expected 1..64"
-            );
+            throw std::runtime_error("invalid config field 'flecs.thread_count': expected 1..64");
         }
     }
 
@@ -403,10 +416,14 @@ namespace
         read_optional(json, "entity_mesh_path", config.entity_mesh_path);
 
         if (config.window_width == 0 || config.window_height == 0) {
-            throw std::runtime_error("invalid visualization dimensions: expected non-zero width and height");
+            throw std::runtime_error(
+                "invalid visualization dimensions: expected non-zero width and height"
+            );
         }
         if (config.panel_width >= config.window_width) {
-            throw std::runtime_error("invalid visualization panel_width: expected less than window_width");
+            throw std::runtime_error(
+                "invalid visualization panel_width: expected less than window_width"
+            );
         }
         if (config.target_fps == 0) {
             throw std::runtime_error("invalid visualization target_fps: expected non-zero value");
@@ -415,7 +432,9 @@ namespace
             throw std::runtime_error("invalid visualization entity_scale: expected positive value");
         }
         if (config.picking_radius <= 0.0F) {
-            throw std::runtime_error("invalid visualization picking_radius: expected positive value");
+            throw std::runtime_error(
+                "invalid visualization picking_radius: expected positive value"
+            );
         }
         if (config.stationary_observer_interest_radius <= 0.0F) {
             throw std::runtime_error(
@@ -429,7 +448,9 @@ namespace
             );
         }
         if (config.max_visible_spatial_cells == 0U) {
-            throw std::runtime_error("invalid visualization max_visible_spatial_cells: expected non-zero value");
+            throw std::runtime_error(
+                "invalid visualization max_visible_spatial_cells: expected non-zero value"
+            );
         }
     }
 
@@ -450,7 +471,10 @@ namespace
         read_optional(json, "step_interval_seconds", config.step_interval_seconds);
         read_optional(json, "max_boids", config.max_boids);
 
-        validate_positive("benchmark.load_ramp.step_interval_seconds", config.step_interval_seconds);
+        validate_positive(
+            "benchmark.load_ramp.step_interval_seconds",
+            config.step_interval_seconds
+        );
     }
 
     void apply_benchmark(Json const& json, simnet::BenchmarkScenarioConfig& config)
@@ -595,7 +619,8 @@ namespace
         hash_bytes(hash, config.pipeline.heading_bits);
     }
 
-    void hash_network_compatibility(std::uint64_t& hash, simnet::SharedConfig const& config) noexcept
+    void
+    hash_network_compatibility(std::uint64_t& hash, simnet::SharedConfig const& config) noexcept
     {
         // Handshake compatibility must not depend on host byte order or bool layout.
         static_assert(std::numeric_limits<float>::is_iec559);
@@ -651,8 +676,11 @@ namespace
         hash_canonical_byte(hash, config.pipeline.heading_bits);
     }
 
-    void hash_transport_and_telemetry(std::uint64_t& hash, simnet::TransportConfig const& transport,
-        simnet::TelemetryConfig const& telemetry) noexcept
+    void hash_transport_and_telemetry(
+        std::uint64_t& hash,
+        simnet::TransportConfig const& transport,
+        simnet::TelemetryConfig const& telemetry
+    ) noexcept
     {
         hash_string(hash, transport.host);
         hash_bytes(hash, transport.port);
@@ -667,7 +695,10 @@ namespace
         hash_bytes(hash, telemetry.metrics_json_enabled);
     }
 
-    void hash_visualization(std::uint64_t& hash, simnet::VisualizationConfig const& visualization) noexcept
+    void hash_visualization(
+        std::uint64_t& hash,
+        simnet::VisualizationConfig const& visualization
+    ) noexcept
     {
         hash_bytes(hash, visualization.enabled);
         hash_bytes(hash, visualization.interpolation_enabled);
@@ -688,17 +719,17 @@ namespace simnet
 {
     std::filesystem::path default_shared_config_path()
     {
-        return std::filesystem::path { SIMNET_DEFAULT_CONFIG_DIR } / "shared_default.json";
+        return std::filesystem::path{SIMNET_DEFAULT_CONFIG_DIR} / "shared_default.json";
     }
 
     std::filesystem::path default_server_config_path()
     {
-        return std::filesystem::path { SIMNET_DEFAULT_CONFIG_DIR } / "server_default.json";
+        return std::filesystem::path{SIMNET_DEFAULT_CONFIG_DIR} / "server_default.json";
     }
 
     std::filesystem::path default_client_config_path()
     {
-        return std::filesystem::path { SIMNET_DEFAULT_CONFIG_DIR } / "client_default.json";
+        return std::filesystem::path{SIMNET_DEFAULT_CONFIG_DIR} / "client_default.json";
     }
 
     SharedConfig default_shared_config()
@@ -731,7 +762,8 @@ namespace simnet
         return parse_client_config(load_json(path));
     }
 
-    ConfigFingerprint fingerprint_runtime_config(SharedConfig const& shared, ServerConfig const& local) noexcept
+    ConfigFingerprint
+    fingerprint_runtime_config(SharedConfig const& shared, ServerConfig const& local) noexcept
     {
         auto hash = fnv_offset_basis;
 
@@ -746,10 +778,11 @@ namespace simnet
         hash_bytes(hash, local.benchmark.load_ramp.step_interval_seconds);
         hash_bytes(hash, local.benchmark.load_ramp.max_boids);
 
-        return { .value = hash };
+        return {.value = hash};
     }
 
-    ConfigFingerprint fingerprint_runtime_config(SharedConfig const& shared, ClientConfig const& local) noexcept
+    ConfigFingerprint
+    fingerprint_runtime_config(SharedConfig const& shared, ClientConfig const& local) noexcept
     {
         auto hash = fnv_offset_basis;
 
@@ -758,13 +791,13 @@ namespace simnet
         hash_string(hash, local.gameplay.role);
         hash_visualization(hash, local.visualization);
 
-        return { .value = hash };
+        return {.value = hash};
     }
 
     ConfigFingerprint fingerprint_network_compatibility(SharedConfig const& config) noexcept
     {
         auto hash = fnv_offset_basis;
         hash_network_compatibility(hash, config);
-        return { .value = hash };
+        return {.value = hash};
     }
 }

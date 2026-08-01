@@ -13,16 +13,15 @@ import simnet.core;
 export namespace simnet
 {
     /// Returns spatial grid settings for bounded world-space positions.
-    [[nodiscard]] SpatialGridSettings make_spatial_grid_settings(Aabb3f bounds, float cell_size) noexcept;
+    [[nodiscard]] SpatialGridSettings
+    make_spatial_grid_settings(Aabb3f bounds, float cell_size) noexcept;
 
     /// Returns the bounded grid coordinate represented by an occupied-cell key.
     [[nodiscard]] CellCoord cell_coord_from_key(SpatialGrid const& grid, CellKey key) noexcept;
 
     /// Returns the clamped bounded-grid coordinate containing a world-space position.
-    [[nodiscard]] CellCoord cell_coord_for_position(
-        SpatialGrid const& grid,
-        Vec3f position
-    ) noexcept;
+    [[nodiscard]] CellCoord
+    cell_coord_for_position(SpatialGrid const& grid, Vec3f position) noexcept;
 
     /// Returns the world-space bounds for one bounded grid coordinate.
     [[nodiscard]] Aabb3f cell_bounds(SpatialGrid const& grid, CellCoord coord) noexcept;
@@ -54,10 +53,7 @@ export namespace simnet
     );
 
     /// Merges worker entries, sorts them, compacts ranges, and updates stats.
-    void finish_spatial_grid_build(
-        SpatialGrid& grid,
-        SpatialGridScratch& scratch
-    );
+    void finish_spatial_grid_build(SpatialGrid& grid, SpatialGridScratch& scratch);
 
     /// Rebuilds the sparse sorted grid with one worker.
     void build_spatial_grid_serial(

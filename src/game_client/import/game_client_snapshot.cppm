@@ -15,10 +15,10 @@ export namespace simnet
     /// Raw facts reported by replicated world snapshot extraction.
     struct ClientSnapshotExtractionReport
     {
-        Tick tick {};
-        std::uint32_t entity_count {};
-        bool valid { true };
-        std::string error {};
+        Tick tick{};
+        std::uint32_t entity_count{};
+        bool valid{true};
+        std::string error{};
     };
 
     /// Extracts a sorted validated WorldSnapshot without mutating the Flecs world.

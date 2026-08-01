@@ -13,13 +13,13 @@ export namespace simnet
     /// Logging severity.
     enum class LogLevel : std::uint8_t
     {
-        Trace,     /// Most verbose.
-        Debug,     /// Detailed diagnostics.
-        Info,      /// Normal operational messages.
-        Warn,      /// Potential issues.
-        Error,     /// Recoverable errors.
-        Critical,  /// Unrecoverable failures.
-        Off        /// No logging.
+        Trace, /// Most verbose.
+        Debug, /// Detailed diagnostics.
+        Info, /// Normal operational messages.
+        Warn, /// Potential issues.
+        Error, /// Recoverable errors.
+        Critical, /// Unrecoverable failures.
+        Off /// No logging.
     };
 
     /// Logging source category (by module).
@@ -40,19 +40,19 @@ export namespace simnet
     /// Per-tick raw telemetry counters.
     struct TickMetrics
     {
-        Tick tick {};                     /// Simulation tick.
-        double tick_cpu_ms {};            /// CPU time for the full tick.
-        double sim_cpu_ms {};             /// CPU time for simulation.
-        double snapshot_cpu_ms {};        /// CPU time for snapshot.
-        double pipeline_cpu_ms {};        /// CPU time for pipeline.
-        double transport_cpu_ms {};       /// CPU time for transport.
-        double render_cpu_ms {};          /// CPU time for render.
-        std::uint32_t entity_count {};    /// Number of active entities.
-        std::uint32_t peer_count {};      /// Number of connected peers.
-        std::uint64_t bytes_sent {};      /// Total bytes sent this tick.
-        std::uint64_t bytes_received {};  /// Total bytes received this tick.
-        std::uint32_t packets_sent {};    /// Total packets sent this tick.
-        std::uint32_t packets_received {};/// Total packets received this tick.
+        Tick tick{}; /// Simulation tick.
+        double tick_cpu_ms{}; /// CPU time for the full tick.
+        double sim_cpu_ms{}; /// CPU time for simulation.
+        double snapshot_cpu_ms{}; /// CPU time for snapshot.
+        double pipeline_cpu_ms{}; /// CPU time for pipeline.
+        double transport_cpu_ms{}; /// CPU time for transport.
+        double render_cpu_ms{}; /// CPU time for render.
+        std::uint32_t entity_count{}; /// Number of active entities.
+        std::uint32_t peer_count{}; /// Number of connected peers.
+        std::uint64_t bytes_sent{}; /// Total bytes sent this tick.
+        std::uint64_t bytes_received{}; /// Total bytes received this tick.
+        std::uint32_t packets_sent{}; /// Total packets sent this tick.
+        std::uint32_t packets_received{}; /// Total packets received this tick.
     };
 
     /// Parses a text log level (from config)
@@ -64,16 +64,26 @@ export namespace simnet
     {
         // Yes, I used a color palette for this, programmers are artists too!!!
         switch (category) {
-            case LogCategory::Core:       return 0xAAAAAAFF; // mid-gray
-            case LogCategory::Config:     return 0xEDC948FF; // muted yellow
-            case LogCategory::Telemetry:  return 0x76B7B2FF; // teal
-            case LogCategory::Simulation: return 0xF28E2BFF; // orange
-            case LogCategory::Snapshot:   return 0x4E79A7FF; // blue
-            case LogCategory::Spatial:    return 0xE15759FF; // red
-            case LogCategory::Pipeline:   return 0xB07AA1FF; // purple
-            case LogCategory::Transport:  return 0x59A14FFF; // green
-            case LogCategory::Render:     return 0xFF9DA7FF; // soft pink
-            case LogCategory::Benchmark:  return 0x2F4B7CFF; // dark navy
+            case LogCategory::Core:
+                return 0xAAAAAAFF; // mid-gray
+            case LogCategory::Config:
+                return 0xEDC948FF; // muted yellow
+            case LogCategory::Telemetry:
+                return 0x76B7B2FF; // teal
+            case LogCategory::Simulation:
+                return 0xF28E2BFF; // orange
+            case LogCategory::Snapshot:
+                return 0x4E79A7FF; // blue
+            case LogCategory::Spatial:
+                return 0xE15759FF; // red
+            case LogCategory::Pipeline:
+                return 0xB07AA1FF; // purple
+            case LogCategory::Transport:
+                return 0x59A14FFF; // green
+            case LogCategory::Render:
+                return 0xFF9DA7FF; // soft pink
+            case LogCategory::Benchmark:
+                return 0x2F4B7CFF; // dark navy
         }
         return 0xFFFFFFFF; // white fallback
     }

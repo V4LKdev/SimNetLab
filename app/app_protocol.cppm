@@ -30,10 +30,10 @@ export namespace simnet::app
 
     struct AppMessage
     {
-        AppMessageKind kind {};
-        ClientRole role { ClientRole::StationaryObserver };
-        EntityNetId player_id {};
-        bool paused {};
+        AppMessageKind kind{};
+        ClientRole role{ClientRole::StationaryObserver};
+        EntityNetId player_id{};
+        bool paused{};
     };
 
     enum class PlayerButton : std::uint8_t
@@ -50,13 +50,10 @@ export namespace simnet::app
 
     struct PlayerInputMessage
     {
-        std::uint8_t buttons {};
+        std::uint8_t buttons{};
     };
 
-    [[nodiscard]] constexpr bool button_down(
-        PlayerInputMessage input,
-        PlayerButton button
-    ) noexcept
+    [[nodiscard]] constexpr bool button_down(PlayerInputMessage input, PlayerButton button) noexcept
     {
         return (input.buttons & static_cast<std::uint8_t>(button)) != 0U;
     }
@@ -74,11 +71,8 @@ export namespace simnet::app
         bytes.push_back(static_cast<Byte>(value & 0xFFU));
     }
 
-    [[nodiscard]] inline bool read_u32(
-        std::span<Byte const> bytes,
-        std::size_t offset,
-        std::uint32_t& value
-    ) noexcept
+    [[nodiscard]] inline bool
+    read_u32(std::span<Byte const> bytes, std::size_t offset, std::uint32_t& value) noexcept
     {
         if (offset + 4U > bytes.size()) {
             return false;
@@ -92,71 +86,68 @@ export namespace simnet::app
 
     [[nodiscard]] inline std::vector<Byte> encode_app_message(AppMessage message)
     {
-        auto bytes = std::vector<Byte> {
+        auto bytes = std::vector<Byte>{
             static_cast<Byte>(message.kind),
             static_cast<Byte>(app_message_version),
         };
         switch (message.kind) {
-        case AppMessageKind::PauseSetRequest:
-        case AppMessageKind::PauseState:
-            bytes.push_back(static_cast<Byte>(message.paused ? 1U : 0U));
-            break;
-        case AppMessageKind::JoinRequest:
-            bytes.push_back(static_cast<Byte>(message.role));
-            break;
-        case AppMessageKind::JoinAccepted:
-            bytes.push_back(static_cast<Byte>(message.role));
-            write_u32(bytes, message.player_id);
-            break;
+            case AppMessageKind::PauseSetRequest:
+            case AppMessageKind::PauseState:
+                bytes.push_back(static_cast<Byte>(message.paused ? 1U : 0U));
+                break;
+            case AppMessageKind::JoinRequest:
+                bytes.push_back(static_cast<Byte>(message.role));
+                break;
+            case AppMessageKind::JoinAccepted:
+                bytes.push_back(static_cast<Byte>(message.role));
+                write_u32(bytes, message.player_id);
+                break;
         }
         return bytes;
     }
 
-    [[nodiscard]] inline bool decode_app_message(
-        std::span<Byte const> bytes,
-        AppMessage& message
-    ) noexcept
+    [[nodiscard]] inline bool
+    decode_app_message(std::span<Byte const> bytes, AppMessage& message) noexcept
     {
         if (bytes.size() < 2U || bytes[1] != static_cast<Byte>(app_message_version)) {
             return false;
         }
-        auto decoded = AppMessage {
+        auto decoded = AppMessage{
             .kind = static_cast<AppMessageKind>(bytes[0]),
         };
         switch (decoded.kind) {
-        case AppMessageKind::PauseSetRequest:
-        case AppMessageKind::PauseState:
-            if (bytes.size() != 3U || (bytes[2] != Byte { 0U } && bytes[2] != Byte { 1U })) {
-                return false;
+            case AppMessageKind::PauseSetRequest:
+            case AppMessageKind::PauseState:
+                if (bytes.size() != 3U || (bytes[2] != Byte{0U} && bytes[2] != Byte{1U})) {
+                    return false;
+                }
+                decoded.paused = bytes[2] == Byte{1U};
+                break;
+            case AppMessageKind::JoinRequest:
+                if (bytes.size() != 3U) {
+                    return false;
+                }
+                decoded.role = static_cast<ClientRole>(bytes[2]);
+                if (!valid_role(decoded.role)) {
+                    return false;
+                }
+                break;
+            case AppMessageKind::JoinAccepted: {
+                auto player_id = std::uint32_t{};
+                if (bytes.size() != 7U || !read_u32(bytes, 3U, player_id)) {
+                    return false;
+                }
+                decoded.role = static_cast<ClientRole>(bytes[2]);
+                if (!valid_role(decoded.role)
+                    || (decoded.role == ClientRole::StationaryObserver && player_id != 0U)
+                    || (decoded.role == ClientRole::Player && player_id == 0U)) {
+                    return false;
+                }
+                decoded.player_id = player_id;
+                break;
             }
-            decoded.paused = bytes[2] == Byte { 1U };
-            break;
-        case AppMessageKind::JoinRequest:
-            if (bytes.size() != 3U) {
+            default:
                 return false;
-            }
-            decoded.role = static_cast<ClientRole>(bytes[2]);
-            if (!valid_role(decoded.role)) {
-                return false;
-            }
-            break;
-        case AppMessageKind::JoinAccepted: {
-            auto player_id = std::uint32_t {};
-            if (bytes.size() != 7U
-                || !read_u32(bytes, 3U, player_id)) {
-                return false;
-            }
-            decoded.role = static_cast<ClientRole>(bytes[2]);
-            if (!valid_role(decoded.role)
-                || (decoded.role == ClientRole::StationaryObserver && player_id != 0U)
-                || (decoded.role == ClientRole::Player && player_id == 0U)) {
-                return false;
-            }
-            decoded.player_id = player_id;
-            break;
-        }
-        default:
-            return false;
         }
         message = decoded;
         return true;
@@ -170,15 +161,13 @@ export namespace simnet::app
         };
     }
 
-    [[nodiscard]] inline bool decode_player_input(
-        std::span<Byte const> bytes,
-        PlayerInputMessage& input
-    ) noexcept
+    [[nodiscard]] inline bool
+    decode_player_input(std::span<Byte const> bytes, PlayerInputMessage& input) noexcept
     {
         if (bytes.size() != 2U || bytes[0] != static_cast<Byte>(player_input_version)) {
             return false;
         }
-        input = { .buttons = static_cast<std::uint8_t>(bytes[1]) };
+        input = {.buttons = static_cast<std::uint8_t>(bytes[1])};
         return true;
     }
 }

@@ -19,31 +19,31 @@ export namespace simnet
 
     struct EntityKindComponent
     {
-        EntityKind value { EntityKind::Boid };
+        EntityKind value{EntityKind::Boid};
     };
 
     /// Network identity attached to replicated entities.
     struct NetIdentity
     {
-        EntityNetId id {};
+        EntityNetId id{};
     };
 
     /// World-space entity position.
     struct Position
     {
-        Vec3f value {};
+        Vec3f value{};
     };
 
     /// Normalized entity heading.
     struct Heading
     {
-        Vec3f value {};
+        Vec3f value{};
     };
 
     /// Compact display hue.
     struct Hue
     {
-        std::uint8_t value {};
+        std::uint8_t value{};
     };
 
     /// Registers shared components with a Flecs world.

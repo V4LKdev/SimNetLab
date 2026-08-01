@@ -14,13 +14,13 @@ namespace
         TemporaryConfig(std::string_view name, std::string_view contents)
             : path_(std::filesystem::temp_directory_path() / name)
         {
-            auto file = std::ofstream { path_ };
+            auto file = std::ofstream{path_};
             file << contents;
         }
 
         ~TemporaryConfig()
         {
-            std::error_code error {};
+            std::error_code error{};
             std::filesystem::remove(path_, error);
         }
 
@@ -69,11 +69,12 @@ TEST_CASE("visual interpolation is local runtime configuration", "[config]")
     auto const shared = simnet::default_shared_config();
     auto const baseline = simnet::default_server_config();
     auto changed = baseline;
-    changed.visualization.interpolation_enabled =
-        !changed.visualization.interpolation_enabled;
+    changed.visualization.interpolation_enabled = !changed.visualization.interpolation_enabled;
 
-    CHECK(simnet::fingerprint_runtime_config(shared, changed).value
-        != simnet::fingerprint_runtime_config(shared, baseline).value);
+    CHECK(
+        simnet::fingerprint_runtime_config(shared, changed).value
+        != simnet::fingerprint_runtime_config(shared, baseline).value
+    );
 }
 
 TEST_CASE("client gameplay role is local runtime configuration", "[config][player]")
@@ -83,21 +84,21 @@ TEST_CASE("client gameplay role is local runtime configuration", "[config][playe
     auto player = stationary_observer_config;
     player.gameplay.role = "player";
 
-    CHECK(simnet::fingerprint_runtime_config(shared, player).value
-        != simnet::fingerprint_runtime_config(
-            shared, stationary_observer_config).value);
+    CHECK(
+        simnet::fingerprint_runtime_config(shared, player).value
+        != simnet::fingerprint_runtime_config(shared, stationary_observer_config).value
+    );
 }
 
 TEST_CASE("player pitch limit stays clear of the vertical camera singularity", "[config][player]")
 {
-    auto const accepted = TemporaryConfig {
+    auto const accepted = TemporaryConfig{
         "simnet_player_pitch_accepted.json",
         R"({ "player": { "pitch_limit_degrees": 85.0 } })"
     };
-    CHECK(simnet::load_shared_config(accepted.path()).player.pitch_limit_degrees
-        == 85.0F);
+    CHECK(simnet::load_shared_config(accepted.path()).player.pitch_limit_degrees == 85.0F);
 
-    auto const rejected = TemporaryConfig {
+    auto const rejected = TemporaryConfig{
         "simnet_player_pitch_rejected.json",
         R"({ "player": { "pitch_limit_degrees": 85.1 } })"
     };

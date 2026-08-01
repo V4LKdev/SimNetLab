@@ -20,7 +20,7 @@ namespace
 {
     [[nodiscard]] simnet::BoidSimulationSettings test_settings()
     {
-        auto settings = simnet::BoidSimulationSettings {};
+        auto settings = simnet::BoidSimulationSettings{};
         settings.world_half = 100.0F;
         settings.cell_size = 10.0F;
         settings.min_speed = 0.0F;
@@ -43,11 +43,8 @@ namespace
         return settings;
     }
 
-    [[nodiscard]] simnet::EntityState boid(
-        simnet::EntityNetId id,
-        simnet::Vec3f position,
-        simnet::Vec3f heading
-    )
+    [[nodiscard]] simnet::EntityState
+    boid(simnet::EntityNetId id, simnet::Vec3f position, simnet::Vec3f heading)
     {
         return {
             .id = id,
@@ -57,12 +54,10 @@ namespace
         };
     }
 
-    [[nodiscard]] simnet::AuthoritativeSpawnReport append_boids(
-        flecs::world& world,
-        std::initializer_list<simnet::EntityState> values
-    )
+    [[nodiscard]] simnet::AuthoritativeSpawnReport
+    append_boids(flecs::world& world, std::initializer_list<simnet::EntityState> values)
     {
-        auto storage = std::vector<simnet::EntityState> { values };
+        auto storage = std::vector<simnet::EntityState>{values};
         return simnet::append_authoritative_boids(world, storage);
     }
 
@@ -78,11 +73,8 @@ namespace
         return result;
     }
 
-    void step(
-        flecs::world& world,
-        simnet::ServerGameRuntime& runtime,
-        float delta_time = 1.0F / 60.0F
-    )
+    void
+    step(flecs::world& world, simnet::ServerGameRuntime& runtime, float delta_time = 1.0F / 60.0F)
     {
         REQUIRE(simnet::prepare_server_game_runtime(world, runtime));
         REQUIRE(world.progress(delta_time));
@@ -91,7 +83,7 @@ namespace
 
     [[nodiscard]] simnet::WorldSnapshot snapshot(flecs::world const& world, simnet::Tick tick)
     {
-        auto result = simnet::WorldSnapshot {};
+        auto result = simnet::WorldSnapshot{};
         REQUIRE(simnet::extract_world_snapshot(world, tick, result).valid);
         return result;
     }
@@ -111,7 +103,7 @@ namespace
 
     [[nodiscard]] std::uint64_t canonical_hash(simnet::WorldSnapshot const& value)
     {
-        auto hash = std::uint64_t { 14695981039346656037ULL };
+        auto hash = std::uint64_t{14695981039346656037ULL};
         for (std::size_t index = 0; index < value.size(); ++index) {
             hash_u32(hash, value.ids[index]);
             hash_u32(hash, std::bit_cast<std::uint32_t>(value.positions[index].x));
@@ -137,23 +129,23 @@ namespace
         settings.enable_wander = true;
         settings.enable_hue_assimilation = true;
         settings.enable_hue_drift = true;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
 
-        auto boids = std::vector<simnet::EntityState> {};
+        auto boids = std::vector<simnet::EntityState>{};
         boids.reserve(256);
-        auto constexpr headings = std::array {
-            simnet::Vec3f { 1.0F, 0.0F, 0.0F },
-            simnet::Vec3f { 0.0F, 1.0F, 0.0F },
-            simnet::Vec3f { 0.0F, 0.0F, 1.0F },
-            simnet::Vec3f { -1.0F, 0.0F, 0.0F },
+        auto constexpr headings = std::array{
+            simnet::Vec3f{1.0F, 0.0F, 0.0F},
+            simnet::Vec3f{0.0F, 1.0F, 0.0F},
+            simnet::Vec3f{0.0F, 0.0F, 1.0F},
+            simnet::Vec3f{-1.0F, 0.0F, 0.0F},
         };
         for (std::uint32_t index = 0; index < 256U; ++index) {
             auto const x = static_cast<float>(index % 8U) * 3.0F - 10.5F;
             auto const y = static_cast<float>((index / 8U) % 8U) * 3.0F - 10.5F;
             auto const z = static_cast<float>(index / 64U) * 3.0F - 4.5F;
-            boids.push_back(boid(index + 1U, { x, y, z }, headings[index % headings.size()]));
+            boids.push_back(boid(index + 1U, {x, y, z}, headings[index % headings.size()]));
         }
         REQUIRE(simnet::append_authoritative_boids(world, boids).success());
         if (thread_count > 1U) {
@@ -173,13 +165,17 @@ TEST_CASE("boid rules produce deterministic local steering", "[boids]")
         auto settings = test_settings();
         settings.alignment_acceleration = 0.0F;
         settings.cohesion_acceleration = 0.0F;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            boid(1U, { -1.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
-            boid(2U, { 1.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        boid(1U, {-1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}),
+                        boid(2U, {1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}),
+                    }
+        )
+                    .success());
         runtime.select_boid(1U);
         step(world, runtime);
         auto const debug = runtime.selected_boid_debug();
@@ -193,13 +189,17 @@ TEST_CASE("boid rules produce deterministic local steering", "[boids]")
         auto settings = test_settings();
         settings.separation_radius = 0.1F;
         settings.field_of_view_degrees = 360.0F;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            boid(1U, { -5.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
-            boid(2U, { 5.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        boid(1U, {-5.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}),
+                        boid(2U, {5.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}),
+                    }
+        )
+                    .success());
         runtime.select_boid(1U);
         step(world, runtime);
         auto const debug = runtime.selected_boid_debug();
@@ -212,13 +212,17 @@ TEST_CASE("boid rules produce deterministic local steering", "[boids]")
     {
         auto settings = test_settings();
         settings.field_of_view_degrees = 90.0F;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            boid(1U, {}, { 1.0F, 0.0F, 0.0F }),
-            boid(2U, { -2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        boid(1U, {}, {1.0F, 0.0F, 0.0F}),
+                        boid(2U, {-2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}),
+                    }
+        )
+                    .success());
         runtime.select_boid(1U);
         step(world, runtime);
         auto const debug = runtime.selected_boid_debug();
@@ -233,12 +237,16 @@ TEST_CASE("boid rules produce deterministic local steering", "[boids]")
         auto settings = test_settings();
         settings.world_half = 10.0F;
         settings.containment_margin = 3.0F;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            boid(1U, { 9.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        boid(1U, {9.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}),
+                    }
+        )
+                    .success());
         runtime.select_boid(1U);
         step(world, runtime);
         auto const debug = runtime.selected_boid_debug();
@@ -253,13 +261,17 @@ TEST_CASE("boid rules produce deterministic local steering", "[boids]")
         settings.alignment_radius = 2.0F;
         settings.cohesion_radius = 10.0F;
         settings.field_of_view_degrees = 360.0F;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            boid(1U, {}, { 0.0F, 1.0F, 0.0F }),
-            boid(2U, { 5.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        boid(1U, {}, {0.0F, 1.0F, 0.0F}),
+                        boid(2U, {5.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}),
+                    }
+        )
+                    .success());
         runtime.select_boid(1U);
         step(world, runtime);
         auto const debug = runtime.selected_boid_debug();
@@ -271,14 +283,17 @@ TEST_CASE("boid rules produce deterministic local steering", "[boids]")
     }
 }
 
-TEST_CASE("authoritative player is replicated but excluded from flock simulation", "[boids][player]")
+TEST_CASE(
+    "authoritative player is replicated but excluded from flock simulation",
+    "[boids][player]"
+)
 {
     auto settings = test_settings();
     settings.enable_separation = false;
     settings.enable_alignment = false;
     settings.enable_cohesion = false;
     settings.enable_containment = false;
-    auto player_settings = simnet::PlayerMovementSettings {
+    auto player_settings = simnet::PlayerMovementSettings{
         .world_half = 10.0F,
         .cruise_speed = 2.0F,
         .boost_speed = 4.0F,
@@ -292,22 +307,32 @@ TEST_CASE("authoritative player is replicated but excluded from flock simulation
         .max_pitch_rate_degrees = 90.0F,
         .pitch_limit_degrees = 75.0F,
     };
-    auto runtime = simnet::ServerGameRuntime { settings, player_settings };
-    auto world = flecs::world {};
+    auto runtime = simnet::ServerGameRuntime{settings, player_settings};
+    auto world = flecs::world{};
     simnet::register_server_game(world, runtime);
-    REQUIRE(append_boids(world, {
-        boid(1U, { -5.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
-        boid(2U, { 5.0F, 0.0F, 0.0F }, { -1.0F, 0.0F, 0.0F }),
-    }).success());
+    REQUIRE(append_boids(
+                world,
+                {
+                    boid(1U, {-5.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}),
+                    boid(2U, {5.0F, 0.0F, 0.0F}, {-1.0F, 0.0F, 0.0F}),
+                }
+    )
+                .success());
 
     auto const player_id = simnet::spawn_authoritative_player(world);
     REQUIRE(player_id == 3U);
     CHECK(simnet::authoritative_boid_count(world) == 2U);
-    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
-        .pitch_up = true,
-        .yaw_right = true,
-        .accelerate = true,
-    }));
+    REQUIRE(
+        simnet::set_authoritative_player_input(
+            world,
+            player_id,
+            {
+                .pitch_up = true,
+                .yaw_right = true,
+                .accelerate = true,
+            }
+        )
+    );
 
     step(world, runtime, 0.25F);
     CHECK(runtime.last_step_report().entity_count == 2U);
@@ -315,9 +340,7 @@ TEST_CASE("authoritative player is replicated but excluded from flock simulation
     REQUIRE(after_move.size() == 3U);
     auto const found = std::ranges::find(after_move.ids, player_id);
     REQUIRE(found != after_move.ids.end());
-    auto const offset = static_cast<std::size_t>(
-        std::distance(after_move.ids.begin(), found)
-    );
+    auto const offset = static_cast<std::size_t>(std::distance(after_move.ids.begin(), found));
     CHECK(after_move.positions[offset].z > 0.0F);
     CHECK(after_move.headings[offset].x < 0.0F);
     CHECK(after_move.headings[offset].y > 0.0F);
@@ -333,7 +356,7 @@ TEST_CASE("authoritative player is replicated but excluded from flock simulation
 TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
 {
     auto settings = test_settings();
-    auto player_settings = simnet::PlayerMovementSettings {
+    auto player_settings = simnet::PlayerMovementSettings{
         .world_half = 10.0F,
         .cruise_speed = 2.0F,
         .boost_speed = 4.0F,
@@ -347,15 +370,21 @@ TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
         .max_pitch_rate_degrees = 90.0F,
         .pitch_limit_degrees = 75.0F,
     };
-    auto runtime = simnet::ServerGameRuntime { settings, player_settings };
-    auto world = flecs::world {};
+    auto runtime = simnet::ServerGameRuntime{settings, player_settings};
+    auto world = flecs::world{};
     simnet::register_server_game(world, runtime);
 
     auto player_id = simnet::spawn_authoritative_player(world);
     REQUIRE(player_id != 0U);
-    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
-        .yaw_right = true,
-    }));
+    REQUIRE(
+        simnet::set_authoritative_player_input(
+            world,
+            player_id,
+            {
+                .yaw_right = true,
+            }
+        )
+    );
     step(world, runtime, 1.0F / 60.0F);
     auto state = snapshot(world, 1U);
     REQUIRE(state.size() == 1U);
@@ -364,9 +393,15 @@ TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
     REQUIRE(simnet::delete_authoritative_player(world, player_id));
     player_id = simnet::spawn_authoritative_player(world);
     REQUIRE(player_id != 0U);
-    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
-        .yaw_left = true,
-    }));
+    REQUIRE(
+        simnet::set_authoritative_player_input(
+            world,
+            player_id,
+            {
+                .yaw_left = true,
+            }
+        )
+    );
     step(world, runtime, 1.0F / 60.0F);
     state = snapshot(world, 2U);
     REQUIRE(state.size() == 1U);
@@ -376,7 +411,7 @@ TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
 TEST_CASE("player steering accelerates, damps, and respects angular limits", "[player]")
 {
     auto settings = test_settings();
-    auto player_settings = simnet::PlayerMovementSettings {
+    auto player_settings = simnet::PlayerMovementSettings{
         .world_half = 100.0F,
         .cruise_speed = 2.0F,
         .boost_speed = 4.0F,
@@ -390,14 +425,20 @@ TEST_CASE("player steering accelerates, damps, and respects angular limits", "[p
         .max_pitch_rate_degrees = 90.0F,
         .pitch_limit_degrees = 80.0F,
     };
-    auto runtime = simnet::ServerGameRuntime { settings, player_settings };
-    auto world = flecs::world {};
+    auto runtime = simnet::ServerGameRuntime{settings, player_settings};
+    auto world = flecs::world{};
     simnet::register_server_game(world, runtime);
     auto const player_id = simnet::spawn_authoritative_player(world);
     REQUIRE(player_id != 0U);
-    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
-        .yaw_right = true,
-    }));
+    REQUIRE(
+        simnet::set_authoritative_player_input(
+            world,
+            player_id,
+            {
+                .yaw_right = true,
+            }
+        )
+    );
 
     auto yaw_at = [&](simnet::Tick tick) {
         auto const state = snapshot(world, tick);
@@ -411,7 +452,7 @@ TEST_CASE("player steering accelerates, damps, and respects angular limits", "[p
     CHECK(std::abs(previous_yaw) < 0.01F);
 
     auto previous_delta = std::abs(previous_yaw);
-    for (auto tick = simnet::Tick { 2U }; tick <= 12U; ++tick) {
+    for (auto tick = simnet::Tick{2U}; tick <= 12U; ++tick) {
         step(world, runtime);
         auto const yaw = yaw_at(tick);
         auto const delta = std::abs(yaw - previous_yaw);
@@ -426,7 +467,7 @@ TEST_CASE("player steering accelerates, damps, and respects angular limits", "[p
     auto released_delta = std::abs(yaw - previous_yaw);
     CHECK(released_delta < previous_delta);
     previous_yaw = yaw;
-    for (auto tick = simnet::Tick { 14U }; tick <= 20U; ++tick) {
+    for (auto tick = simnet::Tick{14U}; tick <= 20U; ++tick) {
         step(world, runtime);
         yaw = yaw_at(tick);
         auto const delta = std::abs(yaw - previous_yaw);
@@ -447,7 +488,7 @@ TEST_CASE("player steering accelerates, damps, and respects angular limits", "[p
 TEST_CASE("player yaw and pitch rates and pitch angle are bounded", "[player]")
 {
     auto settings = test_settings();
-    auto player_settings = simnet::PlayerMovementSettings {
+    auto player_settings = simnet::PlayerMovementSettings{
         .world_half = 100.0F,
         .cruise_speed = 2.0F,
         .boost_speed = 4.0F,
@@ -461,15 +502,21 @@ TEST_CASE("player yaw and pitch rates and pitch angle are bounded", "[player]")
         .max_pitch_rate_degrees = 12.0F,
         .pitch_limit_degrees = 5.0F,
     };
-    auto runtime = simnet::ServerGameRuntime { settings, player_settings };
-    auto world = flecs::world {};
+    auto runtime = simnet::ServerGameRuntime{settings, player_settings};
+    auto world = flecs::world{};
     simnet::register_server_game(world, runtime);
     auto const player_id = simnet::spawn_authoritative_player(world);
     REQUIRE(player_id != 0U);
-    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {
-        .pitch_up = true,
-        .yaw_right = true,
-    }));
+    REQUIRE(
+        simnet::set_authoritative_player_input(
+            world,
+            player_id,
+            {
+                .pitch_up = true,
+                .yaw_right = true,
+            }
+        )
+    );
 
     auto previous_yaw = 0.0F;
     auto previous_pitch = 0.0F;
@@ -477,7 +524,7 @@ TEST_CASE("player yaw and pitch rates and pitch angle are bounded", "[player]")
     auto constexpr maximum_yaw_step = 0.017454F;
     auto constexpr maximum_pitch_step = 0.020945F;
     auto constexpr pitch_limit = 0.087267F;
-    for (auto tick = simnet::Tick { 1U }; tick <= 20U; ++tick) {
+    for (auto tick = simnet::Tick{1U}; tick <= 20U; ++tick) {
         step(world, runtime, delta_time);
         auto const state = snapshot(world, tick);
         REQUIRE(state.size() == 1U);
@@ -501,13 +548,17 @@ TEST_CASE("boid rule toggles remove their steering contribution", "[boids][confi
     settings.enable_alignment = false;
     settings.enable_cohesion = false;
     settings.enable_containment = false;
-    auto runtime = simnet::ServerGameRuntime { settings };
-    auto world = flecs::world {};
+    auto runtime = simnet::ServerGameRuntime{settings};
+    auto world = flecs::world{};
     simnet::register_server_game(world, runtime);
-    REQUIRE(append_boids(world, {
-        boid(1U, { 99.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
-        boid(2U, { 98.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
-    }).success());
+    REQUIRE(append_boids(
+                world,
+                {
+                    boid(1U, {99.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}),
+                    boid(2U, {98.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}),
+                }
+    )
+                .success());
     runtime.select_boid(1U);
     step(world, runtime);
     auto const debug = runtime.selected_boid_debug();
@@ -529,19 +580,23 @@ TEST_CASE("deterministic wander is a capped Server-private steering input", "[bo
     settings.enable_containment = false;
     settings.enable_wander = true;
     settings.wander_acceleration = 0.5F;
-    auto runtime = simnet::ServerGameRuntime { settings };
-    auto world = flecs::world {};
+    auto runtime = simnet::ServerGameRuntime{settings};
+    auto world = flecs::world{};
     simnet::register_server_game(world, runtime);
-    REQUIRE(append_boids(world, {
-        boid(7U, {}, { 1.0F, 0.0F, 0.0F }),
-    }).success());
+    REQUIRE(append_boids(
+                world,
+                {
+                    boid(7U, {}, {1.0F, 0.0F, 0.0F}),
+                }
+    )
+                .success());
     runtime.select_boid(7U);
     step(world, runtime);
     auto const debug = runtime.selected_boid_debug();
     REQUIRE(debug.has_value());
     CHECK(debug->wander_active);
     CHECK(simnet::length(debug->wander) == Catch::Approx(0.5F));
-    CHECK(std::abs(simnet::dot(debug->wander, { 1.0F, 0.0F, 0.0F })) < 1.0e-5F);
+    CHECK(std::abs(simnet::dot(debug->wander, {1.0F, 0.0F, 0.0F})) < 1.0e-5F);
 }
 
 TEST_CASE("hue rules use circular deterministic updates", "[boids][hue]")
@@ -552,13 +607,17 @@ TEST_CASE("hue rules use circular deterministic updates", "[boids][hue]")
         settings.enable_hue_assimilation = true;
         settings.enable_hue_drift = false;
         settings.field_of_view_degrees = 360.0F;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            hued_boid(1U, {}, { 1.0F, 0.0F, 0.0F }, 250U),
-            hued_boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 5U),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        hued_boid(1U, {}, {1.0F, 0.0F, 0.0F}, 250U),
+                        hued_boid(2U, {2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 5U),
+                    }
+        )
+                    .success());
         runtime.select_boid(1U);
         step(world, runtime, 1.0F);
         auto const debug = runtime.selected_boid_debug();
@@ -578,13 +637,17 @@ TEST_CASE("hue rules use circular deterministic updates", "[boids][hue]")
         settings.enable_hue_drift = false;
         settings.hue_assimilation_rate = 1.0e-8F;
         settings.field_of_view_degrees = 360.0F;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            hued_boid(1U, {}, { 1.0F, 0.0F, 0.0F }, 0U),
-            hued_boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 255U),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        hued_boid(1U, {}, {1.0F, 0.0F, 0.0F}, 0U),
+                        hued_boid(2U, {2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 255U),
+                    }
+        )
+                    .success());
 
         step(world, runtime, 1.0F);
     }
@@ -594,12 +657,16 @@ TEST_CASE("hue rules use circular deterministic updates", "[boids][hue]")
         auto settings = test_settings();
         settings.enable_hue_assimilation = true;
         settings.enable_hue_drift = true;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            hued_boid(17U, {}, { 1.0F, 0.0F, 0.0F }, 0U),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        hued_boid(17U, {}, {1.0F, 0.0F, 0.0F}, 0U),
+                    }
+        )
+                    .success());
         runtime.select_boid(17U);
         step(world, runtime, 1.0F);
         auto const debug = runtime.selected_boid_debug();
@@ -615,13 +682,17 @@ TEST_CASE("hue rules use circular deterministic updates", "[boids][hue]")
         auto settings = test_settings();
         settings.enable_hue_assimilation = false;
         settings.enable_hue_drift = false;
-        auto runtime = simnet::ServerGameRuntime { settings };
-        auto world = flecs::world {};
+        auto runtime = simnet::ServerGameRuntime{settings};
+        auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
-        REQUIRE(append_boids(world, {
-            hued_boid(1U, {}, { 1.0F, 0.0F, 0.0F }, 50U),
-            hued_boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 200U),
-        }).success());
+        REQUIRE(append_boids(
+                    world,
+                    {
+                        hued_boid(1U, {}, {1.0F, 0.0F, 0.0F}, 50U),
+                        hued_boid(2U, {2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 200U),
+                    }
+        )
+                    .success());
         runtime.select_boid(1U);
         step(world, runtime, 1.0F);
         auto const debug = runtime.selected_boid_debug();
@@ -637,22 +708,26 @@ TEST_CASE("boid radii must be finite and positive", "[boids][config]")
 {
     auto settings = test_settings();
     settings.alignment_radius = 0.0F;
-    CHECK_THROWS_AS(simnet::ServerGameRuntime { settings }, std::invalid_argument);
+    CHECK_THROWS_AS(simnet::ServerGameRuntime{settings}, std::invalid_argument);
     settings = test_settings();
     settings.cohesion_radius = std::numeric_limits<float>::quiet_NaN();
-    CHECK_THROWS_AS(simnet::ServerGameRuntime { settings }, std::invalid_argument);
+    CHECK_THROWS_AS(simnet::ServerGameRuntime{settings}, std::invalid_argument);
 }
 
 TEST_CASE("invalid computed state is not partially committed", "[boids]")
 {
     auto settings = test_settings();
-    auto runtime = simnet::ServerGameRuntime { settings };
-    auto world = flecs::world {};
+    auto runtime = simnet::ServerGameRuntime{settings};
+    auto world = flecs::world{};
     simnet::register_server_game(world, runtime);
-    REQUIRE(append_boids(world, {
-        boid(1U, {}, { 1.0F, 0.0F, 0.0F }),
-        boid(2U, { 5.0F, 0.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }),
-    }).success());
+    REQUIRE(append_boids(
+                world,
+                {
+                    boid(1U, {}, {1.0F, 0.0F, 0.0F}),
+                    boid(2U, {5.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}),
+                }
+    )
+                .success());
     auto const before = snapshot(world, 0U);
 
     REQUIRE(simnet::prepare_server_game_runtime(world, runtime));
@@ -672,13 +747,17 @@ TEST_CASE("boid snapshots are identical across Flecs worker counts", "[boids][de
 
 TEST_CASE("selected boid details are available without another simulation tick", "[boids][debug]")
 {
-    auto runtime = simnet::ServerGameRuntime { test_settings() };
-    auto world = flecs::world {};
+    auto runtime = simnet::ServerGameRuntime{test_settings()};
+    auto world = flecs::world{};
     simnet::register_server_game(world, runtime);
-    REQUIRE(append_boids(world, {
-        boid(1U, {}, { 1.0F, 0.0F, 0.0F }),
-        boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
-    }).success());
+    REQUIRE(append_boids(
+                world,
+                {
+                    boid(1U, {}, {1.0F, 0.0F, 0.0F}),
+                    boid(2U, {2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}),
+                }
+    )
+                .success());
 
     step(world, runtime);
     REQUIRE_FALSE(runtime.selected_boid_debug().has_value());
@@ -704,13 +783,17 @@ TEST_CASE("selected boid details are available without another simulation tick",
     CHECK(debug->maximum_neighbors == test_settings().max_neighbors);
     CHECK(canonical_hash(snapshot(world, 1U)) == before);
 
-    auto normal_runtime = simnet::ServerGameRuntime { test_settings() };
-    auto normal_world = flecs::world {};
+    auto normal_runtime = simnet::ServerGameRuntime{test_settings()};
+    auto normal_world = flecs::world{};
     simnet::register_server_game(normal_world, normal_runtime);
-    REQUIRE(append_boids(normal_world, {
-        boid(1U, {}, { 1.0F, 0.0F, 0.0F }),
-        boid(2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }),
-    }).success());
+    REQUIRE(append_boids(
+                normal_world,
+                {
+                    boid(1U, {}, {1.0F, 0.0F, 0.0F}),
+                    boid(2U, {2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}),
+                }
+    )
+                .success());
     normal_runtime.select_boid(1U);
     step(normal_world, normal_runtime);
     auto const normal_debug = normal_runtime.selected_boid_debug();

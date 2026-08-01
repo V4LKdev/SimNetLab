@@ -13,7 +13,7 @@ namespace
 {
     [[nodiscard]] std::string lowercase(std::string_view value)
     {
-        auto result = std::string { value };
+        auto result = std::string{value};
         // Per-char transform to lowercase
         std::ranges::transform(result, result.begin(), [](unsigned char character) {
             return static_cast<char>(std::tolower(character));

@@ -29,27 +29,28 @@ namespace
     [[nodiscard]] simnet::EncodeOutput skipped_encode(
         simnet::PipelineDefinition const& pipeline,
         simnet::WorldSnapshot const& snapshot,
-        simnet::EncodeSkipReason reason)
+        simnet::EncodeSkipReason reason
+    )
     {
-        simnet::EncodeReport report {};
-        report.tick              = snapshot.tick;
-        report.sequence          = 0;
+        simnet::EncodeReport report{};
+        report.tick = snapshot.tick;
+        report.sequence = 0;
         report.baseline_sequence = 0;
-        report.snapshot_kind     = simnet::SnapshotKind::FullReplace;
-        report.techniques        = pipeline.techniques;
-        report.emitted           = false;
-        report.skipped           = true;
-        report.delta             = false;
-        report.skip_reason       = reason;
+        report.snapshot_kind = simnet::SnapshotKind::FullReplace;
+        report.techniques = pipeline.techniques;
+        report.emitted = false;
+        report.skipped = true;
+        report.delta = false;
+        report.skip_reason = reason;
         report.size_target_exceeded = false;
-        report.input_entities    = static_cast<std::uint32_t>(snapshot.size());
+        report.input_entities = static_cast<std::uint32_t>(snapshot.size());
         // remaining fields stay zero
 
         return {
-            .kind        = simnet::EncodeResultKind::Skipped,
+            .kind = simnet::EncodeResultKind::Skipped,
             .skip_reason = reason,
-            .update      = {},
-            .report      = report,
+            .update = {},
+            .report = report,
         };
     }
 
@@ -57,7 +58,8 @@ namespace
     [[nodiscard]] std::uint32_t next_incremental_cursor(
         std::size_t entity_count,
         std::uint32_t cursor,
-        std::uint32_t selected_count) noexcept
+        std::uint32_t selected_count
+    ) noexcept
     {
         if (entity_count == 0) {
             return 0;
@@ -88,7 +90,8 @@ namespace simnet
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
         PipelineScratch& scratch,
-        EncodeInput const& input)
+        EncodeInput const& input
+    )
     {
         // --- Validation ---
 
@@ -107,7 +110,10 @@ namespace simnet
             if (input.baseline_sequence == 0U) {
                 throw std::runtime_error("delta baseline sequence 0 is reserved");
             }
-            pipeline_validate::require_snapshot(input.baseline_snapshot, "encode baseline snapshot");
+            pipeline_validate::require_snapshot(
+                input.baseline_snapshot,
+                "encode baseline snapshot"
+            );
         }
 
         WorldSnapshot const& snapshot = *input.snapshot;
@@ -138,7 +144,10 @@ namespace simnet
         bool const emit_delta = delta_enabled && input.baseline_snapshot != nullptr;
 
         if (emit_delta) {
-            pipeline_validate::require_u32_count(input.baseline_snapshot->size(), "baseline snapshot entity count");
+            pipeline_validate::require_u32_count(
+                input.baseline_snapshot->size(),
+                "baseline snapshot entity count"
+            );
             pipeline_selection::select_delta_records(scratch, snapshot, *input.baseline_snapshot);
         } else if (incremental_enabled) {
             scratch.selected_delete_ids.clear();
@@ -146,7 +155,8 @@ namespace simnet
                 scratch,
                 snapshot.size(),
                 client_state.incremental_cursor,
-                pipeline.incremental.max_entities_per_update);
+                pipeline.incremental.max_entities_per_update
+            );
         } else {
             scratch.selected_indices.clear();
             scratch.selected_delete_ids.clear();
@@ -155,39 +165,40 @@ namespace simnet
         std::size_t const selected_count = (emit_delta || incremental_enabled)
             ? scratch.selected_indices.size()
             : snapshot.size();
-        std::size_t const delete_count   = emit_delta ? scratch.selected_delete_ids.size() : 0U;
-        SnapshotKind const snapshot_kind = (emit_delta || incremental_enabled)
-            ? SnapshotKind::Patch
-            : SnapshotKind::FullReplace;
+        std::size_t const delete_count = emit_delta ? scratch.selected_delete_ids.size() : 0U;
+        SnapshotKind const snapshot_kind
+            = (emit_delta || incremental_enabled) ? SnapshotKind::Patch : SnapshotKind::FullReplace;
         SequenceId const baseline_sequence = emit_delta ? input.baseline_sequence : 0U;
 
         // --- Payload layout / sizing ---
 
-        pipeline_records::RecordLayout const layout = pipeline_records::resolve_record_layout(pipeline);
+        pipeline_records::RecordLayout const layout
+            = pipeline_records::resolve_record_layout(pipeline);
         std::uint32_t const record_bytes = layout.record_bytes;
 
-        std::size_t const payload_byte_count =
-            delete_count * static_cast<std::size_t>(pipeline_wire::delete_record_bytes)
+        std::size_t const payload_byte_count
+            = delete_count * static_cast<std::size_t>(pipeline_wire::delete_record_bytes)
             + selected_count * static_cast<std::size_t>(record_bytes);
 
         if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
-            || payload_byte_count + pipeline_wire::header_bytes > std::numeric_limits<std::uint32_t>::max()) {
+            || payload_byte_count + pipeline_wire::header_bytes
+                > std::numeric_limits<std::uint32_t>::max()) {
             throw std::runtime_error("encoded update exceeds uint32 byte range");
         }
         std::uint32_t const payload_bytes = static_cast<std::uint32_t>(payload_byte_count);
 
-        pipeline_wire::EncodedUpdateHeader const header {
-            .magic             = pipeline_wire::encoded_update_magic,
-            .protocol          = pipeline_wire::protocol_version,
-            .schema            = pipeline_wire::schema_version,
-            .decode_signature  = pipeline_signature::make_pipeline_decode_signature(pipeline),
-            .snapshot_kind     = snapshot_kind,
-            .tick              = snapshot.tick,
-            .sequence          = sequence,
+        pipeline_wire::EncodedUpdateHeader const header{
+            .magic = pipeline_wire::encoded_update_magic,
+            .protocol = pipeline_wire::protocol_version,
+            .schema = pipeline_wire::schema_version,
+            .decode_signature = pipeline_signature::make_pipeline_decode_signature(pipeline),
+            .snapshot_kind = snapshot_kind,
+            .tick = snapshot.tick,
+            .sequence = sequence,
             .baseline_sequence = baseline_sequence,
-            .upsert_count      = static_cast<std::uint32_t>(selected_count),
-            .delete_count      = static_cast<std::uint32_t>(delete_count),
-            .payload_bytes     = payload_bytes,
+            .upsert_count = static_cast<std::uint32_t>(selected_count),
+            .delete_count = static_cast<std::uint32_t>(delete_count),
+            .payload_bytes = payload_bytes,
         };
 
         scratch.bytes.clear();
@@ -200,11 +211,13 @@ namespace simnet
 
         auto write_record = [&](std::size_t source_index) {
             pipeline_records::write_record(
-                scratch.bytes, layout,
+                scratch.bytes,
+                layout,
                 snapshot.ids[source_index],
                 snapshot.positions[source_index],
                 snapshot.headings[source_index],
-                snapshot.hues[source_index]);
+                snapshot.hues[source_index]
+            );
         };
 
         if (emit_delta || incremental_enabled) {
@@ -219,41 +232,40 @@ namespace simnet
 
         // --- Encoded update / report ---
 
-        EncodedUpdate update {
-            .tick              = snapshot.tick,
-            .sequence          = sequence,
+        EncodedUpdate update{
+            .tick = snapshot.tick,
+            .sequence = sequence,
             .baseline_sequence = baseline_sequence,
-            .bytes             = scratch.bytes,
+            .bytes = scratch.bytes,
         };
 
         std::uint32_t const final_bytes = static_cast<std::uint32_t>(update.bytes.size());
 
-        EncodeReport report {};
-        report.tick              = snapshot.tick;
-        report.sequence          = sequence;
+        EncodeReport report{};
+        report.tick = snapshot.tick;
+        report.sequence = sequence;
         report.baseline_sequence = baseline_sequence;
-        report.snapshot_kind     = snapshot_kind;
-        report.techniques        = pipeline.techniques;
-        report.emitted           = true;
-        report.skipped           = false;
-        report.delta             = emit_delta;
-        report.skip_reason       = EncodeSkipReason::None;
-        report.size_target_exceeded =
-            final_bytes > pipeline.encoded_update_size_target_bytes;
-        report.input_entities    = static_cast<std::uint32_t>(snapshot.size());
+        report.snapshot_kind = snapshot_kind;
+        report.techniques = pipeline.techniques;
+        report.emitted = true;
+        report.skipped = false;
+        report.delta = emit_delta;
+        report.skip_reason = EncodeSkipReason::None;
+        report.size_target_exceeded = final_bytes > pipeline.encoded_update_size_target_bytes;
+        report.input_entities = static_cast<std::uint32_t>(snapshot.size());
         report.selected_entities = static_cast<std::uint32_t>(selected_count);
-        report.upsert_count      = static_cast<std::uint32_t>(selected_count);
-        report.delete_count      = static_cast<std::uint32_t>(delete_count);
+        report.upsert_count = static_cast<std::uint32_t>(selected_count);
+        report.delete_count = static_cast<std::uint32_t>(delete_count);
         report.encoded_update_bytes = final_bytes;
-        report.payload_bytes     = payload_bytes;
+        report.payload_bytes = payload_bytes;
         report.uncompressed_bytes = final_bytes;
-        report.final_bytes       = final_bytes;
+        report.final_bytes = final_bytes;
 
         EncodeOutput output;
-        output.kind        = EncodeResultKind::Update;
+        output.kind = EncodeResultKind::Update;
         output.skip_reason = EncodeSkipReason::None;
-        output.update      = std::move(update);
-        output.report      = report;
+        output.update = std::move(update);
+        output.report = report;
 
         // --- Update client state ---
 
@@ -261,7 +273,8 @@ namespace simnet
             client_state.incremental_cursor = next_incremental_cursor(
                 snapshot.size(),
                 client_state.incremental_cursor,
-                static_cast<std::uint32_t>(selected_count));
+                static_cast<std::uint32_t>(selected_count)
+            );
         }
         client_state.next_sequence = sequence + 1U;
         return output;

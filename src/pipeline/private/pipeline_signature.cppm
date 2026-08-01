@@ -14,7 +14,7 @@ namespace simnet::pipeline_signature
 {
     struct DecodeSignatureBuilder
     {
-        std::uint64_t value { 14695981039346656037ULL };
+        std::uint64_t value{14695981039346656037ULL};
     };
 
     void update_signature_byte(DecodeSignatureBuilder& signature, std::uint8_t value) noexcept
@@ -48,22 +48,22 @@ namespace simnet::pipeline_signature
     }
 
     /// Returns the technique subset that changes encoded update interpretation.
-    [[nodiscard]] std::uint32_t decode_relevant_technique_mask(PipelineDefinition const& pipeline) noexcept
+    [[nodiscard]] std::uint32_t
+    decode_relevant_technique_mask(PipelineDefinition const& pipeline) noexcept
     {
         auto constexpr mask = static_cast<std::uint32_t>(
-            PipelineTechniqueFlags::Incremental
-                | PipelineTechniqueFlags::Quantization
-                | PipelineTechniqueFlags::OctHeading
-                | PipelineTechniqueFlags::Delta
-                | PipelineTechniqueFlags::BitPacking
+            PipelineTechniqueFlags::Incremental | PipelineTechniqueFlags::Quantization
+            | PipelineTechniqueFlags::OctHeading | PipelineTechniqueFlags::Delta
+            | PipelineTechniqueFlags::BitPacking
         );
         return static_cast<std::uint32_t>(pipeline.techniques) & mask;
     }
 
     /// Builds the canonical raw decode signature for this pipeline definition.
-    [[nodiscard]] std::uint64_t make_pipeline_decode_signature(PipelineDefinition const& pipeline) noexcept
+    [[nodiscard]] std::uint64_t
+    make_pipeline_decode_signature(PipelineDefinition const& pipeline) noexcept
     {
-        auto signature = DecodeSignatureBuilder {};
+        auto signature = DecodeSignatureBuilder{};
 
         update_signature_u16(signature, pipeline_wire::protocol_version);
         update_signature_u16(signature, pipeline_wire::schema_version);

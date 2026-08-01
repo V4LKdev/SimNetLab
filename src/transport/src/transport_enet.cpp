@@ -15,947 +15,1278 @@ module simnet.transport;
 
 import :protocol;
 
-namespace simnet {
-using namespace transport_protocol;
+namespace simnet
+{
+    using namespace transport_protocol;
 
-namespace {
-[[nodiscard]] TransportResult ok() noexcept { return {}; }
-
-[[nodiscard]] TransportResult fail(TransportErrorCode code, std::string message, std::uint32_t native_code = 0) {
-  return {
-      .ok = false,
-      .error =
-          {
-              .code = code,
-              .message = std::move(message),
-              .native_code = native_code,
-          },
-  };
-}
-
-constexpr PeerId server_peer_id = 1;
-constexpr auto handshake_timeout = std::chrono::seconds(5);
-
-[[nodiscard]] DisconnectCode disconnect_code(std::uint32_t native_code) noexcept {
-  auto const code = static_cast<DisconnectCode>(native_code);
-  return valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
-}
-
-[[nodiscard]] bool payload_size_allowed(std::size_t size, TransportLimits const &limits) noexcept {
-  if (size > max_reassembled_payload_bytes) {
-    return false;
-  }
-  return limits.size_policy != SendSizePolicy::EnforceLimit || size <= limits.max_payload_bytes;
-}
-
-[[nodiscard]] ENetPacketFlag delivery_flags(Delivery delivery) noexcept {
-  switch (delivery) {
-  case Delivery::ReliableSequenced:
-    return ENET_PACKET_FLAG_RELIABLE;
-  case Delivery::UnreliableSequenced:
-    return static_cast<ENetPacketFlag>(0);
-  case Delivery::UnreliableUnsequenced:
-    return ENET_PACKET_FLAG_UNSEQUENCED;
-  case Delivery::UnreliableFragmented:
-    return ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT;
-  }
-  return static_cast<ENetPacketFlag>(0);
-}
-
-[[nodiscard]] Delivery packet_delivery(ENetPacket const &packet) noexcept {
-  if ((packet.flags & ENET_PACKET_FLAG_RELIABLE) != 0U) {
-    return Delivery::ReliableSequenced;
-  }
-  if ((packet.flags & ENET_PACKET_FLAG_UNSEQUENCED) != 0U) {
-    return Delivery::UnreliableUnsequenced;
-  }
-  if ((packet.flags & ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT) != 0U) {
-    return Delivery::UnreliableFragmented;
-  }
-  return Delivery::UnreliableSequenced;
-}
-
-[[nodiscard]] PeerId event_peer_id(ENetPeer const *peer) noexcept {
-  return static_cast<PeerId>(reinterpret_cast<std::uintptr_t>(peer->data));
-}
-
-void set_peer_id(ENetPeer *peer, PeerId id) noexcept {
-  peer->data = reinterpret_cast<void *>(static_cast<std::uintptr_t>(id));
-}
-
-struct EnetRuntime {
-  EnetRuntime() { initialized = enet_initialize() == 0; }
-
-  ~EnetRuntime() {
-    if (initialized) {
-      enet_deinitialize();
-    }
-  }
-
-  bool initialized{};
-};
-
-[[nodiscard]] EnetRuntime &enet_runtime() {
-  static auto runtime = EnetRuntime{};
-  return runtime;
-}
-
-[[nodiscard]] TransportResult require_enet() {
-  return enet_runtime().initialized ? ok() : fail(TransportErrorCode::BackendError, "ENet initialization failed");
-}
-
-[[nodiscard]] bool set_enet_address_host(ENetAddress &address, std::string const &host) {
-  return enet_address_set_host_ip(&address, host.c_str()) == 0 || enet_address_set_host(&address, host.c_str()) == 0;
-}
-
-void add_send_stats(TransportStats &stats, Lane lane, std::size_t bytes) {
-  auto const index = lane_index(lane);
-  ++stats.packets_sent;
-  stats.bytes_sent += bytes;
-  ++stats.lane_packets_sent[index];
-  stats.lane_bytes_sent[index] += bytes;
-}
-
-void add_receive_stats(TransportStats &stats, Lane lane, std::size_t bytes) {
-  auto const index = lane_index(lane);
-  ++stats.packets_received;
-  stats.bytes_received += bytes;
-  ++stats.lane_packets_received[index];
-  stats.lane_bytes_received[index] += bytes;
-}
-
-[[nodiscard]] TransportResult send_to_peer(ENetPeer *peer, TransportStats &stats, TransportLimits const &limits,
-                                           Lane lane, Delivery delivery, std::span<Byte const> payload) {
-  if (!valid_lane(lane)) {
-    ++stats.send_failures;
-    return fail(TransportErrorCode::InvalidLane, "invalid transport lane");
-  }
-  if (!valid_delivery(delivery)) {
-    ++stats.send_failures;
-    return fail(TransportErrorCode::InvalidDelivery, "invalid transport delivery mode");
-  }
-  if (limits.size_policy == SendSizePolicy::EnforceLimit && payload.size() > limits.max_payload_bytes) {
-    ++stats.send_failures;
-    ++stats.oversize_drops;
-    return fail(TransportErrorCode::PayloadTooLarge, "transport payload exceeds configured limit");
-  }
-  if (payload.size() > max_reassembled_payload_bytes) {
-    ++stats.send_failures;
-    ++stats.oversize_drops;
-    return fail(TransportErrorCode::PayloadTooLarge, "transport payload exceeds hard payload limit");
-  }
-
-  auto *packet = enet_packet_create(payload.data(), payload.size(), delivery_flags(delivery));
-  if (packet == nullptr) {
-    ++stats.send_failures;
-    return fail(TransportErrorCode::BackendError, "ENet packet allocation failed");
-  }
-  if (enet_peer_send(peer, lane_index(lane), packet) != 0) {
-    enet_packet_destroy(packet);
-    ++stats.send_failures;
-    return fail(TransportErrorCode::BackendError, "ENet send failed");
-  }
-
-  add_send_stats(stats, lane, payload.size());
-  return ok();
-}
-
-[[nodiscard]] PeerStats make_peer_stats(ENetPeer const *peer) noexcept {
-  if (peer == nullptr) {
-    return {};
-  }
-  return {
-      .rtt_ms = static_cast<double>(peer->roundTripTime),
-      .packet_loss_ratio = static_cast<double>(peer->packetLoss) / static_cast<double>(ENET_PEER_PACKET_LOSS_SCALE),
-      .reliable_bytes_in_flight = peer->reliableDataInTransit,
-      .waiting_bytes = peer->totalWaitingData,
-      .mtu = peer->mtu,
-  };
-}
-
-struct PeerSlot {
-  PeerId id{};
-  ENetPeer *peer{};
-  bool session_ready{};
-  std::chrono::steady_clock::time_point connected_at{};
-};
-
-} // namespace
-
-struct TransportServer::Impl {
-public:
-  ~Impl() { stop(); }
-
-  TransportResult start(TransportServerSettings const &settings) {
-    if (host_ != nullptr) {
-      return fail(TransportErrorCode::AlreadyStarted, "transport server is already started");
-    }
-    settings_ = settings;
-    counters_ = {};
-    peers_.clear();
-    expired_peer_ids_.clear();
-    next_peer_id_ = 1;
-
-    if (auto ready = require_enet(); !ready.ok) {
-      return ready;
-    }
-    if (settings.port == 0 || settings.max_peers == 0) {
-      return fail(TransportErrorCode::InvalidAddress, "server transport port and max_peers must be non-zero");
-    }
-    expired_peer_ids_.reserve(settings.max_peers);
-
-    auto address = ENetAddress{.host = ENET_HOST_ANY, .port = settings.port};
-    if (!settings.bind_address.empty() && !set_enet_address_host(address, settings.bind_address)) {
-      return fail(TransportErrorCode::InvalidAddress, "invalid server bind address");
-    }
-
-    host_ = enet_host_create(&address, settings.max_peers, channel_count, 0, 0);
-    if (host_ == nullptr) {
-      return fail(TransportErrorCode::BackendError, "failed to create ENet server host");
-    }
-    return ok();
-  }
-
-  void stop() noexcept {
-    if (host_ != nullptr) {
-      enet_host_destroy(host_);
-      host_ = nullptr;
-    }
-    peers_.clear();
-  }
-
-  bool is_running() const noexcept { return host_ != nullptr; }
-
-  TransportResult poll(std::vector<TransportEvent> &out_events, std::uint32_t timeout_ms) {
-    if (host_ == nullptr) {
-      return fail(TransportErrorCode::NotStarted, "transport server is not started");
-    }
-
-    auto event = ENetEvent{};
-    auto wait_ms = timeout_ms;
-    for (;;) {
-      auto const service_result = enet_host_service(host_, &event, wait_ms);
-      if (service_result < 0) {
-        return fail(TransportErrorCode::BackendError, "ENet server service failed");
-      }
-      if (service_result == 0) {
-        break;
-      }
-      wait_ms = 0;
-      if (event.type == ENET_EVENT_TYPE_CONNECT) {
-        auto const id = next_peer_id_++;
-        set_peer_id(event.peer, id);
-        peers_.push_back({
-            .id = id,
-            .peer = event.peer,
-            .connected_at = std::chrono::steady_clock::now(),
-        });
-        out_events.push_back(PeerConnected{.peer = id});
-      } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
-        handle_receive(event, out_events);
-        enet_packet_destroy(event.packet);
-      } else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
-        auto const id = event_peer_id(event.peer);
-        ++counters_.disconnects;
-        out_events.push_back(PeerDisconnected{
-            .peer = id,
-            .code = disconnect_code(event.data),
-            .native_reason = event.data,
-        });
-        peers_.erase(std::remove_if(peers_.begin(), peers_.end(), [id](PeerSlot const &slot) { return slot.id == id; }),
-                     peers_.end());
-        event.peer->data = nullptr;
-      }
-    }
-    expire_pending_sessions(out_events);
-    return ok();
-  }
-
-  TransportResult send(SendPacket const &packet) {
-    if (host_ == nullptr) {
-      return fail(TransportErrorCode::NotStarted, "transport server is not started");
-    }
-    auto *slot = find(packet.peer);
-    if (slot == nullptr) {
-      return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
-    }
-    if (!slot->session_ready) {
-      return fail(TransportErrorCode::PeerNotReady, "transport peer session is not ready");
-    }
-    if (packet.lane == Lane::Control) {
-      return fail(TransportErrorCode::InvalidLane, "Control lane is reserved for the transport protocol");
-    }
-    return send_to_peer(slot->peer, counters_, settings_.limits, packet.lane, packet.delivery, packet.payload);
-  }
-
-  TransportResult send_application_control(PeerId peer, std::span<Byte const> payload) {
-    auto *slot = find(peer);
-    if (slot == nullptr) {
-      return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
-    }
-    if (!slot->session_ready) {
-      return fail(TransportErrorCode::PeerNotReady, "transport peer session is not ready");
-    }
-    if (payload.size() > max_application_control_bytes) {
-      return fail(TransportErrorCode::PayloadTooLarge, "application-control payload exceeds transport limit");
-    }
-    return send_session(slot->peer, {
-                                        .kind = SessionMessageKind::ApplicationControl,
-                                        .application_control = {payload.begin(), payload.end()},
-                                    });
-  }
-
-  void disconnect(PeerId peer, DisconnectCode code) noexcept {
-    if (auto *slot = find(peer); slot != nullptr && slot->peer != nullptr) {
-      auto const safe_code = valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
-      enet_peer_disconnect_later(slot->peer, static_cast<std::uint32_t>(safe_code));
-    }
-  }
-
-  TransportStats stats() const { return counters_; }
-
-  PeerStats peer_stats(PeerId peer) const {
-    auto const *slot = find(peer);
-    return slot == nullptr ? PeerStats{} : make_peer_stats(slot->peer);
-  }
-
-private:
-  [[nodiscard]] PeerSlot *find(PeerId id) noexcept {
-    auto found = std::ranges::find_if(peers_, [id](PeerSlot const &slot) { return slot.id == id; });
-    return found == peers_.end() ? nullptr : &*found;
-  }
-
-  [[nodiscard]] PeerSlot const *find(PeerId id) const noexcept {
-    auto found = std::ranges::find_if(peers_, [id](PeerSlot const &slot) { return slot.id == id; });
-    return found == peers_.end() ? nullptr : &*found;
-  }
-
-  [[nodiscard]] TransportResult send_session(ENetPeer *peer, SessionMessage const &message) {
-    auto bytes = encode_session_message(message);
-    return send_to_peer(peer, counters_,
-                        {
-                            .max_payload_bytes = settings_.limits.max_payload_bytes,
-                            .size_policy = SendSizePolicy::AllowBackendFragmentation,
-                        },
-                        Lane::Control, Delivery::ReliableSequenced, bytes);
-  }
-
-  void handle_client_hello(PeerSlot &slot, SessionMessage const &message, std::vector<TransportEvent> &events) {
-    if (slot.session_ready) {
-      events.push_back(TransportErrorEvent{
-          .message = "duplicate ClientHello after session ready",
-      });
-      disconnect(slot.id, DisconnectCode::ProtocolMismatch);
-      return;
-    }
-
-    auto const mismatch = identity_mismatch(message.identity, settings_.expected_identity);
-    if (mismatch != DisconnectCode::None) {
-      static_cast<void>(send_session(slot.peer, {
-                                                    .kind = SessionMessageKind::ServerReject,
-                                                    .reject_code = mismatch,
-                                                }));
-      events.push_back(TransportErrorEvent{
-          .message = "client session identity mismatch",
-      });
-      disconnect(slot.id, mismatch);
-      return;
-    }
-
-    auto accepted = send_session(slot.peer, {.kind = SessionMessageKind::ServerAccept});
-    if (!accepted.ok) {
-      events.push_back(TransportErrorEvent{
-          .message = accepted.error.message,
-      });
-      disconnect(slot.id, DisconnectCode::TransportError);
-      return;
-    }
-    slot.session_ready = true;
-    events.push_back(PeerSessionReady{.peer = slot.id});
-  }
-
-  void handle_receive(ENetEvent const &event, std::vector<TransportEvent> &out_events) {
-    auto const peer = event_peer_id(event.peer);
-    auto const lane = static_cast<Lane>(event.channelID);
-    if (!valid_lane(lane)) {
-      out_events.push_back(TransportErrorEvent{
-          .message = "received packet on invalid ENet channel",
-      });
-      return;
-    }
-    auto const size_allowed = lane == Lane::Control
-        ? event.packet->dataLength <= max_control_message_bytes
-        : lane == Lane::Input
-            ? event.packet->dataLength <= max_input_message_bytes
-            : payload_size_allowed(event.packet->dataLength, settings_.limits);
-    if (!size_allowed) {
-      ++counters_.oversize_drops;
-      out_events.push_back(TransportErrorEvent{.message = "received ENet packet exceeds transport receive limit"});
-      disconnect(peer, DisconnectCode::ProtocolMismatch);
-      return;
-    }
-    add_receive_stats(counters_, lane, event.packet->dataLength);
-
-    auto *slot = find(peer);
-    if (slot != nullptr && lane == Lane::Control) {
-      auto message = SessionMessage{};
-      auto const *data = reinterpret_cast<Byte const *>(event.packet->data);
-      if (!decode_session_message(data, event.packet->dataLength, message)) {
-        out_events.push_back(TransportErrorEvent{
-            .message = "invalid client session message",
-        });
-        disconnect(peer, DisconnectCode::ProtocolMismatch);
-      } else if (!slot->session_ready) {
-        if (message.kind != SessionMessageKind::ClientHello) {
-          out_events.push_back(TransportErrorEvent{
-              .message = "application control received before session readiness",
-          });
-          disconnect(peer, DisconnectCode::ProtocolMismatch);
-        } else {
-          handle_client_hello(*slot, message, out_events);
+    namespace
+    {
+        [[nodiscard]] TransportResult ok() noexcept
+        {
+            return {};
         }
-      } else if (message.kind == SessionMessageKind::ApplicationControl) {
-        out_events.push_back(ReceivedApplicationControl{
-            .peer = peer,
-            .payload = std::move(message.application_control),
-        });
-      } else {
-        out_events.push_back(TransportErrorEvent{
-            .message = "invalid client control message after session readiness",
-        });
-        disconnect(peer, DisconnectCode::ProtocolMismatch);
-      }
-    } else if (slot != nullptr && lane == Lane::Input) {
-      auto message = SessionMessage{};
-      auto const *data = reinterpret_cast<Byte const *>(event.packet->data);
-      if (!slot->session_ready || !decode_session_message(data, event.packet->dataLength, message) ||
-          (message.kind != SessionMessageKind::SnapshotAck
-           && message.kind != SessionMessageKind::ApplicationInput)) {
-        out_events.push_back(TransportErrorEvent{
-            .message = "invalid Input-lane message",
-        });
-        disconnect(peer, DisconnectCode::ProtocolMismatch);
-      } else if (message.kind == SessionMessageKind::ApplicationInput) {
-        out_events.push_back(ReceivedApplicationInput{
-            .peer = peer,
-            .payload = std::move(message.application_input),
-        });
-      } else {
-        out_events.push_back(SnapshotAckReceived{
-            .peer = peer,
-            .ack = message.snapshot_ack,
-        });
-      }
-    } else if (slot != nullptr && slot->session_ready) {
-      auto payload = std::vector<Byte>(event.packet->dataLength);
-      std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
-      out_events.push_back(ReceivedPacket{
-          .peer = peer,
-          .lane = lane,
-          .delivery = packet_delivery(*event.packet),
-          .payload = std::move(payload),
-      });
-    }
-  }
 
-  void expire_pending_sessions(std::vector<TransportEvent> &out_events) {
-    auto const now = std::chrono::steady_clock::now();
-    expired_peer_ids_.clear();
-    for (auto const &slot : peers_) {
-      if (!slot.session_ready && now - slot.connected_at >= handshake_timeout) {
-        enet_peer_disconnect_now(slot.peer, static_cast<std::uint32_t>(DisconnectCode::Timeout));
-        slot.peer->data = nullptr;
-        ++counters_.disconnects;
-        out_events.push_back(PeerDisconnected{
-            .peer = slot.id,
-            .code = DisconnectCode::Timeout,
-            .native_reason = static_cast<std::uint32_t>(DisconnectCode::Timeout),
-        });
-        expired_peer_ids_.push_back(slot.id);
-      }
-    }
-    peers_.erase(std::remove_if(
-                     peers_.begin(), peers_.end(),
-                     [this](PeerSlot const &slot) {
-                       return std::ranges::find(expired_peer_ids_, slot.id) != expired_peer_ids_.end();
-                     }),
-                 peers_.end());
-  }
+        [[nodiscard]] TransportResult
+        fail(TransportErrorCode code, std::string message, std::uint32_t native_code = 0)
+        {
+            return {
+                .ok = false,
+                .error = {
+                    .code = code,
+                    .message = std::move(message),
+                    .native_code = native_code,
+                },
+            };
+        }
 
-  ENetHost *host_{};
-  TransportServerSettings settings_{};
-  TransportStats counters_{};
-  std::vector<PeerSlot> peers_;
-  std::vector<PeerId> expired_peer_ids_;
-  PeerId next_peer_id_{1};
-};
+        constexpr PeerId server_peer_id = 1;
+        constexpr auto handshake_timeout = std::chrono::seconds(5);
 
-struct TransportClient::Impl {
-public:
-  ~Impl() { disconnect(DisconnectCode::None); }
+        [[nodiscard]] DisconnectCode disconnect_code(std::uint32_t native_code) noexcept
+        {
+            auto const code = static_cast<DisconnectCode>(native_code);
+            return valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
+        }
 
-  TransportResult connect(TransportClientSettings const &settings) {
-    if (host_ != nullptr) {
-      return fail(TransportErrorCode::AlreadyStarted, "transport client is already connected or connecting");
-    }
-    settings_ = settings;
-    counters_ = {};
-    transport_connected_ = false;
-    session_ready_ = false;
+        [[nodiscard]] bool
+        payload_size_allowed(std::size_t size, TransportLimits const& limits) noexcept
+        {
+            if (size > max_reassembled_payload_bytes) {
+                return false;
+            }
+            return limits.size_policy != SendSizePolicy::EnforceLimit
+                || size <= limits.max_payload_bytes;
+        }
 
-    if (auto ready = require_enet(); !ready.ok) {
-      return ready;
-    }
-    if (settings.server_port == 0 || settings.server_address.empty()) {
-      return fail(TransportErrorCode::InvalidAddress, "client server address and port are required");
-    }
+        [[nodiscard]] ENetPacketFlag delivery_flags(Delivery delivery) noexcept
+        {
+            switch (delivery) {
+                case Delivery::ReliableSequenced:
+                    return ENET_PACKET_FLAG_RELIABLE;
+                case Delivery::UnreliableSequenced:
+                    return static_cast<ENetPacketFlag>(0);
+                case Delivery::UnreliableUnsequenced:
+                    return ENET_PACKET_FLAG_UNSEQUENCED;
+                case Delivery::UnreliableFragmented:
+                    return ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT;
+            }
+            return static_cast<ENetPacketFlag>(0);
+        }
 
-    host_ = enet_host_create(nullptr, 1, channel_count, 0, 0);
-    if (host_ == nullptr) {
-      return fail(TransportErrorCode::BackendError, "failed to create ENet client host");
-    }
+        [[nodiscard]] Delivery packet_delivery(ENetPacket const& packet) noexcept
+        {
+            if ((packet.flags & ENET_PACKET_FLAG_RELIABLE) != 0U) {
+                return Delivery::ReliableSequenced;
+            }
+            if ((packet.flags & ENET_PACKET_FLAG_UNSEQUENCED) != 0U) {
+                return Delivery::UnreliableUnsequenced;
+            }
+            if ((packet.flags & ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT) != 0U) {
+                return Delivery::UnreliableFragmented;
+            }
+            return Delivery::UnreliableSequenced;
+        }
 
-    auto address = ENetAddress{
-        .host = 0,
-        .port = settings.server_port,
+        [[nodiscard]] PeerId event_peer_id(ENetPeer const* peer) noexcept
+        {
+            return static_cast<PeerId>(reinterpret_cast<std::uintptr_t>(peer->data));
+        }
+
+        void set_peer_id(ENetPeer* peer, PeerId id) noexcept
+        {
+            peer->data = reinterpret_cast<void*>(static_cast<std::uintptr_t>(id));
+        }
+
+        struct EnetRuntime
+        {
+            EnetRuntime()
+            {
+                initialized = enet_initialize() == 0;
+            }
+
+            ~EnetRuntime()
+            {
+                if (initialized) {
+                    enet_deinitialize();
+                }
+            }
+
+            bool initialized{};
+        };
+
+        [[nodiscard]] EnetRuntime& enet_runtime()
+        {
+            static auto runtime = EnetRuntime{};
+            return runtime;
+        }
+
+        [[nodiscard]] TransportResult require_enet()
+        {
+            return enet_runtime().initialized
+                ? ok()
+                : fail(TransportErrorCode::BackendError, "ENet initialization failed");
+        }
+
+        [[nodiscard]] bool set_enet_address_host(ENetAddress& address, std::string const& host)
+        {
+            return enet_address_set_host_ip(&address, host.c_str()) == 0
+                || enet_address_set_host(&address, host.c_str()) == 0;
+        }
+
+        void add_send_stats(TransportStats& stats, Lane lane, std::size_t bytes)
+        {
+            auto const index = lane_index(lane);
+            ++stats.packets_sent;
+            stats.bytes_sent += bytes;
+            ++stats.lane_packets_sent[index];
+            stats.lane_bytes_sent[index] += bytes;
+        }
+
+        void add_receive_stats(TransportStats& stats, Lane lane, std::size_t bytes)
+        {
+            auto const index = lane_index(lane);
+            ++stats.packets_received;
+            stats.bytes_received += bytes;
+            ++stats.lane_packets_received[index];
+            stats.lane_bytes_received[index] += bytes;
+        }
+
+        [[nodiscard]] TransportResult send_to_peer(
+            ENetPeer* peer,
+            TransportStats& stats,
+            TransportLimits const& limits,
+            Lane lane,
+            Delivery delivery,
+            std::span<Byte const> payload
+        )
+        {
+            if (!valid_lane(lane)) {
+                ++stats.send_failures;
+                return fail(TransportErrorCode::InvalidLane, "invalid transport lane");
+            }
+            if (!valid_delivery(delivery)) {
+                ++stats.send_failures;
+                return fail(TransportErrorCode::InvalidDelivery, "invalid transport delivery mode");
+            }
+            if (limits.size_policy == SendSizePolicy::EnforceLimit
+                && payload.size() > limits.max_payload_bytes) {
+                ++stats.send_failures;
+                ++stats.oversize_drops;
+                return fail(
+                    TransportErrorCode::PayloadTooLarge,
+                    "transport payload exceeds configured limit"
+                );
+            }
+            if (payload.size() > max_reassembled_payload_bytes) {
+                ++stats.send_failures;
+                ++stats.oversize_drops;
+                return fail(
+                    TransportErrorCode::PayloadTooLarge,
+                    "transport payload exceeds hard payload limit"
+                );
+            }
+
+            auto* packet
+                = enet_packet_create(payload.data(), payload.size(), delivery_flags(delivery));
+            if (packet == nullptr) {
+                ++stats.send_failures;
+                return fail(TransportErrorCode::BackendError, "ENet packet allocation failed");
+            }
+            if (enet_peer_send(peer, lane_index(lane), packet) != 0) {
+                enet_packet_destroy(packet);
+                ++stats.send_failures;
+                return fail(TransportErrorCode::BackendError, "ENet send failed");
+            }
+
+            add_send_stats(stats, lane, payload.size());
+            return ok();
+        }
+
+        [[nodiscard]] PeerStats make_peer_stats(ENetPeer const* peer) noexcept
+        {
+            if (peer == nullptr) {
+                return {};
+            }
+            return {
+                .rtt_ms = static_cast<double>(peer->roundTripTime),
+                .packet_loss_ratio = static_cast<double>(peer->packetLoss)
+                    / static_cast<double>(ENET_PEER_PACKET_LOSS_SCALE),
+                .reliable_bytes_in_flight = peer->reliableDataInTransit,
+                .waiting_bytes = peer->totalWaitingData,
+                .mtu = peer->mtu,
+            };
+        }
+
+        struct PeerSlot
+        {
+            PeerId id{};
+            ENetPeer* peer{};
+            bool session_ready{};
+            std::chrono::steady_clock::time_point connected_at{};
+        };
+
+    } // namespace
+
+    struct TransportServer::Impl
+    {
+    public:
+        ~Impl()
+        {
+            stop();
+        }
+
+        TransportResult start(TransportServerSettings const& settings)
+        {
+            if (host_ != nullptr) {
+                return fail(
+                    TransportErrorCode::AlreadyStarted,
+                    "transport server is already started"
+                );
+            }
+            settings_ = settings;
+            counters_ = {};
+            peers_.clear();
+            expired_peer_ids_.clear();
+            next_peer_id_ = 1;
+
+            if (auto ready = require_enet(); !ready.ok) {
+                return ready;
+            }
+            if (settings.port == 0 || settings.max_peers == 0) {
+                return fail(
+                    TransportErrorCode::InvalidAddress,
+                    "server transport port and max_peers must be non-zero"
+                );
+            }
+            expired_peer_ids_.reserve(settings.max_peers);
+
+            auto address = ENetAddress{.host = ENET_HOST_ANY, .port = settings.port};
+            if (!settings.bind_address.empty()
+                && !set_enet_address_host(address, settings.bind_address)) {
+                return fail(TransportErrorCode::InvalidAddress, "invalid server bind address");
+            }
+
+            host_ = enet_host_create(&address, settings.max_peers, channel_count, 0, 0);
+            if (host_ == nullptr) {
+                return fail(TransportErrorCode::BackendError, "failed to create ENet server host");
+            }
+            return ok();
+        }
+
+        void stop() noexcept
+        {
+            if (host_ != nullptr) {
+                enet_host_destroy(host_);
+                host_ = nullptr;
+            }
+            peers_.clear();
+        }
+
+        bool is_running() const noexcept
+        {
+            return host_ != nullptr;
+        }
+
+        TransportResult poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
+        {
+            if (host_ == nullptr) {
+                return fail(TransportErrorCode::NotStarted, "transport server is not started");
+            }
+
+            auto event = ENetEvent{};
+            auto wait_ms = timeout_ms;
+            for (;;) {
+                auto const service_result = enet_host_service(host_, &event, wait_ms);
+                if (service_result < 0) {
+                    return fail(TransportErrorCode::BackendError, "ENet server service failed");
+                }
+                if (service_result == 0) {
+                    break;
+                }
+                wait_ms = 0;
+                if (event.type == ENET_EVENT_TYPE_CONNECT) {
+                    auto const id = next_peer_id_++;
+                    set_peer_id(event.peer, id);
+                    peers_.push_back({
+                        .id = id,
+                        .peer = event.peer,
+                        .connected_at = std::chrono::steady_clock::now(),
+                    });
+                    out_events.push_back(PeerConnected{.peer = id});
+                } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+                    handle_receive(event, out_events);
+                    enet_packet_destroy(event.packet);
+                } else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
+                    auto const id = event_peer_id(event.peer);
+                    ++counters_.disconnects;
+                    out_events.push_back(
+                        PeerDisconnected{
+                            .peer = id,
+                            .code = disconnect_code(event.data),
+                            .native_reason = event.data,
+                        }
+                    );
+                    peers_.erase(
+                        std::remove_if(
+                            peers_.begin(),
+                            peers_.end(),
+                            [id](PeerSlot const& slot) {
+                                return slot.id == id;
+                            }
+                        ),
+                        peers_.end()
+                    );
+                    event.peer->data = nullptr;
+                }
+            }
+            expire_pending_sessions(out_events);
+            return ok();
+        }
+
+        TransportResult send(SendPacket const& packet)
+        {
+            if (host_ == nullptr) {
+                return fail(TransportErrorCode::NotStarted, "transport server is not started");
+            }
+            auto* slot = find(packet.peer);
+            if (slot == nullptr) {
+                return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
+            }
+            if (!slot->session_ready) {
+                return fail(
+                    TransportErrorCode::PeerNotReady,
+                    "transport peer session is not ready"
+                );
+            }
+            if (packet.lane == Lane::Control) {
+                return fail(
+                    TransportErrorCode::InvalidLane,
+                    "Control lane is reserved for the transport protocol"
+                );
+            }
+            return send_to_peer(
+                slot->peer,
+                counters_,
+                settings_.limits,
+                packet.lane,
+                packet.delivery,
+                packet.payload
+            );
+        }
+
+        TransportResult send_application_control(PeerId peer, std::span<Byte const> payload)
+        {
+            auto* slot = find(peer);
+            if (slot == nullptr) {
+                return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
+            }
+            if (!slot->session_ready) {
+                return fail(
+                    TransportErrorCode::PeerNotReady,
+                    "transport peer session is not ready"
+                );
+            }
+            if (payload.size() > max_application_control_bytes) {
+                return fail(
+                    TransportErrorCode::PayloadTooLarge,
+                    "application-control payload exceeds transport limit"
+                );
+            }
+            return send_session(
+                slot->peer,
+                {
+                    .kind = SessionMessageKind::ApplicationControl,
+                    .application_control = {payload.begin(), payload.end()},
+                }
+            );
+        }
+
+        void disconnect(PeerId peer, DisconnectCode code) noexcept
+        {
+            if (auto* slot = find(peer); slot != nullptr && slot->peer != nullptr) {
+                auto const safe_code
+                    = valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
+                enet_peer_disconnect_later(slot->peer, static_cast<std::uint32_t>(safe_code));
+            }
+        }
+
+        TransportStats stats() const
+        {
+            return counters_;
+        }
+
+        PeerStats peer_stats(PeerId peer) const
+        {
+            auto const* slot = find(peer);
+            return slot == nullptr ? PeerStats{} : make_peer_stats(slot->peer);
+        }
+
+    private:
+        [[nodiscard]] PeerSlot* find(PeerId id) noexcept
+        {
+            auto found = std::ranges::find_if(peers_, [id](PeerSlot const& slot) {
+                return slot.id == id;
+            });
+            return found == peers_.end() ? nullptr : &*found;
+        }
+
+        [[nodiscard]] PeerSlot const* find(PeerId id) const noexcept
+        {
+            auto found = std::ranges::find_if(peers_, [id](PeerSlot const& slot) {
+                return slot.id == id;
+            });
+            return found == peers_.end() ? nullptr : &*found;
+        }
+
+        [[nodiscard]] TransportResult send_session(ENetPeer* peer, SessionMessage const& message)
+        {
+            auto bytes = encode_session_message(message);
+            return send_to_peer(
+                peer,
+                counters_,
+                {
+                    .max_payload_bytes = settings_.limits.max_payload_bytes,
+                    .size_policy = SendSizePolicy::AllowBackendFragmentation,
+                },
+                Lane::Control,
+                Delivery::ReliableSequenced,
+                bytes
+            );
+        }
+
+        void handle_client_hello(
+            PeerSlot& slot,
+            SessionMessage const& message,
+            std::vector<TransportEvent>& events
+        )
+        {
+            if (slot.session_ready) {
+                events.push_back(
+                    TransportErrorEvent{
+                        .message = "duplicate ClientHello after session ready",
+                    }
+                );
+                disconnect(slot.id, DisconnectCode::ProtocolMismatch);
+                return;
+            }
+
+            auto const mismatch = identity_mismatch(message.identity, settings_.expected_identity);
+            if (mismatch != DisconnectCode::None) {
+                static_cast<void>(send_session(
+                    slot.peer,
+                    {
+                        .kind = SessionMessageKind::ServerReject,
+                        .reject_code = mismatch,
+                    }
+                ));
+                events.push_back(
+                    TransportErrorEvent{
+                        .message = "client session identity mismatch",
+                    }
+                );
+                disconnect(slot.id, mismatch);
+                return;
+            }
+
+            auto accepted = send_session(slot.peer, {.kind = SessionMessageKind::ServerAccept});
+            if (!accepted.ok) {
+                events.push_back(
+                    TransportErrorEvent{
+                        .message = accepted.error.message,
+                    }
+                );
+                disconnect(slot.id, DisconnectCode::TransportError);
+                return;
+            }
+            slot.session_ready = true;
+            events.push_back(PeerSessionReady{.peer = slot.id});
+        }
+
+        void handle_receive(ENetEvent const& event, std::vector<TransportEvent>& out_events)
+        {
+            auto const peer = event_peer_id(event.peer);
+            auto const lane = static_cast<Lane>(event.channelID);
+            if (!valid_lane(lane)) {
+                out_events.push_back(
+                    TransportErrorEvent{
+                        .message = "received packet on invalid ENet channel",
+                    }
+                );
+                return;
+            }
+            auto const size_allowed = lane == Lane::Control
+                ? event.packet->dataLength <= max_control_message_bytes
+                : lane == Lane::Input
+                ? event.packet->dataLength <= max_input_message_bytes
+                : payload_size_allowed(event.packet->dataLength, settings_.limits);
+            if (!size_allowed) {
+                ++counters_.oversize_drops;
+                out_events.push_back(
+                    TransportErrorEvent{
+                        .message = "received ENet packet exceeds transport receive limit"
+                    }
+                );
+                disconnect(peer, DisconnectCode::ProtocolMismatch);
+                return;
+            }
+            add_receive_stats(counters_, lane, event.packet->dataLength);
+
+            auto* slot = find(peer);
+            if (slot != nullptr && lane == Lane::Control) {
+                auto message = SessionMessage{};
+                auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
+                if (!decode_session_message(data, event.packet->dataLength, message)) {
+                    out_events.push_back(
+                        TransportErrorEvent{
+                            .message = "invalid client session message",
+                        }
+                    );
+                    disconnect(peer, DisconnectCode::ProtocolMismatch);
+                } else if (!slot->session_ready) {
+                    if (message.kind != SessionMessageKind::ClientHello) {
+                        out_events.push_back(
+                            TransportErrorEvent{
+                                .message = "application control received before session readiness",
+                            }
+                        );
+                        disconnect(peer, DisconnectCode::ProtocolMismatch);
+                    } else {
+                        handle_client_hello(*slot, message, out_events);
+                    }
+                } else if (message.kind == SessionMessageKind::ApplicationControl) {
+                    out_events.push_back(
+                        ReceivedApplicationControl{
+                            .peer = peer,
+                            .payload = std::move(message.application_control),
+                        }
+                    );
+                } else {
+                    out_events.push_back(
+                        TransportErrorEvent{
+                            .message = "invalid client control message after session readiness",
+                        }
+                    );
+                    disconnect(peer, DisconnectCode::ProtocolMismatch);
+                }
+            } else if (slot != nullptr && lane == Lane::Input) {
+                auto message = SessionMessage{};
+                auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
+                if (!slot->session_ready
+                    || !decode_session_message(data, event.packet->dataLength, message)
+                    || (message.kind != SessionMessageKind::SnapshotAck
+                        && message.kind != SessionMessageKind::ApplicationInput)) {
+                    out_events.push_back(
+                        TransportErrorEvent{
+                            .message = "invalid Input-lane message",
+                        }
+                    );
+                    disconnect(peer, DisconnectCode::ProtocolMismatch);
+                } else if (message.kind == SessionMessageKind::ApplicationInput) {
+                    out_events.push_back(
+                        ReceivedApplicationInput{
+                            .peer = peer,
+                            .payload = std::move(message.application_input),
+                        }
+                    );
+                } else {
+                    out_events.push_back(
+                        SnapshotAckReceived{
+                            .peer = peer,
+                            .ack = message.snapshot_ack,
+                        }
+                    );
+                }
+            } else if (slot != nullptr && slot->session_ready) {
+                auto payload = std::vector<Byte>(event.packet->dataLength);
+                std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
+                out_events.push_back(
+                    ReceivedPacket{
+                        .peer = peer,
+                        .lane = lane,
+                        .delivery = packet_delivery(*event.packet),
+                        .payload = std::move(payload),
+                    }
+                );
+            }
+        }
+
+        void expire_pending_sessions(std::vector<TransportEvent>& out_events)
+        {
+            auto const now = std::chrono::steady_clock::now();
+            expired_peer_ids_.clear();
+            for (auto const& slot : peers_) {
+                if (!slot.session_ready && now - slot.connected_at >= handshake_timeout) {
+                    enet_peer_disconnect_now(
+                        slot.peer,
+                        static_cast<std::uint32_t>(DisconnectCode::Timeout)
+                    );
+                    slot.peer->data = nullptr;
+                    ++counters_.disconnects;
+                    out_events.push_back(
+                        PeerDisconnected{
+                            .peer = slot.id,
+                            .code = DisconnectCode::Timeout,
+                            .native_reason = static_cast<std::uint32_t>(DisconnectCode::Timeout),
+                        }
+                    );
+                    expired_peer_ids_.push_back(slot.id);
+                }
+            }
+            peers_.erase(
+                std::remove_if(
+                    peers_.begin(),
+                    peers_.end(),
+                    [this](PeerSlot const& slot) {
+                        return std::ranges::find(expired_peer_ids_, slot.id)
+                            != expired_peer_ids_.end();
+                    }
+                ),
+                peers_.end()
+            );
+        }
+
+        ENetHost* host_{};
+        TransportServerSettings settings_{};
+        TransportStats counters_{};
+        std::vector<PeerSlot> peers_;
+        std::vector<PeerId> expired_peer_ids_;
+        PeerId next_peer_id_{1};
     };
-    if (!set_enet_address_host(address, settings.server_address)) {
-      disconnect(DisconnectCode::None);
-      return fail(TransportErrorCode::InvalidAddress, "invalid server address");
-    }
 
-    server_ = enet_host_connect(host_, &address, channel_count, 0);
-    if (server_ == nullptr) {
-      disconnect(DisconnectCode::None);
-      return fail(TransportErrorCode::ConnectionFailed, "failed to create ENet server peer");
-    }
-    set_peer_id(server_, server_peer_id);
-    connect_started_at_ = std::chrono::steady_clock::now();
-    return ok();
-  }
-
-  void disconnect(DisconnectCode code) noexcept {
-    if (server_ != nullptr) {
-      auto *disconnecting_peer = server_;
-      auto const safe_code = valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
-      enet_peer_disconnect(disconnecting_peer, static_cast<std::uint32_t>(safe_code));
-      enet_host_flush(host_);
-
-      auto event = ENetEvent{};
-      auto const deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
-      while (std::chrono::steady_clock::now() < deadline) {
-        auto const remaining =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-        auto const timeout = static_cast<std::uint32_t>(std::max<std::int64_t>(remaining.count(), 0));
-        auto const service_result = enet_host_service(host_, &event, timeout);
-        if (service_result <= 0) {
-          break;
-        }
-        if (event.type == ENET_EVENT_TYPE_RECEIVE) {
-          enet_packet_destroy(event.packet);
-        }
-        if (event.type == ENET_EVENT_TYPE_DISCONNECT && event.peer == disconnecting_peer) {
-          break;
-        }
-      }
-      server_ = nullptr;
-    }
-    if (host_ != nullptr) {
-      enet_host_destroy(host_);
-      host_ = nullptr;
-    }
-    transport_connected_ = false;
-    session_ready_ = false;
-  }
-
-  bool is_connected() const noexcept { return transport_connected_; }
-
-  bool is_started() const noexcept { return host_ != nullptr; }
-
-  bool is_session_ready() const noexcept { return session_ready_; }
-
-  TransportResult poll(std::vector<TransportEvent> &out_events, std::uint32_t timeout_ms) {
-    if (host_ == nullptr) {
-      return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-    }
-
-    auto event = ENetEvent{};
-    auto wait_ms = timeout_ms;
-    for (;;) {
-      auto const service_result = enet_host_service(host_, &event, wait_ms);
-      if (service_result < 0) {
-        return fail(TransportErrorCode::BackendError, "ENet client service failed");
-      }
-      if (service_result == 0) {
-        break;
-      }
-      wait_ms = 0;
-      if (event.type == ENET_EVENT_TYPE_CONNECT) {
-        transport_connected_ = true;
-        out_events.push_back(PeerConnected{
-            .peer = server_peer_id,
-        });
-        auto sent = send_session({
-            .kind = SessionMessageKind::ClientHello,
-            .identity = settings_.identity,
-        });
-        if (!sent.ok) {
-          out_events.push_back(TransportErrorEvent{
-              .message = sent.error.message,
-          });
-        }
-      } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
-        handle_receive(event, out_events);
-        enet_packet_destroy(event.packet);
-      } else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
-        ++counters_.disconnects;
-        out_events.push_back(PeerDisconnected{
-            .peer = server_peer_id,
-            .code = disconnect_code(event.data),
-            .native_reason = event.data,
-        });
-        server_ = nullptr;
-        transport_connected_ = false;
-        session_ready_ = false;
-      }
-    }
-    expire_pending_session(out_events);
-    return ok();
-  }
-
-  TransportResult send(Lane lane, Delivery delivery, std::span<Byte const> payload) {
-    if (host_ == nullptr || server_ == nullptr) {
-      return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-    }
-    if (!session_ready_) {
-      return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
-    }
-    if (lane == Lane::Control || lane == Lane::Input) {
-      return fail(TransportErrorCode::InvalidLane, "lane is reserved for the transport protocol");
-    }
-    return send_to_peer(server_, counters_, settings_.limits, lane, delivery, payload);
-  }
-
-  TransportResult send_snapshot_ack(SnapshotAck const &ack) {
-    if (host_ == nullptr || server_ == nullptr) {
-      return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-    }
-    if (!session_ready_) {
-      return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
-    }
-    return send_session(
+    struct TransportClient::Impl
+    {
+    public:
+        ~Impl()
         {
-            .kind = SessionMessageKind::SnapshotAck,
-            .snapshot_ack = ack,
-        },
-        Lane::Input);
-  }
-
-  TransportResult send_application_control(std::span<Byte const> payload) {
-    if (host_ == nullptr || server_ == nullptr) {
-      return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-    }
-    if (!session_ready_) {
-      return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
-    }
-    if (payload.size() > max_application_control_bytes) {
-      return fail(TransportErrorCode::PayloadTooLarge, "application-control payload exceeds transport limit");
-    }
-    return send_session({
-        .kind = SessionMessageKind::ApplicationControl,
-        .application_control = {payload.begin(), payload.end()},
-    });
-  }
-
-  TransportResult send_application_input(std::span<Byte const> payload) {
-    if (host_ == nullptr || server_ == nullptr) {
-      return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-    }
-    if (!session_ready_) {
-      return fail(TransportErrorCode::PeerNotReady, "transport server session is not ready");
-    }
-    if (payload.size() > max_application_input_bytes) {
-      return fail(TransportErrorCode::PayloadTooLarge, "application-input payload exceeds transport limit");
-    }
-    auto bytes = encode_session_message({
-        .kind = SessionMessageKind::ApplicationInput,
-        .application_input = {payload.begin(), payload.end()},
-    });
-    return send_to_peer(
-        server_,
-        counters_,
-        {
-            .max_payload_bytes = settings_.limits.max_payload_bytes,
-            .size_policy = SendSizePolicy::AllowBackendFragmentation,
-        },
-        Lane::Input,
-        Delivery::UnreliableSequenced,
-        bytes
-    );
-  }
-
-  TransportStats stats() const { return counters_; }
-
-  PeerStats server_stats() const { return make_peer_stats(server_); }
-
-private:
-  [[nodiscard]] TransportResult send_session(SessionMessage const &message, Lane lane = Lane::Control) {
-    auto bytes = encode_session_message(message);
-    return send_to_peer(server_, counters_,
-                        {
-                            .max_payload_bytes = settings_.limits.max_payload_bytes,
-                            .size_policy = SendSizePolicy::AllowBackendFragmentation,
-                        },
-                        lane, Delivery::ReliableSequenced, bytes);
-  }
-
-  void handle_receive(ENetEvent const &event, std::vector<TransportEvent> &out_events) {
-    auto const lane = static_cast<Lane>(event.channelID);
-    if (!valid_lane(lane)) {
-      out_events.push_back(TransportErrorEvent{
-          .message = "received packet on invalid ENet channel",
-      });
-      return;
-    }
-    auto const size_allowed = lane == Lane::Control
-        ? event.packet->dataLength <= max_control_message_bytes
-        : lane == Lane::Input
-            ? event.packet->dataLength <= max_input_message_bytes
-            : payload_size_allowed(event.packet->dataLength, settings_.limits);
-    if (!size_allowed) {
-      ++counters_.oversize_drops;
-      out_events.push_back(TransportErrorEvent{.message = "received ENet packet exceeds transport receive limit"});
-      out_events.push_back(PeerDisconnected{
-          .peer = server_peer_id,
-          .code = DisconnectCode::ProtocolMismatch,
-          .native_reason = static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch),
-      });
-      ++counters_.disconnects;
-      enet_peer_disconnect_now(event.peer, static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch));
-      server_ = nullptr;
-      transport_connected_ = false;
-      session_ready_ = false;
-      return;
-    }
-    add_receive_stats(counters_, lane, event.packet->dataLength);
-
-    if (lane == Lane::Control) {
-      auto message = SessionMessage{};
-      auto const *data = reinterpret_cast<Byte const *>(event.packet->data);
-      if (!decode_session_message(data, event.packet->dataLength, message)) {
-        out_events.push_back(TransportErrorEvent{
-            .message = "invalid server session message",
-        });
-      } else if (message.kind == SessionMessageKind::ServerAccept) {
-        if (!session_ready_) {
-          session_ready_ = true;
-          out_events.push_back(PeerSessionReady{
-              .peer = server_peer_id,
-          });
+            disconnect(DisconnectCode::None);
         }
-      } else if (message.kind == SessionMessageKind::ServerReject) {
-        out_events.push_back(TransportErrorEvent{
-            .message = "server rejected transport session",
-        });
-        out_events.push_back(PeerDisconnected{
-            .peer = server_peer_id,
-            .code = message.reject_code,
-            .native_reason = static_cast<std::uint32_t>(message.reject_code),
-        });
-        ++counters_.disconnects;
-        enet_peer_disconnect_now(event.peer, static_cast<std::uint32_t>(message.reject_code));
-        server_ = nullptr;
-        transport_connected_ = false;
-        session_ready_ = false;
-      } else if (message.kind == SessionMessageKind::ApplicationControl && session_ready_) {
-        out_events.push_back(ReceivedApplicationControl{
-            .peer = server_peer_id,
-            .payload = std::move(message.application_control),
-        });
-      } else {
-        out_events.push_back(TransportErrorEvent{
-            .message = "invalid server control message",
-        });
-        enet_peer_disconnect_now(event.peer, static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch));
-        server_ = nullptr;
-        transport_connected_ = false;
-        session_ready_ = false;
-      }
-    } else if (session_ready_) {
-      auto payload = std::vector<Byte>(event.packet->dataLength);
-      std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
-      out_events.push_back(ReceivedPacket{
-          .peer = server_peer_id,
-          .lane = lane,
-          .delivery = packet_delivery(*event.packet),
-          .payload = std::move(payload),
-      });
+
+        TransportResult connect(TransportClientSettings const& settings)
+        {
+            if (host_ != nullptr) {
+                return fail(
+                    TransportErrorCode::AlreadyStarted,
+                    "transport client is already connected or connecting"
+                );
+            }
+            settings_ = settings;
+            counters_ = {};
+            transport_connected_ = false;
+            session_ready_ = false;
+
+            if (auto ready = require_enet(); !ready.ok) {
+                return ready;
+            }
+            if (settings.server_port == 0 || settings.server_address.empty()) {
+                return fail(
+                    TransportErrorCode::InvalidAddress,
+                    "client server address and port are required"
+                );
+            }
+
+            host_ = enet_host_create(nullptr, 1, channel_count, 0, 0);
+            if (host_ == nullptr) {
+                return fail(TransportErrorCode::BackendError, "failed to create ENet client host");
+            }
+
+            auto address = ENetAddress{
+                .host = 0,
+                .port = settings.server_port,
+            };
+            if (!set_enet_address_host(address, settings.server_address)) {
+                disconnect(DisconnectCode::None);
+                return fail(TransportErrorCode::InvalidAddress, "invalid server address");
+            }
+
+            server_ = enet_host_connect(host_, &address, channel_count, 0);
+            if (server_ == nullptr) {
+                disconnect(DisconnectCode::None);
+                return fail(
+                    TransportErrorCode::ConnectionFailed,
+                    "failed to create ENet server peer"
+                );
+            }
+            set_peer_id(server_, server_peer_id);
+            connect_started_at_ = std::chrono::steady_clock::now();
+            return ok();
+        }
+
+        void disconnect(DisconnectCode code) noexcept
+        {
+            if (server_ != nullptr) {
+                auto* disconnecting_peer = server_;
+                auto const safe_code
+                    = valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
+                enet_peer_disconnect(disconnecting_peer, static_cast<std::uint32_t>(safe_code));
+                enet_host_flush(host_);
+
+                auto event = ENetEvent{};
+                auto const deadline
+                    = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+                while (std::chrono::steady_clock::now() < deadline) {
+                    auto const remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        deadline - std::chrono::steady_clock::now()
+                    );
+                    auto const timeout
+                        = static_cast<std::uint32_t>(std::max<std::int64_t>(remaining.count(), 0));
+                    auto const service_result = enet_host_service(host_, &event, timeout);
+                    if (service_result <= 0) {
+                        break;
+                    }
+                    if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+                        enet_packet_destroy(event.packet);
+                    }
+                    if (event.type == ENET_EVENT_TYPE_DISCONNECT
+                        && event.peer == disconnecting_peer) {
+                        break;
+                    }
+                }
+                server_ = nullptr;
+            }
+            if (host_ != nullptr) {
+                enet_host_destroy(host_);
+                host_ = nullptr;
+            }
+            transport_connected_ = false;
+            session_ready_ = false;
+        }
+
+        bool is_connected() const noexcept
+        {
+            return transport_connected_;
+        }
+
+        bool is_started() const noexcept
+        {
+            return host_ != nullptr;
+        }
+
+        bool is_session_ready() const noexcept
+        {
+            return session_ready_;
+        }
+
+        TransportResult poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
+        {
+            if (host_ == nullptr) {
+                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+            }
+
+            auto event = ENetEvent{};
+            auto wait_ms = timeout_ms;
+            for (;;) {
+                auto const service_result = enet_host_service(host_, &event, wait_ms);
+                if (service_result < 0) {
+                    return fail(TransportErrorCode::BackendError, "ENet client service failed");
+                }
+                if (service_result == 0) {
+                    break;
+                }
+                wait_ms = 0;
+                if (event.type == ENET_EVENT_TYPE_CONNECT) {
+                    transport_connected_ = true;
+                    out_events.push_back(
+                        PeerConnected{
+                            .peer = server_peer_id,
+                        }
+                    );
+                    auto sent = send_session({
+                        .kind = SessionMessageKind::ClientHello,
+                        .identity = settings_.identity,
+                    });
+                    if (!sent.ok) {
+                        out_events.push_back(
+                            TransportErrorEvent{
+                                .message = sent.error.message,
+                            }
+                        );
+                    }
+                } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+                    handle_receive(event, out_events);
+                    enet_packet_destroy(event.packet);
+                } else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
+                    ++counters_.disconnects;
+                    out_events.push_back(
+                        PeerDisconnected{
+                            .peer = server_peer_id,
+                            .code = disconnect_code(event.data),
+                            .native_reason = event.data,
+                        }
+                    );
+                    server_ = nullptr;
+                    transport_connected_ = false;
+                    session_ready_ = false;
+                }
+            }
+            expire_pending_session(out_events);
+            return ok();
+        }
+
+        TransportResult send(Lane lane, Delivery delivery, std::span<Byte const> payload)
+        {
+            if (host_ == nullptr || server_ == nullptr) {
+                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+            }
+            if (!session_ready_) {
+                return fail(
+                    TransportErrorCode::PeerNotReady,
+                    "transport server session is not ready"
+                );
+            }
+            if (lane == Lane::Control || lane == Lane::Input) {
+                return fail(
+                    TransportErrorCode::InvalidLane,
+                    "lane is reserved for the transport protocol"
+                );
+            }
+            return send_to_peer(server_, counters_, settings_.limits, lane, delivery, payload);
+        }
+
+        TransportResult send_snapshot_ack(SnapshotAck const& ack)
+        {
+            if (host_ == nullptr || server_ == nullptr) {
+                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+            }
+            if (!session_ready_) {
+                return fail(
+                    TransportErrorCode::PeerNotReady,
+                    "transport server session is not ready"
+                );
+            }
+            return send_session(
+                {
+                    .kind = SessionMessageKind::SnapshotAck,
+                    .snapshot_ack = ack,
+                },
+                Lane::Input
+            );
+        }
+
+        TransportResult send_application_control(std::span<Byte const> payload)
+        {
+            if (host_ == nullptr || server_ == nullptr) {
+                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+            }
+            if (!session_ready_) {
+                return fail(
+                    TransportErrorCode::PeerNotReady,
+                    "transport server session is not ready"
+                );
+            }
+            if (payload.size() > max_application_control_bytes) {
+                return fail(
+                    TransportErrorCode::PayloadTooLarge,
+                    "application-control payload exceeds transport limit"
+                );
+            }
+            return send_session({
+                .kind = SessionMessageKind::ApplicationControl,
+                .application_control = {payload.begin(), payload.end()},
+            });
+        }
+
+        TransportResult send_application_input(std::span<Byte const> payload)
+        {
+            if (host_ == nullptr || server_ == nullptr) {
+                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+            }
+            if (!session_ready_) {
+                return fail(
+                    TransportErrorCode::PeerNotReady,
+                    "transport server session is not ready"
+                );
+            }
+            if (payload.size() > max_application_input_bytes) {
+                return fail(
+                    TransportErrorCode::PayloadTooLarge,
+                    "application-input payload exceeds transport limit"
+                );
+            }
+            auto bytes = encode_session_message({
+                .kind = SessionMessageKind::ApplicationInput,
+                .application_input = {payload.begin(), payload.end()},
+            });
+            return send_to_peer(
+                server_,
+                counters_,
+                {
+                    .max_payload_bytes = settings_.limits.max_payload_bytes,
+                    .size_policy = SendSizePolicy::AllowBackendFragmentation,
+                },
+                Lane::Input,
+                Delivery::UnreliableSequenced,
+                bytes
+            );
+        }
+
+        TransportStats stats() const
+        {
+            return counters_;
+        }
+
+        PeerStats server_stats() const
+        {
+            return make_peer_stats(server_);
+        }
+
+    private:
+        [[nodiscard]] TransportResult
+        send_session(SessionMessage const& message, Lane lane = Lane::Control)
+        {
+            auto bytes = encode_session_message(message);
+            return send_to_peer(
+                server_,
+                counters_,
+                {
+                    .max_payload_bytes = settings_.limits.max_payload_bytes,
+                    .size_policy = SendSizePolicy::AllowBackendFragmentation,
+                },
+                lane,
+                Delivery::ReliableSequenced,
+                bytes
+            );
+        }
+
+        void handle_receive(ENetEvent const& event, std::vector<TransportEvent>& out_events)
+        {
+            auto const lane = static_cast<Lane>(event.channelID);
+            if (!valid_lane(lane)) {
+                out_events.push_back(
+                    TransportErrorEvent{
+                        .message = "received packet on invalid ENet channel",
+                    }
+                );
+                return;
+            }
+            auto const size_allowed = lane == Lane::Control
+                ? event.packet->dataLength <= max_control_message_bytes
+                : lane == Lane::Input
+                ? event.packet->dataLength <= max_input_message_bytes
+                : payload_size_allowed(event.packet->dataLength, settings_.limits);
+            if (!size_allowed) {
+                ++counters_.oversize_drops;
+                out_events.push_back(
+                    TransportErrorEvent{
+                        .message = "received ENet packet exceeds transport receive limit"
+                    }
+                );
+                out_events.push_back(
+                    PeerDisconnected{
+                        .peer = server_peer_id,
+                        .code = DisconnectCode::ProtocolMismatch,
+                        .native_reason
+                        = static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch),
+                    }
+                );
+                ++counters_.disconnects;
+                enet_peer_disconnect_now(
+                    event.peer,
+                    static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch)
+                );
+                server_ = nullptr;
+                transport_connected_ = false;
+                session_ready_ = false;
+                return;
+            }
+            add_receive_stats(counters_, lane, event.packet->dataLength);
+
+            if (lane == Lane::Control) {
+                auto message = SessionMessage{};
+                auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
+                if (!decode_session_message(data, event.packet->dataLength, message)) {
+                    out_events.push_back(
+                        TransportErrorEvent{
+                            .message = "invalid server session message",
+                        }
+                    );
+                } else if (message.kind == SessionMessageKind::ServerAccept) {
+                    if (!session_ready_) {
+                        session_ready_ = true;
+                        out_events.push_back(
+                            PeerSessionReady{
+                                .peer = server_peer_id,
+                            }
+                        );
+                    }
+                } else if (message.kind == SessionMessageKind::ServerReject) {
+                    out_events.push_back(
+                        TransportErrorEvent{
+                            .message = "server rejected transport session",
+                        }
+                    );
+                    out_events.push_back(
+                        PeerDisconnected{
+                            .peer = server_peer_id,
+                            .code = message.reject_code,
+                            .native_reason = static_cast<std::uint32_t>(message.reject_code),
+                        }
+                    );
+                    ++counters_.disconnects;
+                    enet_peer_disconnect_now(
+                        event.peer,
+                        static_cast<std::uint32_t>(message.reject_code)
+                    );
+                    server_ = nullptr;
+                    transport_connected_ = false;
+                    session_ready_ = false;
+                } else if (
+                    message.kind == SessionMessageKind::ApplicationControl && session_ready_
+                ) {
+                    out_events.push_back(
+                        ReceivedApplicationControl{
+                            .peer = server_peer_id,
+                            .payload = std::move(message.application_control),
+                        }
+                    );
+                } else {
+                    out_events.push_back(
+                        TransportErrorEvent{
+                            .message = "invalid server control message",
+                        }
+                    );
+                    enet_peer_disconnect_now(
+                        event.peer,
+                        static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch)
+                    );
+                    server_ = nullptr;
+                    transport_connected_ = false;
+                    session_ready_ = false;
+                }
+            } else if (session_ready_) {
+                auto payload = std::vector<Byte>(event.packet->dataLength);
+                std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
+                out_events.push_back(
+                    ReceivedPacket{
+                        .peer = server_peer_id,
+                        .lane = lane,
+                        .delivery = packet_delivery(*event.packet),
+                        .payload = std::move(payload),
+                    }
+                );
+            }
+        }
+
+        void expire_pending_session(std::vector<TransportEvent>& out_events)
+        {
+            if (server_ == nullptr || session_ready_
+                || std::chrono::steady_clock::now() - connect_started_at_ < handshake_timeout) {
+                return;
+            }
+            enet_peer_disconnect_now(server_, static_cast<std::uint32_t>(DisconnectCode::Timeout));
+            server_ = nullptr;
+            transport_connected_ = false;
+            session_ready_ = false;
+            ++counters_.disconnects;
+            out_events.push_back(
+                PeerDisconnected{
+                    .peer = server_peer_id,
+                    .code = DisconnectCode::Timeout,
+                    .native_reason = static_cast<std::uint32_t>(DisconnectCode::Timeout),
+                }
+            );
+        }
+
+        ENetHost* host_{};
+        ENetPeer* server_{};
+        TransportClientSettings settings_{};
+        TransportStats counters_{};
+        bool transport_connected_{};
+        bool session_ready_{};
+        std::chrono::steady_clock::time_point connect_started_at_{};
+    };
+
+    TransportServer::TransportServer()
+        : impl_(new Impl{})
+    {
     }
-  }
 
-  void expire_pending_session(std::vector<TransportEvent> &out_events) {
-    if (server_ == nullptr || session_ready_ ||
-        std::chrono::steady_clock::now() - connect_started_at_ < handshake_timeout) {
-      return;
+    TransportServer::~TransportServer()
+    {
+        stop();
+        delete impl_;
     }
-    enet_peer_disconnect_now(server_, static_cast<std::uint32_t>(DisconnectCode::Timeout));
-    server_ = nullptr;
-    transport_connected_ = false;
-    session_ready_ = false;
-    ++counters_.disconnects;
-    out_events.push_back(PeerDisconnected{
-        .peer = server_peer_id,
-        .code = DisconnectCode::Timeout,
-        .native_reason = static_cast<std::uint32_t>(DisconnectCode::Timeout),
-    });
-  }
 
-  ENetHost *host_{};
-  ENetPeer *server_{};
-  TransportClientSettings settings_{};
-  TransportStats counters_{};
-  bool transport_connected_{};
-  bool session_ready_{};
-  std::chrono::steady_clock::time_point connect_started_at_{};
-};
+    TransportServer::TransportServer(TransportServer&& other) noexcept
+        : impl_(std::exchange(other.impl_, nullptr))
+    {
+    }
 
-TransportServer::TransportServer() : impl_(new Impl{}) {}
+    TransportServer& TransportServer::operator=(TransportServer&& other) noexcept
+    {
+        if (this != &other) {
+            stop();
+            delete impl_;
+            impl_ = std::exchange(other.impl_, nullptr);
+        }
+        return *this;
+    }
 
-TransportServer::~TransportServer() {
-  stop();
-  delete impl_;
-}
+    TransportResult TransportServer::start(TransportServerSettings const& settings)
+    {
+        if (impl_ == nullptr || impl_->is_running()) {
+            return fail(TransportErrorCode::AlreadyStarted, "transport server is already started");
+        }
+        return impl_->start(settings);
+    }
 
-TransportServer::TransportServer(TransportServer &&other) noexcept : impl_(std::exchange(other.impl_, nullptr)) {}
+    void TransportServer::stop() noexcept
+    {
+        if (impl_ != nullptr) {
+            impl_->stop();
+        }
+    }
 
-TransportServer &TransportServer::operator=(TransportServer &&other) noexcept {
-  if (this != &other) {
-    stop();
-    delete impl_;
-    impl_ = std::exchange(other.impl_, nullptr);
-  }
-  return *this;
-}
+    bool TransportServer::is_running() const noexcept
+    {
+        return impl_ != nullptr && impl_->is_running();
+    }
 
-TransportResult TransportServer::start(TransportServerSettings const &settings) {
-  if (impl_ == nullptr || impl_->is_running()) {
-    return fail(TransportErrorCode::AlreadyStarted, "transport server is already started");
-  }
-  return impl_->start(settings);
-}
+    TransportResult
+    TransportServer::poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
+    {
+        if (impl_ == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport server is not started");
+        }
+        return impl_->poll(out_events, timeout_ms);
+    }
 
-void TransportServer::stop() noexcept {
-  if (impl_ != nullptr) {
-    impl_->stop();
-  }
-}
+    TransportResult TransportServer::send(SendPacket const& packet)
+    {
+        if (impl_ == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport server is not started");
+        }
+        return impl_->send(packet);
+    }
 
-bool TransportServer::is_running() const noexcept { return impl_ != nullptr && impl_->is_running(); }
+    TransportResult
+    TransportServer::send_application_control(PeerId peer, std::span<Byte const> payload)
+    {
+        if (impl_ == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport server is not started");
+        }
+        return impl_->send_application_control(peer, payload);
+    }
 
-TransportResult TransportServer::poll(std::vector<TransportEvent> &out_events, std::uint32_t timeout_ms) {
-  if (impl_ == nullptr) {
-    return fail(TransportErrorCode::NotStarted, "transport server is not started");
-  }
-  return impl_->poll(out_events, timeout_ms);
-}
+    void TransportServer::disconnect(PeerId peer, DisconnectCode code) noexcept
+    {
+        if (impl_ != nullptr) {
+            impl_->disconnect(peer, code);
+        }
+    }
 
-TransportResult TransportServer::send(SendPacket const &packet) {
-  if (impl_ == nullptr) {
-    return fail(TransportErrorCode::NotStarted, "transport server is not started");
-  }
-  return impl_->send(packet);
-}
+    TransportStats TransportServer::stats() const
+    {
+        return impl_ == nullptr ? TransportStats{} : impl_->stats();
+    }
 
-TransportResult TransportServer::send_application_control(PeerId peer, std::span<Byte const> payload) {
-  if (impl_ == nullptr) {
-    return fail(TransportErrorCode::NotStarted, "transport server is not started");
-  }
-  return impl_->send_application_control(peer, payload);
-}
+    PeerStats TransportServer::peer_stats(PeerId peer) const
+    {
+        return impl_ == nullptr ? PeerStats{} : impl_->peer_stats(peer);
+    }
 
-void TransportServer::disconnect(PeerId peer, DisconnectCode code) noexcept {
-  if (impl_ != nullptr) {
-    impl_->disconnect(peer, code);
-  }
-}
+    TransportClient::TransportClient()
+        : impl_(new Impl{})
+    {
+    }
 
-TransportStats TransportServer::stats() const { return impl_ == nullptr ? TransportStats{} : impl_->stats(); }
+    TransportClient::~TransportClient()
+    {
+        disconnect(DisconnectCode::None);
+        delete impl_;
+    }
 
-PeerStats TransportServer::peer_stats(PeerId peer) const {
-  return impl_ == nullptr ? PeerStats{} : impl_->peer_stats(peer);
-}
+    TransportClient::TransportClient(TransportClient&& other) noexcept
+        : impl_(std::exchange(other.impl_, nullptr))
+    {
+    }
 
-TransportClient::TransportClient() : impl_(new Impl{}) {}
+    TransportClient& TransportClient::operator=(TransportClient&& other) noexcept
+    {
+        if (this != &other) {
+            disconnect(DisconnectCode::None);
+            delete impl_;
+            impl_ = std::exchange(other.impl_, nullptr);
+        }
+        return *this;
+    }
 
-TransportClient::~TransportClient() {
-  disconnect(DisconnectCode::None);
-  delete impl_;
-}
+    TransportResult TransportClient::connect(TransportClientSettings const& settings)
+    {
+        if (impl_ == nullptr || impl_->is_started()) {
+            return fail(
+                TransportErrorCode::AlreadyStarted,
+                "transport client is already connected or connecting"
+            );
+        }
+        return impl_->connect(settings);
+    }
 
-TransportClient::TransportClient(TransportClient &&other) noexcept : impl_(std::exchange(other.impl_, nullptr)) {}
+    void TransportClient::disconnect(DisconnectCode code) noexcept
+    {
+        if (impl_ != nullptr) {
+            impl_->disconnect(code);
+        }
+    }
 
-TransportClient &TransportClient::operator=(TransportClient &&other) noexcept {
-  if (this != &other) {
-    disconnect(DisconnectCode::None);
-    delete impl_;
-    impl_ = std::exchange(other.impl_, nullptr);
-  }
-  return *this;
-}
+    bool TransportClient::is_connected() const noexcept
+    {
+        return impl_ != nullptr && impl_->is_connected();
+    }
 
-TransportResult TransportClient::connect(TransportClientSettings const &settings) {
-  if (impl_ == nullptr || impl_->is_started()) {
-    return fail(TransportErrorCode::AlreadyStarted, "transport client is already connected or connecting");
-  }
-  return impl_->connect(settings);
-}
+    bool TransportClient::is_session_ready() const noexcept
+    {
+        return impl_ != nullptr && impl_->is_session_ready();
+    }
 
-void TransportClient::disconnect(DisconnectCode code) noexcept {
-  if (impl_ != nullptr) {
-    impl_->disconnect(code);
-  }
-}
+    TransportResult
+    TransportClient::poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
+    {
+        if (impl_ == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+        }
+        return impl_->poll(out_events, timeout_ms);
+    }
 
-bool TransportClient::is_connected() const noexcept { return impl_ != nullptr && impl_->is_connected(); }
+    TransportResult
+    TransportClient::send(Lane lane, Delivery delivery, std::span<Byte const> payload)
+    {
+        if (impl_ == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+        }
+        return impl_->send(lane, delivery, payload);
+    }
 
-bool TransportClient::is_session_ready() const noexcept { return impl_ != nullptr && impl_->is_session_ready(); }
+    TransportResult TransportClient::send_snapshot_ack(SnapshotAck const& ack)
+    {
+        if (impl_ == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+        }
+        return impl_->send_snapshot_ack(ack);
+    }
 
-TransportResult TransportClient::poll(std::vector<TransportEvent> &out_events, std::uint32_t timeout_ms) {
-  if (impl_ == nullptr) {
-    return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-  }
-  return impl_->poll(out_events, timeout_ms);
-}
+    TransportResult TransportClient::send_application_control(std::span<Byte const> payload)
+    {
+        if (impl_ == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+        }
+        return impl_->send_application_control(payload);
+    }
 
-TransportResult TransportClient::send(Lane lane, Delivery delivery, std::span<Byte const> payload) {
-  if (impl_ == nullptr) {
-    return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-  }
-  return impl_->send(lane, delivery, payload);
-}
+    TransportResult TransportClient::send_application_input(std::span<Byte const> payload)
+    {
+        if (impl_ == nullptr) {
+            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
+        }
+        return impl_->send_application_input(payload);
+    }
 
-TransportResult TransportClient::send_snapshot_ack(SnapshotAck const &ack) {
-  if (impl_ == nullptr) {
-    return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-  }
-  return impl_->send_snapshot_ack(ack);
-}
+    TransportStats TransportClient::stats() const
+    {
+        return impl_ == nullptr ? TransportStats{} : impl_->stats();
+    }
 
-TransportResult TransportClient::send_application_control(std::span<Byte const> payload) {
-  if (impl_ == nullptr) {
-    return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-  }
-  return impl_->send_application_control(payload);
-}
-
-TransportResult TransportClient::send_application_input(std::span<Byte const> payload) {
-  if (impl_ == nullptr) {
-    return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-  }
-  return impl_->send_application_input(payload);
-}
-
-TransportStats TransportClient::stats() const { return impl_ == nullptr ? TransportStats{} : impl_->stats(); }
-
-PeerStats TransportClient::server_stats() const { return impl_ == nullptr ? PeerStats{} : impl_->server_stats(); }
+    PeerStats TransportClient::server_stats() const
+    {
+        return impl_ == nullptr ? PeerStats{} : impl_->server_stats();
+    }
 } // namespace simnet

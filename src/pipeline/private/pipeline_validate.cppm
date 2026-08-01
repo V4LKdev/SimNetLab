@@ -19,12 +19,9 @@ namespace simnet::pipeline_validate
     void require_supported_pipeline_definition(PipelineDefinition const& pipeline)
     {
         auto constexpr supported_techniques = static_cast<std::uint32_t>(
-            PipelineTechniqueFlags::SendInterval
-                | PipelineTechniqueFlags::Incremental
-                | PipelineTechniqueFlags::Quantization
-                | PipelineTechniqueFlags::OctHeading
-                | PipelineTechniqueFlags::Delta
-                | PipelineTechniqueFlags::BitPacking
+            PipelineTechniqueFlags::SendInterval | PipelineTechniqueFlags::Incremental
+            | PipelineTechniqueFlags::Quantization | PipelineTechniqueFlags::OctHeading
+            | PipelineTechniqueFlags::Delta | PipelineTechniqueFlags::BitPacking
         );
         auto const requested = static_cast<std::uint32_t>(pipeline.techniques);
         auto const unsupported = requested & ~supported_techniques;
@@ -34,11 +31,15 @@ namespace simnet::pipeline_validate
 
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental)
             && has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {
-            throw std::runtime_error("pipeline does not support combining incremental and quantization");
+            throw std::runtime_error(
+                "pipeline does not support combining incremental and quantization"
+            );
         }
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental)
             && has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta)) {
-            throw std::runtime_error("pipeline does not support combining incremental and delta selection");
+            throw std::runtime_error(
+                "pipeline does not support combining incremental and delta selection"
+            );
         }
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading)
             && !has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {
@@ -55,12 +56,12 @@ namespace simnet::pipeline_validate
     void require_snapshot(WorldSnapshot const* snapshot, char const* what)
     {
         if (snapshot == nullptr) {
-            throw std::runtime_error(std::string { what } + " is null");
+            throw std::runtime_error(std::string{what} + " is null");
         }
 
         auto const validation = validate_world_snapshot(*snapshot);
         if (!validation.valid) {
-            throw std::runtime_error(std::string { what } + " is invalid: " + validation.message);
+            throw std::runtime_error(std::string{what} + " is invalid: " + validation.message);
         }
     }
 
@@ -68,7 +69,7 @@ namespace simnet::pipeline_validate
     void require_u32_count(std::size_t count, char const* what)
     {
         if (count > std::numeric_limits<std::uint32_t>::max()) {
-            throw std::runtime_error(std::string { what } + " exceeds uint32 range");
+            throw std::runtime_error(std::string{what} + " exceeds uint32 range");
         }
     }
 
@@ -101,7 +102,8 @@ namespace simnet::pipeline_validate
         if (!is_finite(bounds.min) || !is_finite(bounds.max)) {
             throw std::runtime_error("quantization bounds must be finite");
         }
-        if (bounds.min.x >= bounds.max.x || bounds.min.y >= bounds.max.y || bounds.min.z >= bounds.max.z) {
+        if (bounds.min.x >= bounds.max.x || bounds.min.y >= bounds.max.y
+            || bounds.min.z >= bounds.max.z) {
             throw std::runtime_error("quantization bounds must have positive extent");
         }
     }

@@ -14,13 +14,13 @@ export namespace simnet
     /// Raw facts reported by client patch application.
     struct ApplyPatchReport
     {
-        Tick tick {};
-        SnapshotKind kind { SnapshotKind::Patch };
-        std::uint32_t previous_entities {};
-        std::uint32_t final_entities {};
-        std::uint32_t upsert_count {};
-        std::uint32_t delete_count {};
-        bool valid { true };
-        std::string error {};
+        Tick tick{};
+        SnapshotKind kind{SnapshotKind::Patch};
+        std::uint32_t previous_entities{};
+        std::uint32_t final_entities{};
+        std::uint32_t upsert_count{};
+        std::uint32_t delete_count{};
+        bool valid{true};
+        std::string error{};
     };
 }

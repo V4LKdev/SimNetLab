@@ -10,31 +10,31 @@ export namespace simnet
     /// Three-component single-precision vector.
     struct Vec3f
     {
-        float x {};
-        float y {};
-        float z {};
+        float x{};
+        float y{};
+        float z{};
     };
 
     /// Axis-aligned three-dimensional bounds.
     struct Aabb3f
     {
-        Vec3f min {};
-        Vec3f max {};
+        Vec3f min{};
+        Vec3f max{};
     };
 
     [[nodiscard]] constexpr Vec3f operator+(Vec3f lhs, Vec3f rhs) noexcept
     {
-        return { lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z };
+        return {lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z};
     }
 
     [[nodiscard]] constexpr Vec3f operator-(Vec3f lhs, Vec3f rhs) noexcept
     {
-        return { lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z };
+        return {lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z};
     }
 
     [[nodiscard]] constexpr Vec3f operator*(Vec3f value, float scalar) noexcept
     {
-        return { value.x * scalar, value.y * scalar, value.z * scalar };
+        return {value.x * scalar, value.y * scalar, value.z * scalar};
     }
 
     [[nodiscard]] constexpr Vec3f operator*(float scalar, Vec3f value) noexcept
@@ -44,7 +44,7 @@ export namespace simnet
 
     [[nodiscard]] constexpr Vec3f operator/(Vec3f value, float scalar) noexcept
     {
-        return { value.x / scalar, value.y / scalar, value.z / scalar };
+        return {value.x / scalar, value.y / scalar, value.z / scalar};
     }
 
     /// Returns the dot product of two vectors.
@@ -85,16 +85,15 @@ export namespace simnet
     [[nodiscard]] constexpr Aabb3f make_centered_bounds(float half_extent) noexcept
     {
         return {
-            .min = { -half_extent, -half_extent, -half_extent },
-            .max = { half_extent, half_extent, half_extent },
+            .min = {-half_extent, -half_extent, -half_extent},
+            .max = {half_extent, half_extent, half_extent},
         };
     }
 
     /// Returns true when the point lies inside the bounds.
-    [[nodiscard]] constexpr bool contains(const Aabb3f &bounds, Vec3f point) noexcept
+    [[nodiscard]] constexpr bool contains(const Aabb3f& bounds, Vec3f point) noexcept
     {
-        return point.x >= bounds.min.x && point.x <= bounds.max.x
-            && point.y >= bounds.min.y && point.y <= bounds.max.y
-            && point.z >= bounds.min.z && point.z <= bounds.max.z;
+        return point.x >= bounds.min.x && point.x <= bounds.max.x && point.y >= bounds.min.y
+            && point.y <= bounds.max.y && point.z >= bounds.min.z && point.z <= bounds.max.z;
     }
 }

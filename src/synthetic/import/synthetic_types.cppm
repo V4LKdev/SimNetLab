@@ -19,9 +19,9 @@ export namespace simnet
     /// Settings for deterministic synthetic snapshot generation.
     struct SyntheticSnapshotSettings
     {
-        std::uint64_t seed { 12345 };
-        std::uint32_t entity_count { 1000 };
-        Aabb3f bounds { make_centered_bounds(400.0F) };
-        SyntheticPattern pattern { SyntheticPattern::RandomUniform };
+        std::uint64_t seed{12345};
+        std::uint32_t entity_count{1000};
+        Aabb3f bounds{make_centered_bounds(400.0F)};
+        SyntheticPattern pattern{SyntheticPattern::RandomUniform};
     };
 }

@@ -27,15 +27,15 @@ export namespace simnet
     )
     {
         if (!std::isfinite(alpha)) {
-            return { false, "snapshot interpolation alpha must be finite" };
+            return {false, "snapshot interpolation alpha must be finite"};
         }
         auto const previous_validation = validate_world_snapshot(previous);
         if (!previous_validation.valid) {
-            return { false, "invalid previous snapshot: " + previous_validation.message };
+            return {false, "invalid previous snapshot: " + previous_validation.message};
         }
         auto const current_validation = validate_world_snapshot(current);
         if (!current_validation.valid) {
-            return { false, "invalid current snapshot: " + current_validation.message };
+            return {false, "invalid current snapshot: " + current_validation.message};
         }
 
         auto const blend = static_cast<float>(std::clamp(alpha, 0.0, 1.0));
@@ -45,8 +45,8 @@ export namespace simnet
         output.headings.resize(current.size());
         output.hues.resize(current.size());
 
-        auto previous_index = std::size_t {};
-        for (auto current_index = std::size_t {}; current_index < current.size(); ++current_index) {
+        auto previous_index = std::size_t{};
+        for (auto current_index = std::size_t{}; current_index < current.size(); ++current_index) {
             auto const id = current.ids[current_index];
             while (previous_index < previous.size() && previous.ids[previous_index] < id) {
                 ++previous_index;
@@ -61,8 +61,7 @@ export namespace simnet
             }
 
             auto const inverse = 1.0F - blend;
-            output.positions[current_index] =
-                previous.positions[previous_index] * inverse
+            output.positions[current_index] = previous.positions[previous_index] * inverse
                 + current.positions[current_index] * blend;
             output.headings[current_index] = normalize_or(
                 previous.headings[previous_index] * inverse
@@ -73,9 +72,11 @@ export namespace simnet
             auto const from = static_cast<std::int32_t>(previous.hues[previous_index]);
             auto const to = static_cast<std::int32_t>(current.hues[current_index]);
             auto const circular_delta = ((to - from + 384) % 256) - 128;
-            auto interpolated = static_cast<std::int32_t>(
-                std::lround(static_cast<float>(from) + static_cast<float>(circular_delta) * blend)
-            ) % 256;
+            auto interpolated
+                = static_cast<std::int32_t>(std::lround(
+                      static_cast<float>(from) + static_cast<float>(circular_delta) * blend
+                  ))
+                % 256;
             if (interpolated < 0) {
                 interpolated += 256;
             }

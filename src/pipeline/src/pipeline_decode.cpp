@@ -33,24 +33,27 @@ namespace
         simnet::Tick tick = 0,
         simnet::SequenceId sequence = 0,
         simnet::SequenceId baseline_sequence = 0,
-        simnet::SnapshotKind snapshot_kind = simnet::SnapshotKind::FullReplace)
+        simnet::SnapshotKind snapshot_kind = simnet::SnapshotKind::FullReplace
+    )
     {
-        simnet::DecodeOutput output {};
-        output.report.tick              = tick;
-        output.report.sequence          = sequence;
+        simnet::DecodeOutput output{};
+        output.report.tick = tick;
+        output.report.sequence = sequence;
         output.report.baseline_sequence = baseline_sequence;
-        output.report.snapshot_kind     = snapshot_kind;
+        output.report.snapshot_kind = snapshot_kind;
         output.report.encoded_update_bytes = static_cast<std::uint32_t>(
-            std::min<std::size_t>(bytes.size(), std::numeric_limits<std::uint32_t>::max()));
-        output.report.valid             = false;
-        output.report.error             = std::move(error);
+            std::min<std::size_t>(bytes.size(), std::numeric_limits<std::uint32_t>::max())
+        );
+        output.report.valid = false;
+        output.report.error = std::move(error);
         return output;
     }
 
     /// Verifies that the encoded update payload size matches the header claim.
     [[nodiscard]] bool checked_payload_size(
         simnet::pipeline_wire::EncodedUpdateHeader const& header,
-        std::size_t byte_count) noexcept
+        std::size_t byte_count
+    ) noexcept
     {
         if (byte_count < simnet::pipeline_wire::header_bytes) {
             return false;
@@ -67,7 +70,8 @@ namespace simnet
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
         PipelineScratch& scratch,
-        DecodeInput const& input)
+        DecodeInput const& input
+    )
     {
         pipeline_validate::require_supported_pipeline_definition(pipeline);
         pipeline_validate::require_quantization_settings(pipeline);
@@ -86,7 +90,7 @@ namespace simnet
 
         // --- Read header ---
 
-        pipeline_wire::EncodedUpdateHeader header {};
+        pipeline_wire::EncodedUpdateHeader header{};
         if (!pipeline_wire::read_header(bytes, header)) {
             return invalid_decode(bytes, "failed to read encoded update header");
         }
@@ -94,9 +98,13 @@ namespace simnet
         // Helper that wraps invalid_decode with the parsed header fields.
         auto invalid_update = [&](std::string error) {
             DecodeOutput output = invalid_decode(
-                bytes, std::move(error),
-                header.tick, header.sequence,
-                header.baseline_sequence, header.snapshot_kind);
+                bytes,
+                std::move(error),
+                header.tick,
+                header.sequence,
+                header.baseline_sequence,
+                header.snapshot_kind
+            );
             output.report.delta = pipeline_validate::is_delta(pipeline)
                 && header.snapshot_kind == SnapshotKind::Patch;
             return output;
@@ -144,11 +152,12 @@ namespace simnet
 
         // --- Payload layout / size verification ---
 
-        pipeline_records::RecordLayout const layout = pipeline_records::resolve_record_layout(pipeline);
+        pipeline_records::RecordLayout const layout
+            = pipeline_records::resolve_record_layout(pipeline);
         std::uint32_t const record_bytes = layout.record_bytes;
 
-        std::uint64_t const expected_payload =
-            static_cast<std::uint64_t>(header.delete_count) * pipeline_wire::delete_record_bytes
+        std::uint64_t const expected_payload
+            = static_cast<std::uint64_t>(header.delete_count) * pipeline_wire::delete_record_bytes
             + static_cast<std::uint64_t>(header.upsert_count) * record_bytes;
         if (expected_payload != header.payload_bytes)
             return invalid_update("encoded update payload counts do not match payload size");
@@ -156,20 +165,20 @@ namespace simnet
         // --- Decode records ---
 
         std::size_t offset = pipeline_wire::header_bytes;
-        SnapshotUpdate patch {};
+        SnapshotUpdate patch{};
         patch.tick = header.tick;
         patch.kind = header.snapshot_kind;
         patch.reserve(header.upsert_count, header.delete_count);
 
         for (std::uint32_t i = 0; i < header.delete_count; ++i) {
-            EntityNetId id {};
+            EntityNetId id{};
             if (!pipeline_wire::read_u32(bytes, offset, id))
                 return invalid_update("truncated delete id data");
             patch.deletes.push_back(id);
         }
 
         for (std::uint32_t i = 0; i < header.upsert_count; ++i) {
-            EntityState boid {};
+            EntityState boid{};
             if (!pipeline_records::read_record(bytes, offset, layout, boid))
                 return invalid_update("truncated upsert record data");
             patch.upserts.push_back(boid);
@@ -186,17 +195,17 @@ namespace simnet
 
         client_state.latest_remote_sequence = header.sequence;
 
-        DecodeReport report {};
-        report.tick              = header.tick;
-        report.sequence          = header.sequence;
+        DecodeReport report{};
+        report.tick = header.tick;
+        report.sequence = header.sequence;
         report.baseline_sequence = header.baseline_sequence;
-        report.snapshot_kind     = header.snapshot_kind;
-        report.upsert_count      = header.upsert_count;
-        report.delete_count      = header.delete_count;
+        report.snapshot_kind = header.snapshot_kind;
+        report.upsert_count = header.upsert_count;
+        report.delete_count = header.delete_count;
         report.encoded_update_bytes = static_cast<std::uint32_t>(bytes.size());
-        report.delta             = delta_enabled && header.snapshot_kind == SnapshotKind::Patch;
-        report.valid             = true;
+        report.delta = delta_enabled && header.snapshot_kind == SnapshotKind::Patch;
+        report.valid = true;
 
-        return { .update = std::move(patch), .report = std::move(report) };
+        return {.update = std::move(patch), .report = std::move(report)};
     }
 }

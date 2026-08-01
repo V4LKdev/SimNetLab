@@ -18,7 +18,7 @@ namespace
 {
     struct SplitMix64
     {
-        std::uint64_t state {};
+        std::uint64_t state{};
 
         [[nodiscard]] std::uint64_t next() noexcept
         {
@@ -30,7 +30,7 @@ namespace
 
         [[nodiscard]] float unit_float() noexcept
         {
-            auto constexpr scale = 1.0 / static_cast<double>(std::uint64_t { 1 } << 53U);
+            auto constexpr scale = 1.0 / static_cast<double>(std::uint64_t{1} << 53U);
             auto const value = next() >> 11U;
             return static_cast<float>(static_cast<double>(value) * scale);
         }
@@ -38,10 +38,8 @@ namespace
 
     [[nodiscard]] bool valid_bounds(simnet::Aabb3f bounds) noexcept
     {
-        return simnet::is_finite(bounds.min)
-            && simnet::is_finite(bounds.max)
-            && bounds.max.x > bounds.min.x
-            && bounds.max.y > bounds.min.y
+        return simnet::is_finite(bounds.min) && simnet::is_finite(bounds.max)
+            && bounds.max.x > bounds.min.x && bounds.max.y > bounds.min.y
             && bounds.max.z > bounds.min.z;
     }
 
@@ -64,7 +62,8 @@ namespace
         };
     }
 
-    [[nodiscard]] simnet::Vec3f deterministic_heading(std::uint32_t index, simnet::Tick tick) noexcept
+    [[nodiscard]] simnet::Vec3f
+    deterministic_heading(std::uint32_t index, simnet::Tick tick) noexcept
     {
         auto const wide_index = static_cast<std::uint64_t>(index);
         auto const angle_seed = (wide_index * 37ULL + tick * 17ULL) % 360ULL;
@@ -72,8 +71,8 @@ namespace
         auto const angle = static_cast<float>(angle_seed) * 0.017453292519943295F;
         auto const z_wave = static_cast<float>(z_seed) / 100.0F - 1.0F;
         return simnet::normalize_or(
-            { std::cos(angle), std::sin(angle), z_wave * 0.25F },
-            { 1.0F, 0.0F, 0.0F }
+            {std::cos(angle), std::sin(angle), z_wave * 0.25F},
+            {1.0F, 0.0F, 0.0F}
         );
     }
 
@@ -85,41 +84,48 @@ namespace
 
     [[nodiscard]] std::uint32_t grid_axis_count(std::uint32_t entity_count) noexcept
     {
-        auto axis = std::uint32_t { 1 };
+        auto axis = std::uint32_t{1};
         while (static_cast<std::uint64_t>(axis) * axis * axis < entity_count) {
             ++axis;
         }
         return axis;
     }
 
-    [[nodiscard]] simnet::Vec3f grid_position(
-        simnet::Aabb3f bounds,
-        std::uint32_t index,
-        std::uint32_t axis_count
-    ) noexcept
+    [[nodiscard]] simnet::Vec3f
+    grid_position(simnet::Aabb3f bounds, std::uint32_t index, std::uint32_t axis_count) noexcept
     {
         auto const x_index = index % axis_count;
         auto const y_index = (index / axis_count) % axis_count;
-        auto const z_index = index / static_cast<std::uint32_t>(static_cast<std::uint64_t>(axis_count) * axis_count);
+        auto const z_index = index
+            / static_cast<std::uint32_t>(static_cast<std::uint64_t>(axis_count) * axis_count);
         auto const divisor = static_cast<float>(std::max(axis_count, 1U));
 
-        return lerp(bounds.min, bounds.max, {
-            .x = (static_cast<float>(x_index) + 0.5F) / divisor,
-            .y = (static_cast<float>(y_index) + 0.5F) / divisor,
-            .z = (static_cast<float>(z_index) + 0.5F) / divisor,
-        });
+        return lerp(
+            bounds.min,
+            bounds.max,
+            {
+                .x = (static_cast<float>(x_index) + 0.5F) / divisor,
+                .y = (static_cast<float>(y_index) + 0.5F) / divisor,
+                .z = (static_cast<float>(z_index) + 0.5F) / divisor,
+            }
+        );
     }
 
     [[nodiscard]] simnet::Vec3f random_position(simnet::Aabb3f bounds, SplitMix64& rng) noexcept
     {
-        return lerp(bounds.min, bounds.max, {
-            .x = rng.unit_float(),
-            .y = rng.unit_float(),
-            .z = rng.unit_float(),
-        });
+        return lerp(
+            bounds.min,
+            bounds.max,
+            {
+                .x = rng.unit_float(),
+                .y = rng.unit_float(),
+                .z = rng.unit_float(),
+            }
+        );
     }
 
-    void append_common_fields(simnet::WorldSnapshot& snapshot, std::uint32_t index, simnet::Tick tick)
+    void
+    append_common_fields(simnet::WorldSnapshot& snapshot, std::uint32_t index, simnet::Tick tick)
     {
         snapshot.ids.push_back(static_cast<simnet::EntityNetId>(index));
         snapshot.headings.push_back(deterministic_heading(index, tick));
@@ -129,30 +135,28 @@ namespace
 
 namespace simnet
 {
-    WorldSnapshot make_synthetic_world_snapshot(
-        SyntheticSnapshotSettings const& settings,
-        Tick tick
-    )
+    WorldSnapshot
+    make_synthetic_world_snapshot(SyntheticSnapshotSettings const& settings, Tick tick)
     {
         validate_settings(settings);
 
-        auto snapshot = WorldSnapshot {};
+        auto snapshot = WorldSnapshot{};
         snapshot.tick = tick;
         snapshot.reserve(settings.entity_count);
 
-        auto rng = SplitMix64 { .state = settings.seed ^ (tick * 0xD1B54A32D192ED03ULL) };
+        auto rng = SplitMix64{.state = settings.seed ^ (tick * 0xD1B54A32D192ED03ULL)};
         auto const axis_count = grid_axis_count(settings.entity_count);
 
         for (std::uint32_t index = 0; index < settings.entity_count; ++index) {
             append_common_fields(snapshot, index, tick);
 
             switch (settings.pattern) {
-            case SyntheticPattern::Grid:
-                snapshot.positions.push_back(grid_position(settings.bounds, index, axis_count));
-                break;
-            case SyntheticPattern::RandomUniform:
-                snapshot.positions.push_back(random_position(settings.bounds, rng));
-                break;
+                case SyntheticPattern::Grid:
+                    snapshot.positions.push_back(grid_position(settings.bounds, index, axis_count));
+                    break;
+                case SyntheticPattern::RandomUniform:
+                    snapshot.positions.push_back(random_position(settings.bounds, rng));
+                    break;
             }
         }
 

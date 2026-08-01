@@ -18,37 +18,38 @@ export namespace simnet
     }
 
     /// Validates the full world snapshot contract.
-    [[nodiscard]] inline SnapshotValidationResult validate_world_snapshot(WorldSnapshot const& snapshot)
+    [[nodiscard]] inline SnapshotValidationResult
+    validate_world_snapshot(WorldSnapshot const& snapshot)
     {
         // --- 1. Vector sizes ---
         auto const count = snapshot.ids.size();
         if (snapshot.positions.size() != count) {
-            return { false, "world snapshot positions size does not match ids size" };
+            return {false, "world snapshot positions size does not match ids size"};
         }
         if (snapshot.headings.size() != count) {
-            return { false, "world snapshot headings size does not match ids size" };
+            return {false, "world snapshot headings size does not match ids size"};
         }
         if (snapshot.hues.size() != count) {
-            return { false, "world snapshot hues size does not match ids size" };
+            return {false, "world snapshot hues size does not match ids size"};
         }
 
         // --- 2. Vector ordering ---
         for (std::size_t index = 1; index < count; ++index) {
             if (snapshot.ids[index - 1] >= snapshot.ids[index]) {
-                return { false, "world snapshot ids must be strictly ascending" };
+                return {false, "world snapshot ids must be strictly ascending"};
             }
         }
 
         // --- 3. Vector component validity ---
         for (std::size_t index = 0; index < count; ++index) {
             if (!is_finite(snapshot.positions[index])) {
-                return { false, "world snapshot position contains a non-finite component" };
+                return {false, "world snapshot position contains a non-finite component"};
             }
             if (!is_finite(snapshot.headings[index])) {
-                return { false, "world snapshot heading contains a non-finite component" };
+                return {false, "world snapshot heading contains a non-finite component"};
             }
             if (!is_normalized_heading(snapshot.headings[index])) {
-                return { false, "world snapshot heading is not normalized" };
+                return {false, "world snapshot heading is not normalized"};
             }
         }
 
@@ -56,44 +57,51 @@ export namespace simnet
     }
 
     /// Validates the logical snapshot update contract.
-    [[nodiscard]] inline SnapshotValidationResult validate_client_snapshot_patch(SnapshotUpdate const& patch)
+    [[nodiscard]] inline SnapshotValidationResult
+    validate_client_snapshot_patch(SnapshotUpdate const& patch)
     {
         // --- 1. Update kind ---
         if (patch.kind != SnapshotKind::FullReplace && patch.kind != SnapshotKind::Patch) {
-            return { false, "client snapshot patch kind is unknown" };
+            return {false, "client snapshot patch kind is unknown"};
         }
 
         // --- 2. Vector ordering ---
         for (std::size_t index = 1; index < patch.upserts.size(); ++index) {
             if (patch.upserts[index - 1].id >= patch.upserts[index].id) {
-                return { false, "client snapshot patch upserts must be strictly ascending" };
+                return {false, "client snapshot patch upserts must be strictly ascending"};
             }
         }
 
         for (std::size_t index = 1; index < patch.deletes.size(); ++index) {
             if (patch.deletes[index - 1] >= patch.deletes[index]) {
-                return { false, "client snapshot patch deletes must be strictly ascending" };
+                return {false, "client snapshot patch deletes must be strictly ascending"};
             }
         }
 
         // --- 3. Vector component validity ---
-        auto delete_index = std::size_t {};
+        auto delete_index = std::size_t{};
         for (auto const& boid : patch.upserts) {
             if (!is_finite(boid.position)) {
-                return { false, "client snapshot patch upsert position contains a non-finite component" };
+                return {
+                    false,
+                    "client snapshot patch upsert position contains a non-finite component"
+                };
             }
             if (!is_finite(boid.heading)) {
-                return { false, "client snapshot patch upsert heading contains a non-finite component" };
+                return {
+                    false,
+                    "client snapshot patch upsert heading contains a non-finite component"
+                };
             }
             if (!is_normalized_heading(boid.heading)) {
-                return { false, "client snapshot patch upsert heading is not normalized" };
+                return {false, "client snapshot patch upsert heading is not normalized"};
             }
 
             while (delete_index < patch.deletes.size() && patch.deletes[delete_index] < boid.id) {
                 ++delete_index;
             }
             if (delete_index < patch.deletes.size() && patch.deletes[delete_index] == boid.id) {
-                return { false, "client snapshot patch id appears in both upserts and deletes" };
+                return {false, "client snapshot patch id appears in both upserts and deletes"};
             }
         }
 

@@ -18,16 +18,16 @@ export namespace simnet
     /// Named value in a structured metric record.
     struct MetricField
     {
-        std::string name;   /// Name of the field.
-        MetricValue value;  /// Value of the field.
+        std::string name; /// Name of the field.
+        MetricValue value; /// Value of the field.
     };
 
     /// Generic semantic metric record for experiments and runtime events.
     struct MetricRecord
     {
-        std::string stream;                 /// Logical metric stream name.
-        Tick tick {};                       /// Associated tick.
-        std::vector<MetricField> fields;    /// Key-value pairs for this record.
+        std::string stream; /// Logical metric stream name.
+        Tick tick{}; /// Associated tick.
+        std::vector<MetricField> fields; /// Key-value pairs for this record.
     };
 
     /// Submits per-tick raw metrics.

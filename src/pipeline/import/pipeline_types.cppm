@@ -18,22 +18,22 @@ export namespace simnet
     enum class PipelineTechniqueFlags : std::uint32_t
     {
         None = 0,
-        SendInterval = 1U << 0U,    /// adjust snapshot cadence.
-        Incremental = 1U << 1U,     /// partial round-robin upserts.
-        Quantization = 1U << 2U,    /// position and heading quantization.
-        OctHeading = 1U << 3U,      /// octahedral heading quantization.
-        Delta = 1U << 4U,           /// baseline-relative patch selection.
-        Aoi = 1U << 5U,             /// unsupported area-of-interest filtering.
-        Lod = 1U << 6U,             /// unsupported level-of-detail priorities.
-        Compression = 1U << 7U,     /// unsupported full-payload compression.
-        BitPacking = 1U << 8U,      /// bit-packed record layout.
+        SendInterval = 1U << 0U, /// adjust snapshot cadence.
+        Incremental = 1U << 1U, /// partial round-robin upserts.
+        Quantization = 1U << 2U, /// position and heading quantization.
+        OctHeading = 1U << 3U, /// octahedral heading quantization.
+        Delta = 1U << 4U, /// baseline-relative patch selection.
+        Aoi = 1U << 5U, /// unsupported area-of-interest filtering.
+        Lod = 1U << 6U, /// unsupported level-of-detail priorities.
+        Compression = 1U << 7U, /// unsupported full-payload compression.
+        BitPacking = 1U << 8U, /// bit-packed record layout.
     };
 
     /// Result kind for an encode call.
     enum class EncodeResultKind : std::uint8_t
     {
-        Update,     /// a complete encoded update was produced.
-        Skipped     /// no encoded update was emitted by this call.
+        Update, /// a complete encoded update was produced.
+        Skipped /// no encoded update was emitted by this call.
     };
 
     /// Reason an encode call produced no encoded update.
@@ -44,10 +44,8 @@ export namespace simnet
     };
 
     /// Combines pipeline technique flags.
-    [[nodiscard]] constexpr PipelineTechniqueFlags operator|(
-        PipelineTechniqueFlags lhs,
-        PipelineTechniqueFlags rhs
-    ) noexcept
+    [[nodiscard]] constexpr PipelineTechniqueFlags
+    operator|(PipelineTechniqueFlags lhs, PipelineTechniqueFlags rhs) noexcept
     {
         return static_cast<PipelineTechniqueFlags>(
             static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs)
@@ -55,10 +53,8 @@ export namespace simnet
     }
 
     /// Intersects pipeline technique flags.
-    [[nodiscard]] constexpr PipelineTechniqueFlags operator&(
-        PipelineTechniqueFlags lhs,
-        PipelineTechniqueFlags rhs
-    ) noexcept
+    [[nodiscard]] constexpr PipelineTechniqueFlags
+    operator&(PipelineTechniqueFlags lhs, PipelineTechniqueFlags rhs) noexcept
     {
         return static_cast<PipelineTechniqueFlags>(
             static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs)
@@ -66,20 +62,16 @@ export namespace simnet
     }
 
     /// Adds pipeline technique flags in place.
-    constexpr PipelineTechniqueFlags& operator|=(
-        PipelineTechniqueFlags& lhs,
-        PipelineTechniqueFlags rhs
-    ) noexcept
+    constexpr PipelineTechniqueFlags&
+    operator|=(PipelineTechniqueFlags& lhs, PipelineTechniqueFlags rhs) noexcept
     {
         lhs = lhs | rhs;
         return lhs;
     }
 
     /// Returns true when all requested flags are set.
-    [[nodiscard]] constexpr bool has_all_flags(
-        PipelineTechniqueFlags value,
-        PipelineTechniqueFlags flag
-    ) noexcept
+    [[nodiscard]] constexpr bool
+    has_all_flags(PipelineTechniqueFlags value, PipelineTechniqueFlags flag) noexcept
     {
         return (value & flag) == flag;
     }
@@ -90,21 +82,21 @@ export namespace simnet
     struct SendIntervalSettings
     {
         /// Send every N ticks.
-        std::uint32_t interval_ticks { 1 };
+        std::uint32_t interval_ticks{1};
         /// Tick offset for staggered sends.
-        std::uint32_t phase_offset { 0 };
+        std::uint32_t phase_offset{0};
     };
 
     /// Configuration for incremental round-robin selection.
     struct IncrementalSettings
     {
-        std::uint32_t max_entities_per_update { 512 };
+        std::uint32_t max_entities_per_update{512};
     };
 
     /// Configuration for position/heading quantization
     struct QuantizationSettings
     {
-        Aabb3f position_bounds { make_centered_bounds(400.0F) };
+        Aabb3f position_bounds{make_centered_bounds(400.0F)};
     };
 
     // --- Pipeline state structs ---
@@ -112,12 +104,12 @@ export namespace simnet
     /// Immutable definition of enabled pipeline techniques and settings.
     struct PipelineDefinition
     {
-        PipelineTechniqueFlags techniques { PipelineTechniqueFlags::None };
+        PipelineTechniqueFlags techniques{PipelineTechniqueFlags::None};
         /// Soft final encoded update byte target for reports. Encode still emits oversized updates.
-        std::uint32_t encoded_update_size_target_bytes { 1200 };
-        SendIntervalSettings send_interval {};
-        IncrementalSettings incremental {};
-        QuantizationSettings quantization {};
+        std::uint32_t encoded_update_size_target_bytes{1200};
+        SendIntervalSettings send_interval{};
+        IncrementalSettings incremental{};
+        QuantizationSettings quantization{};
 
         // Future:
         // delta settings, aoi, lod, compression etc.
@@ -127,13 +119,13 @@ export namespace simnet
     struct ClientReplicationState
     {
         /// Next outbound sequence id.
-        SequenceId next_sequence { 1 };
+        SequenceId next_sequence{1};
         /// Latest sequence received from remote.
-        SequenceId latest_remote_sequence {};
+        SequenceId latest_remote_sequence{};
         /// Latest sequence acknowledged by remote.
-        SequenceId latest_acked_sequence {};
+        SequenceId latest_acked_sequence{};
         /// Next incremental selection cursor for round-robin selection.
-        std::uint32_t incremental_cursor {};
+        std::uint32_t incremental_cursor{};
     };
 
     /// Reusable scratch-memory for encode/decode. Stored externally to avoid allocations on hot path.

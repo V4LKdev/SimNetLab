@@ -24,10 +24,8 @@ namespace
 
     [[nodiscard]] bool valid_bounds(simnet::Aabb3f bounds) noexcept
     {
-        return simnet::is_finite(bounds.min)
-            && simnet::is_finite(bounds.max)
-            && bounds.max.x > bounds.min.x
-            && bounds.max.y > bounds.min.y
+        return simnet::is_finite(bounds.min) && simnet::is_finite(bounds.max)
+            && bounds.max.x > bounds.min.x && bounds.max.y > bounds.min.y
             && bounds.max.z > bounds.min.z;
     }
 
@@ -92,8 +90,7 @@ namespace
         std::uint32_t end_index
     )
     {
-        if (positions.size() > std::numeric_limits<std::uint32_t>::max()
-            || begin_index > end_index
+        if (positions.size() > std::numeric_limits<std::uint32_t>::max() || begin_index > end_index
             || end_index > positions.size()) {
             throw std::runtime_error("invalid spatial grid worker range");
         }
@@ -119,12 +116,8 @@ namespace
     }
 
     // Keep this coordinate/key logic in sync with spatial_query.cppm until query templates can share private detail.
-    [[nodiscard]] std::uint32_t clamp_cell_axis(
-        float value,
-        float min,
-        float cell_size,
-        std::uint32_t dimension
-    ) noexcept
+    [[nodiscard]] std::uint32_t
+    clamp_cell_axis(float value, float min, float cell_size, std::uint32_t dimension) noexcept
     {
         auto const relative = (value - min) / cell_size;
         auto const cell = static_cast<std::int64_t>(std::floor(relative));
@@ -141,10 +134,8 @@ namespace
         return static_cast<std::uint32_t>(cell);
     }
 
-    [[nodiscard]] simnet::CellCoord clamp_cell_coord(
-        simnet::SpatialGrid const& grid,
-        simnet::CellCoord coord
-    ) noexcept
+    [[nodiscard]] simnet::CellCoord
+    clamp_cell_coord(simnet::SpatialGrid const& grid, simnet::CellCoord coord) noexcept
     {
         auto const max_x = static_cast<std::int32_t>(grid.dim_x - 1U);
         auto const max_y = static_cast<std::int32_t>(grid.dim_y - 1U);
@@ -156,28 +147,33 @@ namespace
         };
     }
 
-    [[nodiscard]] simnet::CellCoord position_to_cell_coord(
-        simnet::SpatialGrid const& grid,
-        simnet::Vec3f position
-    ) noexcept
+    [[nodiscard]] simnet::CellCoord
+    position_to_cell_coord(simnet::SpatialGrid const& grid, simnet::Vec3f position) noexcept
     {
         return {
-            .x = static_cast<std::int32_t>(
-                clamp_cell_axis(position.x, grid.settings.bounds.min.x, grid.settings.cell_size, grid.dim_x)
-            ),
-            .y = static_cast<std::int32_t>(
-                clamp_cell_axis(position.y, grid.settings.bounds.min.y, grid.settings.cell_size, grid.dim_y)
-            ),
-            .z = static_cast<std::int32_t>(
-                clamp_cell_axis(position.z, grid.settings.bounds.min.z, grid.settings.cell_size, grid.dim_z)
-            ),
+            .x = static_cast<std::int32_t>(clamp_cell_axis(
+                position.x,
+                grid.settings.bounds.min.x,
+                grid.settings.cell_size,
+                grid.dim_x
+            )),
+            .y = static_cast<std::int32_t>(clamp_cell_axis(
+                position.y,
+                grid.settings.bounds.min.y,
+                grid.settings.cell_size,
+                grid.dim_y
+            )),
+            .z = static_cast<std::int32_t>(clamp_cell_axis(
+                position.z,
+                grid.settings.bounds.min.z,
+                grid.settings.cell_size,
+                grid.dim_z
+            )),
         };
     }
 
-    [[nodiscard]] simnet::CellKey cell_key_from_coord(
-        simnet::SpatialGrid const& grid,
-        simnet::CellCoord coord
-    ) noexcept
+    [[nodiscard]] simnet::CellKey
+    cell_key_from_coord(simnet::SpatialGrid const& grid, simnet::CellCoord coord) noexcept
     {
         auto const clamped = clamp_cell_coord(grid, coord);
         auto const x = static_cast<simnet::CellKey>(clamped.x);
@@ -186,7 +182,8 @@ namespace
         return x + y * grid.dim_x + z * grid.dim_x * static_cast<simnet::CellKey>(grid.dim_y);
     }
 
-    [[nodiscard]] simnet::CellKey key_for(simnet::SpatialGrid const& grid, simnet::Vec3f position) noexcept
+    [[nodiscard]] simnet::CellKey
+    key_for(simnet::SpatialGrid const& grid, simnet::Vec3f position) noexcept
     {
         return cell_key_from_coord(grid, position_to_cell_coord(grid, position));
     }
@@ -209,9 +206,7 @@ namespace
 
     [[nodiscard]] simnet::CellKey dense_cell_count(simnet::SpatialGrid const& grid) noexcept
     {
-        return static_cast<simnet::CellKey>(grid.dim_x)
-            * grid.dim_y
-            * grid.dim_z;
+        return static_cast<simnet::CellKey>(grid.dim_x) * grid.dim_y * grid.dim_z;
     }
 
     [[nodiscard]] simnet::SpatialGridStats compact_cell_entries(
@@ -222,14 +217,16 @@ namespace
         occupied_cells.clear();
         occupied_cells.reserve(entries.size());
 
-        auto max_cell_occupancy = std::uint32_t {};
-        auto begin = std::uint32_t {};
+        auto max_cell_occupancy = std::uint32_t{};
+        auto begin = std::uint32_t{};
         while (begin < entries.size()) {
             auto const key = entries[begin].key;
             auto end = begin + 1U;
             while (end < entries.size() && entries[end].key == key) {
                 if (entries[end - 1U].source_index == entries[end].source_index) {
-                    throw std::runtime_error("spatial grid build produced duplicate source indices");
+                    throw std::runtime_error(
+                        "spatial grid build produced duplicate source indices"
+                    );
                 }
                 ++end;
             }
@@ -278,11 +275,16 @@ namespace
         scratch.entries.clear();
         scratch.entries.reserve(positions.size());
         {
-            SIMNET_TRACE_SCOPE_CATEGORY("spatial.build.validation_and_entries", simnet::LogCategory::Spatial);
+            SIMNET_TRACE_SCOPE_CATEGORY(
+                "spatial.build.validation_and_entries",
+                simnet::LogCategory::Spatial
+            );
             for (std::uint32_t index = 0; index < positions.size(); ++index) {
                 auto const position = positions[index];
                 if (!simnet::is_finite(position)) {
-                    throw std::runtime_error("spatial grid position contains a non-finite component");
+                    throw std::runtime_error(
+                        "spatial grid position contains a non-finite component"
+                    );
                 }
                 scratch.entries.push_back({
                     .key = key_for(grid, position),
@@ -296,7 +298,7 @@ namespace
             sort_cell_entries(scratch.entries, ids);
         }
 
-        auto stats = simnet::SpatialGridStats {};
+        auto stats = simnet::SpatialGridStats{};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("spatial.build.compact", simnet::LogCategory::Spatial);
             stats = compact_cell_entries(scratch.entries, scratch.occupied_cells);
@@ -316,11 +318,16 @@ namespace
         scratch.dense_cell_counts.assign(cell_count, 0U);
 
         {
-            SIMNET_TRACE_SCOPE_CATEGORY("spatial.build.validation_and_count", simnet::LogCategory::Spatial);
+            SIMNET_TRACE_SCOPE_CATEGORY(
+                "spatial.build.validation_and_count",
+                simnet::LogCategory::Spatial
+            );
             for (std::uint32_t index = 0; index < positions.size(); ++index) {
                 auto const position = positions[index];
                 if (!simnet::is_finite(position)) {
-                    throw std::runtime_error("spatial grid position contains a non-finite component");
+                    throw std::runtime_error(
+                        "spatial grid position contains a non-finite component"
+                    );
                 }
 
                 auto const key = key_for(grid, position);
@@ -332,7 +339,7 @@ namespace
         {
             SIMNET_TRACE_SCOPE_CATEGORY("spatial.build.prefix", simnet::LogCategory::Spatial);
             scratch.dense_cell_offsets.resize(cell_count + 1U);
-            auto offset = std::uint32_t {};
+            auto offset = std::uint32_t{};
             for (std::size_t cell = 0; cell < cell_count; ++cell) {
                 scratch.dense_cell_offsets[cell] = offset;
                 offset += scratch.dense_cell_counts[cell];
@@ -349,7 +356,8 @@ namespace
             );
             for (std::uint32_t source_index = 0; source_index < positions.size(); ++source_index) {
                 auto const key = scratch.dense_cell_keys[source_index];
-                auto& write_offset = scratch.dense_cell_write_offsets[static_cast<std::size_t>(key)];
+                auto& write_offset
+                    = scratch.dense_cell_write_offsets[static_cast<std::size_t>(key)];
                 scratch.entries[write_offset++] = {
                     .key = key,
                     .source_index = source_index,
@@ -358,12 +366,15 @@ namespace
         }
 
         {
-            SIMNET_TRACE_SCOPE_CATEGORY("spatial.build.cell_ordering", simnet::LogCategory::Spatial);
+            SIMNET_TRACE_SCOPE_CATEGORY(
+                "spatial.build.cell_ordering",
+                simnet::LogCategory::Spatial
+            );
             if (!ids.empty() && !std::ranges::is_sorted(ids)) {
                 for (std::size_t cell = 0; cell < cell_count; ++cell) {
                     auto const begin = scratch.dense_cell_offsets[cell];
                     auto const count = scratch.dense_cell_counts[cell];
-                    auto entries = std::span { scratch.entries }.subspan(begin, count);
+                    auto entries = std::span{scratch.entries}.subspan(begin, count);
                     std::ranges::sort(entries, [ids](simnet::CellEntry lhs, simnet::CellEntry rhs) {
                         if (ids[lhs.source_index] != ids[rhs.source_index]) {
                             return ids[lhs.source_index] < ids[rhs.source_index];
@@ -374,7 +385,7 @@ namespace
             }
         }
 
-        auto max_cell_occupancy = std::uint32_t {};
+        auto max_cell_occupancy = std::uint32_t{};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("spatial.build.compact", simnet::LogCategory::Spatial);
             scratch.occupied_cells.clear();
@@ -394,7 +405,7 @@ namespace
         }
 
         auto const occupied_cell_count = static_cast<std::uint32_t>(scratch.occupied_cells.size());
-        auto const stats = simnet::SpatialGridStats {
+        auto const stats = simnet::SpatialGridStats{
             .entity_count = static_cast<std::uint32_t>(positions.size()),
             .occupied_cell_count = occupied_cell_count,
             .max_cell_occupancy = max_cell_occupancy,
@@ -436,7 +447,7 @@ namespace simnet
 {
     SpatialGridSettings make_spatial_grid_settings(Aabb3f bounds, float cell_size) noexcept
     {
-        return { .bounds = bounds, .cell_size = cell_size };
+        return {.bounds = bounds, .cell_size = cell_size};
     }
 
     CellCoord cell_coord_from_key(SpatialGrid const& grid, CellKey key) noexcept
@@ -449,11 +460,14 @@ namespace simnet
         auto const remainder = key % plane;
         auto const y = remainder / grid.dim_x;
         auto const x = remainder % grid.dim_x;
-        return clamp_cell_coord(grid, {
-            .x = static_cast<std::int32_t>(x),
-            .y = static_cast<std::int32_t>(y),
-            .z = static_cast<std::int32_t>(z),
-        });
+        return clamp_cell_coord(
+            grid,
+            {
+                .x = static_cast<std::int32_t>(x),
+                .y = static_cast<std::int32_t>(y),
+                .z = static_cast<std::int32_t>(z),
+            }
+        );
     }
 
     CellCoord cell_coord_for_position(SpatialGrid const& grid, Vec3f position) noexcept
@@ -467,10 +481,13 @@ namespace simnet
     Aabb3f cell_bounds(SpatialGrid const& grid, CellCoord coord) noexcept
     {
         auto const clamped = clamp_cell_coord(grid, coord);
-        auto const minimum = Vec3f {
-            .x = grid.settings.bounds.min.x + static_cast<float>(clamped.x) * grid.settings.cell_size,
-            .y = grid.settings.bounds.min.y + static_cast<float>(clamped.y) * grid.settings.cell_size,
-            .z = grid.settings.bounds.min.z + static_cast<float>(clamped.z) * grid.settings.cell_size,
+        auto const minimum = Vec3f{
+            .x
+            = grid.settings.bounds.min.x + static_cast<float>(clamped.x) * grid.settings.cell_size,
+            .y
+            = grid.settings.bounds.min.y + static_cast<float>(clamped.y) * grid.settings.cell_size,
+            .z
+            = grid.settings.bounds.min.z + static_cast<float>(clamped.z) * grid.settings.cell_size,
         };
         return {
             .min = minimum,
@@ -511,8 +528,8 @@ namespace simnet
         scratch.entries.reserve(entity_capacity);
         scratch.occupied_cells.reserve(entity_capacity);
 
-        auto const per_worker_capacity =
-            entity_capacity / worker_count + (entity_capacity % worker_count == 0U ? 0U : 1U);
+        auto const per_worker_capacity
+            = entity_capacity / worker_count + (entity_capacity % worker_count == 0U ? 0U : 1U);
         for (auto& worker : scratch.workers) {
             worker.entries.reserve(per_worker_capacity);
         }
@@ -533,7 +550,7 @@ namespace simnet
         scratch.entries.clear();
         grid.occupied_cells.clear();
         grid.entries.clear();
-        grid.stats = { .entity_count = static_cast<std::uint32_t>(positions.size()) };
+        grid.stats = {.entity_count = static_cast<std::uint32_t>(positions.size())};
     }
 
     void build_spatial_grid_worker_entries(
@@ -558,14 +575,11 @@ namespace simnet
         }
     }
 
-    void finish_spatial_grid_build(
-        SpatialGrid& grid,
-        SpatialGridScratch& scratch
-    )
+    void finish_spatial_grid_build(SpatialGrid& grid, SpatialGridScratch& scratch)
     {
         validate_grid_ready(grid);
 
-        auto entry_count = std::size_t {};
+        auto entry_count = std::size_t{};
         for (auto const& worker : scratch.workers) {
             entry_count += worker.entries.size();
         }
@@ -576,7 +590,8 @@ namespace simnet
         scratch.entries.clear();
         scratch.entries.reserve(entry_count);
         for (auto const& worker : scratch.workers) {
-            scratch.entries.insert(scratch.entries.end(), worker.entries.begin(), worker.entries.end());
+            scratch.entries
+                .insert(scratch.entries.end(), worker.entries.begin(), worker.entries.end());
         }
 
         std::ranges::sort(scratch.entries, [](CellEntry lhs, CellEntry rhs) {
@@ -589,7 +604,9 @@ namespace simnet
         for (std::size_t index = 1; index < scratch.entries.size(); ++index) {
             if (scratch.entries[index - 1].key == scratch.entries[index].key
                 && scratch.entries[index - 1].source_index == scratch.entries[index].source_index) {
-                throw std::runtime_error("spatial grid worker ranges produced duplicate source indices");
+                throw std::runtime_error(
+                    "spatial grid worker ranges produced duplicate source indices"
+                );
             }
         }
 
@@ -597,8 +614,8 @@ namespace simnet
         grid.occupied_cells.reserve(scratch.entries.size());
         grid.entries.swap(scratch.entries);
 
-        auto max_cell_occupancy = std::uint32_t {};
-        auto begin = std::uint32_t {};
+        auto max_cell_occupancy = std::uint32_t{};
+        auto begin = std::uint32_t{};
         while (begin < grid.entries.size()) {
             auto const key = grid.entries[begin].key;
             auto end = begin + 1U;

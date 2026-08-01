@@ -11,12 +11,10 @@ import simnet.snapshot;
 
 namespace
 {
-    [[nodiscard]] simnet::WorldSnapshot snapshot(
-        simnet::Tick tick,
-        std::initializer_list<simnet::EntityState> boids
-    )
+    [[nodiscard]] simnet::WorldSnapshot
+    snapshot(simnet::Tick tick, std::initializer_list<simnet::EntityState> boids)
     {
-        auto result = simnet::WorldSnapshot {};
+        auto result = simnet::WorldSnapshot{};
         result.tick = tick;
         result.reserve(boids.size());
         for (auto const& boid : boids) {
@@ -31,13 +29,19 @@ namespace
 
 TEST_CASE("snapshot interpolation blends matching presentation state", "[snapshot][interpolation]")
 {
-    auto const previous = snapshot(10U, {
-        { 1U, {}, { 1.0F, 0.0F, 0.0F }, 250U },
-    });
-    auto const current = snapshot(11U, {
-        { 1U, { 10.0F, 4.0F, 0.0F }, { 0.0F, 1.0F, 0.0F }, 6U },
-    });
-    auto output = simnet::WorldSnapshot {};
+    auto const previous = snapshot(
+        10U,
+        {
+            {1U, {}, {1.0F, 0.0F, 0.0F}, 250U},
+        }
+    );
+    auto const current = snapshot(
+        11U,
+        {
+            {1U, {10.0F, 4.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 6U},
+        }
+    );
+    auto output = simnet::WorldSnapshot{};
 
     REQUIRE(simnet::interpolate_world_snapshots(previous, current, 0.5, output).valid);
     REQUIRE(output.size() == 1U);
@@ -58,30 +62,45 @@ TEST_CASE("snapshot interpolation blends matching presentation state", "[snapsho
 
 TEST_CASE("snapshot interpolation uses the current entity population", "[snapshot][interpolation]")
 {
-    auto const previous = snapshot(20U, {
-        { 1U, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 1U },
-        { 2U, { 2.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 2U },
-    });
-    auto const current = snapshot(21U, {
-        { 2U, { 4.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 4U },
-        { 3U, { 6.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 6U },
-    });
-    auto output = simnet::WorldSnapshot {};
+    auto const previous = snapshot(
+        20U,
+        {
+            {1U, {1.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U},
+            {2U, {2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 2U},
+        }
+    );
+    auto const current = snapshot(
+        21U,
+        {
+            {2U, {4.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 4U},
+            {3U, {6.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 6U},
+        }
+    );
+    auto output = simnet::WorldSnapshot{};
 
     REQUIRE(simnet::interpolate_world_snapshots(previous, current, 0.5, output).valid);
-    CHECK(output.ids == std::vector<simnet::EntityNetId> { 2U, 3U });
+    CHECK(output.ids == std::vector<simnet::EntityNetId>{2U, 3U});
     CHECK(output.positions[0].x == Catch::Approx(3.0F));
     CHECK(output.positions[1].x == 6.0F);
 }
 
-TEST_CASE("snapshot interpolation rejects invalid input without changing output", "[snapshot][interpolation]")
+TEST_CASE(
+    "snapshot interpolation rejects invalid input without changing output",
+    "[snapshot][interpolation]"
+)
 {
-    auto previous = snapshot(1U, {
-        { 1U, {}, { 1.0F, 0.0F, 0.0F }, 1U },
-    });
-    auto const current = snapshot(2U, {
-        { 1U, { 1.0F, 0.0F, 0.0F }, { 1.0F, 0.0F, 0.0F }, 2U },
-    });
+    auto previous = snapshot(
+        1U,
+        {
+            {1U, {}, {1.0F, 0.0F, 0.0F}, 1U},
+        }
+    );
+    auto const current = snapshot(
+        2U,
+        {
+            {1U, {1.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 2U},
+        }
+    );
     auto output = current;
     auto const before = output.positions.front();
 
@@ -90,12 +109,15 @@ TEST_CASE("snapshot interpolation rejects invalid input without changing output"
     CHECK(output.positions.front().x == before.x);
     CHECK(output.positions.front().y == before.y);
     CHECK(output.positions.front().z == before.z);
-    CHECK_FALSE(simnet::interpolate_world_snapshots(
-        current,
-        current,
-        std::numeric_limits<double>::quiet_NaN(),
-        output
-    ).valid);
+    CHECK_FALSE(
+        simnet::interpolate_world_snapshots(
+            current,
+            current,
+            std::numeric_limits<double>::quiet_NaN(),
+            output
+        )
+            .valid
+    );
     CHECK(output.positions.front().x == before.x);
     CHECK(output.positions.front().y == before.y);
     CHECK(output.positions.front().z == before.z);

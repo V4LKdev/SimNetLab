@@ -18,7 +18,7 @@ TEST_CASE("runtime frame plans report clamp, overload, counters, and limits", "[
         .max_ticks = 3,
     };
     auto clock = simnet::make_clock(settings.fixed_step);
-    auto stats = simnet::RuntimeStats {};
+    auto stats = simnet::RuntimeStats{};
 
     auto const overloaded = simnet::plan_runtime_frame(clock, stats, 850ms, settings);
     CHECK(overloaded.frame == 0);
@@ -41,7 +41,7 @@ TEST_CASE("runtime frame plans report clamp, overload, counters, and limits", "[
 
 TEST_CASE("runtime stop requests preserve the first shutdown reason", "[runtime]")
 {
-    auto stop = simnet::StopRequest {};
+    auto stop = simnet::StopRequest{};
 
     CHECK_FALSE(stop.requested());
     CHECK(stop.request(simnet::ShutdownReason::Signal));

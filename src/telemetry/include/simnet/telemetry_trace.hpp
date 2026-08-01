@@ -11,7 +11,7 @@
 
 #define SIMNET_TRACE_SCOPE(name) ZoneScopedN(name)
 #define SIMNET_TRACE_SCOPE_C(name, color) ZoneScopedNC(name, color)
-#define SIMNET_TRACE_SCOPE_CATEGORY(name, category) \
+#define SIMNET_TRACE_SCOPE_CATEGORY(name, category)                                                \
     SIMNET_TRACE_SCOPE_C(name, ::simnet::category_trace_color(category))
 #define SIMNET_TRACE_PLOT(name, value) TracyPlot(name, value)
 #define SIMNET_TRACE_FRAME(name) FrameMarkNamed(name)

@@ -26,21 +26,23 @@ export namespace simnet
             return patch_validation;
         }
         if (patch.kind == SnapshotKind::Patch && baseline == nullptr) {
-            return { false, "snapshot patch requires a baseline" };
+            return {false, "snapshot patch requires a baseline"};
         }
         if (baseline != nullptr) {
             auto const baseline_validation = validate_world_snapshot(*baseline);
             if (!baseline_validation.valid) {
-                return { false, "snapshot patch baseline is invalid: " + baseline_validation.message };
+                return {
+                    false,
+                    "snapshot patch baseline is invalid: " + baseline_validation.message
+                };
             }
         }
 
-        auto reconstructed = WorldSnapshot {};
+        auto reconstructed = WorldSnapshot{};
         reconstructed.tick = patch.tick;
         reconstructed.reserve(
-            patch.kind == SnapshotKind::FullReplace
-                ? patch.upserts.size()
-                : baseline->size() + patch.upserts.size()
+            patch.kind == SnapshotKind::FullReplace ? patch.upserts.size()
+                                                    : baseline->size() + patch.upserts.size()
         );
 
         auto append = [&reconstructed](EntityState const& boid) {
@@ -55,23 +57,24 @@ export namespace simnet
                 append(boid);
             }
         } else {
-            auto baseline_index = std::size_t {};
-            auto upsert_index = std::size_t {};
-            auto delete_index = std::size_t {};
+            auto baseline_index = std::size_t{};
+            auto upsert_index = std::size_t{};
+            auto delete_index = std::size_t{};
             while (baseline_index < baseline->size() || upsert_index < patch.upserts.size()) {
                 auto const baseline_id = baseline_index < baseline->size()
                     ? baseline->ids[baseline_index]
-                    : EntityNetId {};
+                    : EntityNetId{};
                 auto const have_upsert = upsert_index < patch.upserts.size();
-                auto const upsert_id = have_upsert ? patch.upserts[upsert_index].id : EntityNetId {};
+                auto const upsert_id = have_upsert ? patch.upserts[upsert_index].id : EntityNetId{};
 
-                if (have_upsert && (baseline_index == baseline->size() || upsert_id < baseline_id)) {
+                if (have_upsert
+                    && (baseline_index == baseline->size() || upsert_id < baseline_id)) {
                     append(patch.upserts[upsert_index++]);
                     continue;
                 }
 
                 while (delete_index < patch.deletes.size()
-                    && patch.deletes[delete_index] < baseline_id) {
+                       && patch.deletes[delete_index] < baseline_id) {
                     ++delete_index;
                 }
                 auto const deleted = delete_index < patch.deletes.size()

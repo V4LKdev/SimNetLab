@@ -8,8 +8,6 @@ import simnet.snapshot;
 export namespace simnet
 {
     /// Creates a deterministic valid world snapshot for the requested tick.
-    [[nodiscard]] WorldSnapshot make_synthetic_world_snapshot(
-        SyntheticSnapshotSettings const& settings,
-        Tick tick
-    );
+    [[nodiscard]] WorldSnapshot
+    make_synthetic_world_snapshot(SyntheticSnapshotSettings const& settings, Tick tick);
 }

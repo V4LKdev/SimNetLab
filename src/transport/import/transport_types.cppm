@@ -66,97 +66,97 @@ export namespace simnet
 
     struct SessionIdentity
     {
-        std::uint32_t application_protocol_version {};
-        std::uint64_t compatibility_fingerprint {};
-        std::uint64_t pipeline_decode_signature {};
-        std::uint32_t capabilities {};
+        std::uint32_t application_protocol_version{};
+        std::uint64_t compatibility_fingerprint{};
+        std::uint64_t pipeline_decode_signature{};
+        std::uint32_t capabilities{};
     };
 
     struct TransportLimits
     {
-        std::uint32_t max_payload_bytes { 1200 };
-        SendSizePolicy size_policy { SendSizePolicy::EnforceLimit };
+        std::uint32_t max_payload_bytes{1200};
+        SendSizePolicy size_policy{SendSizePolicy::EnforceLimit};
     };
 
     struct TransportError
     {
-        TransportErrorCode code { TransportErrorCode::None };
-        std::string message {};
-        std::uint32_t native_code {};
+        TransportErrorCode code{TransportErrorCode::None};
+        std::string message{};
+        std::uint32_t native_code{};
     };
 
     struct TransportResult
     {
-        bool ok { true };
-        TransportError error {};
+        bool ok{true};
+        TransportError error{};
     };
 
     struct SendPacket
     {
-        PeerId peer {};
-        Lane lane { Lane::Snapshot };
-        Delivery delivery { Delivery::UnreliableSequenced };
-        std::span<Byte const> payload {};
+        PeerId peer{};
+        Lane lane{Lane::Snapshot};
+        Delivery delivery{Delivery::UnreliableSequenced};
+        std::span<Byte const> payload{};
     };
 
     struct ReceivedPacket
     {
-        PeerId peer {};
-        Lane lane {};
-        Delivery delivery {};
+        PeerId peer{};
+        Lane lane{};
+        Delivery delivery{};
         std::vector<Byte> payload;
     };
 
     struct PeerConnected
     {
-        PeerId peer {};
+        PeerId peer{};
     };
 
     struct PeerSessionReady
     {
-        PeerId peer {};
+        PeerId peer{};
     };
 
     struct PeerDisconnected
     {
-        PeerId peer {};
-        DisconnectCode code {};
-        std::uint32_t native_reason {};
+        PeerId peer{};
+        DisconnectCode code{};
+        std::uint32_t native_reason{};
     };
 
     /// Cumulative semantic acknowledgement of decoded and applied snapshots.
     struct SnapshotAck
     {
-        SequenceId newest_received_snapshot {};
+        SequenceId newest_received_snapshot{};
         /// Receipt bits for the 32 sequences preceding `newest_received_snapshot`.
         /// The current Client advances this history monotonically and ignores late packets.
-        std::uint32_t received_mask {};
-        SequenceId newest_applied_snapshot {};
+        std::uint32_t received_mask{};
+        SequenceId newest_applied_snapshot{};
     };
 
     struct SnapshotAckReceived
     {
-        PeerId peer {};
-        SnapshotAck ack {};
+        PeerId peer{};
+        SnapshotAck ack{};
     };
 
     /// Opaque reliable application-control payload received after session readiness.
     struct ReceivedApplicationControl
     {
-        PeerId peer {};
+        PeerId peer{};
         std::vector<Byte> payload;
     };
 
     /// Opaque unreliable-sequenced latest-state input received after session readiness.
     struct ReceivedApplicationInput
     {
-        PeerId peer {};
+        PeerId peer{};
         std::vector<Byte> payload;
     };
 
     struct TransportErrorEvent
     {
-        std::string message {};
+        std::string message{};
     };
 
     using TransportEvent = std::variant<
@@ -167,30 +167,29 @@ export namespace simnet
         ReceivedApplicationControl,
         ReceivedApplicationInput,
         ReceivedPacket,
-        TransportErrorEvent
-    >;
+        TransportErrorEvent>;
 
     struct TransportStats
     {
-        std::uint64_t packets_sent {};
-        std::uint64_t bytes_sent {};
-        std::uint64_t packets_received {};
-        std::uint64_t bytes_received {};
-        std::uint64_t send_failures {};
-        std::uint64_t oversize_drops {};
-        std::uint64_t disconnects {};
-        std::array<std::uint64_t, 3> lane_packets_sent {};
-        std::array<std::uint64_t, 3> lane_packets_received {};
-        std::array<std::uint64_t, 3> lane_bytes_sent {};
-        std::array<std::uint64_t, 3> lane_bytes_received {};
+        std::uint64_t packets_sent{};
+        std::uint64_t bytes_sent{};
+        std::uint64_t packets_received{};
+        std::uint64_t bytes_received{};
+        std::uint64_t send_failures{};
+        std::uint64_t oversize_drops{};
+        std::uint64_t disconnects{};
+        std::array<std::uint64_t, 3> lane_packets_sent{};
+        std::array<std::uint64_t, 3> lane_packets_received{};
+        std::array<std::uint64_t, 3> lane_bytes_sent{};
+        std::array<std::uint64_t, 3> lane_bytes_received{};
     };
 
     struct PeerStats
     {
-        double rtt_ms {};
-        double packet_loss_ratio {};
-        std::uint64_t reliable_bytes_in_flight {};
-        std::uint64_t waiting_bytes {};
-        std::uint32_t mtu {};
+        double rtt_ms{};
+        double packet_loss_ratio{};
+        std::uint64_t reliable_bytes_in_flight{};
+        std::uint64_t waiting_bytes{};
+        std::uint32_t mtu{};
     };
 }

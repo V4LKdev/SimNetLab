@@ -14,9 +14,8 @@ export namespace simnet
     void validate_pipeline_definition(PipelineDefinition const& pipeline);
 
     /// Computes the canonical decode-representation signature for the given pipeline.
-    [[nodiscard]] std::uint64_t pipeline_decode_signature(
-        PipelineDefinition const& definition
-    ) noexcept;
+    [[nodiscard]] std::uint64_t
+    pipeline_decode_signature(PipelineDefinition const& definition) noexcept;
 
     /**
      * Encodes an authoritative snapshot into a pipeline-owned encoded update.

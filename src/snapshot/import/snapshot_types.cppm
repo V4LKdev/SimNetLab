@@ -20,16 +20,16 @@ export namespace simnet
     struct EntityState
     {
         /// Network identifier.
-        EntityNetId id {};
+        EntityNetId id{};
 
         /// World-space position.
-        Vec3f position {};
+        Vec3f position{};
 
         /// Normalized facing direction.
-        Vec3f heading {};
+        Vec3f heading{};
 
         /// Color hue (0 - 255)
-        std::uint8_t hue {};
+        std::uint8_t hue{};
     };
 
     /// Authoritative full world state for one simulation tick.
@@ -37,7 +37,7 @@ export namespace simnet
     struct WorldSnapshot
     {
         /// Simulation tick for this snapshot.
-        Tick tick {};
+        Tick tick{};
 
         /// Entity network identifiers (strictly ascending).
         std::vector<EntityNetId> ids;
@@ -94,10 +94,10 @@ export namespace simnet
     struct SnapshotUpdate
     {
         /// Simulation tick for this update.
-        Tick tick {};
+        Tick tick{};
 
         /// How to apply the update.
-        SnapshotKind kind { SnapshotKind::Patch };
+        SnapshotKind kind{SnapshotKind::Patch};
 
         /// Entities to insert or update (ids strictly ascending).
         std::vector<EntityState> upserts;
@@ -131,9 +131,9 @@ export namespace simnet
     struct SnapshotValidationResult
     {
         /// True when the snapshot is valid.
-        bool valid { true };
+        bool valid{true};
 
         /// Error message, if any.
-        std::string message {};
+        std::string message{};
     };
 }

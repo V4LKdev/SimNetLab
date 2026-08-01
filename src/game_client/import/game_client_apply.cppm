@@ -26,15 +26,11 @@ export namespace simnet
     void set_client_player_entity_id(flecs::world& world, EntityNetId id);
 
     /// Returns the stored kind for a replicated entity, if currently present.
-    [[nodiscard]] std::optional<EntityKind> client_entity_kind(
-        flecs::world const& world,
-        EntityNetId id
-    ) noexcept;
+    [[nodiscard]] std::optional<EntityKind>
+    client_entity_kind(flecs::world const& world, EntityNetId id) noexcept;
 
     /// Applies a decoded snapshot patch to a client-side Flecs world.
     /// Call register_client_game once during setup. Older ticks reject, equal ticks are accepted.
-    [[nodiscard]] ApplyPatchReport apply_client_snapshot_patch(
-        flecs::world& world,
-        SnapshotUpdate const& patch
-    );
+    [[nodiscard]] ApplyPatchReport
+    apply_client_snapshot_patch(flecs::world& world, SnapshotUpdate const& patch);
 }

@@ -22,11 +22,21 @@ export namespace simnet::app
     class RunSetupStorage
     {
     public:
-        RunSetupStorage(SharedConfig const& shared, ServerConfig const& local, PipelineDefinition const& pipeline,
-                        std::filesystem::path const& shared_source, std::filesystem::path const& local_source);
+        RunSetupStorage(
+            SharedConfig const& shared,
+            ServerConfig const& local,
+            PipelineDefinition const& pipeline,
+            std::filesystem::path const& shared_source,
+            std::filesystem::path const& local_source
+        );
 
-        RunSetupStorage(SharedConfig const& shared, ClientConfig const& local, PipelineDefinition const& pipeline,
-                        std::filesystem::path const& shared_source, std::filesystem::path const& local_source);
+        RunSetupStorage(
+            SharedConfig const& shared,
+            ClientConfig const& local,
+            PipelineDefinition const& pipeline,
+            std::filesystem::path const& shared_source,
+            std::filesystem::path const& local_source
+        );
 
         [[nodiscard]] RunSetupView view() const noexcept;
 
@@ -78,7 +88,10 @@ namespace
         return buffer;
     }
 
-    [[nodiscard]] std::string enabled(bool value) { return value ? "Enabled" : "Disabled"; }
+    [[nodiscard]] std::string enabled(bool value)
+    {
+        return value ? "Enabled" : "Disabled";
+    }
 
     [[nodiscard]] bool has(PipelineDefinition const& pipeline, PipelineTechniqueFlags flag)
     {
@@ -100,7 +113,8 @@ namespace simnet::app
     void RunSetupStorage::end_section()
     {
         auto& section = sections_[section_count_++];
-        section.rows = std::span{rows_}.subspan(active_section_row_, row_count_ - active_section_row_);
+        section.rows
+            = std::span{rows_}.subspan(active_section_row_, row_count_ - active_section_row_);
     }
 
     void RunSetupStorage::add_row(std::string_view label, std::string value)
@@ -112,28 +126,46 @@ namespace simnet::app
         };
     }
 
-    void RunSetupStorage::add_techniques(PipelineDefinition const& pipeline, TransportConfig const& transport)
+    void RunSetupStorage::add_techniques(
+        PipelineDefinition const& pipeline,
+        TransportConfig const& transport
+    )
     {
         begin_section("ACTIVE TECHNIQUES", true);
-        add_row("Send cadence", has(pipeline, PipelineTechniqueFlags::SendInterval)
-                                    ? "Every " + format_u64(pipeline.send_interval.interval_ticks) + " ticks"
-                                    : "Every tick");
-        add_row("Selection", has(pipeline, PipelineTechniqueFlags::Incremental) ? "Incremental"
-                             : has(pipeline, PipelineTechniqueFlags::Delta)     ? "Delta patches"
-                                                                                : "Full snapshot");
-        add_row("Position encoding",
-                has(pipeline, PipelineTechniqueFlags::Quantization) ? "Quantized uint16 x 3" : "Float32 x 3");
-        add_row("Heading encoding", has(pipeline, PipelineTechniqueFlags::OctHeading)     ? "Octahedral uint16 x 2"
-                                    : has(pipeline, PipelineTechniqueFlags::Quantization) ? "Quantized int16 x 3"
-                                                                                          : "Float32 x 3");
+        add_row(
+            "Send cadence",
+            has(pipeline, PipelineTechniqueFlags::SendInterval)
+                ? "Every " + format_u64(pipeline.send_interval.interval_ticks) + " ticks"
+                : "Every tick"
+        );
+        add_row(
+            "Selection",
+            has(pipeline, PipelineTechniqueFlags::Incremental) ? "Incremental"
+                : has(pipeline, PipelineTechniqueFlags::Delta) ? "Delta patches"
+                                                               : "Full snapshot"
+        );
+        add_row(
+            "Position encoding",
+            has(pipeline, PipelineTechniqueFlags::Quantization) ? "Quantized uint16 x 3"
+                                                                : "Float32 x 3"
+        );
+        add_row(
+            "Heading encoding",
+            has(pipeline, PipelineTechniqueFlags::OctHeading)         ? "Octahedral uint16 x 2"
+                : has(pipeline, PipelineTechniqueFlags::Quantization) ? "Quantized int16 x 3"
+                                                                      : "Float32 x 3"
+        );
         add_row("Bit packing", enabled(has(pipeline, PipelineTechniqueFlags::BitPacking)));
         add_row("Delta baseline", enabled(has(pipeline, PipelineTechniqueFlags::Delta)));
         add_row("AOI", "Disabled");
         add_row("LOD", "Disabled");
         add_row("Compression", enabled(has(pipeline, PipelineTechniqueFlags::Compression)));
-        add_row("Packetization", transport.send_size_policy == "allow_backend_fragmentation"
-                                     ? "ENet fragmentation allowed"
-                                     : "Payload limit enforced");
+        add_row(
+            "Packetization",
+            transport.send_size_policy == "allow_backend_fragmentation"
+                ? "ENet fragmentation allowed"
+                : "Payload limit enforced"
+        );
         end_section();
     }
 
@@ -143,17 +175,22 @@ namespace simnet::app
         add_row("Tick rate", format_float(shared.simulation.tick_rate_hz, 1) + " Hz");
         add_row("Fixed timestep", format_float(1000.0 / shared.simulation.tick_rate_hz, 3) + " ms");
         add_row("Initial boids", format_u64(shared.simulation.initial_boid_count));
-        add_row("World size", format_float(shared.simulation.world_half * 2.0F, 0) + " x " +
-                                  format_float(shared.simulation.world_half * 2.0F, 0) + " x " +
-                                  format_float(shared.simulation.world_half * 2.0F, 0));
+        add_row(
+            "World size",
+            format_float(shared.simulation.world_half * 2.0F, 0) + " x "
+                + format_float(shared.simulation.world_half * 2.0F, 0) + " x "
+                + format_float(shared.simulation.world_half * 2.0F, 0)
+        );
         add_row("Seed", format_u64(shared.run.seed));
         add_row("Deterministic", "Yes");
         end_section();
 
         begin_section("BOID RULES", false);
-        add_row("Speed min / cruise / max", format_float(shared.boids.min_speed) + " / " +
-                                                format_float(shared.boids.cruise_speed) + " / " +
-                                                format_float(shared.boids.max_speed));
+        add_row(
+            "Speed min / cruise / max",
+            format_float(shared.boids.min_speed) + " / " + format_float(shared.boids.cruise_speed)
+                + " / " + format_float(shared.boids.max_speed)
+        );
         add_row("Maximum acceleration", format_float(shared.boids.max_acceleration));
         add_row("Separation radius", format_float(shared.boids.separation_radius));
         add_row("Alignment radius", format_float(shared.boids.alignment_radius));
@@ -169,14 +206,26 @@ namespace simnet::app
         end_section();
 
         begin_section("PLAYER MOVEMENT", false);
-        add_row("Speed cruise / boost / slow", format_float(shared.player.cruise_speed) + " / " +
-                                                   format_float(shared.player.boost_speed) + " / " +
-                                                   format_float(shared.player.slow_speed));
+        add_row(
+            "Speed cruise / boost / slow",
+            format_float(shared.player.cruise_speed) + " / "
+                + format_float(shared.player.boost_speed) + " / "
+                + format_float(shared.player.slow_speed)
+        );
         add_row("Speed change rate", format_float(shared.player.speed_change_rate));
-        add_row("Yaw acceleration", format_float(shared.player.yaw_acceleration_degrees, 1) + " deg/s2");
-        add_row("Pitch acceleration", format_float(shared.player.pitch_acceleration_degrees, 1) + " deg/s2");
+        add_row(
+            "Yaw acceleration",
+            format_float(shared.player.yaw_acceleration_degrees, 1) + " deg/s2"
+        );
+        add_row(
+            "Pitch acceleration",
+            format_float(shared.player.pitch_acceleration_degrees, 1) + " deg/s2"
+        );
         add_row("Maximum yaw rate", format_float(shared.player.max_yaw_rate_degrees, 1) + " deg/s");
-        add_row("Maximum pitch rate", format_float(shared.player.max_pitch_rate_degrees, 1) + " deg/s");
+        add_row(
+            "Maximum pitch rate",
+            format_float(shared.player.max_pitch_rate_degrees, 1) + " deg/s"
+        );
         add_row("Pitch limit", format_float(shared.player.pitch_limit_degrees, 1) + " deg");
         end_section();
 
@@ -184,17 +233,26 @@ namespace simnet::app
         add_row("Implementation", "Deterministic uniform grid");
         add_row("Cell size", format_float(shared.spatial.cell_size));
         add_row("Maximum neighbors", format_u64(shared.spatial.max_neighbors));
-        add_row("Query radius", format_float(std::max({
-                                    shared.boids.separation_radius,
-                                    shared.boids.alignment_radius,
-                                    shared.boids.cohesion_radius,
-                                })));
+        add_row(
+            "Query radius",
+            format_float(
+                std::max({
+                    shared.boids.separation_radius,
+                    shared.boids.alignment_radius,
+                    shared.boids.cohesion_radius,
+                })
+            )
+        );
         end_section();
     }
 
-    RunSetupStorage::RunSetupStorage(SharedConfig const& shared, ServerConfig const& local,
-                                     PipelineDefinition const& pipeline, std::filesystem::path const& shared_source,
-                                     std::filesystem::path const& local_source)
+    RunSetupStorage::RunSetupStorage(
+        SharedConfig const& shared,
+        ServerConfig const& local,
+        PipelineDefinition const& pipeline,
+        std::filesystem::path const& shared_source,
+        std::filesystem::path const& local_source
+    )
     {
         revision_ = fingerprint_runtime_config(shared, local).value;
         begin_section("RUN IDENTITY", true);
@@ -226,9 +284,13 @@ namespace simnet::app
         end_section();
     }
 
-    RunSetupStorage::RunSetupStorage(SharedConfig const& shared, ClientConfig const& local,
-                                     PipelineDefinition const& pipeline, std::filesystem::path const& shared_source,
-                                     std::filesystem::path const& local_source)
+    RunSetupStorage::RunSetupStorage(
+        SharedConfig const& shared,
+        ClientConfig const& local,
+        PipelineDefinition const& pipeline,
+        std::filesystem::path const& shared_source,
+        std::filesystem::path const& local_source
+    )
     {
         revision_ = fingerprint_runtime_config(shared, local).value;
         begin_section("RUN IDENTITY", true);

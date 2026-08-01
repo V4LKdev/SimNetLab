@@ -26,20 +26,22 @@ namespace
     [[nodiscard]] std::string metric_value_to_string(MetricValue const& value)
     {
         // Visit with a lambda to handle each type in the variant
-        return std::visit([]<typename T0>(T0 const& item) -> std::string {
+        return std::visit(
+            []<typename T0>(T0 const& item) -> std::string {
+                // Decay_t to remove references and cv-qualifiers for type comparison
+                using Value = std::decay_t<T0>;
 
-            // Decay_t to remove references and cv-qualifiers for type comparison
-            using Value = std::decay_t<T0>;
-
-            // Handle each type explicitly
-            if constexpr (std::is_same_v<Value, bool>) {
-                return item ? "true" : "false";
-            } else if constexpr (std::is_same_v<Value, std::string>) {
-                return item;
-            } else {
-                return std::to_string(item);
-            }
-        }, value);
+                // Handle each type explicitly
+                if constexpr (std::is_same_v<Value, bool>) {
+                    return item ? "true" : "false";
+                } else if constexpr (std::is_same_v<Value, std::string>) {
+                    return item;
+                } else {
+                    return std::to_string(item);
+                }
+            },
+            value
+        );
     }
 }
 
@@ -49,7 +51,7 @@ namespace simnet
 
     void submit_tick_metrics(TickMetrics const& metrics)
     {
-        std::scoped_lock lock { metrics_mutex };
+        std::scoped_lock lock{metrics_mutex};
         tick_metrics.push_back(metrics);
     }
 
@@ -57,7 +59,7 @@ namespace simnet
     {
         // Swap-drain: the O(1) move under the lock hands the caller sole ownership and
         // leaves an empty buffer ready for producers, keeping the critical section tiny.
-        std::scoped_lock lock { metrics_mutex };
+        std::scoped_lock lock{metrics_mutex};
         auto output = std::move(tick_metrics);
         tick_metrics.clear();
         return output;
@@ -65,7 +67,7 @@ namespace simnet
 
     void clear_tick_metrics()
     {
-        std::scoped_lock lock { metrics_mutex };
+        std::scoped_lock lock{metrics_mutex};
         tick_metrics.clear();
     }
 
@@ -73,13 +75,13 @@ namespace simnet
 
     void submit_metric_record(MetricRecord record)
     {
-        std::scoped_lock lock { metrics_mutex };
+        std::scoped_lock lock{metrics_mutex};
         metric_records.push_back(std::move(record));
     }
 
     std::vector<MetricRecord> take_metric_records()
     {
-        std::scoped_lock lock { metrics_mutex };
+        std::scoped_lock lock{metrics_mutex};
         auto output = std::move(metric_records);
         metric_records.clear();
         return output;
@@ -87,7 +89,7 @@ namespace simnet
 
     void clear_metric_records()
     {
-        std::scoped_lock lock { metrics_mutex };
+        std::scoped_lock lock{metrics_mutex};
         metric_records.clear();
     }
 
@@ -95,7 +97,7 @@ namespace simnet
 
     std::string format_metric_record_key_value(MetricRecord const& record)
     {
-        auto output = std::ostringstream {};
+        auto output = std::ostringstream{};
         output << record.stream << " tick=" << record.tick;
 
         // Append each field as 'name=value'
