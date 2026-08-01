@@ -4,7 +4,7 @@
 
 - `shared_demo_network.json`: use for Server + Client + player demo. Small enough to replicate cleanly.
 - `shared_demo_visual.json`: use for a nicer medium-size Server visual demo.
-- `shared_stress_100k.json`: use for Server-only render/simulation stress. Do not present this as realistic current network replication.
+- `shared_stress_50k.json`: local high-count stress and visual-inspection profile. Use it only with the Server. Do not present it as realistic current network replication.
 - `shared_default.json`: conservative fallback baseline.
 
 ## Commands
@@ -46,10 +46,10 @@ build/relWithDebInfo/app/Client \
   --shared-config config/shared_demo_network.json
 ```
 
-Server-only 100k stress view:
+Local 50k stress and visual inspection:
 
 ```sh
 build/relWithDebInfo/app/Server \
   --config config/server_visual.json \
-  --shared-config config/shared_stress_100k.json
+  --shared-config config/shared_stress_50k.json
 ```

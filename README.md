@@ -127,10 +127,8 @@ The Server keeps velocity, precise hue phase, and neighbor-computation state pri
 
 Visual interpolation is local and presentation-only. The Server blends adjacent authoritative ticks with the fixed-step alpha. The Client renders directly from retained reconstructed snapshots and derives its interval from snapshot ticks. It does not query the replicated Flecs world every frame. Pause snaps both viewers to their latest exact state. Set `visualization.interpolation_enabled` to `false` for exact snapshot debugging.
 
-For renderer stress testing, use the 100,000-entity shared profile with the visual Server profile:
+For local high-count stress and visual inspection, use the 50,000-entity shared profile with the visual Server profile. This is not a realistic network-replication workload:
 
 ```sh
-build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_stress_100k.json
+build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_stress_50k.json
 ```
-
-Use the same `--shared-config` value for Client when connecting it to a non-default Server.

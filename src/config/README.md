@@ -30,4 +30,4 @@ Benchmark, JSON telemetry export, area-of-interest, LOD, and compression configu
 
 Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.
 
-`shared_boids_demo.json` is a conservative 1,000-entity visual profile. Its rule values are starting points, not final tuning constants. `shared_stress_100k.json` remains a high-population visual and profiling scenario rather than a realistic unpacketized ENet replication workload.
+`shared_boids_demo.json` is a conservative 1,000-entity visual profile. Its rule values are starting points, not final tuning constants. `shared_stress_50k.json` is the local high-count stress and visual-inspection profile. It is a Server-only scenario rather than a realistic unpacketized ENet replication workload.
