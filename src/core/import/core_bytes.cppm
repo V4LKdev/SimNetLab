@@ -23,7 +23,4 @@ export namespace simnet
 
     /// Immutable contiguous byte view.
     using ByteSpan = std::span<const Byte>;
-
-    /// Mutable contiguous byte view.
-    using MutableByteSpan = std::span<Byte>;
 }

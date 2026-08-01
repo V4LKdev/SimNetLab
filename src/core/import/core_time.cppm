@@ -38,27 +38,17 @@ export namespace simnet
         Tick tick{};
     };
 
-    /// Computes the duration of one fixed step for the given tick rate.
-    /// @return The fixed timestep, or zero if `tick_rate_hz <= 0`.
-    [[nodiscard]] constexpr Nanoseconds
-    fixed_dt_from_tick_rate(const FixedStepSettings& settings) noexcept
-    {
-        if (settings.tick_rate_hz <= 0.0) {
-            return Nanoseconds{0};
-        }
-
-        const double seconds = 1.0 / settings.tick_rate_hz;
-
-        // Round to nearest nanosecond
-        return std::chrono::round<Nanoseconds>(std::chrono::duration<double>(seconds));
-    }
-
     /// Creates a FixedStepClock pre-initialized with the correct fixed_dt.
     /// `accumulator` and `tick` start at zero.
     [[nodiscard]] constexpr FixedStepClock make_clock(const FixedStepSettings& settings) noexcept
     {
+        if (settings.tick_rate_hz <= 0.0) {
+            return {};
+        }
+
+        const double seconds = 1.0 / settings.tick_rate_hz;
         return FixedStepClock{
-            .fixed_dt = fixed_dt_from_tick_rate(settings),
+            .fixed_dt = std::chrono::round<Nanoseconds>(std::chrono::duration<double>(seconds)),
         };
     }
 

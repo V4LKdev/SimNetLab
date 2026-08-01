@@ -37,11 +37,6 @@ export namespace simnet
         return {value.x * scalar, value.y * scalar, value.z * scalar};
     }
 
-    [[nodiscard]] constexpr Vec3f operator*(float scalar, Vec3f value) noexcept
-    {
-        return value * scalar;
-    }
-
     [[nodiscard]] constexpr Vec3f operator/(Vec3f value, float scalar) noexcept
     {
         return {value.x / scalar, value.y / scalar, value.z / scalar};

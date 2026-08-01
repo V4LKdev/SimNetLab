@@ -5,7 +5,7 @@
 
 ### simnet.core:bytes
 - `EntityNetId`, `PeerId`, `SequenceId`
-- `Byte`, `ByteSpan`, `MutableByteSpan`
+- `Byte`, `ByteSpan`
 
 ### simnet.core:math
 - `Vec3f`, `Aabb3f`
@@ -14,7 +14,6 @@
 
 ### simnet.core:time
 - `Tick`, `FixedStepSettings`, `FixedStepClock`
-- `fixed_dt_from_tick_rate` - returns the duration of one fixed step.
 - `make_clock` - factory that properly initializes a `FixedStepClock`
   from the given settings.
 - `advance` - consumes at most one frame's worth of time.
