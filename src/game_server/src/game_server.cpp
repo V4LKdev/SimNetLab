@@ -1664,7 +1664,7 @@ namespace simnet
             .set<NetIdentity>({ .id = id })
             .set<Position>({ .value = {} })
             .set<Heading>({ .value = { .z = 1.0F } })
-            .set<Hue>({ .value = 32U })
+            .set<Hue>({ .value = 165U })
             .set<PlayerMotion>({
                 .speed = index.player_settings.cruise_speed,
             })
