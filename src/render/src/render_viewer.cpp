@@ -838,9 +838,15 @@ void Viewer::Impl::select_adjacent_entity(RenderEntityView const &entities,
 void Viewer::Impl::capture_screenshot() const {
   try {
     auto const path = next_screenshot_path(output_directory_);
+    auto const raylib_path =
+        path.lexically_relative(std::filesystem::current_path());
+    if (raylib_path.empty()) {
+      throw std::runtime_error(
+          "screenshot path cannot be expressed relative to the working directory");
+    }
     // The back buffer holds the complete current frame before EndDrawing swaps it.
     rlDrawRenderBatchActive();
-    TakeScreenshot(path.string().c_str());
+    TakeScreenshot(raylib_path.string().c_str());
     auto error = std::error_code{};
     if (!std::filesystem::is_regular_file(path, error) || error) {
       log(LogCategory::Render, LogLevel::Error,
