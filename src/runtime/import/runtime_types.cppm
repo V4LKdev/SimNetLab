@@ -27,6 +27,7 @@ export namespace simnet
     struct RuntimeSettings
     {
         FixedStepSettings fixed_step{};
+        Nanoseconds max_frame_time{250'000'000};
         std::uint64_t max_frames{};
         Tick max_ticks{};
         Nanoseconds max_runtime{};

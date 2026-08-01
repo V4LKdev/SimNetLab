@@ -16,7 +16,8 @@
 - `Tick`, `FixedStepSettings`, `FixedStepClock`
 - `make_clock` - factory that properly initializes a `FixedStepClock`
   from the given settings.
-- `advance` - consumes at most one frame's worth of time.
+- `advance` - accumulates an already accepted nonnegative duration and consumes
+  at most the configured number of fixed steps.
 
 ## Notes
 
@@ -25,3 +26,4 @@
 - `length()` and `normalize_or()` use `std::sqrt` and are not `constexpr`.
 - Byte spans are non-owning views. The caller must keep the referenced buffer alive.
 - Use `make_clock(settings)` to avoid forgetting to set `fixed_dt`.
+- Elapsed frame acceptance policy belongs to the runtime caller, not the fixed-step clock.

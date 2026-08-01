@@ -20,9 +20,6 @@ export namespace simnet
         /// Tick rate in hertz.
         double tick_rate_hz{60.0};
 
-        /// Ceiling applied to incoming frame deltas.
-        Nanoseconds max_frame_time{std::chrono::milliseconds(250)};
-
         /// Hard limit on the number of ticks consumed in one frame.
         std::uint16_t max_steps_per_frame{5};
     };
@@ -52,7 +49,8 @@ export namespace simnet
         };
     }
 
-    /// Advances the clock by one frame of incoming time.
+    /// Advances the clock by an already accepted nonnegative duration.
+    /// The caller owns elapsed-time acceptance policy.
     /// @return Number of ticks performed this frame.
     [[nodiscard]] constexpr std::uint16_t
     advance(FixedStepClock& state, Nanoseconds delta, const FixedStepSettings& settings) noexcept
@@ -60,11 +58,6 @@ export namespace simnet
         // Refuse to run with a non-positive timestep
         if (state.fixed_dt <= Nanoseconds{0}) {
             return 0;
-        }
-
-        // Clamp incoming delta to avoid a death spiral
-        if (delta > settings.max_frame_time) {
-            delta = settings.max_frame_time;
         }
 
         state.accumulator += delta;

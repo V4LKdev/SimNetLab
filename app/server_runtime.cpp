@@ -1286,9 +1286,9 @@ namespace simnet::app
             auto const settings = RuntimeSettings {
                 .fixed_step = {
                     .tick_rate_hz = shared.simulation.tick_rate_hz,
-                    .max_frame_time = options.max_frame_time,
                     .max_steps_per_frame = options.max_steps_per_frame,
                 },
+                .max_frame_time = options.max_frame_time,
                 .max_frames = options.max_frames,
                 .max_ticks = options.max_ticks,
                 .max_runtime = options.max_runtime,

@@ -65,10 +65,10 @@ namespace simnet
         };
 
         auto accepted_delta = std::max(raw_delta, Nanoseconds{});
-        if (accepted_delta > settings.fixed_step.max_frame_time) {
+        if (accepted_delta > settings.max_frame_time) {
             plan.frame_delta_clamped = true;
-            plan.clamped_time = accepted_delta - settings.fixed_step.max_frame_time;
-            accepted_delta = settings.fixed_step.max_frame_time;
+            plan.clamped_time = accepted_delta - settings.max_frame_time;
+            accepted_delta = settings.max_frame_time;
         }
         plan.accepted_delta = accepted_delta;
 

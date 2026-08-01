@@ -26,6 +26,10 @@ export namespace simnet
     /**
      * Plans one outer frame and advances the supplied fixed-step clock.
      *
+     * Raw elapsed time is accepted as a nonnegative duration capped by
+     * RuntimeSettings::max_frame_time. Rejected excess is reported as
+     * clamped_time.
+     *
      * Whole-step backlog remaining after the step limit is discarded. The
      * fractional remainder is retained for interpolation and the discarded
      * duration is reported as dropped_time.
