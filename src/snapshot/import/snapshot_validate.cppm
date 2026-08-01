@@ -33,9 +33,12 @@ export namespace simnet
             return {false, "world snapshot hues size does not match ids size"};
         }
 
-        // --- 2. Vector ordering ---
-        for (std::size_t index = 1; index < count; ++index) {
-            if (snapshot.ids[index - 1] >= snapshot.ids[index]) {
+        // --- 2. Entity IDs ---
+        for (std::size_t index = 0; index < count; ++index) {
+            if (snapshot.ids[index] == 0U) {
+                return {false, "world snapshot entity id zero is reserved"};
+            }
+            if (index != 0U && snapshot.ids[index - 1] >= snapshot.ids[index]) {
                 return {false, "world snapshot ids must be strictly ascending"};
             }
         }
@@ -65,15 +68,21 @@ export namespace simnet
             return {false, "client snapshot patch kind is unknown"};
         }
 
-        // --- 2. Vector ordering ---
-        for (std::size_t index = 1; index < patch.upserts.size(); ++index) {
-            if (patch.upserts[index - 1].id >= patch.upserts[index].id) {
+        // --- 2. Entity IDs ---
+        for (std::size_t index = 0; index < patch.upserts.size(); ++index) {
+            if (patch.upserts[index].id == 0U) {
+                return {false, "client snapshot patch upsert entity id zero is reserved"};
+            }
+            if (index != 0U && patch.upserts[index - 1].id >= patch.upserts[index].id) {
                 return {false, "client snapshot patch upserts must be strictly ascending"};
             }
         }
 
-        for (std::size_t index = 1; index < patch.deletes.size(); ++index) {
-            if (patch.deletes[index - 1] >= patch.deletes[index]) {
+        for (std::size_t index = 0; index < patch.deletes.size(); ++index) {
+            if (patch.deletes[index] == 0U) {
+                return {false, "client snapshot patch delete entity id zero is reserved"};
+            }
+            if (index != 0U && patch.deletes[index - 1] >= patch.deletes[index]) {
                 return {false, "client snapshot patch deletes must be strictly ascending"};
             }
         }

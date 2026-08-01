@@ -11,6 +11,7 @@ add_executable(SimNetTests
     replication_tests.cpp
     runtime_tests.cpp
     snapshot_interpolation_tests.cpp
+    snapshot_validation_tests.cpp
     spatial_tests.cpp
     transport_tests.cpp
 )
@@ -25,6 +26,10 @@ target_sources(SimNetTests
 
 if (SIMNET_ENABLE_RENDER)
     target_sources(SimNetTests PRIVATE render_tests.cpp)
+endif ()
+
+if (SIMNET_ENABLE_SYNTHETIC)
+    target_sources(SimNetTests PRIVATE synthetic_snapshot_tests.cpp)
 endif ()
 
 target_link_libraries(SimNetTests
@@ -43,6 +48,10 @@ target_link_libraries(SimNetTests
 
 if (SIMNET_ENABLE_RENDER)
     target_link_libraries(SimNetTests PRIVATE simnet_render)
+endif ()
+
+if (SIMNET_ENABLE_SYNTHETIC)
+    target_link_libraries(SimNetTests PRIVATE simnet_synthetic)
 endif ()
 
 simnet_configure_target(SimNetTests)

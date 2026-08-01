@@ -12,8 +12,8 @@
 
 ### simnet.snapshot:validate
 - `is_normalized_heading` - tolerance-based heading length check.
-- `validate_world_snapshot` - validates sizes, id ordering, finite vectors, normalized headings.
-- `validate_client_snapshot_patch` - same for patches, plus no id in both upserts and deletes.
+- `validate_world_snapshot` - validates sizes, nonzero ordered ids, finite vectors, and normalized headings.
+- `validate_client_snapshot_patch` - validates the same entity rules for upserts and deletes, plus no id in both lists.
 
 ### simnet.snapshot:reconstruct
 - `reconstruct_world_snapshot` - transactionally creates a complete snapshot from a full replacement or an exact retained baseline plus a patch.
@@ -22,7 +22,7 @@
 - `interpolate_world_snapshots` - builds a reusable presentation snapshot from two validated complete snapshots.
 
 ## Notes
-- Both `WorldSnapshot` and `SnapshotUpdate` require strictly ascending entity IDs.
+- Both `WorldSnapshot` and `SnapshotUpdate` reserve entity ID zero and require strictly ascending IDs.
 - Validation returns the first contract violation. Error messages are heap-allocated.
 - `WorldSnapshot` uses SoA layout for cache efficiency.
 - `SnapshotUpdate::clear` preserves the `kind` field. Tick is reset to zero.

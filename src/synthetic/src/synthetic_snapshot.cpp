@@ -127,7 +127,7 @@ namespace
     void
     append_common_fields(simnet::WorldSnapshot& snapshot, std::uint32_t index, simnet::Tick tick)
     {
-        snapshot.ids.push_back(static_cast<simnet::EntityNetId>(index));
+        snapshot.ids.push_back(static_cast<simnet::EntityNetId>(index + 1U));
         snapshot.headings.push_back(deterministic_heading(index, tick));
         snapshot.hues.push_back(deterministic_hue(index, tick));
     }

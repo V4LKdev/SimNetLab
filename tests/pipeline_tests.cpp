@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 import simnet.core;
@@ -223,6 +225,86 @@ TEST_CASE("pipeline validation rejects unsupported technique combinations", "[pi
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
 
     REQUIRE_THROWS(simnet::validate_pipeline_definition(pipeline));
+}
+
+TEST_CASE(
+    "pipeline decoding delegates zero upsert ids to snapshot validation",
+    "[pipeline][snapshot][validation]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    auto const snapshot = make_linear_snapshot(1U, 1U);
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+    auto encoded
+        = simnet::encode_snapshot(pipeline, encode_state, encode_scratch, {.snapshot = &snapshot});
+    REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+    REQUIRE(encoded.report.payload_bytes >= sizeof(simnet::EntityNetId));
+
+    auto const payload_offset = encoded.update.bytes.size() - encoded.report.payload_bytes;
+    for (std::size_t offset = 0; offset < sizeof(simnet::EntityNetId); ++offset) {
+        encoded.update.bytes[payload_offset + offset] = simnet::Byte{};
+    }
+
+    auto decode_state = simnet::ClientReplicationState{};
+    auto decode_scratch = simnet::PipelineScratch{};
+    auto const decoded = simnet::decode_update(
+        pipeline,
+        decode_state,
+        decode_scratch,
+        {.bytes = encoded.update.bytes}
+    );
+
+    CHECK_FALSE(decoded.report.valid);
+    CHECK(decoded.report.error.find("entity id zero is reserved") != std::string::npos);
+    CHECK(decode_state.latest_remote_sequence == 0U);
+}
+
+TEST_CASE(
+    "pipeline decoding delegates zero delete ids to snapshot validation",
+    "[pipeline][delta][snapshot][validation]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
+    auto const baseline = make_linear_snapshot(1U, 1U);
+    auto current = simnet::WorldSnapshot{};
+    current.tick = 2U;
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+    auto const full
+        = simnet::encode_snapshot(pipeline, encode_state, encode_scratch, {.snapshot = &baseline});
+    auto encoded = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        encode_scratch,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &baseline,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+    REQUIRE(encoded.report.delete_count == 1U);
+    REQUIRE(encoded.report.payload_bytes >= sizeof(simnet::EntityNetId));
+
+    auto const payload_offset = encoded.update.bytes.size() - encoded.report.payload_bytes;
+    for (std::size_t offset = 0; offset < sizeof(simnet::EntityNetId); ++offset) {
+        encoded.update.bytes[payload_offset + offset] = simnet::Byte{};
+    }
+
+    auto decode_state = simnet::ClientReplicationState{};
+    auto decode_scratch = simnet::PipelineScratch{};
+    auto const decoded = simnet::decode_update(
+        pipeline,
+        decode_state,
+        decode_scratch,
+        {.bytes = encoded.update.bytes}
+    );
+
+    CHECK_FALSE(decoded.report.valid);
+    CHECK(decoded.report.error.find("entity id zero is reserved") != std::string::npos);
+    CHECK(decode_state.latest_remote_sequence == 0U);
 }
 
 TEST_CASE(

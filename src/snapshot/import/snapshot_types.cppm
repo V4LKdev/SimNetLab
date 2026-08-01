@@ -19,7 +19,7 @@ export namespace simnet
     /// Per-entity replicated state.
     struct EntityState
     {
-        /// Network identifier.
+        /// Nonzero network identifier. Zero is reserved as invalid.
         EntityNetId id{};
 
         /// World-space position.
@@ -39,7 +39,7 @@ export namespace simnet
         /// Simulation tick for this snapshot.
         Tick tick{};
 
-        /// Entity network identifiers (strictly ascending).
+        /// Entity network identifiers (nonzero and strictly ascending).
         std::vector<EntityNetId> ids;
 
         /// Positions, same index order as ids.
@@ -99,10 +99,10 @@ export namespace simnet
         /// How to apply the update.
         SnapshotKind kind{SnapshotKind::Patch};
 
-        /// Entities to insert or update (ids strictly ascending).
+        /// Entities to insert or update (ids nonzero and strictly ascending).
         std::vector<EntityState> upserts;
 
-        /// Entities to delete (ids strictly ascending).
+        /// Entities to delete (ids nonzero and strictly ascending).
         std::vector<EntityNetId> deletes;
 
         /// Returns true when the update carries no upserts or deletes.
