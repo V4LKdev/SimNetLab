@@ -86,17 +86,15 @@ namespace simnet
         pipeline_validate::require_quantization_settings(pipeline);
     }
 
-    EncodeOutput encode_snapshot(
+    EncodeOutput encode_snapshot_unchecked(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
         PipelineScratch& scratch,
         EncodeInput const& input
     )
     {
-        // --- Validation ---
-
         validate_pipeline_definition(pipeline);
-        pipeline_validate::require_snapshot(input.snapshot, "encode input snapshot");
+        pipeline_validate::require_snapshot_pointer(input.snapshot, "encode input snapshot");
 
         bool const delta_enabled = pipeline_validate::is_delta(pipeline);
         if (input.baseline_snapshot == nullptr) {
@@ -110,10 +108,6 @@ namespace simnet
             if (input.baseline_sequence == 0U) {
                 throw std::runtime_error("delta baseline sequence 0 is reserved");
             }
-            pipeline_validate::require_snapshot(
-                input.baseline_snapshot,
-                "encode baseline snapshot"
-            );
         }
 
         WorldSnapshot const& snapshot = *input.snapshot;
@@ -278,5 +272,23 @@ namespace simnet
         }
         client_state.next_sequence = sequence + 1U;
         return output;
+    }
+
+    EncodeOutput encode_snapshot(
+        PipelineDefinition const& pipeline,
+        ClientReplicationState& client_state,
+        PipelineScratch& scratch,
+        EncodeInput const& input
+    )
+    {
+        pipeline_validate::require_snapshot(input.snapshot, "encode input snapshot");
+        if (input.baseline_snapshot != nullptr) {
+            pipeline_validate::require_snapshot(
+                input.baseline_snapshot,
+                "encode baseline snapshot"
+            );
+        }
+
+        return encode_snapshot_unchecked(pipeline, client_state, scratch, input);
     }
 }

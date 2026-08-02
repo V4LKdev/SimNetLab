@@ -136,8 +136,6 @@ namespace simnet
         if (header.snapshot_kind == SnapshotKind::FullReplace) {
             if (header.baseline_sequence != 0U)
                 return invalid_update("full snapshot baseline sequence must be 0");
-            if (header.delete_count != 0U)
-                return invalid_update("full snapshot delete count must be 0");
         } else if (delta_enabled) {
             if (header.baseline_sequence == 0U)
                 return invalid_update("delta patch baseline sequence 0 is reserved");

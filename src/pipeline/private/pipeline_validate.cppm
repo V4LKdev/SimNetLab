@@ -52,12 +52,18 @@ namespace simnet::pipeline_validate
         }
     }
 
-    /// Validates a WorldSnapshot pointer and its internal contract.
-    void require_snapshot(WorldSnapshot const* snapshot, char const* what)
+    /// Rejects a null WorldSnapshot pointer.
+    void require_snapshot_pointer(WorldSnapshot const* snapshot, char const* what)
     {
         if (snapshot == nullptr) {
             throw std::runtime_error(std::string{what} + " is null");
         }
+    }
+
+    /// Validates a WorldSnapshot pointer and its internal contract.
+    void require_snapshot(WorldSnapshot const* snapshot, char const* what)
+    {
+        require_snapshot_pointer(snapshot, what);
 
         auto const validation = validate_world_snapshot(*snapshot);
         if (!validation.valid) {

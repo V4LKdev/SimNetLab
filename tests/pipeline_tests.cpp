@@ -176,7 +176,12 @@ TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][d
     REQUIRE(decoded_full.report.valid);
     auto retained_baseline = simnet::WorldSnapshot{};
     REQUIRE(
-        simnet::reconstruct_world_snapshot(nullptr, decoded_full.update, retained_baseline).valid
+        simnet::reconstruct_world_snapshot_unchecked(
+            nullptr,
+            decoded_full.update,
+            retained_baseline
+        )
+            .valid
     );
 
     auto const decoded_first = simnet::decode_update(
@@ -188,7 +193,7 @@ TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][d
     REQUIRE(decoded_first.report.valid);
     auto reconstructed_first = simnet::WorldSnapshot{};
     REQUIRE(
-        simnet::reconstruct_world_snapshot(
+        simnet::reconstruct_world_snapshot_unchecked(
             &retained_baseline,
             decoded_first.update,
             reconstructed_first
@@ -207,7 +212,7 @@ TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][d
     REQUIRE(decoded_second.report.baseline_sequence == full.update.sequence);
     auto reconstructed_second = simnet::WorldSnapshot{};
     REQUIRE(
-        simnet::reconstruct_world_snapshot(
+        simnet::reconstruct_world_snapshot_unchecked(
             &retained_baseline,
             decoded_second.update,
             reconstructed_second
@@ -305,6 +310,119 @@ TEST_CASE(
     CHECK_FALSE(decoded.report.valid);
     CHECK(decoded.report.error.find("entity id zero is reserved") != std::string::npos);
     CHECK(decode_state.latest_remote_sequence == 0U);
+}
+
+TEST_CASE(
+    "pipeline decoding delegates FullReplace delete semantics to snapshot validation",
+    "[pipeline][snapshot][validation]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
+    auto const baseline = make_linear_snapshot(1U, 1U);
+    auto current = simnet::WorldSnapshot{};
+    current.tick = 2U;
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+    auto const full
+        = simnet::encode_snapshot(pipeline, encode_state, encode_scratch, {.snapshot = &baseline});
+    auto encoded = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        encode_scratch,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &baseline,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    REQUIRE(encoded.report.snapshot_kind == simnet::SnapshotKind::Patch);
+    REQUIRE(encoded.report.delete_count == 1U);
+
+    constexpr auto snapshot_kind_offset = std::size_t{16U};
+    constexpr auto baseline_sequence_offset = std::size_t{29U};
+    REQUIRE(encoded.update.bytes.size() > baseline_sequence_offset + 3U);
+    encoded.update.bytes[snapshot_kind_offset] = simnet::Byte{};
+    for (std::size_t offset = 0; offset < sizeof(simnet::SequenceId); ++offset) {
+        encoded.update.bytes[baseline_sequence_offset + offset] = simnet::Byte{};
+    }
+
+    auto decode_state = simnet::ClientReplicationState{};
+    auto decode_scratch = simnet::PipelineScratch{};
+    auto const decoded = simnet::decode_update(
+        pipeline,
+        decode_state,
+        decode_scratch,
+        {.bytes = encoded.update.bytes}
+    );
+
+    CHECK_FALSE(decoded.report.valid);
+    CHECK(
+        decoded.report.error
+        == "decoded update is invalid: full replacement snapshot update deletes must be empty"
+    );
+    CHECK(decoded.update.empty());
+    CHECK(decode_state.latest_remote_sequence == 0U);
+}
+
+TEST_CASE("checked pipeline encoding rejects invalid snapshots transactionally", "[pipeline]")
+{
+    auto snapshot = make_linear_snapshot(1U, 1U);
+    snapshot.headings.front() = {};
+    auto pipeline = simnet::PipelineDefinition{};
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+    encode_scratch.selected_indices.push_back(7U);
+    encode_scratch.selected_delete_ids.push_back(9U);
+    encode_scratch.bytes.push_back(simnet::Byte{42U});
+
+    CHECK_THROWS(
+        simnet::encode_snapshot(pipeline, encode_state, encode_scratch, {.snapshot = &snapshot})
+    );
+    CHECK(encode_state.next_sequence == 1U);
+    CHECK(encode_state.incremental_cursor == 0U);
+    CHECK(encode_scratch.selected_indices == std::vector<std::uint32_t>{7U});
+    CHECK(encode_scratch.selected_delete_ids == std::vector<simnet::EntityNetId>{9U});
+    CHECK(encode_scratch.bytes == std::vector<simnet::Byte>{simnet::Byte{42U}});
+}
+
+TEST_CASE("unchecked pipeline encoding rejects control misuse transactionally", "[pipeline]")
+{
+    auto const snapshot = make_linear_snapshot(1U, 1U);
+    REQUIRE(simnet::validate_world_snapshot(snapshot).valid);
+    auto pipeline = simnet::PipelineDefinition{};
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+    encode_scratch.selected_indices.push_back(7U);
+    encode_scratch.selected_delete_ids.push_back(9U);
+    encode_scratch.bytes.push_back(simnet::Byte{42U});
+
+    SECTION("null current snapshot")
+    {
+        CHECK_THROWS(simnet::encode_snapshot_unchecked(pipeline, encode_state, encode_scratch, {}));
+    }
+
+    SECTION("baseline without delta technique")
+    {
+        CHECK_THROWS(
+            simnet::encode_snapshot_unchecked(
+                pipeline,
+                encode_state,
+                encode_scratch,
+                {
+                    .snapshot = &snapshot,
+                    .baseline_snapshot = &snapshot,
+                    .baseline_sequence = 1U,
+                }
+            )
+        );
+    }
+
+    CHECK(encode_state.next_sequence == 1U);
+    CHECK(encode_state.incremental_cursor == 0U);
+    CHECK(encode_scratch.selected_indices == std::vector<std::uint32_t>{7U});
+    CHECK(encode_scratch.selected_delete_ids == std::vector<simnet::EntityNetId>{9U});
+    CHECK(encode_scratch.bytes == std::vector<simnet::Byte>{simnet::Byte{42U}});
 }
 
 TEST_CASE(
