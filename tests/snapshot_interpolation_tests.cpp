@@ -60,6 +60,41 @@ TEST_CASE("snapshot interpolation blends matching presentation state", "[snapsho
     CHECK(output.hues[0] == 6U);
 }
 
+TEST_CASE("unchecked snapshot interpolation matches the checked path", "[snapshot][interpolation]")
+{
+    auto const previous = snapshot(
+        10U,
+        {
+            {1U, {}, {1.0F, 0.0F, 0.0F}, 250U},
+        }
+    );
+    auto const current = snapshot(
+        11U,
+        {
+            {1U, {10.0F, 4.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 6U},
+        }
+    );
+    auto checked = simnet::WorldSnapshot{};
+    REQUIRE(simnet::interpolate_world_snapshots(previous, current, 0.5, checked).valid);
+
+    REQUIRE(simnet::validate_world_snapshot(previous).valid);
+    REQUIRE(simnet::validate_world_snapshot(current).valid);
+    auto unchecked = simnet::WorldSnapshot{};
+    REQUIRE(simnet::interpolate_world_snapshots_unchecked(previous, current, 0.5, unchecked).valid);
+
+    CHECK(unchecked.tick == checked.tick);
+    CHECK(unchecked.ids == checked.ids);
+    REQUIRE(unchecked.positions.size() == checked.positions.size());
+    CHECK(unchecked.positions.front().x == checked.positions.front().x);
+    CHECK(unchecked.positions.front().y == checked.positions.front().y);
+    CHECK(unchecked.positions.front().z == checked.positions.front().z);
+    REQUIRE(unchecked.headings.size() == checked.headings.size());
+    CHECK(unchecked.headings.front().x == checked.headings.front().x);
+    CHECK(unchecked.headings.front().y == checked.headings.front().y);
+    CHECK(unchecked.headings.front().z == checked.headings.front().z);
+    CHECK(unchecked.hues == checked.hues);
+}
+
 TEST_CASE("snapshot interpolation uses the current entity population", "[snapshot][interpolation]")
 {
     auto const previous = snapshot(
@@ -111,6 +146,19 @@ TEST_CASE(
     CHECK(output.positions.front().z == before.z);
     CHECK_FALSE(
         simnet::interpolate_world_snapshots(
+            current,
+            current,
+            std::numeric_limits<double>::quiet_NaN(),
+            output
+        )
+            .valid
+    );
+    CHECK(output.positions.front().x == before.x);
+    CHECK(output.positions.front().y == before.y);
+    CHECK(output.positions.front().z == before.z);
+    REQUIRE(simnet::validate_world_snapshot(current).valid);
+    CHECK_FALSE(
+        simnet::interpolate_world_snapshots_unchecked(
             current,
             current,
             std::numeric_limits<double>::quiet_NaN(),

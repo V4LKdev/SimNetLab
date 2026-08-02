@@ -14,12 +14,14 @@ import simnet.core;
 
 export namespace simnet
 {
-    /// Builds a presentation snapshot using the current snapshot's entity set.
+    /// Advanced interpolation path for caller-owned snapshots with proven validity.
     ///
-    /// Matching entities interpolate position, normalized heading, and circular
-    /// hue. New entities use their current state. Removed entities are absent.
-    /// Inputs and output must be distinct objects.
-    [[nodiscard]] inline SnapshotValidationResult interpolate_world_snapshots(
+    /// `previous` and `current` must have passed validate_world_snapshot at their producer boundary
+    /// or come from successful reconstruction or extraction and remain under ownership that
+    /// preserves the invariant. The caller must not mutate either value between that proof and this
+    /// call. Non-finite alpha is rejected before `output` changes. Inputs and output must be
+    /// distinct objects. Arbitrary or external values must use interpolate_world_snapshots.
+    [[nodiscard]] inline SnapshotValidationResult interpolate_world_snapshots_unchecked(
         WorldSnapshot const& previous,
         WorldSnapshot const& current,
         double alpha,
@@ -28,14 +30,6 @@ export namespace simnet
     {
         if (!std::isfinite(alpha)) {
             return {false, "snapshot interpolation alpha must be finite"};
-        }
-        auto const previous_validation = validate_world_snapshot(previous);
-        if (!previous_validation.valid) {
-            return {false, "invalid previous snapshot: " + previous_validation.message};
-        }
-        auto const current_validation = validate_world_snapshot(current);
-        if (!current_validation.valid) {
-            return {false, "invalid current snapshot: " + current_validation.message};
         }
 
         auto const blend = static_cast<float>(std::clamp(alpha, 0.0, 1.0));
@@ -83,5 +77,33 @@ export namespace simnet
             output.hues[current_index] = static_cast<std::uint8_t>(interpolated);
         }
         return {};
+    }
+
+    /// Builds a presentation snapshot using the current snapshot's entity set.
+    ///
+    /// Matching entities interpolate position, normalized heading, and circular
+    /// hue. New entities use their current state. Removed entities are absent.
+    /// Inputs and output must be distinct objects. This is the normal entry point for arbitrary or
+    /// external snapshot values.
+    [[nodiscard]] inline SnapshotValidationResult interpolate_world_snapshots(
+        WorldSnapshot const& previous,
+        WorldSnapshot const& current,
+        double alpha,
+        WorldSnapshot& output
+    )
+    {
+        if (!std::isfinite(alpha)) {
+            return {false, "snapshot interpolation alpha must be finite"};
+        }
+        auto const previous_validation = validate_world_snapshot(previous);
+        if (!previous_validation.valid) {
+            return {false, "invalid previous snapshot: " + previous_validation.message};
+        }
+        auto const current_validation = validate_world_snapshot(current);
+        if (!current_validation.valid) {
+            return {false, "invalid current snapshot: " + current_validation.message};
+        }
+
+        return interpolate_world_snapshots_unchecked(previous, current, alpha, output);
     }
 }

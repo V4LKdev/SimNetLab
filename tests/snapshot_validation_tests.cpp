@@ -111,3 +111,27 @@ TEST_CASE("FullReplace updates cannot carry deletes", "[snapshot][validation]")
     update.kind = simnet::SnapshotKind::Patch;
     CHECK(simnet::validate_client_snapshot_patch(update).valid);
 }
+
+TEST_CASE("validated Patch reconstruction still requires a baseline", "[snapshot][validation]")
+{
+    auto const update = simnet::SnapshotUpdate{
+        .tick = 17U,
+        .kind = simnet::SnapshotKind::Patch,
+        .upserts = {entity(1U)},
+        .deletes = {},
+    };
+    REQUIRE(simnet::validate_client_snapshot_patch(update).valid);
+    auto reconstructed = snapshot(4U);
+    reconstructed.tick = 91U;
+    auto const reconstructed_before = reconstructed;
+
+    auto const result
+        = simnet::reconstruct_world_snapshot_unchecked(nullptr, update, reconstructed);
+    CHECK_FALSE(result.valid);
+    CHECK(result.message == "snapshot patch requires a baseline");
+    CHECK(reconstructed.tick == reconstructed_before.tick);
+    CHECK(reconstructed.ids == reconstructed_before.ids);
+    CHECK(reconstructed.positions.size() == reconstructed_before.positions.size());
+    CHECK(reconstructed.headings.size() == reconstructed_before.headings.size());
+    CHECK(reconstructed.hues == reconstructed_before.hues);
+}
