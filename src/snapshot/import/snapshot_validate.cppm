@@ -59,13 +59,16 @@ export namespace simnet
         return {};
     }
 
-    /// Validates the logical snapshot update contract.
+    /// Validates the logical FullReplace and Patch update contracts.
     [[nodiscard]] inline SnapshotValidationResult
     validate_client_snapshot_patch(SnapshotUpdate const& patch)
     {
         // --- 1. Update kind ---
         if (patch.kind != SnapshotKind::FullReplace && patch.kind != SnapshotKind::Patch) {
             return {false, "client snapshot patch kind is unknown"};
+        }
+        if (patch.kind == SnapshotKind::FullReplace && !patch.deletes.empty()) {
+            return {false, "full replacement snapshot update deletes must be empty"};
         }
 
         // --- 2. Entity IDs ---

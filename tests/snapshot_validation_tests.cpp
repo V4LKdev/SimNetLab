@@ -71,3 +71,43 @@ TEST_CASE("replicated entity id zero is rejected", "[snapshot][validation]")
     CHECK(reconstructed.headings.front().z == reconstructed_before.headings.front().z);
     CHECK(reconstructed.hues == reconstructed_before.hues);
 }
+
+TEST_CASE("FullReplace updates cannot carry deletes", "[snapshot][validation]")
+{
+    auto update = simnet::SnapshotUpdate{
+        .tick = 17U,
+        .kind = simnet::SnapshotKind::FullReplace,
+        .upserts = {entity(1U)},
+        .deletes = {},
+    };
+    CHECK(simnet::validate_client_snapshot_patch(update).valid);
+
+    update.deletes.push_back(2U);
+    auto const invalid = simnet::validate_client_snapshot_patch(update);
+    CHECK_FALSE(invalid.valid);
+    CHECK(invalid.message == "full replacement snapshot update deletes must be empty");
+
+    auto reconstructed = snapshot(4U);
+    reconstructed.tick = 91U;
+    reconstructed.positions.front() = {4.0F, -5.0F, 6.0F};
+    reconstructed.headings.front() = {0.0F, 1.0F, 0.0F};
+    reconstructed.hues.front() = 213U;
+    auto const reconstructed_before = reconstructed;
+    auto const reconstruction = simnet::reconstruct_world_snapshot(nullptr, update, reconstructed);
+    CHECK_FALSE(reconstruction.valid);
+    CHECK(reconstruction.message == invalid.message);
+    CHECK(reconstructed.tick == reconstructed_before.tick);
+    CHECK(reconstructed.ids == reconstructed_before.ids);
+    REQUIRE(reconstructed.positions.size() == reconstructed_before.positions.size());
+    CHECK(reconstructed.positions.front().x == reconstructed_before.positions.front().x);
+    CHECK(reconstructed.positions.front().y == reconstructed_before.positions.front().y);
+    CHECK(reconstructed.positions.front().z == reconstructed_before.positions.front().z);
+    REQUIRE(reconstructed.headings.size() == reconstructed_before.headings.size());
+    CHECK(reconstructed.headings.front().x == reconstructed_before.headings.front().x);
+    CHECK(reconstructed.headings.front().y == reconstructed_before.headings.front().y);
+    CHECK(reconstructed.headings.front().z == reconstructed_before.headings.front().z);
+    CHECK(reconstructed.hues == reconstructed_before.hues);
+
+    update.kind = simnet::SnapshotKind::Patch;
+    CHECK(simnet::validate_client_snapshot_patch(update).valid);
+}

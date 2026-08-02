@@ -86,7 +86,10 @@ export namespace simnet
     /// Logical snapshot update kind.
     enum class SnapshotKind : std::uint8_t
     {
+        /// Upserts define the complete resulting entity population. Deletes must be empty.
         FullReplace,
+
+        /// Upserts and deletes modify an existing complete population.
         Patch
     };
 
@@ -102,7 +105,8 @@ export namespace simnet
         /// Entities to insert or update (ids nonzero and strictly ascending).
         std::vector<EntityState> upserts;
 
-        /// Entities to delete (ids nonzero and strictly ascending).
+        /// Patch entities to delete (ids nonzero and strictly ascending).
+        /// FullReplace updates must leave this empty.
         std::vector<EntityNetId> deletes;
 
         /// Returns true when the update carries no upserts or deletes.

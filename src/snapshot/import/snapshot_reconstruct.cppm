@@ -13,8 +13,8 @@ export namespace simnet
 {
     /// Reconstructs a complete snapshot without mutating `out_snapshot` on failure.
     ///
-    /// Full replacements require no baseline. Patches are applied to the supplied
-    /// baseline using the strictly ascending snapshot and patch contracts.
+    /// Full replacement upserts define the complete population and deletes must be empty.
+    /// Patches are applied to the supplied baseline using explicit upserts and deletes.
     [[nodiscard]] inline SnapshotValidationResult reconstruct_world_snapshot(
         WorldSnapshot const* baseline,
         SnapshotUpdate const& patch,

@@ -172,6 +172,49 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     }
 }
 
+TEST_CASE("Patch reconstruction removes requested entities", "[replication][snapshot]")
+{
+    auto baseline = simnet::WorldSnapshot{};
+    baseline.tick = 1U;
+    for (std::uint32_t index = 0; index < 3U; ++index) {
+        auto const boid = test_boid(index + 1U, index, baseline.tick);
+        baseline.ids.push_back(boid.id);
+        baseline.positions.push_back(boid.position);
+        baseline.headings.push_back(boid.heading);
+        baseline.hues.push_back(boid.hue);
+    }
+
+    auto const patch = simnet::SnapshotUpdate{
+        .tick = 2U,
+        .kind = simnet::SnapshotKind::Patch,
+        .upserts = {},
+        .deletes = {2U},
+    };
+    REQUIRE(simnet::validate_client_snapshot_patch(patch).valid);
+
+    auto reconstructed = simnet::WorldSnapshot{};
+    REQUIRE(simnet::reconstruct_world_snapshot(&baseline, patch, reconstructed).valid);
+    CHECK(reconstructed.tick == patch.tick);
+    CHECK(reconstructed.ids == std::vector<simnet::EntityNetId>{1U, 3U});
+    REQUIRE(reconstructed.positions.size() == 2U);
+    CHECK(reconstructed.positions[0].x == baseline.positions[0].x);
+    CHECK(reconstructed.positions[0].y == baseline.positions[0].y);
+    CHECK(reconstructed.positions[0].z == baseline.positions[0].z);
+    CHECK(reconstructed.positions[1].x == baseline.positions[2].x);
+    CHECK(reconstructed.positions[1].y == baseline.positions[2].y);
+    CHECK(reconstructed.positions[1].z == baseline.positions[2].z);
+    REQUIRE(reconstructed.headings.size() == 2U);
+    CHECK(reconstructed.headings[0].x == baseline.headings[0].x);
+    CHECK(reconstructed.headings[0].y == baseline.headings[0].y);
+    CHECK(reconstructed.headings[0].z == baseline.headings[0].z);
+    CHECK(reconstructed.headings[1].x == baseline.headings[2].x);
+    CHECK(reconstructed.headings[1].y == baseline.headings[2].y);
+    CHECK(reconstructed.headings[1].z == baseline.headings[2].z);
+    REQUIRE(reconstructed.hues.size() == 2U);
+    CHECK(reconstructed.hues[0] == baseline.hues[0]);
+    CHECK(reconstructed.hues[1] == baseline.hues[2]);
+}
+
 TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[replication]")
 {
     auto game = simnet::ServerGameRuntime{simnet::BoidSimulationSettings{}};
