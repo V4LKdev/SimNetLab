@@ -781,7 +781,8 @@ namespace
             return &state.current;
         }
         SIMNET_TRACE_SCOPE_CATEGORY("server.presentation.interpolate", simnet::LogCategory::Render);
-        auto const interpolated = simnet::interpolate_world_snapshots(
+        // Presentation snapshots copy only successful authoritative extractions.
+        auto const interpolated = simnet::interpolate_world_snapshots_unchecked(
             state.previous,
             state.current,
             alpha,
@@ -1161,7 +1162,8 @@ namespace
         auto encoded = simnet::EncodeOutput{};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_encode", simnet::LogCategory::Pipeline);
-            encoded = simnet::encode_snapshot(
+            // Current and retained baseline snapshots come only from successful extraction.
+            encoded = simnet::encode_snapshot_unchecked(
                 pipeline,
                 peer->pipeline_state,
                 scratch,

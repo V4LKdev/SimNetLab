@@ -29,8 +29,19 @@ export namespace simnet
     [[nodiscard]] std::optional<EntityKind>
     client_entity_kind(flecs::world const& world, EntityNetId id) noexcept;
 
-    /// Applies a decoded snapshot patch to a client-side Flecs world.
+    /// Applies an arbitrary snapshot patch to a client-side Flecs world after validating it.
     /// Call register_client_game once during setup. Older ticks reject, equal ticks are accepted.
+    /// Malformed or external updates must use this checked entry point.
     [[nodiscard]] ApplyPatchReport
     apply_client_snapshot_patch(flecs::world& world, SnapshotUpdate const& patch);
+
+    /// Advanced application path for a caller-owned patch with proven validity.
+    ///
+    /// `patch` must have passed validate_client_snapshot_patch at the decode boundary or be a
+    /// FullReplace built from a successfully reconstructed WorldSnapshot. The caller must not
+    /// mutate it between that proof and this call. Call register_client_game once during setup.
+    /// This path rejects stale ticks before changing Flecs state. Equal ticks are accepted.
+    /// Arbitrary or external updates must use apply_client_snapshot_patch.
+    [[nodiscard]] ApplyPatchReport
+    apply_client_snapshot_patch_unchecked(flecs::world& world, SnapshotUpdate const& patch);
 }

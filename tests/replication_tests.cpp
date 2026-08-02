@@ -110,7 +110,7 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
         auto const extraction = simnet::extract_world_snapshot(server_world, tick, snapshot);
         REQUIRE(extraction.valid);
 
-        auto const encoded = simnet::encode_snapshot(
+        auto const encoded = simnet::encode_snapshot_unchecked(
             pipeline,
             encode_state,
             encode_scratch,
@@ -139,7 +139,8 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
         );
         REQUIRE(decoded.report.valid);
 
-        auto const applied = simnet::apply_client_snapshot_patch(client_world, decoded.update);
+        auto const applied
+            = simnet::apply_client_snapshot_patch_unchecked(client_world, decoded.update);
         REQUIRE(applied.valid);
 
         record_received(ack, decoded.report.sequence);
@@ -213,6 +214,61 @@ TEST_CASE("Patch reconstruction removes requested entities", "[replication][snap
     REQUIRE(reconstructed.hues.size() == 2U);
     CHECK(reconstructed.hues[0] == baseline.hues[0]);
     CHECK(reconstructed.hues[1] == baseline.hues[2]);
+}
+
+TEST_CASE(
+    "Client patch application rejects malformed and stale input transactionally",
+    "[replication][snapshot][validation]"
+)
+{
+    auto world = flecs::world{};
+    simnet::register_client_game(world);
+    auto initial = simnet::SnapshotUpdate{
+        .tick = 5U,
+        .kind = simnet::SnapshotKind::FullReplace,
+        .upserts = {test_boid(1U, 0U, 5U)},
+        .deletes = {},
+    };
+    REQUIRE(simnet::apply_client_snapshot_patch(world, initial).valid);
+
+    auto before = simnet::WorldSnapshot{};
+    REQUIRE(simnet::extract_client_world_snapshot(world, 5U, before).valid);
+
+    auto malformed = simnet::SnapshotUpdate{
+        .tick = 6U,
+        .kind = simnet::SnapshotKind::Patch,
+        .upserts = {test_boid(0U, 1U, 6U)},
+        .deletes = {},
+    };
+    auto const malformed_report = simnet::apply_client_snapshot_patch(world, malformed);
+    CHECK_FALSE(malformed_report.valid);
+    CHECK(simnet::client_latest_replicated_tick(world) == 5U);
+    CHECK(simnet::client_replicated_entity_count(world) == 1U);
+
+    auto stale = simnet::SnapshotUpdate{
+        .tick = 4U,
+        .kind = simnet::SnapshotKind::Patch,
+        .upserts = {test_boid(1U, 2U, 4U)},
+        .deletes = {},
+    };
+    REQUIRE(simnet::validate_client_snapshot_patch(stale).valid);
+    auto const stale_report = simnet::apply_client_snapshot_patch_unchecked(world, stale);
+    CHECK_FALSE(stale_report.valid);
+    CHECK(stale_report.error == "stale patch tick");
+
+    auto after = simnet::WorldSnapshot{};
+    REQUIRE(simnet::extract_client_world_snapshot(world, 5U, after).valid);
+    CHECK(after.tick == before.tick);
+    CHECK(after.ids == before.ids);
+    REQUIRE(after.positions.size() == before.positions.size());
+    CHECK(after.positions.front().x == before.positions.front().x);
+    CHECK(after.positions.front().y == before.positions.front().y);
+    CHECK(after.positions.front().z == before.positions.front().z);
+    REQUIRE(after.headings.size() == before.headings.size());
+    CHECK(after.headings.front().x == before.headings.front().x);
+    CHECK(after.headings.front().y == before.headings.front().y);
+    CHECK(after.headings.front().z == before.headings.front().z);
+    CHECK(after.hues == before.hues);
 }
 
 TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[replication]")

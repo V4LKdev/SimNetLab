@@ -123,6 +123,20 @@ namespace simnet
             snapshot.clear();
             snapshot.tick = tick;
         }
+
+        [[nodiscard]] ApplyPatchReport initial_apply_report(SnapshotUpdate const& patch)
+        {
+            return {
+                .tick = patch.tick,
+                .kind = patch.kind,
+                .previous_entities = 0,
+                .final_entities = 0,
+                .upsert_count = static_cast<std::uint32_t>(patch.upserts.size()),
+                .delete_count = static_cast<std::uint32_t>(patch.deletes.size()),
+                .valid = true,
+                .error = {},
+            };
+        }
     }
 
     void register_client_game(flecs::world& world)
@@ -171,25 +185,10 @@ namespace simnet
         return entity.get<EntityKindComponent>().value;
     }
 
-    ApplyPatchReport apply_client_snapshot_patch(flecs::world& world, SnapshotUpdate const& patch)
+    ApplyPatchReport
+    apply_client_snapshot_patch_unchecked(flecs::world& world, SnapshotUpdate const& patch)
     {
-        auto report = ApplyPatchReport{
-            .tick = patch.tick,
-            .kind = patch.kind,
-            .previous_entities = 0,
-            .final_entities = 0,
-            .upsert_count = static_cast<std::uint32_t>(patch.upserts.size()),
-            .delete_count = static_cast<std::uint32_t>(patch.deletes.size()),
-            .valid = true,
-            .error = {},
-        };
-
-        auto const validation = validate_client_snapshot_patch(patch);
-        if (!validation.valid) {
-            report.valid = false;
-            report.error = validation.message;
-            return report;
-        }
+        auto report = initial_apply_report(patch);
 
         auto& state = world.ensure<ClientReplicationState>();
         if (patch.tick < state.latest_tick) {
@@ -272,6 +271,18 @@ namespace simnet
 
         report.final_entities = static_cast<std::uint32_t>(state.size());
         return report;
+    }
+
+    ApplyPatchReport apply_client_snapshot_patch(flecs::world& world, SnapshotUpdate const& patch)
+    {
+        auto const validation = validate_client_snapshot_patch(patch);
+        if (!validation.valid) {
+            auto report = initial_apply_report(patch);
+            report.valid = false;
+            report.error = validation.message;
+            return report;
+        }
+        return apply_client_snapshot_patch_unchecked(world, patch);
     }
 
     ClientSnapshotExtractionReport

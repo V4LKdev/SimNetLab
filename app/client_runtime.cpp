@@ -145,7 +145,8 @@ namespace
         auto const elapsed_seconds = std::chrono::duration<double>(state.elapsed).count();
         alpha = std::clamp(elapsed_seconds / interval_seconds, 0.0, 1.0);
         SIMNET_TRACE_SCOPE_CATEGORY("client.presentation.interpolate", simnet::LogCategory::Render);
-        auto const interpolated = simnet::interpolate_world_snapshots(
+        // History contains only snapshots from successful reconstruction and is not mutated here.
+        auto const interpolated = simnet::interpolate_world_snapshots_unchecked(
             previous.snapshot,
             current.snapshot,
             alpha,
@@ -473,8 +474,9 @@ namespace
         }
 
         auto reconstructed = simnet::WorldSnapshot{};
+        // Decode validated the update. The baseline is locally empty or a retained reconstruction.
         auto const reconstruction
-            = simnet::reconstruct_world_snapshot(baseline, decoded.update, reconstructed);
+            = simnet::reconstruct_world_snapshot_unchecked(baseline, decoded.update, reconstructed);
         if (!reconstruction.valid) {
             simnet::log(
                 simnet::LogCategory::Snapshot,
@@ -496,7 +498,8 @@ namespace
         auto applied = simnet::ApplyPatchReport{};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_apply", simnet::LogCategory::Simulation);
-            applied = simnet::apply_client_snapshot_patch(world, *patch_to_apply);
+            // The update passed decode validation or was built from successful reconstruction.
+            applied = simnet::apply_client_snapshot_patch_unchecked(world, *patch_to_apply);
         }
         if (!applied.valid) {
             simnet::log(
