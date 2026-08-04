@@ -8,10 +8,7 @@
 #include <exception>
 #include <filesystem>
 #include <flecs.h>
-#include <fstream>
-#include <iomanip>
 #include <iostream>
-#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -23,6 +20,7 @@
 #include <simnet/telemetry_trace.hpp>
 
 import simnet.config;
+import simnet.app_evidence;
 import simnet.app_common;
 import simnet.app_protocol;
 import simnet.core;
@@ -79,82 +77,6 @@ namespace
         simnet::Nanoseconds max_runtime{};
         simnet::Nanoseconds max_frame_time{std::chrono::milliseconds(250)};
         std::uint16_t max_steps_per_frame{5};
-    };
-
-    class BoidCsvEvidence
-    {
-    public:
-        BoidCsvEvidence(
-            simnet::TelemetryConfig const& config,
-            double tick_rate_hz,
-            std::uint32_t worker_count
-        )
-            : interval_(
-                  std::max<simnet::Tick>(1U, static_cast<simnet::Tick>(std::llround(tick_rate_hz)))
-              )
-            , worker_count_(worker_count)
-        {
-            if (!config.metrics_csv_enabled) {
-                return;
-            }
-            std::filesystem::create_directories(config.log_directory);
-            auto const stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::system_clock::now().time_since_epoch()
-            )
-                                   .count();
-            path_ = std::filesystem::path{config.log_directory}
-                / ("server_boids_" + std::to_string(stamp) + ".csv");
-            stream_.open(path_, std::ios::out | std::ios::trunc);
-            if (!stream_) {
-                throw std::runtime_error("failed to create boid metrics CSV: " + path_.string());
-            }
-            stream_
-                << "tick,entity_count,worker_count,occupied_cells,max_occupancy,average_load,"
-                   "raw_candidates_mean,raw_candidates_max,retained_neighbors_mean,"
-                   "retained_neighbors_max,cap_hit_count,separation_count_mean,social_count_mean,"
-                   "isolated_count,nearest_neighbor_distance_mean,speed_mean,speed_min,speed_max,"
-                   "acceleration_mean,acceleration_max,acceleration_saturation_count,"
-                   "overlap_recovery_count,wall_guard_count,polarization,capture_ms,grid_ms,"
-                   "compute_ms,validate_ms,commit_ms,progress_ms\n";
-            simnet::log(
-                simnet::LogCategory::Telemetry,
-                simnet::LogLevel::Info,
-                "boid CSV evidence path=" + path_.string()
-            );
-        }
-
-        void
-        sample(simnet::Tick tick, simnet::ServerGameStepReport const& report, bool force = false)
-        {
-            if (!stream_ || (!force && tick % interval_ != 0U) || last_tick_ == tick) {
-                return;
-            }
-            auto const& value = report.diagnostics;
-            auto const& phase = report.phases;
-            stream_ << std::setprecision(9) << tick << ',' << report.entity_count << ','
-                    << worker_count_ << ',' << value.grid.occupied_cell_count << ','
-                    << value.grid.max_cell_occupancy << ',' << value.grid.average_occupied_cell_load
-                    << ',' << value.raw_candidates_mean << ',' << value.raw_candidates_max << ','
-                    << value.retained_neighbors_mean << ',' << value.retained_neighbors_max << ','
-                    << value.neighbor_cap_hit_count << ',' << value.separation_neighbors_mean << ','
-                    << value.social_neighbors_mean << ',' << value.isolated_boid_count << ','
-                    << value.nearest_neighbor_distance_mean << ',' << value.speed_mean << ','
-                    << value.speed_min << ',' << value.speed_max << ',' << value.acceleration_mean
-                    << ',' << value.acceleration_max << ',' << value.acceleration_saturation_count
-                    << ',' << value.overlap_recovery_count << ',' << value.hard_wall_guard_count
-                    << ',' << value.polarization << ',' << phase.capture_ms << ',' << phase.grid_ms
-                    << ',' << phase.compute_ms << ',' << phase.validate_ms << ',' << phase.commit_ms
-                    << ',' << phase.progress_ms << '\n';
-            stream_.flush();
-            last_tick_ = tick;
-        }
-
-    private:
-        std::ofstream stream_{};
-        std::filesystem::path path_{};
-        simnet::Tick interval_{1U};
-        simnet::Tick last_tick_{std::numeric_limits<simnet::Tick>::max()};
-        std::uint32_t worker_count_{};
     };
 
     struct RetainedSnapshot
@@ -1359,6 +1281,7 @@ namespace simnet::app
     int run_server(int argc, char** argv)
     {
         auto replication_csv = std::optional<ServerReplicationCsvWriter>{};
+        auto boid_csv = std::optional<ServerBoidCsvWriter>{};
         try {
             auto const options = parse_options(argc, argv);
             auto const run_context = make_evidence_run_context(
@@ -1487,11 +1410,20 @@ namespace simnet::app
                 "server.flecs.thread_count",
                 static_cast<double>(local.flecs.thread_count)
             );
-            auto boid_csv = BoidCsvEvidence{
-                local.telemetry,
-                shared.simulation.tick_rate_hz,
-                local.flecs.thread_count,
-            };
+            boid_csv.emplace(
+                ServerBoidCsvWriterConfig{
+                    .enabled = local.telemetry.metrics_csv_enabled,
+                    .output_directory = local.telemetry.log_directory,
+                    .run = run_context,
+                    .tick_rate_hz = shared.simulation.tick_rate_hz,
+                    .worker_count = local.flecs.thread_count,
+                }
+            );
+            if (boid_csv->enabled()) {
+                log(LogCategory::Telemetry,
+                    LogLevel::Info,
+                    "Server boid CSV path=" + boid_csv->path().string());
+            }
 
             auto stats = RuntimeStats{};
             auto timer = RuntimeFrameTimer{};
@@ -1595,7 +1527,11 @@ namespace simnet::app
                         retain_presentation_snapshot(presentation, current_snapshot.snapshot);
                     }
 #endif
-                    boid_csv.sample(tick, game.last_step_report());
+                    if (!boid_csv->sample(tick, game.last_step_report())) {
+                        throw std::runtime_error(
+                            "Server boid CSV submission failed: " + std::string{boid_csv->error()}
+                        );
+                    }
                 }
 
                 if (replication_csv->needs_drain() && !replication_csv->drain()) {
@@ -1604,6 +1540,12 @@ namespace simnet::app
                         + std::string{replication_csv->error()}
                     );
                 }
+                if (boid_csv->needs_drain() && !boid_csv->drain()) {
+                    throw std::runtime_error(
+                        "Server boid CSV drain failed: " + std::string{boid_csv->error()}
+                    );
+                }
+
                 if (frame.step_limit_reached && log_enabled(LogLevel::Warn)) {
                     log(LogCategory::Core,
                         LogLevel::Warn,
@@ -1710,13 +1652,22 @@ namespace simnet::app
             }
 
             if (stats.ticks != 0U) {
-                boid_csv.sample(stats.ticks, game.last_step_report(), true);
+                if (!boid_csv->sample(stats.ticks, game.last_step_report(), true)) {
+                    throw std::runtime_error(
+                        "Server boid CSV final submission failed: " + std::string{boid_csv->error()}
+                    );
+                }
             }
             disconnect_before_stop(transport, peer);
             transport.stop();
             if (!replication_csv->close()) {
                 throw std::runtime_error(
                     "server replication CSV close failed: " + std::string{replication_csv->error()}
+                );
+            }
+            if (!boid_csv->close()) {
+                throw std::runtime_error(
+                    "Server boid CSV close failed: " + std::string{boid_csv->error()}
                 );
             }
             log_server_replication_measurements(replication_measurements);
@@ -1731,6 +1682,12 @@ namespace simnet::app
             auto close_error = std::string{};
             if (replication_csv.has_value() && !replication_csv->close()) {
                 close_error = std::string{replication_csv->error()};
+            }
+            if (boid_csv.has_value() && !boid_csv->close()) {
+                if (!close_error.empty()) {
+                    close_error += ". ";
+                }
+                close_error += std::string{boid_csv->error()};
             }
             std::cerr << "Server failed: " << error.what();
             if (!close_error.empty()) {

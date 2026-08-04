@@ -1,6 +1,9 @@
 # app
-add_executable(Server server_main.cpp server_runtime.cpp)
-target_sources(Server PRIVATE FILE_SET CXX_MODULES FILES app_common.cppm app_protocol.cppm)
+add_executable(Server server_main.cpp server_runtime.cpp app_evidence.cpp)
+target_sources(
+    Server
+    PRIVATE FILE_SET CXX_MODULES FILES app_common.cppm app_evidence.cppm app_protocol.cppm
+)
 target_link_libraries(Server
     PRIVATE
         simnet_config

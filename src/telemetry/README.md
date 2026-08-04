@@ -66,9 +66,15 @@ application drains outside TEL-001 stage boundaries. Buffer overflow and open, w
 close failures make evidence collection fail and cause the owning process to fail. Files use
 exclusive creation and are never truncated, appended to, or overwritten.
 
+The Server boid evidence path uses the same process envelope, exclusive file lifecycle, buffer
+capacity, and drain threshold. It retains its existing sample cadence of one aggregate report per
+simulated second plus the last unsampled tick. The boid schema remains separate from replication
+because it describes simulation diagnostics and phase timings rather than a replication attempt.
+
 Enabled files are named `server_replication_v1_<process_started_unix_ns>.csv`,
-and `client_replication_v1_<process_started_unix_ns>.csv`. Semantic column changes require a new
-schema version.
+`client_replication_v1_<process_started_unix_ns>.csv`, and
+`server_boids_v1_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
+version.
 
 No in-process field represents externally captured packet bytes, operating-system counters, perf
 data, energy data, or netem data.
