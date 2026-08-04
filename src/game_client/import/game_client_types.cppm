@@ -11,7 +11,7 @@ import simnet.snapshot;
 
 export namespace simnet
 {
-    /// Raw facts reported by client patch application.
+    /// Observable result of applying one update to the nonauthoritative Client Flecs sink.
     struct ApplyPatchReport
     {
         Tick tick{};
