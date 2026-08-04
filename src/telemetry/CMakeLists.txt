@@ -22,9 +22,7 @@ target_sources(simnet_telemetry
         FILES
             include/simnet/telemetry_trace.hpp
     PRIVATE
-        src/telemetry.cpp
         src/telemetry_log.cpp
-        src/telemetry_metrics.cpp
 )
 
 target_link_libraries(simnet_telemetry

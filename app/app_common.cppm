@@ -153,7 +153,6 @@ namespace simnet::app
 
     TelemetryLifetime::~TelemetryLifetime()
     {
-        flush_telemetry();
         shutdown_telemetry();
     }
 

@@ -1561,7 +1561,7 @@ namespace simnet::app
                     boid_csv.sample(tick, game.last_step_report());
                 }
 
-                if (frame.step_limit_reached) {
+                if (frame.step_limit_reached && log_enabled(LogLevel::Warn)) {
                     log(LogCategory::Core,
                         LogLevel::Warn,
                         "server dropped simulation time ns="

@@ -4,6 +4,7 @@
 #include <type_traits>
 
 import simnet.telemetry;
+import simnet.config;
 import simnet.core;
 import simnet.snapshot;
 
@@ -15,6 +16,36 @@ static_assert(std::is_same_v<
 static_assert(std::is_same_v<
               decltype(simnet::ClientReplicationMeasurement::sink_application_cpu_time),
               simnet::Nanoseconds>);
+
+TEST_CASE("telemetry logging has explicit sink ownership", "[telemetry][logging]")
+{
+    simnet::shutdown_telemetry();
+    CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Info));
+
+    auto config = simnet::TelemetryConfig{
+        .console_log_enabled = true,
+        .file_log_enabled = false,
+        .min_level = "warn",
+    };
+    simnet::initialize_telemetry(config);
+    CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Info));
+    CHECK(simnet::log_enabled(simnet::LogLevel::Warn));
+    simnet::shutdown_telemetry();
+
+    config.console_log_enabled = false;
+    simnet::initialize_telemetry(config);
+    CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Critical));
+    CHECK_NOTHROW(
+        simnet::log(
+            simnet::LogCategory::Telemetry,
+            simnet::LogLevel::Critical,
+            "zero-sink logging is disabled"
+        )
+    );
+    simnet::shutdown_telemetry();
+    simnet::shutdown_telemetry();
+    CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Critical));
+}
 
 TEST_CASE("Server replication measurements preserve byte ownership", "[telemetry][server]")
 {

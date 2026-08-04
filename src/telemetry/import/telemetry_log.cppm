@@ -10,7 +10,7 @@ import simnet.config;
 
 export namespace simnet
 {
-    /// Initializes the logger, profiler (if enabled), and metric sinks.
+    /// Replaces the configured logging sinks. Zero configured sinks disable logging.
     void initialize_telemetry(TelemetryConfig const& config);
 
     /// Shuts down all sinks. Flushes pending messages before release. Idempotent.
@@ -19,6 +19,6 @@ export namespace simnet
     /// Writes a single log message with the given category and severity.
     void log(LogCategory category, LogLevel level, std::string_view message);
 
-    /// Flushes any buffered log messages to be written immediately.
-    void flush_telemetry();
+    /// Reports whether the configured logger can consume this severity.
+    [[nodiscard]] bool log_enabled(LogLevel level);
 }

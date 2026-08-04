@@ -6,15 +6,13 @@
 ### simnet.telemetry:types
 - `LogLevel` - severity levels: Trace, Debug, Info, Warn, Error, Critical, Off.
 - `LogCategory` - source categories: Core, Config, Telemetry, Simulation, Snapshot, Spatial, Pipeline, Transport, Render, Benchmark.
-- `TickMetrics` - legacy unused per-tick counters retained for TEL-002 cleanup.
-- `parse_log_level` - converts a configuration string to the corresponding `LogLevel` (defaults to `Info`).
 - `category_trace_color` - returns a Tracy-compatible RGBA color for each log category.
 
 ### simnet.telemetry:log
-- `initialize_telemetry` - sets up logging sinks. Requires a `TelemetryConfig`.
+- `initialize_telemetry` - replaces the configured logging sinks. Zero sinks disable logging.
 - `shutdown_telemetry` - flushes and releases all sinks. Safe to call multiple times.
-- `log` - writes a message to the active logger. Creates a default stdout logger if called before initialization.
-- `flush_telemetry` - forces any buffered log output to be written immediately.
+- `log` - writes a message when a configured sink accepts its severity.
+- `log_enabled` - reports whether a configured sink accepts a severity before callers format text.
 
 ### simnet.telemetry:metrics
 - `ServerReplicationMeasurement` - one Server replication attempt with application-owned stage
@@ -23,12 +21,6 @@
   snapshot commit and the nonauthoritative Flecs sink.
 - `ServerReplicationMeasurements` / `ClientReplicationMeasurements` - allocation-free latest
   record and completion counts used by the current application runtimes.
-- `MetricValue` - variant type storing one of: `int64`, `uint64`, `double`, `bool`, or `std::string`.
-- `MetricField` - a named metric value.
-- `MetricRecord` - a stream name, optional tick, and a set of `MetricField` entries.
-- `submit_tick_metrics` / `take_tick_metrics` / `clear_tick_metrics` - buffers for per-tick raw counters.
-- `submit_metric_record` / `take_metric_records` / `clear_metric_records` - buffers for generic structured metrics.
-- `format_metric_record_key_value` - formats a record as a single line of `stream tick=... field=value...`.
 
 The application runtimes own all timing boundaries. The telemetry module owns only value-like
 records and the allocation-free current observers. Snapshot, pipeline, transport, game, and render
@@ -65,13 +57,12 @@ Tracy instrumentation is controlled by the CMake `SIMNET_ENABLE_TRACY` option. I
 
 ## Notes
 
-- Logging and legacy metric-buffer functions are thread-safe. Initialization and shutdown must be
-  serialized externally. Replication observers are application-owned and are not synchronized.
-- `TickMetrics` and `MetricRecord` are unused legacy APIs. Their heap-backed buffers and formatting
-  path remain only until TEL-002 removes the general telemetry API.
+- Logging functions are thread-safe. Initialization and shutdown must be serialized externally.
+  Calls before initialization, after shutdown, or under a zero-sink configuration are no-ops.
+  Replication observers are application-owned and are not synchronized.
 - Replication measurement observation performs fixed-size value assignment without formatting,
   logging, file I/O, or heap allocation.
 - Tracy is an optional diagnostic view. It is not final research evidence.
-- `log()` always has a valid spdlog logger. If telemetry is never initialized, a default console logger is used automatically.
-- `parse_log_level` performs case-insensitive comparison. Unrecognized strings map to `LogLevel::Info`.
+- Log-level configuration remains case-insensitive. Unrecognized values still map to `Info` until
+  CFG-001 makes configuration validation fail closed.
 - The color palette returned by `category_trace_color` is based on Tableau 10 and is tuned for distinctness in the profiler.
