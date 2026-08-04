@@ -48,6 +48,7 @@ namespace
     {
         return {
             .id = id,
+            .classification = simnet::boid_entity_classification,
             .position = position,
             .heading = heading,
             .hue = static_cast<std::uint8_t>(id),
@@ -106,6 +107,7 @@ namespace
         auto hash = std::uint64_t{14695981039346656037ULL};
         for (std::size_t index = 0; index < value.size(); ++index) {
             hash_u32(hash, value.ids[index]);
+            hash_byte(hash, value.classifications[index].value());
             hash_u32(hash, std::bit_cast<std::uint32_t>(value.positions[index].x));
             hash_u32(hash, std::bit_cast<std::uint32_t>(value.positions[index].y));
             hash_u32(hash, std::bit_cast<std::uint32_t>(value.positions[index].z));
@@ -346,10 +348,13 @@ TEST_CASE(
     CHECK(after_move.headings[offset].y > 0.0F);
     CHECK(simnet::is_normalized_heading(after_move.headings[offset]));
 
-    CHECK_FALSE(simnet::spawn_authoritative_player(world));
+    auto const second_player_id = simnet::spawn_authoritative_player(world);
+    REQUIRE(second_player_id == 4U);
+    CHECK(snapshot(world, 2U).size() == 4U);
     REQUIRE(simnet::delete_authoritative_player(world, player_id));
+    REQUIRE(simnet::delete_authoritative_player(world, second_player_id));
     CHECK_FALSE(simnet::set_authoritative_player_input(world, player_id, {}));
-    CHECK(snapshot(world, 2U).size() == 2U);
+    CHECK(snapshot(world, 3U).size() == 2U);
     CHECK(simnet::authoritative_boid_count(world) == 2U);
 }
 

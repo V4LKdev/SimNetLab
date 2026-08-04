@@ -208,6 +208,7 @@ namespace simnet
                 scratch.bytes,
                 layout,
                 snapshot.ids[source_index],
+                snapshot.classifications[source_index],
                 snapshot.positions[source_index],
                 snapshot.headings[source_index],
                 snapshot.hues[source_index]

@@ -11,6 +11,9 @@ import simnet.snapshot;
 
 namespace
 {
+    constexpr simnet::EntityClassification known_classification{1U};
+    constexpr simnet::EntityClassification unknown_classification{247U};
+
     [[nodiscard]] simnet::WorldSnapshot
     make_snapshot(simnet::Tick tick, std::vector<simnet::EntityState> const& boids)
     {
@@ -19,6 +22,7 @@ namespace
         snapshot.reserve(boids.size());
         for (auto const& boid : boids) {
             snapshot.ids.push_back(boid.id);
+            snapshot.classifications.push_back(boid.classification);
             snapshot.positions.push_back(boid.position);
             snapshot.headings.push_back(boid.heading);
             snapshot.hues.push_back(boid.hue);
@@ -33,6 +37,7 @@ namespace
         for (std::uint32_t index = 0; index < count; ++index) {
             boids.push_back({
                 .id = static_cast<simnet::EntityNetId>(index + 1U),
+                .classification = known_classification,
                 .position = {static_cast<float>(index), 0.0F, 0.0F},
                 .heading = {1.0F, 0.0F, 0.0F},
                 .hue = static_cast<std::uint8_t>(index),
@@ -50,17 +55,41 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
     auto const baseline = make_snapshot(
         0,
         {
-            {.id = 1, .position = {1.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 10},
-            {.id = 2, .position = {2.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 20},
-            {.id = 3, .position = {3.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 30},
+            {.id = 1,
+             .classification = known_classification,
+             .position = {1.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 10},
+            {.id = 2,
+             .classification = known_classification,
+             .position = {2.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 20},
+            {.id = 3,
+             .classification = known_classification,
+             .position = {3.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 30},
         }
     );
     auto const current = make_snapshot(
         1,
         {
-            {.id = 1, .position = {1.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 10},
-            {.id = 2, .position = {20.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 20},
-            {.id = 4, .position = {4.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 40},
+            {.id = 1,
+             .classification = known_classification,
+             .position = {1.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 10},
+            {.id = 2,
+             .classification = known_classification,
+             .position = {20.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 20},
+            {.id = 4,
+             .classification = known_classification,
+             .position = {4.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 40},
         }
     );
 
@@ -121,15 +150,31 @@ TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][d
     auto const baseline = make_snapshot(
         10,
         {
-            {.id = 1, .position = {1.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 10},
-            {.id = 2, .position = {2.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 20},
+            {.id = 1,
+             .classification = known_classification,
+             .position = {1.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 10},
+            {.id = 2,
+             .classification = known_classification,
+             .position = {2.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 20},
         }
     );
     auto const tick_11 = make_snapshot(
         11,
         {
-            {.id = 1, .position = {11.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 10},
-            {.id = 2, .position = {2.0F, 0.0F, 0.0F}, .heading = {1.0F, 0.0F, 0.0F}, .hue = 20},
+            {.id = 1,
+             .classification = unknown_classification,
+             .position = {11.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 10},
+            {.id = 2,
+             .classification = known_classification,
+             .position = {2.0F, 0.0F, 0.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 20},
         }
     );
     auto tick_12 = baseline;
@@ -201,6 +246,7 @@ TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][d
             .valid
     );
     CHECK(reconstructed_first.positions[0].x == 11.0F);
+    CHECK(reconstructed_first.classifications[0] == unknown_classification);
 
     auto const decoded_second = simnet::decode_update(
         pipeline,
@@ -262,6 +308,114 @@ TEST_CASE(
 
     CHECK_FALSE(decoded.report.valid);
     CHECK(decoded.report.error.find("entity id zero is reserved") != std::string::npos);
+    CHECK(decode_state.latest_remote_sequence == 0U);
+}
+
+TEST_CASE(
+    "pipeline schema 4 preserves classifications in every record layout",
+    "[pipeline][snapshot][classification]"
+)
+{
+    auto const snapshot = make_snapshot(
+        7U,
+        {
+            {.id = 1U,
+             .classification = known_classification,
+             .position = {-10.0F, 0.0F, 10.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 10U},
+            {.id = 2U,
+             .classification = unknown_classification,
+             .position = {0.0F, 5.0F, -5.0F},
+             .heading = {0.0F, 1.0F, 0.0F},
+             .hue = 20U},
+        }
+    );
+
+    auto round_trip = [&snapshot](simnet::PipelineDefinition pipeline, std::uint32_t record_bytes) {
+        auto encode_state = simnet::ClientReplicationState{};
+        auto decode_state = simnet::ClientReplicationState{};
+        auto encode_scratch = simnet::PipelineScratch{};
+        auto decode_scratch = simnet::PipelineScratch{};
+        auto const encoded = simnet::encode_snapshot(
+            pipeline,
+            encode_state,
+            encode_scratch,
+            {.snapshot = &snapshot}
+        );
+        REQUIRE(encoded.update.bytes.size() >= 8U);
+        CHECK(std::to_integer<std::uint8_t>(encoded.update.bytes[6U]) == 0U);
+        CHECK(std::to_integer<std::uint8_t>(encoded.update.bytes[7U]) == 4U);
+        CHECK(encoded.report.payload_bytes == record_bytes * 2U);
+
+        auto const decoded = simnet::decode_update(
+            pipeline,
+            decode_state,
+            decode_scratch,
+            {.bytes = encoded.update.bytes}
+        );
+        REQUIRE(decoded.report.valid);
+        REQUIRE(decoded.update.upserts.size() == 2U);
+        CHECK(decoded.update.upserts[0].classification == known_classification);
+        CHECK(decoded.update.upserts[1].classification == unknown_classification);
+    };
+
+    round_trip({}, 30U);
+
+    auto quantized = simnet::PipelineDefinition{};
+    quantized.techniques = simnet::PipelineTechniqueFlags::Quantization;
+    round_trip(quantized, 18U);
+
+    auto quantized_oct = quantized;
+    quantized_oct.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
+    round_trip(quantized_oct, 16U);
+
+    auto bitpacked = quantized_oct;
+    bitpacked.techniques |= simnet::PipelineTechniqueFlags::BitPacking;
+    round_trip(bitpacked, 16U);
+}
+
+TEST_CASE(
+    "pipeline rejects zero wire classifications without sequence advancement",
+    "[pipeline][snapshot][classification][validation]"
+)
+{
+    auto const snapshot = make_linear_snapshot(1U, 1U);
+    auto const pipeline = simnet::PipelineDefinition{};
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+    auto encoded
+        = simnet::encode_snapshot(pipeline, encode_state, encode_scratch, {.snapshot = &snapshot});
+    REQUIRE(encoded.report.payload_bytes == 30U);
+
+    auto const payload_offset = encoded.update.bytes.size() - encoded.report.payload_bytes;
+    encoded.update.bytes[payload_offset + sizeof(simnet::EntityNetId)] = simnet::Byte{};
+
+    auto decode_state = simnet::ClientReplicationState{};
+    auto decode_scratch = simnet::PipelineScratch{};
+    auto const decoded = simnet::decode_update(
+        pipeline,
+        decode_state,
+        decode_scratch,
+        {.bytes = encoded.update.bytes}
+    );
+
+    CHECK_FALSE(decoded.report.valid);
+    CHECK(decoded.update.empty());
+    CHECK(decoded.report.error.find("classification zero is reserved") != std::string::npos);
+    CHECK(decode_state.latest_remote_sequence == 0U);
+
+    encoded.update.bytes[payload_offset + sizeof(simnet::EntityNetId)]
+        = static_cast<simnet::Byte>(known_classification.value());
+    encoded.update.bytes[7U] = static_cast<simnet::Byte>(3U);
+    auto const version_3 = simnet::decode_update(
+        pipeline,
+        decode_state,
+        decode_scratch,
+        {.bytes = encoded.update.bytes}
+    );
+    CHECK_FALSE(version_3.report.valid);
+    CHECK(version_3.report.error == "unsupported encoded update version");
     CHECK(decode_state.latest_remote_sequence == 0U);
 }
 
@@ -505,11 +659,17 @@ TEST_CASE(
         7,
         {
             {.id = 1,
+             .classification = known_classification,
              .position = {-100.0F, 0.0F, 100.0F},
              .heading = {1.0F, 0.0F, 0.0F},
              .hue = 10},
-            {.id = 2, .position = {0.0F, 25.0F, -50.0F}, .heading = {0.0F, 1.0F, 0.0F}, .hue = 20},
+            {.id = 2,
+             .classification = unknown_classification,
+             .position = {0.0F, 25.0F, -50.0F},
+             .heading = {0.0F, 1.0F, 0.0F},
+             .hue = 20},
             {.id = 3,
+             .classification = simnet::EntityClassification{2U},
              .position = {100.0F, -100.0F, 0.0F},
              .heading = {0.0F, 0.0F, 1.0F},
              .hue = 30},
@@ -525,7 +685,7 @@ TEST_CASE(
     REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
     CHECK(encoded.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
     CHECK(encoded.report.upsert_count == 3);
-    CHECK(encoded.report.payload_bytes == 45);
+    CHECK(encoded.report.payload_bytes == 48);
 
     auto const decoded = simnet::decode_update(
         pipeline,
@@ -539,5 +699,8 @@ TEST_CASE(
     CHECK(decoded.update.upserts[0].id == 1);
     CHECK(decoded.update.upserts[1].id == 2);
     CHECK(decoded.update.upserts[2].id == 3);
+    CHECK(decoded.update.upserts[0].classification == known_classification);
+    CHECK(decoded.update.upserts[1].classification == unknown_classification);
+    CHECK(decoded.update.upserts[2].classification == simnet::EntityClassification{2U});
     CHECK(simnet::validate_client_snapshot_patch(decoded.update).valid);
 }

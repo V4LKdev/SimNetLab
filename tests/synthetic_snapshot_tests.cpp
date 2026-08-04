@@ -14,5 +14,9 @@ TEST_CASE("synthetic snapshots use deterministic nonzero entity ids", "[syntheti
     auto const snapshot = simnet::make_synthetic_world_snapshot(settings, 7U);
 
     CHECK(snapshot.ids == std::vector<simnet::EntityNetId>{1U, 2U, 3U});
+    CHECK(
+        snapshot.classifications
+        == std::vector<simnet::EntityClassification>(3U, simnet::EntityClassification{1U})
+    );
     CHECK(simnet::validate_world_snapshot(snapshot).valid);
 }

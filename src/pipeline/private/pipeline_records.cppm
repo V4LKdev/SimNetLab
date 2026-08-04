@@ -152,6 +152,7 @@ namespace simnet::pipeline_records
     void write_bitpacked_record(
         std::vector<Byte>& bytes,
         EntityNetId id,
+        EntityClassification classification,
         Vec3f position,
         Vec3f heading,
         std::uint8_t hue,
@@ -161,6 +162,7 @@ namespace simnet::pipeline_records
         auto writer = pipeline_bitpack::BitWriter{.bytes = bytes};
         auto const [oct_x, oct_y] = pipeline_quantize::encode_oct_heading(heading);
         pipeline_bitpack::write_bits(writer, id, 32);
+        pipeline_bitpack::write_bits(writer, classification.value(), 8);
         pipeline_bitpack::write_bits(
             writer,
             pipeline_quantize::quantize_unorm16(position.x, bounds.min.x, bounds.max.x),
@@ -187,6 +189,7 @@ namespace simnet::pipeline_records
     {
         auto reader = pipeline_bitpack::BitReader{.bytes = bytes};
         auto id = std::uint32_t{};
+        auto classification = std::uint32_t{};
         auto px = std::uint32_t{};
         auto py = std::uint32_t{};
         auto pz = std::uint32_t{};
@@ -194,6 +197,7 @@ namespace simnet::pipeline_records
         auto hy = std::uint32_t{};
         auto hue = std::uint32_t{};
         if (!pipeline_bitpack::read_bits(reader, 32, id)
+            || !pipeline_bitpack::read_bits(reader, 8, classification)
             || !pipeline_bitpack::read_bits(reader, 16, px)
             || !pipeline_bitpack::read_bits(reader, 16, py)
             || !pipeline_bitpack::read_bits(reader, 16, pz)
@@ -204,6 +208,7 @@ namespace simnet::pipeline_records
         }
 
         boid.id = id;
+        boid.classification = EntityClassification{static_cast<std::uint8_t>(classification)};
         boid.position = {
             .x = pipeline_quantize::dequantize_unorm16(
                 static_cast<std::uint16_t>(px),
@@ -234,17 +239,27 @@ namespace simnet::pipeline_records
         std::vector<Byte>& bytes,
         RecordLayout const& layout,
         EntityNetId id,
+        EntityClassification classification,
         Vec3f position,
         Vec3f heading,
         std::uint8_t hue
     )
     {
         if (layout.bitpacked) {
-            write_bitpacked_record(bytes, id, position, heading, hue, layout.bounds);
+            write_bitpacked_record(
+                bytes,
+                id,
+                classification,
+                position,
+                heading,
+                hue,
+                layout.bounds
+            );
             return;
         }
 
         pipeline_wire::write_u32(bytes, id);
+        pipeline_wire::write_u8(bytes, classification.value());
         if (layout.quantized) {
             write_quantized_vec3(bytes, position, layout.bounds);
             if (layout.oct_heading) {
@@ -283,6 +298,11 @@ namespace simnet::pipeline_records
         if (!pipeline_wire::read_u32(bytes, offset, boid.id)) {
             return false;
         }
+        auto classification = std::uint8_t{};
+        if (!pipeline_wire::read_u8(bytes, offset, classification)) {
+            return false;
+        }
+        boid.classification = EntityClassification{classification};
         if (layout.quantized) {
             if (!read_quantized_vec3(bytes, offset, layout.bounds, boid.position)) {
                 return false;

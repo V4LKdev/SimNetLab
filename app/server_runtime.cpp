@@ -645,6 +645,7 @@ namespace
         );
         return {
             .id = id,
+            .classification = simnet::boid_entity_classification,
             .position = {
                 coordinate(x_index, 0x082efa98ec4e6c89ULL),
                 coordinate(y_index, 0x452821e638d01377ULL),
@@ -741,10 +742,16 @@ namespace
     {
         destination.tick = source.tick;
         destination.ids.resize(source.ids.size());
+        destination.classifications.resize(source.classifications.size());
         destination.positions.resize(source.positions.size());
         destination.headings.resize(source.headings.size());
         destination.hues.resize(source.hues.size());
         std::copy(source.ids.begin(), source.ids.end(), destination.ids.begin());
+        std::copy(
+            source.classifications.begin(),
+            source.classifications.end(),
+            destination.classifications.begin()
+        );
         std::copy(source.positions.begin(), source.positions.end(), destination.positions.begin());
         std::copy(source.headings.begin(), source.headings.end(), destination.headings.begin());
         std::copy(source.hues.begin(), source.hues.end(), destination.hues.begin());

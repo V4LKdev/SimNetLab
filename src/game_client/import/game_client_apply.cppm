@@ -22,9 +22,6 @@ export namespace simnet
     /// Returns the latest tick accepted by the client replication state.
     [[nodiscard]] Tick client_latest_replicated_tick(flecs::world const& world) noexcept;
 
-    /// Assigns the local Client's Server-owned player ID. Zero clears the assignment.
-    void set_client_player_entity_id(flecs::world& world, EntityNetId id);
-
     /// Returns the stored kind for a replicated entity, if currently present.
     [[nodiscard]] std::optional<EntityKind>
     client_entity_kind(flecs::world const& world, EntityNetId id) noexcept;
@@ -40,7 +37,8 @@ export namespace simnet
     /// `patch` must have passed validate_client_snapshot_patch at the decode boundary or be a
     /// FullReplace built from a successfully reconstructed WorldSnapshot. The caller must not
     /// mutate it between that proof and this call. Call register_client_game once during setup.
-    /// This path rejects stale ticks before changing Flecs state. Equal ticks are accepted.
+    /// This path rejects stale ticks and unsupported game classifications before changing Flecs
+    /// state. Equal ticks are accepted.
     /// Arbitrary or external updates must use apply_client_snapshot_patch.
     [[nodiscard]] ApplyPatchReport
     apply_client_snapshot_patch_unchecked(flecs::world& world, SnapshotUpdate const& patch);

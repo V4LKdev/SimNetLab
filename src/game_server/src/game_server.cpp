@@ -63,6 +63,7 @@ namespace
     {
         simnet::EntityNetId id{};
         flecs::entity_t entity{};
+        simnet::EntityClassification classification{};
         simnet::Vec3f position{};
         simnet::Vec3f heading{};
         std::uint8_t hue{};
@@ -100,7 +101,8 @@ namespace
 
     [[nodiscard]] bool valid_boid_state(simnet::EntityState const& boid) noexcept
     {
-        return boid.id != 0U && simnet::is_finite(boid.position) && simnet::is_finite(boid.heading)
+        return boid.id != 0U && boid.classification == simnet::boid_entity_classification
+            && simnet::is_finite(boid.position) && simnet::is_finite(boid.heading)
             && std::abs(simnet::length(boid.heading) - 1.0F)
             <= simnet::heading_normalization_tolerance;
     }
@@ -1555,16 +1557,6 @@ namespace simnet
         if (!valid_index(index) || index.next_id == 0U) {
             return 0U;
         }
-        for (auto const entity_id : index.entities) {
-            auto const entity = flecs::entity{world, entity_id};
-            if (!entity.is_alive() || !entity.has<EntityKindComponent>()) {
-                return 0U;
-            }
-            if (entity.get<EntityKindComponent>().value == EntityKind::Player) {
-                return 0U;
-            }
-        }
-
         auto id = index.next_id;
         auto position = find_index(index, id);
         while (position != index.ids.end() && *position == id) {
@@ -1907,8 +1899,9 @@ namespace simnet
                     auto const entities = iterator.entities();
 
                     for (auto row : iterator) {
-                        if (kinds[row].value != EntityKind::Boid
-                            && kinds[row].value != EntityKind::Player) {
+                        auto const classification
+                            = classification_from_entity_kind(kinds[row].value);
+                        if (!classification.has_value()) {
                             report.valid = false;
                             report.error = "world snapshot entity kind is unknown";
                             return;
@@ -1945,6 +1938,7 @@ namespace simnet
                         scratch.push_back({
                             .id = id,
                             .entity = entities[row],
+                            .classification = *classification,
                             .position = position,
                             .heading = heading,
                             .hue = hues[row].value,
@@ -1997,12 +1991,14 @@ namespace simnet
             out_snapshot.tick = tick;
             out_snapshot.reserve(scratch.size());
             out_snapshot.ids.resize(scratch.size());
+            out_snapshot.classifications.resize(scratch.size());
             out_snapshot.positions.resize(scratch.size());
             out_snapshot.headings.resize(scratch.size());
             out_snapshot.hues.resize(scratch.size());
             for (std::size_t position = 0; position < scratch.size(); ++position) {
                 auto const& entry = scratch[position];
                 out_snapshot.ids[position] = entry.id;
+                out_snapshot.classifications[position] = entry.classification;
                 out_snapshot.positions[position] = entry.position;
                 out_snapshot.headings[position] = entry.heading;
                 out_snapshot.hues[position] = entry.hue;

@@ -16,6 +16,7 @@ target_sources(simnet_game_shared
 target_link_libraries(simnet_game_shared
     PUBLIC
         simnet_core
+        simnet_snapshot
         $<IF:$<TARGET_EXISTS:flecs::flecs>,flecs::flecs,flecs::flecs_static>
 )
 

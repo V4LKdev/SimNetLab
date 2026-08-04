@@ -16,6 +16,8 @@ import simnet.snapshot;
 
 namespace
 {
+    constexpr simnet::EntityClassification synthetic_entity_classification{1U};
+
     struct SplitMix64
     {
         std::uint64_t state{};
@@ -128,6 +130,7 @@ namespace
     append_common_fields(simnet::WorldSnapshot& snapshot, std::uint32_t index, simnet::Tick tick)
     {
         snapshot.ids.push_back(static_cast<simnet::EntityNetId>(index + 1U));
+        snapshot.classifications.push_back(synthetic_entity_classification);
         snapshot.headings.push_back(deterministic_heading(index, tick));
         snapshot.hues.push_back(deterministic_hue(index, tick));
     }

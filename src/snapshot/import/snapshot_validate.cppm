@@ -23,6 +23,9 @@ export namespace simnet
     {
         // --- 1. Vector sizes ---
         auto const count = snapshot.ids.size();
+        if (snapshot.classifications.size() != count) {
+            return {false, "world snapshot classifications size does not match ids size"};
+        }
         if (snapshot.positions.size() != count) {
             return {false, "world snapshot positions size does not match ids size"};
         }
@@ -37,6 +40,9 @@ export namespace simnet
         for (std::size_t index = 0; index < count; ++index) {
             if (snapshot.ids[index] == 0U) {
                 return {false, "world snapshot entity id zero is reserved"};
+            }
+            if (snapshot.classifications[index].value() == 0U) {
+                return {false, "world snapshot classification zero is reserved"};
             }
             if (index != 0U && snapshot.ids[index - 1] >= snapshot.ids[index]) {
                 return {false, "world snapshot ids must be strictly ascending"};
@@ -75,6 +81,9 @@ export namespace simnet
         for (std::size_t index = 0; index < patch.upserts.size(); ++index) {
             if (patch.upserts[index].id == 0U) {
                 return {false, "client snapshot patch upsert entity id zero is reserved"};
+            }
+            if (patch.upserts[index].classification.value() == 0U) {
+                return {false, "client snapshot patch upsert classification zero is reserved"};
             }
             if (index != 0U && patch.upserts[index - 1].id >= patch.upserts[index].id) {
                 return {false, "client snapshot patch upserts must be strictly ascending"};

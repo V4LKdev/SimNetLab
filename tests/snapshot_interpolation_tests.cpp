@@ -19,6 +19,7 @@ namespace
         result.reserve(boids.size());
         for (auto const& boid : boids) {
             result.ids.push_back(boid.id);
+            result.classifications.push_back(boid.classification);
             result.positions.push_back(boid.position);
             result.headings.push_back(boid.heading);
             result.hues.push_back(boid.hue);
@@ -32,13 +33,13 @@ TEST_CASE("snapshot interpolation blends matching presentation state", "[snapsho
     auto const previous = snapshot(
         10U,
         {
-            {1U, {}, {1.0F, 0.0F, 0.0F}, 250U},
+            {1U, simnet::EntityClassification{1U}, {}, {1.0F, 0.0F, 0.0F}, 250U},
         }
     );
     auto const current = snapshot(
         11U,
         {
-            {1U, {10.0F, 4.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 6U},
+            {1U, simnet::EntityClassification{2U}, {10.0F, 4.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 6U},
         }
     );
     auto output = simnet::WorldSnapshot{};
@@ -46,6 +47,7 @@ TEST_CASE("snapshot interpolation blends matching presentation state", "[snapsho
     REQUIRE(simnet::interpolate_world_snapshots(previous, current, 0.5, output).valid);
     REQUIRE(output.size() == 1U);
     CHECK(output.tick == 11U);
+    CHECK(output.classifications[0] == simnet::EntityClassification{2U});
     CHECK(output.positions[0].x == Catch::Approx(5.0F));
     CHECK(output.positions[0].y == Catch::Approx(2.0F));
     CHECK(simnet::length(output.headings[0]) == Catch::Approx(1.0F));
@@ -53,6 +55,7 @@ TEST_CASE("snapshot interpolation blends matching presentation state", "[snapsho
     CHECK(output.hues[0] == 0U);
 
     REQUIRE(simnet::interpolate_world_snapshots(previous, current, 0.0, output).valid);
+    CHECK(output.classifications[0] == simnet::EntityClassification{2U});
     CHECK(output.positions[0].x == 0.0F);
     CHECK(output.hues[0] == 250U);
     REQUIRE(simnet::interpolate_world_snapshots(previous, current, 1.0, output).valid);
@@ -65,13 +68,13 @@ TEST_CASE("unchecked snapshot interpolation matches the checked path", "[snapsho
     auto const previous = snapshot(
         10U,
         {
-            {1U, {}, {1.0F, 0.0F, 0.0F}, 250U},
+            {1U, simnet::EntityClassification{1U}, {}, {1.0F, 0.0F, 0.0F}, 250U},
         }
     );
     auto const current = snapshot(
         11U,
         {
-            {1U, {10.0F, 4.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 6U},
+            {1U, simnet::EntityClassification{2U}, {10.0F, 4.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, 6U},
         }
     );
     auto checked = simnet::WorldSnapshot{};
@@ -84,6 +87,7 @@ TEST_CASE("unchecked snapshot interpolation matches the checked path", "[snapsho
 
     CHECK(unchecked.tick == checked.tick);
     CHECK(unchecked.ids == checked.ids);
+    CHECK(unchecked.classifications == checked.classifications);
     REQUIRE(unchecked.positions.size() == checked.positions.size());
     CHECK(unchecked.positions.front().x == checked.positions.front().x);
     CHECK(unchecked.positions.front().y == checked.positions.front().y);
@@ -100,21 +104,25 @@ TEST_CASE("snapshot interpolation uses the current entity population", "[snapsho
     auto const previous = snapshot(
         20U,
         {
-            {1U, {1.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U},
-            {2U, {2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 2U},
+            {1U, simnet::EntityClassification{1U}, {1.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 1U},
+            {2U, simnet::EntityClassification{1U}, {2.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 2U},
         }
     );
     auto const current = snapshot(
         21U,
         {
-            {2U, {4.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 4U},
-            {3U, {6.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 6U},
+            {2U, simnet::EntityClassification{247U}, {4.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 4U},
+            {3U, simnet::EntityClassification{247U}, {6.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 6U},
         }
     );
     auto output = simnet::WorldSnapshot{};
 
     REQUIRE(simnet::interpolate_world_snapshots(previous, current, 0.5, output).valid);
     CHECK(output.ids == std::vector<simnet::EntityNetId>{2U, 3U});
+    CHECK(
+        output.classifications
+        == std::vector<simnet::EntityClassification>(2U, simnet::EntityClassification{247U})
+    );
     CHECK(output.positions[0].x == Catch::Approx(3.0F));
     CHECK(output.positions[1].x == 6.0F);
 }
@@ -127,13 +135,13 @@ TEST_CASE(
     auto previous = snapshot(
         1U,
         {
-            {1U, {}, {1.0F, 0.0F, 0.0F}, 1U},
+            {1U, simnet::EntityClassification{1U}, {}, {1.0F, 0.0F, 0.0F}, 1U},
         }
     );
     auto const current = snapshot(
         2U,
         {
-            {1U, {1.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 2U},
+            {1U, simnet::EntityClassification{1U}, {1.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, 2U},
         }
     );
     auto output = current;

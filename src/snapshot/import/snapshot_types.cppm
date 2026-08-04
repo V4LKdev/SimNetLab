@@ -16,11 +16,41 @@ export namespace simnet
     /// Must exceed octahedral dequantization error.
     inline constexpr float heading_normalization_tolerance = 0.01F;
 
+    /// Opaque replicated entity classification. Zero is reserved as invalid.
+    class EntityClassification
+    {
+    public:
+        constexpr EntityClassification() noexcept = default;
+
+        explicit constexpr EntityClassification(std::uint8_t value) noexcept
+            : value_(value)
+        {
+        }
+
+        [[nodiscard]] constexpr std::uint8_t value() const noexcept
+        {
+            return value_;
+        }
+
+        [[nodiscard]] constexpr bool operator==(EntityClassification const& other) const noexcept
+        {
+            return value_ == other.value_;
+        }
+
+    private:
+        std::uint8_t value_{};
+    };
+
+    static_assert(sizeof(EntityClassification) == 1U);
+
     /// Per-entity replicated state.
     struct EntityState
     {
         /// Nonzero network identifier. Zero is reserved as invalid.
         EntityNetId id{};
+
+        /// Nonzero opaque entity classification.
+        EntityClassification classification{};
 
         /// World-space position.
         Vec3f position{};
@@ -41,6 +71,9 @@ export namespace simnet
 
         /// Entity network identifiers (nonzero and strictly ascending).
         std::vector<EntityNetId> ids;
+
+        /// Opaque entity classifications, same index order as ids.
+        std::vector<EntityClassification> classifications;
 
         /// Positions, same index order as ids.
         std::vector<Vec3f> positions;
@@ -67,6 +100,7 @@ export namespace simnet
         void reserve(std::size_t count)
         {
             ids.reserve(count);
+            classifications.reserve(count);
             positions.reserve(count);
             headings.reserve(count);
             hues.reserve(count);
@@ -77,6 +111,7 @@ export namespace simnet
         {
             tick = {};
             ids.clear();
+            classifications.clear();
             positions.clear();
             headings.clear();
             hues.clear();

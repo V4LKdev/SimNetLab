@@ -35,6 +35,7 @@ export namespace simnet
         auto const blend = static_cast<float>(std::clamp(alpha, 0.0, 1.0));
         output.tick = current.tick;
         output.ids.resize(current.size());
+        output.classifications.resize(current.size());
         output.positions.resize(current.size());
         output.headings.resize(current.size());
         output.hues.resize(current.size());
@@ -47,6 +48,7 @@ export namespace simnet
             }
 
             output.ids[current_index] = id;
+            output.classifications[current_index] = current.classifications[current_index];
             if (previous_index >= previous.size() || previous.ids[previous_index] != id) {
                 output.positions[current_index] = current.positions[current_index];
                 output.headings[current_index] = current.headings[current_index];
@@ -81,8 +83,9 @@ export namespace simnet
 
     /// Builds a presentation snapshot using the current snapshot's entity set.
     ///
-    /// Matching entities interpolate position, normalized heading, and circular
-    /// hue. New entities use their current state. Removed entities are absent.
+    /// Matching entities interpolate position, normalized heading, and circular hue.
+    /// Classification is categorical and always uses the current authoritative endpoint.
+    /// New entities use their current state. Removed entities are absent.
     /// Inputs and output must be distinct objects. This is the normal entry point for arbitrary or
     /// external snapshot values.
     [[nodiscard]] inline SnapshotValidationResult interpolate_world_snapshots(

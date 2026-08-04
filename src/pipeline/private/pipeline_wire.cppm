@@ -23,7 +23,7 @@ namespace simnet::pipeline_wire
     // Magic 'SNPL' (SimNet Pipeline Layout) used to reject invalid encoded updates.
     inline constexpr std::uint32_t encoded_update_magic = 0x534E504Cu; // S N P L
     inline constexpr std::uint16_t protocol_version = 1;
-    inline constexpr std::uint16_t schema_version = 3;
+    inline constexpr std::uint16_t schema_version = 4;
 
     // Field sizes
     inline constexpr std::uint32_t u8_bytes = 1;
@@ -35,32 +35,36 @@ namespace simnet::pipeline_wire
 
     // Record sizes for each supported layout
     inline constexpr std::uint32_t raw_record_bytes = u32_bytes // id
+        + u8_bytes // classification
         + vec3_bytes // position
         + vec3_bytes // heading
         + u8_bytes; // hue
-    // 29
+    // 30
 
     inline constexpr std::uint32_t quantized_record_bytes = u32_bytes //  id
+        + u8_bytes //  classification
         + (3 * u16_bytes) //  position
         + (3 * u16_bytes) //  heading
         + u8_bytes; //  hue
-    // 17
+    // 18
 
     inline constexpr std::uint32_t quantized_oct_record_bytes = u32_bytes //  id
+        + u8_bytes //  classification
         + (3 * u16_bytes) //  position
         + (2 * u16_bytes) //  oct heading
         + u8_bytes; //  hue
-    // 15
+    // 16
 
     inline constexpr std::uint32_t bitpacked_quantized_oct_record_bits = 32 //  id
+        + 8 //  classification
         + (3 * 16) //  position
         + (2 * 16) //  oct heading
         + 8; //  hue
-    // 120 bit
+    // 128 bit
 
     inline constexpr std::uint32_t bitpacked_quantized_oct_record_bytes
         = (bitpacked_quantized_oct_record_bits + 7) / 8;
-    // 15
+    // 16
 
     inline constexpr std::uint32_t delete_record_bytes = u32_bytes; // 4
 
@@ -77,11 +81,11 @@ namespace simnet::pipeline_wire
         + u32_bytes; //  payload_bytes
     // 45
 
-    static_assert(raw_record_bytes == 29);
-    static_assert(quantized_record_bytes == 17);
-    static_assert(quantized_oct_record_bytes == 15);
-    static_assert(bitpacked_quantized_oct_record_bits == 120);
-    static_assert(bitpacked_quantized_oct_record_bytes == 15);
+    static_assert(raw_record_bytes == 30);
+    static_assert(quantized_record_bytes == 18);
+    static_assert(quantized_oct_record_bytes == 16);
+    static_assert(bitpacked_quantized_oct_record_bits == 128);
+    static_assert(bitpacked_quantized_oct_record_bytes == 16);
     static_assert(delete_record_bytes == 4);
     static_assert(header_bytes == 45);
 

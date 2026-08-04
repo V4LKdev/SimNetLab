@@ -9,6 +9,7 @@ namespace
     {
         return {
             .id = id,
+            .classification = simnet::EntityClassification{1U},
             .heading = {1.0F, 0.0F, 0.0F},
         };
     }
@@ -17,11 +18,49 @@ namespace
     {
         auto result = simnet::WorldSnapshot{};
         result.ids.push_back(id);
+        result.classifications.push_back(simnet::EntityClassification{1U});
         result.positions.push_back({});
         result.headings.push_back({1.0F, 0.0F, 0.0F});
         result.hues.push_back(0U);
         return result;
     }
+}
+
+TEST_CASE("entity classification is a strong one-byte value", "[snapshot][validation]")
+{
+    STATIC_REQUIRE(sizeof(simnet::EntityClassification) == 1U);
+    CHECK(simnet::EntityClassification{}.value() == 0U);
+    CHECK(simnet::EntityClassification{247U}.value() == 247U);
+}
+
+TEST_CASE(
+    "snapshot classification validation preserves unknown nonzero values",
+    "[snapshot][validation]"
+)
+{
+    auto value = snapshot(1U);
+    value.classifications.front() = simnet::EntityClassification{247U};
+    CHECK(simnet::validate_world_snapshot(value).valid);
+
+    value.classifications.clear();
+    auto const mismatched = simnet::validate_world_snapshot(value);
+    CHECK_FALSE(mismatched.valid);
+    CHECK(mismatched.message == "world snapshot classifications size does not match ids size");
+
+    value = snapshot(1U);
+    value.classifications.front() = simnet::EntityClassification{};
+    auto const zero = simnet::validate_world_snapshot(value);
+    CHECK_FALSE(zero.valid);
+    CHECK(zero.message == "world snapshot classification zero is reserved");
+
+    auto update = simnet::SnapshotUpdate{};
+    update.upserts.push_back(entity(1U));
+    update.upserts.front().classification = simnet::EntityClassification{247U};
+    CHECK(simnet::validate_client_snapshot_patch(update).valid);
+    update.upserts.front().classification = simnet::EntityClassification{};
+    auto const zero_upsert = simnet::validate_client_snapshot_patch(update);
+    CHECK_FALSE(zero_upsert.valid);
+    CHECK(zero_upsert.message == "client snapshot patch upsert classification zero is reserved");
 }
 
 TEST_CASE("replicated entity id zero is rejected", "[snapshot][validation]")
@@ -61,6 +100,7 @@ TEST_CASE("replicated entity id zero is rejected", "[snapshot][validation]")
     CHECK_FALSE(reconstruction.valid);
     CHECK(reconstructed.tick == reconstructed_before.tick);
     CHECK(reconstructed.ids == reconstructed_before.ids);
+    CHECK(reconstructed.classifications == reconstructed_before.classifications);
     REQUIRE(reconstructed.positions.size() == reconstructed_before.positions.size());
     CHECK(reconstructed.positions.front().x == reconstructed_before.positions.front().x);
     CHECK(reconstructed.positions.front().y == reconstructed_before.positions.front().y);
@@ -98,6 +138,7 @@ TEST_CASE("FullReplace updates cannot carry deletes", "[snapshot][validation]")
     CHECK(reconstruction.message == invalid.message);
     CHECK(reconstructed.tick == reconstructed_before.tick);
     CHECK(reconstructed.ids == reconstructed_before.ids);
+    CHECK(reconstructed.classifications == reconstructed_before.classifications);
     REQUIRE(reconstructed.positions.size() == reconstructed_before.positions.size());
     CHECK(reconstructed.positions.front().x == reconstructed_before.positions.front().x);
     CHECK(reconstructed.positions.front().y == reconstructed_before.positions.front().y);
@@ -131,6 +172,7 @@ TEST_CASE("validated Patch reconstruction still requires a baseline", "[snapshot
     CHECK(result.message == "snapshot patch requires a baseline");
     CHECK(reconstructed.tick == reconstructed_before.tick);
     CHECK(reconstructed.ids == reconstructed_before.ids);
+    CHECK(reconstructed.classifications == reconstructed_before.classifications);
     CHECK(reconstructed.positions.size() == reconstructed_before.positions.size());
     CHECK(reconstructed.headings.size() == reconstructed_before.headings.size());
     CHECK(reconstructed.hues == reconstructed_before.hues);

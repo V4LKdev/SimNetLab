@@ -22,7 +22,7 @@ export namespace simnet
         bool right_mouse{};
     };
 
-    /// Spawns the one supported authoritative player. Returns zero on failure.
+    /// Spawns an authoritative player. Returns zero on failure.
     [[nodiscard]] EntityNetId spawn_authoritative_player(flecs::world& world);
 
     /// Replaces the latest-state input owned by the authoritative player.

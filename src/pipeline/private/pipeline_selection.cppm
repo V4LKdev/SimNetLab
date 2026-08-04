@@ -64,7 +64,8 @@ namespace simnet::pipeline_selection
         std::size_t baseline_index
     ) noexcept
     {
-        return same_vec3(current.positions[current_index], baseline.positions[baseline_index])
+        return current.classifications[current_index] == baseline.classifications[baseline_index]
+            && same_vec3(current.positions[current_index], baseline.positions[baseline_index])
             && same_vec3(current.headings[current_index], baseline.headings[baseline_index])
             && current.hues[current_index] == baseline.hues[baseline_index];
     }

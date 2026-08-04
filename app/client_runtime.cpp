@@ -396,6 +396,7 @@ namespace
         for (std::size_t index = 0; index < snapshot.size(); ++index) {
             patch.upserts.push_back({
                 .id = snapshot.ids[index],
+                .classification = snapshot.classifications[index],
                 .position = snapshot.positions[index],
                 .heading = snapshot.headings[index],
                 .hue = snapshot.hues[index],
@@ -541,7 +542,6 @@ namespace
     [[nodiscard]] bool apply_application_control(
         simnet::ReceivedApplicationControl const& control,
         simnet::app::ClientRole requested_role,
-        flecs::world& world,
         bool& simulation_paused,
         bool& pause_state_received,
         bool& join_accepted,
@@ -562,7 +562,6 @@ namespace
             && message.role == requested_role) {
             join_accepted = true;
             player_id = message.player_id;
-            simnet::set_client_player_entity_id(world, player_id);
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Info,
@@ -773,7 +772,6 @@ namespace simnet::app
                             || !apply_application_control(
                                 *control,
                                 requested_role,
-                                world,
                                 authoritative_pause_state,
                                 pause_state_received,
                                 join_accepted,
