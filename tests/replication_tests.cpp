@@ -69,6 +69,57 @@ namespace
     }
 }
 
+TEST_CASE(
+    "shared component registration is canonical across Flecs worlds",
+    "[replication][registration]"
+)
+{
+    auto first_world = flecs::world{};
+    auto second_world = flecs::world{};
+    simnet::register_game_components(first_world);
+    simnet::register_game_components(second_world);
+
+    auto constexpr component_names = std::array{
+        "simnet::EntityKindComponent",
+        "simnet::NetIdentity",
+        "simnet::Position",
+        "simnet::Heading",
+        "simnet::Hue",
+    };
+    auto const first_ids = std::array{
+        first_world.id<simnet::EntityKindComponent>(),
+        first_world.id<simnet::NetIdentity>(),
+        first_world.id<simnet::Position>(),
+        first_world.id<simnet::Heading>(),
+        first_world.id<simnet::Hue>(),
+    };
+    auto const second_ids = std::array{
+        second_world.id<simnet::EntityKindComponent>(),
+        second_world.id<simnet::NetIdentity>(),
+        second_world.id<simnet::Position>(),
+        second_world.id<simnet::Heading>(),
+        second_world.id<simnet::Hue>(),
+    };
+
+    for (std::size_t index = 0; index < component_names.size(); ++index) {
+        auto const first_component = first_world.lookup(component_names[index]);
+        auto const second_component = second_world.lookup(component_names[index]);
+        REQUIRE(first_component.is_alive());
+        REQUIRE(second_component.is_alive());
+        CHECK(first_component.id() == first_ids[index]);
+        CHECK(second_component.id() == second_ids[index]);
+        CHECK(first_component.id() == second_component.id());
+    }
+    for (std::size_t first = 0; first < first_ids.size(); ++first) {
+        for (std::size_t second = first + 1; second < first_ids.size(); ++second) {
+            CHECK(first_ids[first] != first_ids[second]);
+            CHECK(second_ids[first] != second_ids[second]);
+        }
+    }
+    CHECK(first_world.lookup("simnet::EntityKind").id() == 0U);
+    CHECK(second_world.lookup("simnet::EntityKind").id() == 0U);
+}
+
 TEST_CASE("five-tick replication contract remains intact", "[replication]")
 {
     auto pipeline = simnet::PipelineDefinition{};
