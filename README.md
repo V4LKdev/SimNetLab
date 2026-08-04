@@ -95,7 +95,7 @@ The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set th
 - `simnet_config`: JSON configuration and compatibility fingerprints
 - `simnet_snapshot`: replicated world snapshots and client patches
 - `simnet_synthetic`: deterministic snapshot generation
-- `simnet_telemetry`: logging, metrics storage, and profiling hooks
+- `simnet_telemetry`: logging, typed measurement contracts, and profiling hooks
 - `simnet_spatial`: sparse uniform-grid queries
 - `simnet_game_shared`: shared Flecs contracts
 - `simnet_game_server`: authoritative lifecycle, boid simulation, and snapshot extraction
@@ -109,8 +109,8 @@ The placeholder benchmarking target is disabled by default. Enable
 `SIMNET_ENABLE_BENCHMARKING` only when working on the future benchmark harness.
 The Server writes a small boid-tuning CSV under `telemetry.log_directory` when
 `metrics_csv_enabled` is true. It contains one aggregate row per simulated
-second and is not the future benchmark runner. JSON metrics export and benchmark
-settings remain parsed vocabulary without runtime execution.
+second and is not the future benchmark runner. Reserved benchmark settings are
+not part of the runtime measurement contract.
 
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the player role. Stationary observer remains the default.
 

@@ -31,6 +31,7 @@ target_link_libraries(simnet_telemetry
     PUBLIC
         simnet_core
         simnet_config
+        simnet_snapshot
     PRIVATE
         spdlog::spdlog
 )

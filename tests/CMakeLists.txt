@@ -13,6 +13,7 @@ add_executable(SimNetTests
     snapshot_interpolation_tests.cpp
     snapshot_validation_tests.cpp
     spatial_tests.cpp
+    telemetry_tests.cpp
     transport_tests.cpp
 )
 target_sources(SimNetTests
@@ -42,6 +43,7 @@ target_link_libraries(SimNetTests
         simnet_runtime
         simnet_snapshot
         simnet_spatial
+        simnet_telemetry
         simnet_transport
         Catch2::Catch2WithMain
 )

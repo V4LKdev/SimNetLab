@@ -170,6 +170,64 @@ namespace
         bool dirty{true};
     };
 
+    [[nodiscard]] std::string_view
+    server_replication_outcome_name(simnet::ServerReplicationOutcome outcome) noexcept
+    {
+        using enum simnet::ServerReplicationOutcome;
+        switch (outcome) {
+            case SnapshotExtractionFailed:
+                return "snapshot_extraction_failed";
+            case Skipped:
+                return "skipped";
+            case TransportSendFailed:
+                return "transport_send_failed";
+            case Sent:
+                return "sent";
+        }
+        return "unknown";
+    }
+
+    void
+    log_server_replication_measurements(simnet::ServerReplicationMeasurements const& measurements)
+    {
+        if (!measurements.latest_attempt.has_value()) {
+            simnet::log(
+                simnet::LogCategory::Telemetry,
+                simnet::LogLevel::Info,
+                "server replication measurements attempts=0 sent=0"
+            );
+            return;
+        }
+
+        auto const& value = *measurements.latest_attempt;
+        simnet::log(
+            simnet::LogCategory::Telemetry,
+            simnet::LogLevel::Info,
+            "server replication measurements attempts=" + std::to_string(measurements.attempt_count)
+                + " sent=" + std::to_string(measurements.sent_count) + " latest_outcome="
+                + std::string{server_replication_outcome_name(value.outcome)} + " tick="
+                + std::to_string(value.tick) + " sequence=" + std::to_string(value.sequence)
+                + " baseline_sequence=" + std::to_string(value.baseline_sequence)
+                + " snapshot_kind=" + std::to_string(static_cast<unsigned>(value.snapshot_kind))
+                + " source_entities=" + std::to_string(value.source_entity_count)
+                + " selected_entities=" + std::to_string(value.selected_entity_count)
+                + " upserts=" + std::to_string(value.upsert_count)
+                + " deletes=" + std::to_string(value.delete_count) + " encoded_update_bytes="
+                + std::to_string(value.encoded_update_bytes) + " application_payload_bytes="
+                + std::to_string(value.application_payload_bytes) + " transport_payload_bytes="
+                + std::to_string(value.transport_payload_bytes) + " snapshot_extraction_cpu_ns="
+                + std::to_string(value.snapshot_extraction_cpu_time.count())
+                + " baseline_resolution_cpu_ns="
+                + std::to_string(value.baseline_resolution_cpu_time.count())
+                + " encode_cpu_ns=" + std::to_string(value.encode_cpu_time.count())
+                + " transport_send_cpu_ns=" + std::to_string(value.transport_send_cpu_time.count())
+                + " snapshot_retention_cpu_ns="
+                + std::to_string(value.snapshot_retention_cpu_time.count())
+                + " total_replication_cpu_ns="
+                + std::to_string(value.total_replication_cpu_time.count())
+        );
+    }
+
 #if defined(SIMNET_ENABLE_RENDER)
     struct PresentationSnapshotState
     {
@@ -1129,7 +1187,8 @@ namespace
         simnet::TransportServer& transport,
         std::optional<PeerRuntimeState>& peer,
         simnet::PipelineScratch& scratch,
-        CurrentSnapshotState& snapshot_state
+        CurrentSnapshotState& snapshot_state,
+        simnet::ServerReplicationMeasurements& measurements
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
@@ -1146,8 +1205,16 @@ namespace
             return true;
         }
 
+        auto measurement = simnet::ServerReplicationMeasurement{.tick = tick};
+        auto const total_start = simnet::steady_now_ns();
+
+        auto const extraction_start = simnet::steady_now_ns();
         auto const extraction = ensure_current_snapshot(world, tick, snapshot_state);
+        measurement.snapshot_extraction_cpu_time = simnet::steady_now_ns() - extraction_start;
         if (!extraction.valid) {
+            measurement.outcome = simnet::ServerReplicationOutcome::SnapshotExtractionFailed;
+            measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
+            measurements.observe(measurement);
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Error,
@@ -1156,6 +1223,7 @@ namespace
             return false;
         }
 
+        auto const baseline_start = simnet::steady_now_ns();
         auto const delta_enabled
             = simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::Delta);
         auto baseline = peer->retained_snapshots.end();
@@ -1166,7 +1234,9 @@ namespace
             }
         }
         auto const use_baseline = baseline != peer->retained_snapshots.end();
+        measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
         auto encoded = simnet::EncodeOutput{};
+        auto const encode_start = simnet::steady_now_ns();
         {
             SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_encode", simnet::LogCategory::Pipeline);
             // Current and retained baseline snapshots come only from successful extraction.
@@ -1181,10 +1251,25 @@ namespace
                 }
             );
         }
+        measurement.encode_cpu_time = simnet::steady_now_ns() - encode_start;
+        measurement.tick = encoded.report.tick;
+        measurement.sequence = encoded.report.sequence;
+        measurement.baseline_sequence = encoded.report.baseline_sequence;
+        measurement.snapshot_kind = encoded.report.snapshot_kind;
+        measurement.source_entity_count = encoded.report.input_entities;
+        measurement.selected_entity_count = encoded.report.selected_entities;
+        measurement.upsert_count = encoded.report.upsert_count;
+        measurement.delete_count = encoded.report.delete_count;
+        measurement.encoded_update_bytes = encoded.report.encoded_update_bytes;
         if (encoded.kind == simnet::EncodeResultKind::Skipped) {
+            measurement.outcome = simnet::ServerReplicationOutcome::Skipped;
+            measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
+            measurements.observe(measurement);
             return true;
         }
+        measurement.application_payload_bytes = encoded.report.encoded_update_bytes;
         auto sent = simnet::TransportResult{};
+        auto const send_start = simnet::steady_now_ns();
         {
             SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_send", simnet::LogCategory::Transport);
             sent = transport.send({
@@ -1194,7 +1279,11 @@ namespace
                 .payload = encoded.update.bytes,
             });
         }
+        measurement.transport_send_cpu_time = simnet::steady_now_ns() - send_start;
         if (!sent.ok) {
+            measurement.outcome = simnet::ServerReplicationOutcome::TransportSendFailed;
+            measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
+            measurements.observe(measurement);
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Error,
@@ -1202,9 +1291,15 @@ namespace
             );
             return false;
         }
+        measurement.transport_payload_bytes = encoded.report.encoded_update_bytes;
 
+        auto const retention_start = simnet::steady_now_ns();
         retain_snapshot(*peer, encoded.update.sequence, snapshot_state.snapshot);
         peer->newest_emitted_sequence = encoded.update.sequence;
+        measurement.snapshot_retention_cpu_time = simnet::steady_now_ns() - retention_start;
+        measurement.outcome = simnet::ServerReplicationOutcome::Sent;
+        measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
+        measurements.observe(measurement);
         return true;
     }
 
@@ -1369,6 +1464,7 @@ namespace simnet::app
             auto peer = std::optional<PeerRuntimeState>{};
             auto events = std::vector<TransportEvent>{};
             auto scratch = PipelineScratch{};
+            auto replication_measurements = ServerReplicationMeasurements{};
             auto const delivery = snapshot_delivery(local.transport);
             auto const delta_enabled
                 = has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta);
@@ -1442,7 +1538,8 @@ namespace simnet::app
                             transport,
                             peer,
                             scratch,
-                            current_snapshot
+                            current_snapshot,
+                            replication_measurements
                         )) {
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;
@@ -1574,6 +1671,7 @@ namespace simnet::app
             }
             disconnect_before_stop(transport, peer);
             transport.stop();
+            log_server_replication_measurements(replication_measurements);
             log(LogCategory::Simulation,
                 LogLevel::Info,
                 "server runtime stopped reason=" + std::string{shutdown_reason_name(stop.reason())}

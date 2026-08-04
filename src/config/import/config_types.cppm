@@ -128,7 +128,7 @@ export namespace simnet
         std::string entity_mesh_path{};
     };
 
-    /// Logging settings and reserved metrics-export vocabulary.
+    /// Logging settings and current sampled Server evidence control.
     struct TelemetryConfig
     {
         bool console_log_enabled{true};
@@ -136,7 +136,6 @@ export namespace simnet
         std::string log_directory{"logs"};
         std::string min_level{"info"};
         bool metrics_csv_enabled{true}; /// Enables sampled Server boid evidence CSV.
-        bool metrics_json_enabled{false}; /// Parsed. Export is not implemented.
     };
 
     /// Reserved load-ramp settings. Application behavior is not implemented.

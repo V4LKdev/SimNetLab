@@ -59,6 +59,70 @@ namespace
 
     constexpr std::size_t retained_snapshot_limit = 64;
 
+    [[nodiscard]] std::string_view
+    client_replication_outcome_name(simnet::ClientReplicationOutcome outcome) noexcept
+    {
+        using enum simnet::ClientReplicationOutcome;
+        switch (outcome) {
+            case DecodeFailed:
+                return "decode_failed";
+            case StaleSequenceIgnored:
+                return "stale_sequence_ignored";
+            case BaselineUnavailable:
+                return "baseline_unavailable";
+            case ReconstructionFailed:
+                return "reconstruction_failed";
+            case SinkApplicationFailed:
+                return "sink_application_failed";
+            case Applied:
+                return "applied";
+        }
+        return "unknown";
+    }
+
+    void
+    log_client_replication_measurements(simnet::ClientReplicationMeasurements const& measurements)
+    {
+        if (!measurements.latest_attempt.has_value()) {
+            simnet::log(
+                simnet::LogCategory::Telemetry,
+                simnet::LogLevel::Info,
+                "client replication measurements attempts=0 applied=0"
+            );
+            return;
+        }
+
+        auto const& value = *measurements.latest_attempt;
+        simnet::log(
+            simnet::LogCategory::Telemetry,
+            simnet::LogLevel::Info,
+            "client replication measurements attempts=" + std::to_string(measurements.attempt_count)
+                + " applied=" + std::to_string(measurements.applied_count) + " latest_outcome="
+                + std::string{client_replication_outcome_name(value.outcome)} + " tick="
+                + std::to_string(value.tick) + " sequence=" + std::to_string(value.sequence)
+                + " baseline_sequence=" + std::to_string(value.baseline_sequence)
+                + " snapshot_kind=" + std::to_string(static_cast<unsigned>(value.snapshot_kind))
+                + " encoded_update_bytes=" + std::to_string(value.encoded_update_bytes)
+                + " application_payload_bytes=" + std::to_string(value.application_payload_bytes)
+                + " transport_payload_bytes=" + std::to_string(value.transport_payload_bytes)
+                + " upserts=" + std::to_string(value.upsert_count)
+                + " deletes=" + std::to_string(value.delete_count) + " reconstructed_entities="
+                + std::to_string(value.reconstructed_entity_count) + " final_sink_entities="
+                + std::to_string(value.final_sink_entity_count) + " decode_cpu_ns="
+                + std::to_string(value.decode_cpu_time.count()) + " baseline_resolution_cpu_ns="
+                + std::to_string(value.baseline_resolution_cpu_time.count())
+                + " reconstruction_cpu_ns=" + std::to_string(value.reconstruction_cpu_time.count())
+                + " sink_preparation_cpu_ns="
+                + std::to_string(value.sink_preparation_cpu_time.count())
+                + " sink_application_cpu_ns="
+                + std::to_string(value.sink_application_cpu_time.count())
+                + " canonical_snapshot_commit_cpu_ns="
+                + std::to_string(value.canonical_snapshot_commit_cpu_time.count())
+                + " total_receive_to_applied_cpu_ns="
+                + std::to_string(value.total_receive_to_applied_cpu_time.count())
+        );
+    }
+
 #if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] std::optional<simnet::GameCameraView>
     player_game_camera(simnet::WorldSnapshot const& snapshot, simnet::EntityNetId player_id)
@@ -415,7 +479,8 @@ namespace
         std::deque<RetainedClientSnapshot>& snapshot_history,
         flecs::world& world,
         simnet::TransportClient& transport,
-        simnet::RuntimeStats& stats
+        simnet::RuntimeStats& stats,
+        simnet::ClientReplicationMeasurements& measurements
     )
     {
         if (packet.lane != simnet::Lane::Snapshot) {
@@ -427,7 +492,13 @@ namespace
             return true;
         }
 
+        auto measurement = simnet::ClientReplicationMeasurement{
+            .application_payload_bytes = static_cast<std::uint32_t>(packet.payload.size()),
+            .transport_payload_bytes = static_cast<std::uint32_t>(packet.payload.size()),
+        };
+        auto const total_start = simnet::steady_now_ns();
         auto decoded = simnet::DecodeOutput{};
+        auto const decode_start = simnet::steady_now_ns();
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_decode", simnet::LogCategory::Pipeline);
             decoded = simnet::decode_update(
@@ -439,7 +510,17 @@ namespace
                 }
             );
         }
+        measurement.decode_cpu_time = simnet::steady_now_ns() - decode_start;
+        measurement.tick = decoded.report.tick;
+        measurement.sequence = decoded.report.sequence;
+        measurement.baseline_sequence = decoded.report.baseline_sequence;
+        measurement.snapshot_kind = decoded.report.snapshot_kind;
+        measurement.encoded_update_bytes = decoded.report.encoded_update_bytes;
+        measurement.upsert_count = decoded.report.upsert_count;
+        measurement.delete_count = decoded.report.delete_count;
         if (!decoded.report.valid) {
+            measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
+            measurements.observe(measurement);
             simnet::log(
                 simnet::LogCategory::Pipeline,
                 simnet::LogLevel::Error,
@@ -448,6 +529,8 @@ namespace
             return false;
         }
         if (!record_received_snapshot(ack_tracker, decoded.report.sequence)) {
+            measurement.outcome = simnet::ClientReplicationOutcome::StaleSequenceIgnored;
+            measurements.observe(measurement);
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Warn,
@@ -456,11 +539,15 @@ namespace
             return true;
         }
 
+        auto const baseline_start = simnet::steady_now_ns();
         auto const empty_baseline = simnet::WorldSnapshot{};
         auto const* baseline = static_cast<simnet::WorldSnapshot const*>(nullptr);
         if (decoded.report.delta) {
             baseline = find_retained_snapshot(snapshot_history, decoded.report.baseline_sequence);
             if (baseline == nullptr) {
+                measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
+                measurement.outcome = simnet::ClientReplicationOutcome::BaselineUnavailable;
+                measurements.observe(measurement);
                 simnet::log(
                     simnet::LogCategory::Snapshot,
                     simnet::LogLevel::Error,
@@ -473,12 +560,17 @@ namespace
             baseline
                 = snapshot_history.empty() ? &empty_baseline : &snapshot_history.back().snapshot;
         }
+        measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
 
         auto reconstructed = simnet::WorldSnapshot{};
         // Decode validated the update. The baseline is locally empty or a retained reconstruction.
+        auto const reconstruction_start = simnet::steady_now_ns();
         auto const reconstruction
             = simnet::reconstruct_world_snapshot_unchecked(baseline, decoded.update, reconstructed);
+        measurement.reconstruction_cpu_time = simnet::steady_now_ns() - reconstruction_start;
         if (!reconstruction.valid) {
+            measurement.outcome = simnet::ClientReplicationOutcome::ReconstructionFailed;
+            measurements.observe(measurement);
             simnet::log(
                 simnet::LogCategory::Snapshot,
                 simnet::LogLevel::Error,
@@ -486,7 +578,9 @@ namespace
             );
             return false;
         }
+        measurement.reconstructed_entity_count = static_cast<std::uint32_t>(reconstructed.size());
 
+        auto const sink_preparation_start = simnet::steady_now_ns();
         auto const baseline_is_current = baseline != nullptr && !snapshot_history.empty()
             && baseline == &snapshot_history.back().snapshot;
         auto replacement = simnet::SnapshotUpdate{};
@@ -495,14 +589,20 @@ namespace
             replacement = make_full_replace_patch(reconstructed);
             patch_to_apply = &replacement;
         }
+        measurement.sink_preparation_cpu_time = simnet::steady_now_ns() - sink_preparation_start;
 
         auto applied = simnet::ApplyPatchReport{};
+        auto const sink_application_start = simnet::steady_now_ns();
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_apply", simnet::LogCategory::Simulation);
             // The update passed decode validation or was built from successful reconstruction.
             applied = simnet::apply_client_snapshot_patch_unchecked(world, *patch_to_apply);
         }
+        measurement.sink_application_cpu_time = simnet::steady_now_ns() - sink_application_start;
+        measurement.final_sink_entity_count = applied.final_entities;
         if (!applied.valid) {
+            measurement.outcome = simnet::ClientReplicationOutcome::SinkApplicationFailed;
+            measurements.observe(measurement);
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Error,
@@ -511,10 +611,15 @@ namespace
             return false;
         }
 
+        auto const commit_start = simnet::steady_now_ns();
         latest_applied_sequence = decoded.report.sequence;
         ack_tracker.value.newest_applied_snapshot = decoded.report.sequence;
         retain_snapshot(snapshot_history, decoded.report.sequence, std::move(reconstructed));
         stats.ticks = applied.tick;
+        measurement.canonical_snapshot_commit_cpu_time = simnet::steady_now_ns() - commit_start;
+        measurement.outcome = simnet::ClientReplicationOutcome::Applied;
+        measurement.total_receive_to_applied_cpu_time = simnet::steady_now_ns() - total_start;
+        measurements.observe(measurement);
         auto sent = simnet::TransportResult{};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_ack", simnet::LogCategory::Transport);
@@ -680,6 +785,7 @@ namespace simnet::app
             auto latest_applied_sequence = SequenceId{};
             auto ack_tracker = SnapshotAckTracker{};
             auto snapshot_history = std::deque<RetainedClientSnapshot>{};
+            auto replication_measurements = ClientReplicationMeasurements{};
             auto connection_state = ClientConnectionState::Connecting;
             auto stop_cause = ClientStopCause::None;
             auto server_peer = std::optional<PeerId>{};
@@ -759,7 +865,8 @@ namespace simnet::app
                                 snapshot_history,
                                 world,
                                 transport,
-                                stats
+                                stats,
+                                replication_measurements
                             )) {
                             stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
@@ -971,6 +1078,7 @@ namespace simnet::app
             }
 
             transport.disconnect(DisconnectCode::None);
+            log_client_replication_measurements(replication_measurements);
             log(LogCategory::Simulation,
                 LogLevel::Info,
                 "client runtime stopped reason=" + std::string{shutdown_reason_name(stop.reason())}
