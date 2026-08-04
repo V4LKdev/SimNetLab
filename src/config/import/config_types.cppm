@@ -133,9 +133,11 @@ export namespace simnet
     {
         bool console_log_enabled{true};
         bool file_log_enabled{true};
+        /// Directory for enabled log files and CSV evidence files.
         std::string log_directory{"logs"};
         std::string min_level{"info"};
-        bool metrics_csv_enabled{true}; /// Enables sampled Server boid evidence CSV.
+        /// Enables Server replication and boid CSVs or the Client replication CSV.
+        bool metrics_csv_enabled{true};
     };
 
     /// Reserved load-ramp settings. Application behavior is not implemented.

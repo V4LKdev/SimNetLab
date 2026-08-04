@@ -73,6 +73,7 @@ namespace
     {
         std::optional<std::filesystem::path> config_path{};
         std::optional<std::filesystem::path> shared_config_path{};
+        std::optional<std::string> run_id{};
         std::uint64_t max_frames{};
         simnet::Tick max_ticks{};
         simnet::Nanoseconds max_runtime{};
@@ -264,6 +265,8 @@ namespace
                 options.shared_config_path = std::filesystem::path{
                     simnet::app::next_option_value(index, argc, argv, option)
                 };
+            } else if (option == "--run-id") {
+                options.run_id = simnet::app::next_option_value(index, argc, argv, option);
             } else if (option == "--max-frames") {
                 options.max_frames = simnet::app::parse_unsigned<std::uint64_t>(
                     simnet::app::next_option_value(index, argc, argv, option),
@@ -1177,6 +1180,20 @@ namespace
         return true;
     }
 
+    void observe_server_measurement(
+        simnet::ServerReplicationMeasurements& measurements,
+        simnet::ServerReplicationCsvWriter& csv,
+        simnet::ServerReplicationMeasurement const& measurement
+    )
+    {
+        measurements.observe(measurement);
+        if (!csv.submit(measurement)) {
+            throw std::runtime_error(
+                "server replication CSV submission failed: " + std::string{csv.error()}
+            );
+        }
+    }
+
     [[nodiscard]] bool run_tick(
         flecs::world& world,
         simnet::ServerGameRuntime& game,
@@ -1188,7 +1205,8 @@ namespace
         std::optional<PeerRuntimeState>& peer,
         simnet::PipelineScratch& scratch,
         CurrentSnapshotState& snapshot_state,
-        simnet::ServerReplicationMeasurements& measurements
+        simnet::ServerReplicationMeasurements& measurements,
+        simnet::ServerReplicationCsvWriter& csv
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
@@ -1214,7 +1232,7 @@ namespace
         if (!extraction.valid) {
             measurement.outcome = simnet::ServerReplicationOutcome::SnapshotExtractionFailed;
             measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
-            measurements.observe(measurement);
+            observe_server_measurement(measurements, csv, measurement);
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Error,
@@ -1264,7 +1282,7 @@ namespace
         if (encoded.kind == simnet::EncodeResultKind::Skipped) {
             measurement.outcome = simnet::ServerReplicationOutcome::Skipped;
             measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
-            measurements.observe(measurement);
+            observe_server_measurement(measurements, csv, measurement);
             return true;
         }
         measurement.application_payload_bytes = encoded.report.encoded_update_bytes;
@@ -1283,7 +1301,7 @@ namespace
         if (!sent.ok) {
             measurement.outcome = simnet::ServerReplicationOutcome::TransportSendFailed;
             measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
-            measurements.observe(measurement);
+            observe_server_measurement(measurements, csv, measurement);
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Error,
@@ -1299,7 +1317,7 @@ namespace
         measurement.snapshot_retention_cpu_time = simnet::steady_now_ns() - retention_start;
         measurement.outcome = simnet::ServerReplicationOutcome::Sent;
         measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
-        measurements.observe(measurement);
+        observe_server_measurement(measurements, csv, measurement);
         return true;
     }
 
@@ -1340,8 +1358,14 @@ namespace simnet::app
 {
     int run_server(int argc, char** argv)
     {
+        auto replication_csv = std::optional<ServerReplicationCsvWriter>{};
         try {
             auto const options = parse_options(argc, argv);
+            auto const run_context = make_evidence_run_context(
+                EvidenceProcessRole::Server,
+                options.run_id.has_value() ? std::optional<std::string_view>{*options.run_id}
+                                           : std::nullopt
+            );
             auto const shared_config_source
                 = options.shared_config_path.value_or(default_shared_config_path());
             auto const local_config_source
@@ -1385,6 +1409,18 @@ namespace simnet::app
                     LogLevel::Error,
                     "server transport start failed: " + started.error.message);
                 return 1;
+            }
+            replication_csv.emplace(
+                ReplicationCsvWriterConfig{
+                    .enabled = local.telemetry.metrics_csv_enabled,
+                    .output_directory = local.telemetry.log_directory,
+                    .run = run_context,
+                }
+            );
+            if (replication_csv->enabled()) {
+                log(LogCategory::Telemetry,
+                    LogLevel::Info,
+                    "server replication CSV path=" + replication_csv->path().string());
             }
 
             auto const settings = RuntimeSettings {
@@ -1539,7 +1575,8 @@ namespace simnet::app
                             peer,
                             scratch,
                             current_snapshot,
-                            replication_measurements
+                            replication_measurements,
+                            *replication_csv
                         )) {
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;
@@ -1561,6 +1598,12 @@ namespace simnet::app
                     boid_csv.sample(tick, game.last_step_report());
                 }
 
+                if (replication_csv->needs_drain() && !replication_csv->drain()) {
+                    throw std::runtime_error(
+                        "server replication CSV drain failed: "
+                        + std::string{replication_csv->error()}
+                    );
+                }
                 if (frame.step_limit_reached && log_enabled(LogLevel::Warn)) {
                     log(LogCategory::Core,
                         LogLevel::Warn,
@@ -1671,6 +1714,11 @@ namespace simnet::app
             }
             disconnect_before_stop(transport, peer);
             transport.stop();
+            if (!replication_csv->close()) {
+                throw std::runtime_error(
+                    "server replication CSV close failed: " + std::string{replication_csv->error()}
+                );
+            }
             log_server_replication_measurements(replication_measurements);
             log(LogCategory::Simulation,
                 LogLevel::Info,
@@ -1680,7 +1728,15 @@ namespace simnet::app
                     + " dropped_ns=" + std::to_string(stats.dropped_time.count()));
             return stop.reason() == ShutdownReason::FatalError ? 1 : 0;
         } catch (std::exception const& error) {
-            std::cerr << "Server failed: " << error.what() << '\n';
+            auto close_error = std::string{};
+            if (replication_csv.has_value() && !replication_csv->close()) {
+                close_error = std::string{replication_csv->error()};
+            }
+            std::cerr << "Server failed: " << error.what();
+            if (!close_error.empty()) {
+                std::cerr << ". Evidence close failed: " << close_error;
+            }
+            std::cerr << '\n';
             return 1;
         }
     }

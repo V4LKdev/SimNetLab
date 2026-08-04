@@ -1,7 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 import simnet.telemetry;
 import simnet.config;
@@ -16,6 +20,431 @@ static_assert(std::is_same_v<
 static_assert(std::is_same_v<
               decltype(simnet::ClientReplicationMeasurement::sink_application_cpu_time),
               simnet::Nanoseconds>);
+static_assert(!std::is_copy_constructible_v<simnet::EvidenceCsvFile>);
+static_assert(!std::is_copy_assignable_v<simnet::EvidenceCsvFile>);
+static_assert(!std::is_move_constructible_v<simnet::EvidenceCsvFile>);
+static_assert(!std::is_move_assignable_v<simnet::EvidenceCsvFile>);
+static_assert(!std::is_copy_constructible_v<simnet::ServerReplicationCsvWriter>);
+static_assert(!std::is_copy_assignable_v<simnet::ServerReplicationCsvWriter>);
+static_assert(!std::is_move_constructible_v<simnet::ServerReplicationCsvWriter>);
+static_assert(!std::is_move_assignable_v<simnet::ServerReplicationCsvWriter>);
+static_assert(!std::is_copy_constructible_v<simnet::ClientReplicationCsvWriter>);
+static_assert(!std::is_copy_assignable_v<simnet::ClientReplicationCsvWriter>);
+static_assert(!std::is_move_constructible_v<simnet::ClientReplicationCsvWriter>);
+static_assert(!std::is_move_assignable_v<simnet::ClientReplicationCsvWriter>);
+
+namespace
+{
+    class TemporaryDirectory
+    {
+    public:
+        TemporaryDirectory()
+        {
+            auto const stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+            path_ = std::filesystem::temp_directory_path()
+                / ("simnet_tel003_" + std::to_string(stamp));
+            std::filesystem::create_directories(path_);
+        }
+
+        ~TemporaryDirectory()
+        {
+            std::error_code error;
+            std::filesystem::remove_all(path_, error);
+        }
+
+        [[nodiscard]] std::filesystem::path const& path() const noexcept
+        {
+            return path_;
+        }
+
+    private:
+        std::filesystem::path path_{};
+    };
+
+    [[nodiscard]] std::vector<std::string> read_lines(std::filesystem::path const& path)
+    {
+        auto input = std::ifstream{path};
+        auto lines = std::vector<std::string>{};
+        auto line = std::string{};
+        while (std::getline(input, line)) {
+            lines.push_back(line);
+        }
+        return lines;
+    }
+}
+
+TEST_CASE("evidence run IDs are validated or honestly process local", "[telemetry][csv]")
+{
+    auto const supplied
+        = simnet::make_evidence_run_context(simnet::EvidenceProcessRole::Server, "Study_01-A");
+    CHECK(supplied.run_id == "Study_01-A");
+    CHECK(supplied.process_started_unix_ns > 0);
+
+    auto const generated = simnet::make_evidence_run_context(simnet::EvidenceProcessRole::Client);
+    CHECK(generated.run_id == "client-" + std::to_string(generated.process_started_unix_ns));
+
+    for (auto const invalid :
+         {"", "-bad", "=formula", "comma,value", "quote\"value", "space value", "line\nvalue"}) {
+        CHECK_THROWS(
+            simnet::make_evidence_run_context(simnet::EvidenceProcessRole::Server, invalid)
+        );
+    }
+    CHECK_THROWS(
+        simnet::make_evidence_run_context(simnet::EvidenceProcessRole::Server, std::string(65, 'a'))
+    );
+}
+
+TEST_CASE(
+    "enabled replication writers reject forged run contexts before output",
+    "[telemetry][csv]"
+)
+{
+    auto temporary = TemporaryDirectory{};
+    auto const server_directory = temporary.path() / "forged_server";
+    CHECK_THROWS(
+        simnet::ServerReplicationCsvWriter({
+            .enabled = true,
+            .output_directory = server_directory,
+            .run = {
+                .run_id = "../unsafe",
+                .process_role = simnet::EvidenceProcessRole::Server,
+                .process_started_unix_ns = 90,
+            },
+        })
+    );
+    CHECK_FALSE(std::filesystem::exists(server_directory));
+
+    auto const client_directory = temporary.path() / "forged_client";
+    CHECK_THROWS(
+        simnet::ClientReplicationCsvWriter({
+            .enabled = true,
+            .output_directory = client_directory,
+            .run = {
+                .run_id = "unsafe,run",
+                .process_role = simnet::EvidenceProcessRole::Client,
+                .process_started_unix_ns = 91,
+            },
+        })
+    );
+    CHECK_FALSE(std::filesystem::exists(client_directory));
+}
+
+TEST_CASE("evidence CSV flush and post-close failures are observable", "[telemetry][csv]")
+{
+    auto temporary = TemporaryDirectory{};
+    auto const path = temporary.path() / "checked.csv";
+    auto file = simnet::EvidenceCsvFile{path, "header"};
+    REQUIRE(file.write_row("row"));
+    REQUIRE(file.flush());
+    CHECK(read_lines(path) == std::vector<std::string>{"header", "row"});
+    REQUIRE(file.close());
+
+    CHECK_FALSE(file.write_row("late"));
+    CHECK_FALSE(file.healthy());
+    CHECK(file.error().find("after close") != std::string_view::npos);
+    CHECK_FALSE(file.flush());
+    CHECK_FALSE(file.close());
+}
+
+TEST_CASE("Server replication CSV has an exact v1 schema and stable order", "[telemetry][csv]")
+{
+    CHECK(
+        simnet::server_replication_csv_header_v1
+        == "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
+           "elapsed_since_process_start_ns,record_order,tick,sequence,baseline_sequence,"
+           "snapshot_kind,outcome,source_entity_count,selected_entity_count,upsert_count,"
+           "delete_count,encoded_update_bytes,application_payload_bytes,transport_payload_bytes,"
+           "snapshot_extraction_cpu_ns,baseline_resolution_cpu_ns,encode_cpu_ns,"
+           "transport_send_cpu_ns,snapshot_retention_cpu_ns,total_replication_cpu_ns"
+    );
+    auto temporary = TemporaryDirectory{};
+    auto writer = simnet::ServerReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "paired-run",
+            .process_role = simnet::EvidenceProcessRole::Server,
+            .process_started_unix_ns = 100,
+        },
+    }};
+    CHECK(writer.path().filename() == "server_replication_v1_100.csv");
+
+    auto first = simnet::ServerReplicationMeasurement{
+        .tick = 7,
+        .sequence = 3,
+        .baseline_sequence = 2,
+        .snapshot_kind = simnet::SnapshotKind::Patch,
+        .outcome = simnet::ServerReplicationOutcome::Sent,
+        .source_entity_count = 10,
+        .selected_entity_count = 8,
+        .upsert_count = 6,
+        .delete_count = 2,
+        .encoded_update_bytes = 101,
+        .application_payload_bytes = 101,
+        .transport_payload_bytes = 101,
+        .snapshot_extraction_cpu_time = std::chrono::nanoseconds{11},
+        .baseline_resolution_cpu_time = std::chrono::nanoseconds{12},
+        .encode_cpu_time = std::chrono::nanoseconds{13},
+        .transport_send_cpu_time = std::chrono::nanoseconds{14},
+        .snapshot_retention_cpu_time = std::chrono::nanoseconds{15},
+        .total_replication_cpu_time = std::chrono::nanoseconds{65},
+    };
+    auto second = first;
+    second.tick = 8;
+    second.sequence = 4;
+    REQUIRE(
+        writer.submit(first, {.recorded_at_unix_ns = 110, .elapsed_since_process_start_ns = 9})
+    );
+    REQUIRE(
+        writer.submit(second, {.recorded_at_unix_ns = 120, .elapsed_since_process_start_ns = 19})
+    );
+    CHECK(writer.submitted_count() == 2);
+    CHECK(writer.buffered_count() == 2);
+    REQUIRE(writer.drain());
+    CHECK(writer.buffered_count() == 0);
+    CHECK(read_lines(writer.path()).size() == 3);
+    REQUIRE(writer.close());
+    REQUIRE(writer.close());
+
+    auto const lines = read_lines(writer.path());
+    REQUIRE(lines.size() == 3);
+    CHECK(lines[0] == simnet::server_replication_csv_header_v1);
+    CHECK(
+        lines[1]
+        == "1,paired-run,server,100,110,9,0,7,3,2,patch,sent,10,8,6,2,101,101,101,11,12,13,14,15,65"
+    );
+    CHECK(
+        lines[2]
+        == "1,paired-run,server,100,120,19,1,8,4,2,patch,sent,10,8,6,2,101,101,101,11,12,13,14,15,65"
+    );
+}
+
+TEST_CASE(
+    "Client replication CSV requires the accepted role and remains distinct",
+    "[telemetry][csv]"
+)
+{
+    CHECK(
+        simnet::client_replication_csv_header_v1
+        == "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
+           "elapsed_since_process_start_ns,record_order,accepted_gameplay_role,tick,sequence,"
+           "baseline_sequence,snapshot_kind,outcome,encoded_update_bytes,"
+           "application_payload_bytes,transport_payload_bytes,upsert_count,delete_count,"
+           "reconstructed_entity_count,final_sink_entity_count,decode_cpu_ns,"
+           "baseline_resolution_cpu_ns,reconstruction_cpu_ns,sink_preparation_cpu_ns,"
+           "sink_application_cpu_ns,canonical_snapshot_commit_cpu_ns,"
+           "total_receive_to_applied_cpu_ns"
+    );
+    auto temporary = TemporaryDirectory{};
+    auto writer = simnet::ClientReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "paired-run",
+            .process_role = simnet::EvidenceProcessRole::Client,
+            .process_started_unix_ns = 200,
+        },
+    }};
+    CHECK(simnet::client_replication_csv_header_v1 != simnet::server_replication_csv_header_v1);
+    CHECK(writer.path().filename() == "client_replication_v1_200.csv");
+
+    auto const measurement = simnet::ClientReplicationMeasurement{
+        .tick = 9,
+        .sequence = 5,
+        .baseline_sequence = 4,
+        .snapshot_kind = simnet::SnapshotKind::Patch,
+        .outcome = simnet::ClientReplicationOutcome::Applied,
+        .encoded_update_bytes = 88,
+        .application_payload_bytes = 88,
+        .transport_payload_bytes = 88,
+        .upsert_count = 5,
+        .delete_count = 1,
+        .reconstructed_entity_count = 12,
+        .final_sink_entity_count = 12,
+        .decode_cpu_time = std::chrono::nanoseconds{1},
+        .baseline_resolution_cpu_time = std::chrono::nanoseconds{2},
+        .reconstruction_cpu_time = std::chrono::nanoseconds{3},
+        .sink_preparation_cpu_time = std::chrono::nanoseconds{4},
+        .sink_application_cpu_time = std::chrono::nanoseconds{5},
+        .canonical_snapshot_commit_cpu_time = std::chrono::nanoseconds{6},
+        .total_receive_to_applied_cpu_time = std::chrono::nanoseconds{21},
+    };
+    REQUIRE(writer.submit(
+        measurement,
+        {.recorded_at_unix_ns = 220, .elapsed_since_process_start_ns = 20}
+    ));
+    CHECK_FALSE(writer.drain());
+    CHECK_FALSE(writer.healthy());
+    CHECK(writer.buffered_count() == 1);
+    CHECK(writer.error().find("accepted gameplay role") != std::string_view::npos);
+    CHECK_FALSE(writer.close());
+    CHECK_FALSE(writer.close());
+    CHECK(writer.error().find("accepted gameplay role") != std::string_view::npos);
+    CHECK(writer.buffered_count() == 1);
+    CHECK(read_lines(writer.path()).size() == 1);
+
+    auto second_writer = simnet::ClientReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "second-run",
+            .process_role = simnet::EvidenceProcessRole::Client,
+            .process_started_unix_ns = 201,
+        },
+    }};
+    REQUIRE(second_writer.set_accepted_gameplay_role("player"));
+    REQUIRE(second_writer.submit(
+        measurement,
+        {.recorded_at_unix_ns = 220, .elapsed_since_process_start_ns = 20}
+    ));
+    auto next_measurement = measurement;
+    next_measurement.tick = 10;
+    next_measurement.sequence = 6;
+    REQUIRE(second_writer.submit(
+        next_measurement,
+        {.recorded_at_unix_ns = 230, .elapsed_since_process_start_ns = 30}
+    ));
+    REQUIRE(second_writer.close());
+    auto const lines = read_lines(second_writer.path());
+    REQUIRE(lines.size() == 3);
+    CHECK(lines[0] == simnet::client_replication_csv_header_v1);
+    CHECK(
+        lines[1]
+        == "1,second-run,client,201,220,20,0,player,9,5,4,patch,applied,88,88,88,5,1,12,12,1,2,3,4,5,6,21"
+    );
+    CHECK(
+        lines[2]
+        == "1,second-run,client,201,230,30,1,player,10,6,4,patch,applied,88,88,88,5,1,12,12,1,2,3,4,5,6,21"
+    );
+}
+
+TEST_CASE("replication CSV disabling and failures are explicit", "[telemetry][csv]")
+{
+    auto temporary = TemporaryDirectory{};
+    auto const disabled_directory = temporary.path() / "disabled";
+    auto disabled = simnet::ServerReplicationCsvWriter{{
+        .enabled = false,
+        .output_directory = disabled_directory,
+        .run = {
+            .run_id = "disabled",
+            .process_role = simnet::EvidenceProcessRole::Server,
+            .process_started_unix_ns = 300,
+        },
+    }};
+    CHECK(disabled.submit({}));
+    CHECK(disabled.close());
+    CHECK(disabled.submit({}));
+    CHECK(disabled.drain());
+    CHECK(disabled.close());
+    CHECK(disabled.healthy());
+    CHECK_FALSE(std::filesystem::exists(disabled_directory));
+
+    auto writer = simnet::ServerReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "overflow",
+            .process_role = simnet::EvidenceProcessRole::Server,
+            .process_started_unix_ns = 301,
+        },
+    }};
+    for (auto index = std::size_t{}; index < simnet::replication_csv_buffer_capacity; ++index) {
+        REQUIRE(writer.submit(
+            {},
+            {.recorded_at_unix_ns = index, .elapsed_since_process_start_ns = index}
+        ));
+    }
+    CHECK_FALSE(writer.submit({}));
+    CHECK_FALSE(writer.healthy());
+    CHECK(writer.error().find("overflow") != std::string_view::npos);
+    CHECK_FALSE(writer.close());
+    CHECK_FALSE(writer.close());
+    CHECK(writer.buffered_count() == 0);
+    CHECK(read_lines(writer.path()).size() == simnet::replication_csv_buffer_capacity + 1U);
+
+    auto exclusive = simnet::ServerReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "exclusive",
+            .process_role = simnet::EvidenceProcessRole::Server,
+            .process_started_unix_ns = 302,
+        },
+    }};
+    REQUIRE(exclusive.close());
+    CHECK_THROWS(
+        simnet::ServerReplicationCsvWriter(
+            simnet::ReplicationCsvWriterConfig{
+                .enabled = true,
+                .output_directory = temporary.path(),
+                .run = {
+                    .run_id = "collision",
+                    .process_role = simnet::EvidenceProcessRole::Server,
+                    .process_started_unix_ns = 302,
+                },
+            }
+        )
+    );
+}
+
+TEST_CASE(
+    "replication writer terminal failures preserve state and truthful rows",
+    "[telemetry][csv]"
+)
+{
+    auto temporary = TemporaryDirectory{};
+    auto changed_role = simnet::ClientReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "role-change",
+            .process_role = simnet::EvidenceProcessRole::Client,
+            .process_started_unix_ns = 310,
+        },
+    }};
+    REQUIRE(changed_role.set_accepted_gameplay_role("player"));
+    REQUIRE(
+        changed_role.submit({}, {.recorded_at_unix_ns = 311, .elapsed_since_process_start_ns = 1})
+    );
+    CHECK_FALSE(changed_role.set_accepted_gameplay_role("stationary_observer"));
+    CHECK_FALSE(changed_role.healthy());
+    CHECK_FALSE(changed_role.close());
+    CHECK(changed_role.buffered_count() == 0);
+    auto const role_lines = read_lines(changed_role.path());
+    REQUIRE(role_lines.size() == 2);
+    CHECK(role_lines[1].find(",player,") != std::string::npos);
+    CHECK_FALSE(changed_role.close());
+
+    auto submit_after_close = simnet::ServerReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "closed-submit",
+            .process_role = simnet::EvidenceProcessRole::Server,
+            .process_started_unix_ns = 312,
+        },
+    }};
+    REQUIRE(submit_after_close.close());
+    CHECK_FALSE(submit_after_close.submit({}));
+    CHECK_FALSE(submit_after_close.healthy());
+    CHECK(submit_after_close.error().find("after close") != std::string_view::npos);
+    CHECK_FALSE(submit_after_close.close());
+
+    auto drain_after_close = simnet::ServerReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "closed-drain",
+            .process_role = simnet::EvidenceProcessRole::Server,
+            .process_started_unix_ns = 313,
+        },
+    }};
+    REQUIRE(drain_after_close.close());
+    CHECK_FALSE(drain_after_close.drain());
+    CHECK_FALSE(drain_after_close.healthy());
+    CHECK(drain_after_close.error().find("after close") != std::string_view::npos);
+    CHECK_FALSE(drain_after_close.close());
+}
 
 TEST_CASE("telemetry logging has explicit sink ownership", "[telemetry][logging]")
 {

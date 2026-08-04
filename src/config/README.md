@@ -26,7 +26,13 @@ Speed continues to approach the configured slow, cruise, or boost target at
 `speed_change_rate`. These are deterministic simulation settings and therefore
 participate in network compatibility.
 
-Benchmark, JSON telemetry export, area-of-interest, LOD, and compression configuration vocabulary is retained for planned work. The Server's small sampled boid CSV is implemented. It is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled by the CMake build option. Unsupported pipeline selections are rejected during app startup instead of being ignored.
+`telemetry.log_directory` owns enabled log files and CSV evidence files. Logging remains controlled
+independently by `console_log_enabled`, `file_log_enabled`, and `min_level`.
+`metrics_csv_enabled` controls the Server replication CSV and sampled boid CSV on Server. It
+controls the Client replication CSV on Client. When disabled, the CSV path creates no directory or
+evidence file. Enabled file logging may independently create `log_directory`.
+
+Benchmark, area-of-interest, LOD, and compression configuration vocabulary is retained for planned work. The Server's small sampled boid CSV is implemented. It is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled by the CMake build option. Unsupported pipeline selections are rejected during app startup instead of being ignored.
 
 Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.
 

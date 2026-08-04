@@ -41,6 +41,7 @@ namespace
     {
         std::optional<std::filesystem::path> config_path{};
         std::optional<std::filesystem::path> shared_config_path{};
+        std::optional<std::string> run_id{};
         std::uint64_t max_frames{};
         simnet::Tick max_ticks{};
         simnet::Nanoseconds max_runtime{};
@@ -382,6 +383,8 @@ namespace
                 options.shared_config_path = std::filesystem::path{
                     simnet::app::next_option_value(index, argc, argv, option)
                 };
+            } else if (option == "--run-id") {
+                options.run_id = simnet::app::next_option_value(index, argc, argv, option);
             } else if (option == "--max-frames") {
                 options.max_frames = simnet::app::parse_unsigned<std::uint64_t>(
                     simnet::app::next_option_value(index, argc, argv, option),
@@ -399,6 +402,20 @@ namespace
             }
         }
         return options;
+    }
+
+    void observe_client_measurement(
+        simnet::ClientReplicationMeasurements& measurements,
+        simnet::ClientReplicationCsvWriter& csv,
+        simnet::ClientReplicationMeasurement const& measurement
+    )
+    {
+        measurements.observe(measurement);
+        if (!csv.submit(measurement)) {
+            throw std::runtime_error(
+                "client replication CSV submission failed: " + std::string{csv.error()}
+            );
+        }
     }
 
     [[nodiscard]] bool
@@ -480,7 +497,8 @@ namespace
         flecs::world& world,
         simnet::TransportClient& transport,
         simnet::RuntimeStats& stats,
-        simnet::ClientReplicationMeasurements& measurements
+        simnet::ClientReplicationMeasurements& measurements,
+        simnet::ClientReplicationCsvWriter& csv
     )
     {
         if (packet.lane != simnet::Lane::Snapshot) {
@@ -520,7 +538,7 @@ namespace
         measurement.delete_count = decoded.report.delete_count;
         if (!decoded.report.valid) {
             measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
-            measurements.observe(measurement);
+            observe_client_measurement(measurements, csv, measurement);
             simnet::log(
                 simnet::LogCategory::Pipeline,
                 simnet::LogLevel::Error,
@@ -530,7 +548,7 @@ namespace
         }
         if (!record_received_snapshot(ack_tracker, decoded.report.sequence)) {
             measurement.outcome = simnet::ClientReplicationOutcome::StaleSequenceIgnored;
-            measurements.observe(measurement);
+            observe_client_measurement(measurements, csv, measurement);
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Warn,
@@ -547,7 +565,7 @@ namespace
             if (baseline == nullptr) {
                 measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
                 measurement.outcome = simnet::ClientReplicationOutcome::BaselineUnavailable;
-                measurements.observe(measurement);
+                observe_client_measurement(measurements, csv, measurement);
                 simnet::log(
                     simnet::LogCategory::Snapshot,
                     simnet::LogLevel::Error,
@@ -570,7 +588,7 @@ namespace
         measurement.reconstruction_cpu_time = simnet::steady_now_ns() - reconstruction_start;
         if (!reconstruction.valid) {
             measurement.outcome = simnet::ClientReplicationOutcome::ReconstructionFailed;
-            measurements.observe(measurement);
+            observe_client_measurement(measurements, csv, measurement);
             simnet::log(
                 simnet::LogCategory::Snapshot,
                 simnet::LogLevel::Error,
@@ -602,7 +620,7 @@ namespace
         measurement.final_sink_entity_count = applied.final_entities;
         if (!applied.valid) {
             measurement.outcome = simnet::ClientReplicationOutcome::SinkApplicationFailed;
-            measurements.observe(measurement);
+            observe_client_measurement(measurements, csv, measurement);
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Error,
@@ -619,7 +637,7 @@ namespace
         measurement.canonical_snapshot_commit_cpu_time = simnet::steady_now_ns() - commit_start;
         measurement.outcome = simnet::ClientReplicationOutcome::Applied;
         measurement.total_receive_to_applied_cpu_time = simnet::steady_now_ns() - total_start;
-        measurements.observe(measurement);
+        observe_client_measurement(measurements, csv, measurement);
         auto sent = simnet::TransportResult{};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_ack", simnet::LogCategory::Transport);
@@ -652,7 +670,8 @@ namespace
         bool& simulation_paused,
         bool& pause_state_received,
         bool& join_accepted,
-        simnet::EntityNetId& player_id
+        simnet::EntityNetId& player_id,
+        simnet::ClientReplicationCsvWriter& csv
     )
     {
         auto message = simnet::app::AppMessage{};
@@ -667,6 +686,14 @@ namespace
 
         if (message.kind == simnet::app::AppMessageKind::JoinAccepted && !join_accepted
             && message.role == requested_role) {
+            auto const accepted_role = message.role == simnet::app::ClientRole::Player
+                ? std::string_view{"player"}
+                : std::string_view{"stationary_observer"};
+            if (!csv.set_accepted_gameplay_role(accepted_role)) {
+                throw std::runtime_error(
+                    "client replication CSV role assignment failed: " + std::string{csv.error()}
+                );
+            }
             join_accepted = true;
             player_id = message.player_id;
             simnet::log(
@@ -708,8 +735,14 @@ namespace simnet::app
 {
     int run_client(int argc, char** argv)
     {
+        auto replication_csv = std::optional<ClientReplicationCsvWriter>{};
         try {
             auto const options = parse_options(argc, argv);
+            auto const run_context = make_evidence_run_context(
+                EvidenceProcessRole::Client,
+                options.run_id.has_value() ? std::optional<std::string_view>{*options.run_id}
+                                           : std::nullopt
+            );
             auto const shared_config_source
                 = options.shared_config_path.value_or(default_shared_config_path());
             auto const local_config_source
@@ -750,6 +783,18 @@ namespace simnet::app
                     LogLevel::Error,
                     "client transport connect failed: " + connected.error.message);
                 return 1;
+            }
+            replication_csv.emplace(
+                ReplicationCsvWriterConfig{
+                    .enabled = local.telemetry.metrics_csv_enabled,
+                    .output_directory = local.telemetry.log_directory,
+                    .run = run_context,
+                }
+            );
+            if (replication_csv->enabled()) {
+                log(LogCategory::Telemetry,
+                    LogLevel::Info,
+                    "client replication CSV path=" + replication_csv->path().string());
             }
 
             auto const settings = RuntimeSettings{
@@ -868,7 +913,8 @@ namespace simnet::app
                                 world,
                                 transport,
                                 stats,
-                                replication_measurements
+                                replication_measurements,
+                                *replication_csv
                             )) {
                             stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
@@ -884,7 +930,8 @@ namespace simnet::app
                                 authoritative_pause_state,
                                 pause_state_received,
                                 join_accepted,
-                                player_id
+                                player_id,
+                                *replication_csv
                             )) {
                             stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
@@ -935,6 +982,13 @@ namespace simnet::app
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;
                     }
+                }
+
+                if (replication_csv->needs_drain() && !replication_csv->drain()) {
+                    throw std::runtime_error(
+                        "client replication CSV drain failed: "
+                        + std::string{replication_csv->error()}
+                    );
                 }
 
 #if defined(SIMNET_ENABLE_RENDER)
@@ -1080,6 +1134,11 @@ namespace simnet::app
             }
 
             transport.disconnect(DisconnectCode::None);
+            if (!replication_csv->close()) {
+                throw std::runtime_error(
+                    "client replication CSV close failed: " + std::string{replication_csv->error()}
+                );
+            }
             log_client_replication_measurements(replication_measurements);
             log(LogCategory::Simulation,
                 LogLevel::Info,
@@ -1089,7 +1148,15 @@ namespace simnet::app
                     + " runtime_ns=" + std::to_string(stats.raw_time.count()));
             return stop.reason() == ShutdownReason::FatalError ? 1 : 0;
         } catch (std::exception const& error) {
-            std::cerr << "Client failed: " << error.what() << '\n';
+            auto close_error = std::string{};
+            if (replication_csv.has_value() && !replication_csv->close()) {
+                close_error = std::string{replication_csv->error()};
+            }
+            std::cerr << "Client failed: " << error.what();
+            if (!close_error.empty()) {
+                std::cerr << ". Evidence close failed: " << close_error;
+            }
+            std::cerr << '\n';
             return 1;
         }
     }

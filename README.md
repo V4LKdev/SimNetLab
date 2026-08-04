@@ -19,7 +19,11 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 
 ## Planned work
 
-Area of interest, LOD, compression, the repeatable benchmark runner, and general experiment export remain planned. Tracy instrumentation is available through the `SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are available when local visualization is enabled. The Server can display occupied spatial cells and selected-boid simulation diagnostics.
+Area of interest, LOD, compression, the repeatable benchmark runner, and external experiment
+orchestration remain planned. Tracy instrumentation is available through the
+`SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are available when local
+visualization is enabled. The Server can display occupied spatial cells and selected-boid
+simulation diagnostics.
 
 `Aoi`, `Lod`, and `Compression` remain declared pipeline vocabulary. They are not implemented and a selected unsupported pipeline option is rejected during app startup.
 
@@ -61,7 +65,10 @@ cmake --build --preset debug
 ctest --preset debug
 ```
 
-Both applications accept `--config PATH`, `--shared-config PATH`, `--max-ticks`, `--max-frames`, and `--max-runtime-ms`. Server additionally accepts `--max-frame-delta-ms` and `--max-steps-per-frame`. A zero limit is disabled.
+Both applications accept `--config PATH`, `--shared-config PATH`, `--run-id TEXT`, `--max-ticks`,
+`--max-frames`, and `--max-runtime-ms`. Server additionally accepts `--max-frame-delta-ms` and
+`--max-steps-per-frame`. A zero limit is disabled. A supplied run ID correlates Server and Client
+CSV evidence. Without it, each process generates an independent process-local ID.
 
 The default profiles are headless. To start the visual development profiles from the repository root:
 
@@ -107,10 +114,10 @@ The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set th
 
 The placeholder benchmarking target is disabled by default. Enable
 `SIMNET_ENABLE_BENCHMARKING` only when working on the future benchmark harness.
-The Server writes a small boid-tuning CSV under `telemetry.log_directory` when
-`metrics_csv_enabled` is true. It contains one aggregate row per simulated
-second and is not the future benchmark runner. Reserved benchmark settings are
-not part of the runtime measurement contract.
+Server and Client write separate v1 replication CSVs under `telemetry.log_directory` when
+`metrics_csv_enabled` is true. The Server also writes a small boid-tuning CSV containing one
+aggregate row per simulated second. These files are raw application evidence, not the future
+benchmark runner. Reserved benchmark settings are not part of the runtime measurement contract.
 
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the player role. Stationary observer remains the default.
 

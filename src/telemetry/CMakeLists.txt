@@ -16,12 +16,14 @@ target_sources(simnet_telemetry
             import/telemetry_types.cppm
             import/telemetry_log.cppm
             import/telemetry_metrics.cppm
+            import/telemetry_csv.cppm
     PUBLIC
         FILE_SET HEADERS
         BASE_DIRS include
         FILES
             include/simnet/telemetry_trace.hpp
     PRIVATE
+        src/telemetry_csv.cpp
         src/telemetry_log.cpp
 )
 

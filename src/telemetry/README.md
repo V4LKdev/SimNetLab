@@ -37,10 +37,41 @@ reconstructed snapshots remain canonical Client state. Pipeline-only treatments 
 preparation and sink application. Full-system treatments include both and report sink application
 separately. A failed attempt never enters `latest_applied` and never increments `applied_count`.
 
-The current runtime consumer keeps only the latest attempt, latest successful result, and counts,
-then logs the latest record during shutdown. TEL-003 owns buffered raw CSV rows, stable schemas,
-headers, run identity, timestamps, flushing, and file lifecycle. No in-process field represents
-externally captured packet bytes, operating-system counters, perf data, energy data, or netem data.
+The current runtime consumer keeps the latest attempt, latest successful result, and counts for
+the shutdown summary. Each application also submits every attempt to its role-specific v1 CSV
+writer after the measured stage ends.
+
+### simnet.telemetry:csv
+
+- `EvidenceRunContext` - immutable process role, process-start clocks, and validated run ID.
+- `ServerReplicationCsvWriter` - bounded typed Server rows and the Server v1 schema.
+- `ClientReplicationCsvWriter` - bounded typed Client rows and the Client v1 schema.
+- `EvidenceCsvFile` - exclusive creation and checked write, flush, and close operations.
+
+Server and Client accept optional `--run-id TEXT`. Supplied values must contain 1 to 64 ASCII
+characters and match `[A-Za-z0-9][A-Za-z0-9._-]*`. The value is preserved in CSV fields and is
+never used in a path. An omitted value becomes `server-<process_started_unix_ns>` or
+`client-<process_started_unix_ns>`. Independently generated defaults do not prove that two
+processes belong to the same experiment.
+
+The application captures each record envelope after its TEL-001 measured stage. `record_order` is
+the authoritative order within one file. `recorded_at_unix_ns` supports approximate cross-process
+alignment. `elapsed_since_process_start_ns` is monotonic within the process. The role and
+process-start timestamp identify the producing process. Client rows also store the authoritative
+role from `JoinAccepted`.
+
+Replication writers reserve 256 typed records at startup and request a drain at 128. Submission
+copies only the measurement and envelope. Formatting and file I/O occur during explicit
+application drains outside TEL-001 stage boundaries. Buffer overflow and open, write, flush, or
+close failures make evidence collection fail and cause the owning process to fail. Files use
+exclusive creation and are never truncated, appended to, or overwritten.
+
+Enabled files are named `server_replication_v1_<process_started_unix_ns>.csv`,
+and `client_replication_v1_<process_started_unix_ns>.csv`. Semantic column changes require a new
+schema version.
+
+No in-process field represents externally captured packet bytes, operating-system counters, perf
+data, energy data, or netem data.
 
 ## Trace Macros
 
@@ -60,8 +91,8 @@ Tracy instrumentation is controlled by the CMake `SIMNET_ENABLE_TRACY` option. I
 - Logging functions are thread-safe. Initialization and shutdown must be serialized externally.
   Calls before initialization, after shutdown, or under a zero-sink configuration are no-ops.
   Replication observers are application-owned and are not synchronized.
-- Replication measurement observation performs fixed-size value assignment without formatting,
-  logging, file I/O, or heap allocation.
+- Replication measurement observation and CSV submission perform fixed-size value assignment
+  without formatting, logging, file I/O, or heap allocation after startup reservation.
 - Tracy is an optional diagnostic view. It is not final research evidence.
 - Log-level configuration remains case-insensitive. Unrecognized values still map to `Info` until
   CFG-001 makes configuration validation fail closed.

@@ -11,14 +11,14 @@ For the same deterministic boid updates, it generates three entity encodings:
    - `float position[3]`
    - `float heading[3]`
    - `uint8_t hue`
-   - 29 packed wire bytes per entity. A directly copied C++ struct may be 32 bytes because of padding.
+   - 29 encoded bytes per entity. A directly copied C++ struct may be 32 bytes because of padding.
 
 2. `full_quantized`
    - `uint32_t id`
    - three 16-bit bounded-world positions
    - two 16-bit octahedral heading components
    - `uint8_t hue`
-   - 15 wire bytes per entity.
+   - 15 encoded bytes per entity.
 
 3. `delta_quantized`
    - `uint32_t id`
