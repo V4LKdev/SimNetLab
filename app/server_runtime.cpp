@@ -1196,18 +1196,19 @@ namespace
         measurement.sequence = encoded.report.sequence;
         measurement.baseline_sequence = encoded.report.baseline_sequence;
         measurement.snapshot_kind = encoded.report.snapshot_kind;
-        measurement.source_entity_count = encoded.report.input_entities;
-        measurement.selected_entity_count = encoded.report.selected_entities;
+        measurement.source_entity_count = extraction.entity_count;
+        measurement.selected_entity_count = encoded.report.upsert_count;
         measurement.upsert_count = encoded.report.upsert_count;
         measurement.delete_count = encoded.report.delete_count;
-        measurement.encoded_update_bytes = encoded.report.encoded_update_bytes;
+        measurement.encoded_update_bytes = static_cast<std::uint32_t>(encoded.update.bytes.size());
         if (encoded.kind == simnet::EncodeResultKind::Skipped) {
             measurement.outcome = simnet::ServerReplicationOutcome::Skipped;
             measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
             observe_server_measurement(measurements, csv, measurement);
             return true;
         }
-        measurement.application_payload_bytes = encoded.report.encoded_update_bytes;
+        measurement.application_payload_bytes
+            = static_cast<std::uint32_t>(encoded.update.bytes.size());
         auto sent = simnet::TransportResult{};
         auto const send_start = simnet::steady_now_ns();
         {
@@ -1231,7 +1232,8 @@ namespace
             );
             return false;
         }
-        measurement.transport_payload_bytes = encoded.report.encoded_update_bytes;
+        measurement.transport_payload_bytes
+            = static_cast<std::uint32_t>(encoded.update.bytes.size());
 
         auto const retention_start = simnet::steady_now_ns();
         retain_snapshot(*peer, encoded.update.sequence, snapshot_state.snapshot);
@@ -1305,7 +1307,7 @@ namespace simnet::app
             log(LogCategory::Telemetry, LogLevel::Info, "Tracy instrumentation not compiled in");
 #endif
             auto signals = SignalHandlers{};
-            auto const pipeline = make_snapshot_pipeline(shared, local.transport);
+            auto const pipeline = make_snapshot_pipeline(shared);
 #if defined(SIMNET_ENABLE_RENDER)
             auto const run_setup = RunSetupStorage{
                 shared,

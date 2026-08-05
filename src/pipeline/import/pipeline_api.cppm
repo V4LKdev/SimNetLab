@@ -63,13 +63,11 @@ export namespace simnet
      * Decodes pipeline-owned bytes into a 'SnapshotUpdate'.
      *
      * - Validates the wire header and sequence numbers against 'client_state'.
-     * - Reuses 'scratch' internal buffers.
      * - Returns a 'DecodeOutput' with either a valid update or error report.
      */
     [[nodiscard]] DecodeOutput decode_update(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
-        PipelineScratch& scratch,
         DecodeInput const& input
     );
 }

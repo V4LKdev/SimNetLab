@@ -2,8 +2,6 @@ module;
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
-#include <string>
 #include <vector>
 
 /// @brief Pipeline public data contracts.
@@ -23,9 +21,6 @@ export namespace simnet
         Quantization = 1U << 2U, /// position and heading quantization.
         OctHeading = 1U << 3U, /// octahedral heading quantization.
         Delta = 1U << 4U, /// baseline-relative patch selection.
-        Aoi = 1U << 5U, /// unsupported area-of-interest filtering.
-        Lod = 1U << 6U, /// unsupported level-of-detail priorities.
-        Compression = 1U << 7U, /// unsupported full-payload compression.
         BitPacking = 1U << 8U, /// bit-packed record layout.
     };
 
@@ -34,13 +29,6 @@ export namespace simnet
     {
         Update, /// a complete encoded update was produced.
         Skipped /// no encoded update was emitted by this call.
-    };
-
-    /// Reason an encode call produced no encoded update.
-    enum class EncodeSkipReason : std::uint8_t
-    {
-        None,
-        SendInterval
     };
 
     /// Combines pipeline technique flags.
@@ -112,14 +100,9 @@ export namespace simnet
     struct PipelineDefinition
     {
         PipelineTechniqueFlags techniques{PipelineTechniqueFlags::None};
-        /// Soft final encoded update byte target for reports. Encode still emits oversized updates.
-        std::uint32_t encoded_update_size_target_bytes{1200};
         SendIntervalSettings send_interval{};
         IncrementalSettings incremental{};
         QuantizationSettings quantization{};
-
-        // Future:
-        // delta settings, aoi, lod, compression etc.
     };
 
     /// Caller-owned per-client replication state.
@@ -129,13 +112,11 @@ export namespace simnet
         SequenceId next_sequence{1};
         /// Latest sequence received from remote.
         SequenceId latest_remote_sequence{};
-        /// Latest sequence acknowledged by remote.
-        SequenceId latest_acked_sequence{};
         /// Next incremental selection cursor for round-robin selection.
         std::uint32_t incremental_cursor{};
     };
 
-    /// Reusable scratch-memory for encode/decode. Stored externally to avoid allocations on hot path.
+    /// Reusable encode scratch memory. Stored externally to avoid allocations on the hot path.
     struct PipelineScratch
     {
         /// Indices of entities to include in the encoded update.

@@ -20,8 +20,6 @@ Each concurrent caller needs its own `ClientReplicationState` and `PipelineScrat
 
 `BitPacking` requires quantization and octahedral headings. The current record layout totals 128 bits, which is also 16 bytes in the byte-aligned representation. It is retained for technique evaluation even though it currently does not reduce record size.
 
-`Aoi`, `Lod`, and `Compression` are retained public vocabulary for planned work. They are not supported by the current pipeline validator.
-
 ## Stage order and compatibility
 
 | Order | Stage | Current control | Compatibility and ownership |

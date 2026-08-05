@@ -151,15 +151,6 @@ namespace
         }
     }
 
-    void validate_bits(char const* name, std::uint8_t value)
-    {
-        if (value == 0 || value > 32) {
-            throw std::runtime_error(
-                std::string{"invalid config field '"} + name + "': expected 1..32"
-            );
-        }
-    }
-
     void validate_non_zero(char const* name, std::uint32_t value)
     {
         if (value == 0U) {
@@ -328,16 +319,9 @@ namespace
 
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
     {
-        read_optional(json, "enable_aoi", config.enable_aoi);
         read_optional(json, "enable_incremental", config.enable_incremental);
         read_optional(json, "enable_quantization", config.enable_quantization);
         read_optional(json, "enable_delta", config.enable_delta);
-        read_optional(json, "enable_compression", config.enable_compression);
-        read_optional(json, "position_bits", config.position_bits);
-        read_optional(json, "heading_bits", config.heading_bits);
-
-        validate_bits("pipeline.position_bits", config.position_bits);
-        validate_bits("pipeline.heading_bits", config.heading_bits);
     }
 
     void apply_transport(Json const& json, simnet::TransportConfig& config)
@@ -609,13 +593,9 @@ namespace
         hash_bytes(hash, config.player.max_yaw_rate_degrees);
         hash_bytes(hash, config.player.max_pitch_rate_degrees);
         hash_bytes(hash, config.player.pitch_limit_degrees);
-        hash_bytes(hash, config.pipeline.enable_aoi);
         hash_bytes(hash, config.pipeline.enable_incremental);
         hash_bytes(hash, config.pipeline.enable_quantization);
         hash_bytes(hash, config.pipeline.enable_delta);
-        hash_bytes(hash, config.pipeline.enable_compression);
-        hash_bytes(hash, config.pipeline.position_bits);
-        hash_bytes(hash, config.pipeline.heading_bits);
     }
 
     void
@@ -666,13 +646,9 @@ namespace
         hash_canonical_float(hash, config.player.max_yaw_rate_degrees);
         hash_canonical_float(hash, config.player.max_pitch_rate_degrees);
         hash_canonical_float(hash, config.player.pitch_limit_degrees);
-        hash_canonical_bool(hash, config.pipeline.enable_aoi);
         hash_canonical_bool(hash, config.pipeline.enable_incremental);
         hash_canonical_bool(hash, config.pipeline.enable_quantization);
         hash_canonical_bool(hash, config.pipeline.enable_delta);
-        hash_canonical_bool(hash, config.pipeline.enable_compression);
-        hash_canonical_byte(hash, config.pipeline.position_bits);
-        hash_canonical_byte(hash, config.pipeline.heading_bits);
     }
 
     void hash_transport_and_telemetry(

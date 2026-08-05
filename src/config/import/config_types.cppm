@@ -79,13 +79,9 @@ export namespace simnet
     /// Snapshot processing pipeline settings.
     struct PipelineConfig
     {
-        bool enable_aoi{false};
         bool enable_incremental{false};
         bool enable_quantization{false};
         bool enable_delta{false};
-        bool enable_compression{false};
-        std::uint8_t position_bits{16};
-        std::uint8_t heading_bits{16};
     };
 
     /// Network transport settings.

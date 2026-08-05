@@ -167,7 +167,6 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     auto encode_state = simnet::ClientReplicationState{};
     auto decode_state = simnet::ClientReplicationState{};
     auto encode_scratch = simnet::PipelineScratch{};
-    auto decode_scratch = simnet::PipelineScratch{};
     auto acknowledged_snapshot = simnet::WorldSnapshot{};
     auto acknowledged_sequence = simnet::SequenceId{};
     auto ack = simnet::SnapshotAck{};
@@ -210,7 +209,6 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
         auto const decoded = simnet::decode_update(
             pipeline,
             decode_state,
-            decode_scratch,
             {
                 .bytes = encoded.update.bytes,
             }
@@ -285,19 +283,14 @@ TEST_CASE(
     auto encode_state = simnet::ClientReplicationState{};
     auto decode_state = simnet::ClientReplicationState{};
     auto encode_scratch = simnet::PipelineScratch{};
-    auto decode_scratch = simnet::PipelineScratch{};
     auto const encoded = simnet::encode_snapshot_unchecked(
         pipeline,
         encode_state,
         encode_scratch,
         {.snapshot = &authoritative}
     );
-    auto const decoded = simnet::decode_update(
-        pipeline,
-        decode_state,
-        decode_scratch,
-        {.bytes = encoded.update.bytes}
-    );
+    auto const decoded
+        = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
     REQUIRE(decoded.report.valid);
 
     auto reconstructed = simnet::WorldSnapshot{};
@@ -631,7 +624,6 @@ TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replicati
     auto encode_state = simnet::ClientReplicationState{};
     auto decode_state = simnet::ClientReplicationState{};
     auto encode_scratch = simnet::PipelineScratch{};
-    auto decode_scratch = simnet::PipelineScratch{};
     auto const first_snapshot = single_boid_snapshot(1);
 
     auto const first_update = simnet::encode_snapshot(
@@ -676,7 +668,6 @@ TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replicati
     auto const decoded = simnet::decode_update(
         pipeline,
         decode_state,
-        decode_scratch,
         {
             .bytes = next_update.update.bytes,
         }

@@ -52,12 +52,8 @@
     "pitch_limit_degrees": 60.0
   },
   "pipeline": {
-    "enable_aoi": false,
     "enable_incremental": false,
     "enable_quantization": false,
-    "enable_delta": false,
-    "enable_compression": false,
-    "position_bits": 16,
-    "heading_bits": 16
+    "enable_delta": false
   }
 }

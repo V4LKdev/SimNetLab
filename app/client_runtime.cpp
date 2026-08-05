@@ -490,7 +490,6 @@ namespace
         simnet::ReceivedPacket const& packet,
         simnet::PipelineDefinition const& pipeline,
         simnet::ClientReplicationState& decode_state,
-        simnet::PipelineScratch& scratch,
         simnet::SequenceId& latest_applied_sequence,
         SnapshotAckTracker& ack_tracker,
         std::deque<RetainedClientSnapshot>& snapshot_history,
@@ -522,7 +521,6 @@ namespace
             decoded = simnet::decode_update(
                 pipeline,
                 decode_state,
-                scratch,
                 {
                     .bytes = packet.payload,
                 }
@@ -533,9 +531,9 @@ namespace
         measurement.sequence = decoded.report.sequence;
         measurement.baseline_sequence = decoded.report.baseline_sequence;
         measurement.snapshot_kind = decoded.report.snapshot_kind;
-        measurement.encoded_update_bytes = decoded.report.encoded_update_bytes;
-        measurement.upsert_count = decoded.report.upsert_count;
-        measurement.delete_count = decoded.report.delete_count;
+        measurement.encoded_update_bytes = static_cast<std::uint32_t>(packet.payload.size());
+        measurement.upsert_count = static_cast<std::uint32_t>(decoded.update.upserts.size());
+        measurement.delete_count = static_cast<std::uint32_t>(decoded.update.deletes.size());
         if (!decoded.report.valid) {
             measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
             observe_client_measurement(measurements, csv, measurement);
@@ -560,7 +558,7 @@ namespace
         auto const baseline_start = simnet::steady_now_ns();
         auto const empty_baseline = simnet::WorldSnapshot{};
         auto const* baseline = static_cast<simnet::WorldSnapshot const*>(nullptr);
-        if (decoded.report.delta) {
+        if (decoded.report.baseline_sequence != 0U) {
             baseline = find_retained_snapshot(snapshot_history, decoded.report.baseline_sequence);
             if (baseline == nullptr) {
                 measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
@@ -757,7 +755,7 @@ namespace simnet::app
             log(LogCategory::Telemetry, LogLevel::Info, "Tracy instrumentation not compiled in");
 #endif
             auto signals = SignalHandlers{};
-            auto const pipeline = make_snapshot_pipeline(shared, local.transport);
+            auto const pipeline = make_snapshot_pipeline(shared);
 #if defined(SIMNET_ENABLE_RENDER)
             auto const run_setup = RunSetupStorage{
                 shared,
@@ -828,7 +826,6 @@ namespace simnet::app
             auto stop = StopRequest{};
             auto events = std::vector<TransportEvent>{};
             auto decode_state = ClientReplicationState{};
-            auto scratch = PipelineScratch{};
             auto latest_applied_sequence = SequenceId{};
             auto ack_tracker = SnapshotAckTracker{};
             auto snapshot_history = std::deque<RetainedClientSnapshot>{};
@@ -906,7 +903,6 @@ namespace simnet::app
                                 *packet,
                                 pipeline,
                                 decode_state,
-                                scratch,
                                 latest_applied_sequence,
                                 ack_tracker,
                                 snapshot_history,

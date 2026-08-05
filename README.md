@@ -25,9 +25,7 @@ orchestration remain planned. Tracy instrumentation is available through the
 visualization is enabled. The Server can display occupied spatial cells and selected-boid
 simulation diagnostics.
 
-`Aoi`, `Lod`, and `Compression` remain declared pipeline vocabulary. They are not implemented and a selected unsupported pipeline option is rejected during app startup.
-
-BitPacking is retained as an evaluated technique. The current quantized octahedral record is already 120 bits, so bit packing produces the same 15-byte record size while adding packing work.
+BitPacking is retained as an evaluated technique. The current quantized octahedral record is already 128 bits, so bit packing produces the same 16-byte record size while adding packing work.
 
 ## Requirements
 

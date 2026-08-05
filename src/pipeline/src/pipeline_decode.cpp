@@ -28,7 +28,6 @@ namespace
 {
     /// Builds an invalid DecodeOutput, filling the error message.
     [[nodiscard]] simnet::DecodeOutput invalid_decode(
-        simnet::ByteSpan bytes,
         std::string error,
         simnet::Tick tick = 0,
         simnet::SequenceId sequence = 0,
@@ -41,9 +40,6 @@ namespace
         output.report.sequence = sequence;
         output.report.baseline_sequence = baseline_sequence;
         output.report.snapshot_kind = snapshot_kind;
-        output.report.encoded_update_bytes = static_cast<std::uint32_t>(
-            std::min<std::size_t>(bytes.size(), std::numeric_limits<std::uint32_t>::max())
-        );
         output.report.valid = false;
         output.report.error = std::move(error);
         return output;
@@ -69,44 +65,38 @@ namespace simnet
     DecodeOutput decode_update(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
-        PipelineScratch& scratch,
         DecodeInput const& input
     )
     {
         pipeline_validate::require_supported_pipeline_definition(pipeline);
         pipeline_validate::require_quantization_settings(pipeline);
-        static_cast<void>(scratch);
-
         ByteSpan const bytes = input.bytes;
 
         // --- Size sanity checks ---
 
         if (bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
-            return invalid_decode(bytes, "encoded update byte count exceeds uint32 range");
+            return invalid_decode("encoded update byte count exceeds uint32 range");
         }
         if (bytes.size() < pipeline_wire::header_bytes) {
-            return invalid_decode(bytes, "encoded update is shorter than header");
+            return invalid_decode("encoded update is shorter than header");
         }
 
         // --- Read header ---
 
         pipeline_wire::EncodedUpdateHeader header{};
         if (!pipeline_wire::read_header(bytes, header)) {
-            return invalid_decode(bytes, "failed to read encoded update header");
+            return invalid_decode("failed to read encoded update header");
         }
 
         // Helper that wraps invalid_decode with the parsed header fields.
         auto invalid_update = [&](std::string error) {
             DecodeOutput output = invalid_decode(
-                bytes,
                 std::move(error),
                 header.tick,
                 header.sequence,
                 header.baseline_sequence,
                 header.snapshot_kind
             );
-            output.report.delta = pipeline_validate::is_delta(pipeline)
-                && header.snapshot_kind == SnapshotKind::Patch;
             return output;
         };
 
@@ -198,10 +188,6 @@ namespace simnet
         report.sequence = header.sequence;
         report.baseline_sequence = header.baseline_sequence;
         report.snapshot_kind = header.snapshot_kind;
-        report.upsert_count = header.upsert_count;
-        report.delete_count = header.delete_count;
-        report.encoded_update_bytes = static_cast<std::uint32_t>(bytes.size());
-        report.delta = delta_enabled && header.snapshot_kind == SnapshotKind::Patch;
         report.valid = true;
 
         return {.update = std::move(patch), .report = std::move(report)};

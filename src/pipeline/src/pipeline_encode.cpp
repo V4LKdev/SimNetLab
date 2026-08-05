@@ -26,29 +26,17 @@ import simnet.snapshot;
 namespace
 {
     /// Builds a skipped EncodeOutput without touching client state.
-    [[nodiscard]] simnet::EncodeOutput skipped_encode(
-        simnet::PipelineDefinition const& pipeline,
-        simnet::WorldSnapshot const& snapshot,
-        simnet::EncodeSkipReason reason
-    )
+    [[nodiscard]] simnet::EncodeOutput skipped_encode(simnet::WorldSnapshot const& snapshot)
     {
         simnet::EncodeReport report{};
         report.tick = snapshot.tick;
         report.sequence = 0;
         report.baseline_sequence = 0;
         report.snapshot_kind = simnet::SnapshotKind::FullReplace;
-        report.techniques = pipeline.techniques;
-        report.emitted = false;
-        report.skipped = true;
-        report.delta = false;
-        report.skip_reason = reason;
-        report.size_target_exceeded = false;
-        report.input_entities = static_cast<std::uint32_t>(snapshot.size());
         // remaining fields stay zero
 
         return {
             .kind = simnet::EncodeResultKind::Skipped,
-            .skip_reason = reason,
             .update = {},
             .report = report,
         };
@@ -116,7 +104,7 @@ namespace simnet
         // --- Send interval ---
 
         if (!pipeline_selection::should_emit_for_send_interval(pipeline, snapshot.tick)) {
-            return skipped_encode(pipeline, snapshot, EncodeSkipReason::SendInterval);
+            return skipped_encode(snapshot);
         }
 
         // --- Sequence allocation ---
@@ -250,37 +238,20 @@ namespace simnet
         // --- Encoded update / report ---
 
         EncodedUpdate update{
-            .tick = snapshot.tick,
             .sequence = sequence,
-            .baseline_sequence = baseline_sequence,
             .bytes = scratch.bytes,
         };
-
-        std::uint32_t const final_bytes = static_cast<std::uint32_t>(update.bytes.size());
 
         EncodeReport report{};
         report.tick = snapshot.tick;
         report.sequence = sequence;
         report.baseline_sequence = baseline_sequence;
         report.snapshot_kind = snapshot_kind;
-        report.techniques = pipeline.techniques;
-        report.emitted = true;
-        report.skipped = false;
-        report.delta = emit_delta;
-        report.skip_reason = EncodeSkipReason::None;
-        report.size_target_exceeded = final_bytes > pipeline.encoded_update_size_target_bytes;
-        report.input_entities = static_cast<std::uint32_t>(snapshot.size());
-        report.selected_entities = static_cast<std::uint32_t>(selected_count);
         report.upsert_count = static_cast<std::uint32_t>(selected_count);
         report.delete_count = static_cast<std::uint32_t>(delete_count);
-        report.encoded_update_bytes = final_bytes;
-        report.payload_bytes = payload_bytes;
-        report.uncompressed_bytes = final_bytes;
-        report.final_bytes = final_bytes;
 
         EncodeOutput output;
         output.kind = EncodeResultKind::Update;
-        output.skip_reason = EncodeSkipReason::None;
         output.update = std::move(update);
         output.report = report;
 

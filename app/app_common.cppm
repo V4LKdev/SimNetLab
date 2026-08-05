@@ -86,8 +86,7 @@ export namespace simnet::app
     milliseconds_option(int& index, int argc, char** argv, std::string_view option);
 
     [[nodiscard]] SendSizePolicy transport_send_size_policy(TransportConfig const& config);
-    [[nodiscard]] PipelineDefinition
-    make_snapshot_pipeline(SharedConfig const& shared, TransportConfig const& transport);
+    [[nodiscard]] PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared);
     [[nodiscard]] SessionIdentity
     make_session_identity(SharedConfig const& shared, PipelineDefinition const& pipeline);
     [[nodiscard]] std::string_view shutdown_reason_name(ShutdownReason reason);
@@ -191,29 +190,9 @@ namespace simnet::app
         throw std::runtime_error("unsupported send size policy: " + config.send_size_policy);
     }
 
-    PipelineDefinition
-    make_snapshot_pipeline(SharedConfig const& shared, TransportConfig const& transport)
+    PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared)
     {
-        if (shared.pipeline.enable_aoi) {
-            throw std::runtime_error("area of interest pipeline selection is not supported");
-        }
-        if (shared.pipeline.enable_compression) {
-            throw std::runtime_error("compression pipeline selection is not supported");
-        }
-        if (shared.pipeline.position_bits != 16U) {
-            throw std::runtime_error(
-                "pipeline position_bits must be 16 until variable-width encoding is implemented"
-            );
-        }
-        if (shared.pipeline.heading_bits != 16U) {
-            throw std::runtime_error(
-                "pipeline heading_bits must be 16 until variable-width encoding is implemented"
-            );
-        }
-
-        auto pipeline = PipelineDefinition{
-            .encoded_update_size_target_bytes = transport.max_payload_bytes,
-        };
+        auto pipeline = PipelineDefinition{};
         if (shared.pipeline.enable_incremental) {
             pipeline.techniques |= PipelineTechniqueFlags::Incremental;
         }

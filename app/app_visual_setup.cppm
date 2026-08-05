@@ -156,9 +156,6 @@ namespace simnet::app
         );
         add_row("Bit packing", enabled(has(pipeline, PipelineTechniqueFlags::BitPacking)));
         add_row("Delta baseline", enabled(has(pipeline, PipelineTechniqueFlags::Delta)));
-        add_row("AOI", "Disabled");
-        add_row("LOD", "Disabled");
-        add_row("Compression", enabled(has(pipeline, PipelineTechniqueFlags::Compression)));
         add_row(
             "Packetization",
             transport.send_size_policy == "allow_backend_fragmentation"
