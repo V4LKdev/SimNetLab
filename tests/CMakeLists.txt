@@ -10,6 +10,7 @@ add_executable(SimNetTests
     config_tests.cpp
     core_time_tests.cpp
     pipeline_tests.cpp
+    packetization_tests.cpp
     replication_tests.cpp
     runtime_tests.cpp
     snapshot_interpolation_tests.cpp
@@ -43,6 +44,7 @@ target_link_libraries(SimNetTests
         simnet_config
         simnet_game_client
         simnet_game_server
+        simnet_packetization
         simnet_pipeline
         simnet_runtime
         simnet_snapshot
