@@ -5,6 +5,7 @@ add_executable(SimNetTests
     app_camera_tests.cpp
     app_evidence_tests.cpp
     app_protocol_tests.cpp
+    aoi_tests.cpp
     boid_simulation_tests.cpp
     config_tests.cpp
     core_time_tests.cpp

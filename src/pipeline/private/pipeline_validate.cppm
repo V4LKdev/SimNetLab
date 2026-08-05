@@ -1,8 +1,10 @@
 module;
 
 #include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <stdexcept>
 #include <string>
 
@@ -99,6 +101,69 @@ namespace simnet::pipeline_validate
         if (bounds.min.x >= bounds.max.x || bounds.min.y >= bounds.max.y
             || bounds.min.z >= bounds.max.z) {
             throw std::runtime_error("quantization bounds must have positive extent");
+        }
+    }
+
+    /// Validates the active AOI mode and mode-specific settings.
+    void require_area_of_interest_settings(PipelineDefinition const& pipeline)
+    {
+        auto const& settings = pipeline.area_of_interest;
+        switch (settings.mode) {
+            case AreaOfInterestMode::None:
+                if (settings.radius != 0.0F || settings.fov_degrees != 0.0F) {
+                    throw std::runtime_error("none AOI does not accept radius or FOV settings");
+                }
+                return;
+            case AreaOfInterestMode::Radius:
+                if (!std::isfinite(settings.radius) || settings.radius <= 0.0F) {
+                    throw std::runtime_error("radius AOI requires a positive finite radius");
+                }
+                if (settings.fov_degrees != 0.0F) {
+                    throw std::runtime_error("radius AOI does not accept an FOV setting");
+                }
+                return;
+            case AreaOfInterestMode::Fov:
+                if (!std::isfinite(settings.radius) || settings.radius <= 0.0F) {
+                    throw std::runtime_error("FOV AOI requires a positive finite radius");
+                }
+                if (!std::isfinite(settings.fov_degrees) || settings.fov_degrees <= 0.0F
+                    || settings.fov_degrees > 180.0F) {
+                    throw std::runtime_error("FOV AOI angle must be in (0, 180]");
+                }
+                return;
+        }
+        throw std::runtime_error("unsupported AOI mode");
+    }
+
+    /// Validates one authoritative interest pose.
+    void require_interest_source(InterestSource const& source)
+    {
+        if (!is_finite(source.position) || !is_finite(source.forward)) {
+            throw std::runtime_error("AOI interest source must be finite");
+        }
+        auto const forward_length_squared = length_squared(source.forward);
+        auto const min_length = 1.0F - heading_normalization_tolerance;
+        auto const max_length = 1.0F + heading_normalization_tolerance;
+        if (forward_length_squared < min_length * min_length
+            || forward_length_squared > max_length * max_length) {
+            throw std::runtime_error("AOI interest source forward direction must be normalized");
+        }
+    }
+
+    /// Validates sorted source indices supplied by an application-owned coarse query.
+    void require_candidate_indices(std::span<std::uint32_t const> indices, std::size_t source_count)
+    {
+        auto previous = std::uint32_t{};
+        auto first = true;
+        for (auto const index : indices) {
+            if (index >= source_count) {
+                throw std::runtime_error("AOI candidate index is outside the source snapshot");
+            }
+            if (!first && index <= previous) {
+                throw std::runtime_error("AOI candidate indices must be strictly ascending");
+            }
+            previous = index;
+            first = false;
         }
     }
 

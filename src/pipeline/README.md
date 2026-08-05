@@ -9,7 +9,8 @@
 - `PipelineScratch` owns reusable encode and decode buffers.
 - `validate_pipeline_definition` rejects unsupported technique combinations and invalid settings.
 - `should_emit_snapshot` provides the pure cadence preflight used before baseline resolution.
-- `encode_snapshot` produces an encoded update or a skipped result.
+- `encode_snapshot` produces an encoded update or a skipped result. Emitted output includes the
+  exact complete logical Client snapshot represented by its canonical encoded values.
 - `decode_update` validates encoded update bytes and returns a state update or an error report.
 - `pipeline_decode_signature` identifies the receiver-side representation.
 
@@ -21,8 +22,11 @@ Each concurrent caller needs its own `ClientReplicationState` and `PipelineScrat
 emits only when `tick % N == 0`. Other ticks return `Skipped` with reason `SendInterval` and do
 not change sequence, selection, scratch, or baseline state. `Incremental` without `Delta`
 schedules round-robin candidate upserts. `Delta` filters scheduled candidates against a retained
-acknowledged baseline, while retaining every baseline-only delete. Without a baseline, `Delta`
-emits a complete `FullReplace` and does not advance the incremental cursor. `Quantization` encodes
+acknowledged baseline, while retaining every baseline-only delete. The first non-Delta
+`Incremental` emission is a complete `FullReplace` and does not advance the cursor. Later
+incremental patches include every entity removed from the latest exact replica. Without a
+baseline, `Delta` emits a complete `FullReplace` and does not advance the incremental cursor.
+`Quantization` encodes
 positions within configured bounds. `OctHeading` requires quantization and encodes a heading as two
 octahedral components.
 
@@ -33,7 +37,7 @@ octahedral components.
 | Order | Stage | Current control | Compatibility and ownership |
 | ---: | --- | --- | --- |
 | 1 | Cadence control | `SendInterval` | Composes with every active technique. A skipped call changes no sequence or selection state. |
-| 2 | Relevancy selection | None | Reserved for later AOI and FOV work. It will consume authoritative snapshot state. |
+| 2 | Relevancy selection | `AreaOfInterestSettings` | None passes the complete source. Radius uses inclusive 3D distance. FOV adds an inclusive 3D cone test. The application supplies sorted coarse source indices without exposing its spatial implementation. |
 | 3 | Update scheduling | `Incremental` | Composes with every active representation and delta technique. It advances by scheduled candidates, including candidates later removed by delta selection. |
 | 4 | Delta selection | `Delta` plus an exact retained baseline | Filters scheduled or complete upsert candidates. Baseline-only deletes remain truthful and are included. Without a baseline this stage is inactive. |
 | 5 | Representation encoding | `Quantization`, `OctHeading` | Octahedral headings require quantization. PIPE-011 owns comparing delta candidates by canonical encoded values. |
@@ -49,6 +53,12 @@ Unsupported stages fail validation. All active techniques otherwise compose when
 - Sequence zero is reserved. Encoding fails if allocation would wrap to zero.
 - The encoded update size target is used only for reporting. Transport owns actual send limits.
 - `PipelineScratch` should be reused across calls to avoid recurring allocations.
+- Active AOI requires a finite authoritative interest source. A missing source returns a skipped
+  result and never falls back to the complete population.
+- Radius and conical FOV boundaries are inclusive. The FOV setting is a full angle in degrees.
+  Zero-distance entities are retained and entities behind the source are rejected.
+- For offset `d`, radius accepts `dot(d, d) <= radius^2`. FOV also requires
+  `dot(forward, d) >= 0` and `dot(forward, d)^2 >= dot(d, d) * cos(fov_degrees / 2)^2`.
 - The private wire header carries a magic value, protocol and schema versions, and a decode signature. Schema version 4 adds one lossless classification byte to every entity record. Decode rejects mismatches and stale sequences.
 - Delta decoding reports the declared baseline sequence. Client storage must retain and resolve that exact reconstructed snapshot before applying the patch.
 

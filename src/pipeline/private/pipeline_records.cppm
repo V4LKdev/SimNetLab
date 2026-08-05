@@ -322,4 +322,76 @@ namespace simnet::pipeline_records
         }
         return pipeline_wire::read_u8(bytes, offset, boid.hue);
     }
+
+    /// Returns the exact logical entity state reconstructed from this record layout.
+    [[nodiscard]] EntityState canonicalize_record(
+        RecordLayout const& layout,
+        EntityNetId id,
+        EntityClassification classification,
+        Vec3f position,
+        Vec3f heading,
+        std::uint8_t hue
+    ) noexcept
+    {
+        auto result = EntityState{
+            .id = id,
+            .classification = classification,
+            .position = position,
+            .heading = heading,
+            .hue = hue,
+        };
+        if (!layout.quantized) {
+            return result;
+        }
+
+        result.position = {
+            .x = pipeline_quantize::dequantize_unorm16(
+                pipeline_quantize::quantize_unorm16(
+                    position.x,
+                    layout.bounds.min.x,
+                    layout.bounds.max.x
+                ),
+                layout.bounds.min.x,
+                layout.bounds.max.x
+            ),
+            .y = pipeline_quantize::dequantize_unorm16(
+                pipeline_quantize::quantize_unorm16(
+                    position.y,
+                    layout.bounds.min.y,
+                    layout.bounds.max.y
+                ),
+                layout.bounds.min.y,
+                layout.bounds.max.y
+            ),
+            .z = pipeline_quantize::dequantize_unorm16(
+                pipeline_quantize::quantize_unorm16(
+                    position.z,
+                    layout.bounds.min.z,
+                    layout.bounds.max.z
+                ),
+                layout.bounds.min.z,
+                layout.bounds.max.z
+            ),
+        };
+        if (layout.oct_heading) {
+            auto const [x, y] = pipeline_quantize::encode_oct_heading(heading);
+            result.heading = pipeline_quantize::decode_oct_heading(x, y);
+        } else {
+            result.heading = normalize_or(
+                {
+                    .x = pipeline_quantize::dequantize_snorm16(
+                        pipeline_quantize::quantize_snorm16(heading.x)
+                    ),
+                    .y = pipeline_quantize::dequantize_snorm16(
+                        pipeline_quantize::quantize_snorm16(heading.y)
+                    ),
+                    .z = pipeline_quantize::dequantize_snorm16(
+                        pipeline_quantize::quantize_snorm16(heading.z)
+                    ),
+                },
+                {.x = 1.0F}
+            );
+        }
+        return result;
+    }
 }

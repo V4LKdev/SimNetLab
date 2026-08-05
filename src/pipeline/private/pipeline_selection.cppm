@@ -1,8 +1,10 @@
 module;
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 /// @brief Private entity selection helpers.
 module simnet.pipeline:selection;
@@ -13,6 +15,93 @@ import simnet.snapshot;
 
 namespace simnet::pipeline_selection
 {
+    void append_snapshot_entity(
+        WorldSnapshot const& source,
+        std::size_t index,
+        WorldSnapshot& destination
+    )
+    {
+        destination.ids.push_back(source.ids[index]);
+        destination.classifications.push_back(source.classifications[index]);
+        destination.positions.push_back(source.positions[index]);
+        destination.headings.push_back(source.headings[index]);
+        destination.hues.push_back(source.hues[index]);
+    }
+
+    [[nodiscard]] bool inside_area_of_interest(
+        AreaOfInterestSettings const& settings,
+        InterestSource const& source,
+        Vec3f position
+    ) noexcept
+    {
+        auto const offset = position - source.position;
+        auto const distance_squared = length_squared(offset);
+        auto const radius_squared = settings.radius * settings.radius;
+        if (distance_squared > radius_squared) {
+            return false;
+        }
+        if (settings.mode == AreaOfInterestMode::Radius || distance_squared == 0.0F) {
+            return true;
+        }
+
+        auto constexpr degrees_to_radians = 0.01745329251994329577F;
+        auto const half_angle = settings.fov_degrees * 0.5F * degrees_to_radians;
+        auto const cosine = std::cos(half_angle);
+        auto const forward_distance = dot(source.forward, offset);
+        if (forward_distance < 0.0F) {
+            return false;
+        }
+        if (settings.fov_degrees == 180.0F) {
+            return true;
+        }
+        return forward_distance * forward_distance >= distance_squared * cosine * cosine;
+    }
+
+    /// Builds the exact sorted AOI population from sorted coarse source indices.
+    void select_area_of_interest(
+        PipelineScratch& scratch,
+        WorldSnapshot const& snapshot,
+        AreaOfInterestSettings const& settings,
+        InterestSource const& source,
+        std::span<std::uint32_t const> candidate_indices
+    )
+    {
+        auto normalized_source = source;
+        normalized_source.forward = normalize_or(source.forward, {.z = 1.0F});
+        scratch.relevant_source_indices.clear();
+        scratch.relevant_source_indices.reserve(candidate_indices.size() + 1U);
+        for (auto const source_index : candidate_indices) {
+            if (inside_area_of_interest(
+                    settings,
+                    normalized_source,
+                    snapshot.positions[source_index]
+                )) {
+                scratch.relevant_source_indices.push_back(source_index);
+            }
+        }
+
+        if (source.source_entity_id != 0U) {
+            auto const found = std::ranges::lower_bound(snapshot.ids, source.source_entity_id);
+            if (found != snapshot.ids.end() && *found == source.source_entity_id) {
+                auto const source_index
+                    = static_cast<std::uint32_t>(std::distance(snapshot.ids.begin(), found));
+                auto const insertion
+                    = std::ranges::lower_bound(scratch.relevant_source_indices, source_index);
+                if (insertion == scratch.relevant_source_indices.end()
+                    || *insertion != source_index) {
+                    scratch.relevant_source_indices.insert(insertion, source_index);
+                }
+            }
+        }
+
+        scratch.relevant_snapshot.clear();
+        scratch.relevant_snapshot.tick = snapshot.tick;
+        scratch.relevant_snapshot.reserve(scratch.relevant_source_indices.size());
+        for (auto const source_index : scratch.relevant_source_indices) {
+            append_snapshot_entity(snapshot, source_index, scratch.relevant_snapshot);
+        }
+    }
+
     /// Selects a round-robin slice of source indices.
     void select_incremental_indices(
         PipelineScratch& scratch,
@@ -151,6 +240,32 @@ namespace simnet::pipeline_selection
         while (baseline_index < baseline.size()) {
             scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);
             ++baseline_index;
+        }
+    }
+
+    /// Selects every entity that disappeared from the latest exact non-Delta replica.
+    void select_replica_deletes(
+        PipelineScratch& scratch,
+        WorldSnapshot const& current,
+        WorldSnapshot const& replica
+    )
+    {
+        scratch.selected_delete_ids.clear();
+        scratch.selected_delete_ids.reserve(replica.size());
+        auto current_index = std::size_t{};
+        auto replica_index = std::size_t{};
+        while (current_index < current.size() && replica_index < replica.size()) {
+            if (current.ids[current_index] < replica.ids[replica_index]) {
+                ++current_index;
+            } else if (replica.ids[replica_index] < current.ids[current_index]) {
+                scratch.selected_delete_ids.push_back(replica.ids[replica_index++]);
+            } else {
+                ++current_index;
+                ++replica_index;
+            }
+        }
+        while (replica_index < replica.size()) {
+            scratch.selected_delete_ids.push_back(replica.ids[replica_index++]);
         }
     }
 }

@@ -122,6 +122,7 @@ namespace simnet
         // --- Patch-kind specific checks ---
 
         bool const delta_enabled = pipeline_validate::is_delta(pipeline);
+        bool const incremental_enabled = pipeline_validate::is_incremental(pipeline);
 
         if (header.snapshot_kind == SnapshotKind::FullReplace) {
             if (header.baseline_sequence != 0U)
@@ -134,7 +135,7 @@ namespace simnet
         } else {
             if (header.baseline_sequence != 0U)
                 return invalid_update("non-delta patch baseline sequence must be 0");
-            if (header.delete_count != 0U)
+            if (!incremental_enabled && header.delete_count != 0U)
                 return invalid_update("non-delta patch delete count must be 0");
         }
 

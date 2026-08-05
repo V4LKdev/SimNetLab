@@ -39,6 +39,7 @@ export namespace simnet
      * - Reads settings from 'pipeline'.
      * - Mutates 'client_state'.
      * - Reuses 'scratch' internal buffers.
+     * - Returns the exact complete Client result represented by every emitted update.
      * - Returns 'EncodeOutput' with either an encoded update or skipped result.
      */
     [[nodiscard]] EncodeOutput encode_snapshot(

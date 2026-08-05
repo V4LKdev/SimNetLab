@@ -221,7 +221,7 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
 
         record_received(ack, decoded.report.sequence);
         ack.newest_applied_snapshot = decoded.report.sequence;
-        acknowledged_snapshot = snapshot;
+        acknowledged_snapshot = encoded.resulting_snapshot;
         acknowledged_sequence = decoded.report.sequence;
         ++emitted_index;
     }

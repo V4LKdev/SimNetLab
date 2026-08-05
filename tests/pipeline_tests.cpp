@@ -803,7 +803,7 @@ TEST_CASE("unchecked pipeline encoding rejects control misuse transactionally", 
 }
 
 TEST_CASE(
-    "incremental pipeline advances cursor only on scheduled emissions",
+    "incremental pipeline seeds complete membership before scheduled emissions",
     "[pipeline][incremental]"
 )
 {
@@ -817,10 +817,11 @@ TEST_CASE(
     auto decode_state = simnet::ClientReplicationState{};
     auto encode_scratch = simnet::PipelineScratch{};
     auto emitted_index = std::size_t{};
+    auto replica = simnet::WorldSnapshot{};
     auto const expected_ids = std::array{
+        std::vector<simnet::EntityNetId>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
         std::vector<simnet::EntityNetId>{1, 2, 3, 4},
         std::vector<simnet::EntityNetId>{5, 6, 7, 8},
-        std::vector<simnet::EntityNetId>{1, 2, 9, 10},
     };
 
     for (simnet::Tick tick = 0; tick < 5; ++tick) {
@@ -829,7 +830,10 @@ TEST_CASE(
             pipeline,
             encode_state,
             encode_scratch,
-            {.snapshot = &snapshot}
+            {
+                .snapshot = &snapshot,
+                .replica_snapshot = encode_state.incremental_seeded ? &replica : nullptr,
+            }
         );
 
         if ((tick % 2U) != 0U) {
@@ -840,8 +844,12 @@ TEST_CASE(
         REQUIRE(emitted_index < expected_ids.size());
         REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
         CHECK(encoded.update.sequence == emitted_index + 1U);
-        CHECK(encoded.report.snapshot_kind == simnet::SnapshotKind::Patch);
-        CHECK(encoded.report.upsert_count == 4);
+        CHECK(
+            encoded.report.snapshot_kind
+            == (emitted_index == 0U ? simnet::SnapshotKind::FullReplace
+                                    : simnet::SnapshotKind::Patch)
+        );
+        CHECK(encoded.report.upsert_count == expected_ids[emitted_index].size());
 
         auto const decoded
             = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
@@ -853,12 +861,98 @@ TEST_CASE(
             ids.push_back(boid.id);
         }
         CHECK(ids == expected_ids[emitted_index]);
+        replica = encoded.resulting_snapshot;
         ++emitted_index;
     }
 
     CHECK(emitted_index == expected_ids.size());
-    CHECK(encode_state.incremental_cursor == 2);
+    CHECK(encode_state.incremental_cursor == 8);
     CHECK(encode_state.next_sequence == 4);
+}
+
+TEST_CASE(
+    "incremental patches converge removals spawns and an empty population",
+    "[pipeline][incremental][replication]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental;
+    pipeline.incremental.max_entities_per_update = 2U;
+
+    SECTION("empty first population still seeds with FullReplace")
+    {
+        auto empty = simnet::WorldSnapshot{};
+        empty.tick = 1U;
+        auto state = simnet::ClientReplicationState{};
+        auto scratch = simnet::PipelineScratch{};
+        auto const encoded
+            = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &empty});
+        CHECK(encoded.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+        CHECK(encoded.report.upsert_count == 0U);
+        CHECK(encoded.report.delete_count == 0U);
+        CHECK(encoded.resulting_snapshot.empty());
+        CHECK(state.incremental_seeded);
+        CHECK(state.incremental_cursor == 0U);
+    }
+
+    SECTION("later populations converge through sorted patches")
+    {
+
+        auto state = simnet::ClientReplicationState{};
+        auto scratch = simnet::PipelineScratch{};
+        auto source = make_linear_snapshot(1U, 3U);
+        auto first = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &source});
+        REQUIRE(first.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+        CHECK(first.report.upsert_count == 3U);
+        CHECK(first.report.delete_count == 0U);
+        CHECK(state.incremental_cursor == 0U);
+        auto replica = first.resulting_snapshot;
+
+        source.tick = 2U;
+        source.ids.erase(source.ids.begin() + 1);
+        source.classifications.erase(source.classifications.begin() + 1);
+        source.positions.erase(source.positions.begin() + 1);
+        source.headings.erase(source.headings.begin() + 1);
+        source.hues.erase(source.hues.begin() + 1);
+        source.ids.push_back(4U);
+        source.classifications.push_back(known_classification);
+        source.positions.push_back({4.0F, 0.0F, 0.0F});
+        source.headings.push_back({1.0F, 0.0F, 0.0F});
+        source.hues.push_back(4U);
+        auto second = simnet::encode_snapshot(
+            pipeline,
+            state,
+            scratch,
+            {.snapshot = &source, .replica_snapshot = &replica}
+        );
+        REQUIRE(second.report.snapshot_kind == simnet::SnapshotKind::Patch);
+        CHECK(second.report.delete_count == 1U);
+        CHECK(scratch.logical_update.deletes == std::vector<simnet::EntityNetId>{2U});
+        CHECK(second.resulting_snapshot.ids == std::vector<simnet::EntityNetId>{1U, 3U});
+        replica = second.resulting_snapshot;
+
+        source.tick = 3U;
+        auto third = simnet::encode_snapshot(
+            pipeline,
+            state,
+            scratch,
+            {.snapshot = &source, .replica_snapshot = &replica}
+        );
+        CHECK(third.resulting_snapshot.ids == std::vector<simnet::EntityNetId>{1U, 3U, 4U});
+        replica = third.resulting_snapshot;
+
+        auto empty = simnet::WorldSnapshot{};
+        empty.tick = 4U;
+        auto fourth = simnet::encode_snapshot(
+            pipeline,
+            state,
+            scratch,
+            {.snapshot = &empty, .replica_snapshot = &replica}
+        );
+        CHECK(fourth.report.upsert_count == 0U);
+        CHECK(fourth.report.delete_count == 3U);
+        CHECK(fourth.resulting_snapshot.empty());
+    }
 }
 
 TEST_CASE("send interval emits the documented deterministic tick sequence", "[pipeline][cadence]")
@@ -940,10 +1034,13 @@ TEST_CASE(
     auto encode_state = simnet::ClientReplicationState{
         .next_sequence = 7U,
         .incremental_cursor = 1U,
+        .incremental_seeded = true,
     };
     auto scratch = simnet::PipelineScratch{};
     scratch.selected_indices = {9U};
     scratch.selected_delete_ids = {10U};
+    scratch.relevant_snapshot = baseline;
+    scratch.logical_update.tick = 19U;
     scratch.bytes = {simnet::Byte{11U}};
 
     for (simnet::Tick tick : {1U, 2U}) {
@@ -963,8 +1060,11 @@ TEST_CASE(
         CHECK(skipped.update.bytes.empty());
         CHECK(encode_state.next_sequence == 7U);
         CHECK(encode_state.incremental_cursor == 1U);
+        CHECK(encode_state.incremental_seeded);
         CHECK(scratch.selected_indices == std::vector<std::uint32_t>{9U});
         CHECK(scratch.selected_delete_ids == std::vector<simnet::EntityNetId>{10U});
+        CHECK(scratch.relevant_snapshot.ids == baseline.ids);
+        CHECK(scratch.logical_update.tick == 19U);
         CHECK(scratch.bytes == std::vector<simnet::Byte>{simnet::Byte{11U}});
     }
 
@@ -1152,4 +1252,80 @@ TEST_CASE(
     CHECK(decoded.update.upserts[1].classification == unknown_classification);
     CHECK(decoded.update.upserts[2].classification == simnet::EntityClassification{2U});
     CHECK(simnet::validate_client_snapshot_patch(decoded.update).valid);
+}
+
+TEST_CASE(
+    "encoded resulting snapshots equal exact quantized Client reconstruction",
+    "[pipeline][quantized][replication]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Quantization
+        | simnet::PipelineTechniqueFlags::OctHeading | simnet::PipelineTechniqueFlags::BitPacking;
+    pipeline.quantization.position_bounds = simnet::make_centered_bounds(10.0F);
+    auto const source = make_snapshot(
+        1U,
+        {{.id = 1U,
+          .classification = known_classification,
+          .position = {1.2345F, -2.3456F, 3.4567F},
+          .heading = {0.70710677F, 0.70710677F, 0.0F},
+          .hue = 42U}}
+    );
+    auto encode_state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto const encoded
+        = simnet::encode_snapshot(pipeline, encode_state, scratch, {.snapshot = &source});
+    auto decode_state = simnet::ClientReplicationState{};
+    auto const decoded
+        = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
+    REQUIRE(decoded.report.valid);
+    auto reconstructed = simnet::WorldSnapshot{};
+    REQUIRE(
+        simnet::reconstruct_world_snapshot_unchecked(nullptr, decoded.update, reconstructed).valid
+    );
+
+    REQUIRE(encoded.resulting_snapshot.size() == reconstructed.size());
+    CHECK(encoded.resulting_snapshot.ids == reconstructed.ids);
+    CHECK(encoded.resulting_snapshot.classifications == reconstructed.classifications);
+    CHECK(encoded.resulting_snapshot.positions[0].x == reconstructed.positions[0].x);
+    CHECK(encoded.resulting_snapshot.positions[0].y == reconstructed.positions[0].y);
+    CHECK(encoded.resulting_snapshot.positions[0].z == reconstructed.positions[0].z);
+    CHECK(encoded.resulting_snapshot.headings[0].x == reconstructed.headings[0].x);
+    CHECK(encoded.resulting_snapshot.headings[0].y == reconstructed.headings[0].y);
+    CHECK(encoded.resulting_snapshot.headings[0].z == reconstructed.headings[0].z);
+    CHECK(encoded.resulting_snapshot.hues == reconstructed.hues);
+    CHECK(encoded.resulting_snapshot.positions[0].x != source.positions[0].x);
+
+    auto delta_pipeline = pipeline;
+    delta_pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
+    auto current = source;
+    current.tick = 2U;
+    current.positions[0].x = 5.4321F;
+    auto delta_state = simnet::ClientReplicationState{.next_sequence = 2U};
+    auto delta_scratch = simnet::PipelineScratch{};
+    auto const delta = simnet::encode_snapshot(
+        delta_pipeline,
+        delta_state,
+        delta_scratch,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &encoded.resulting_snapshot,
+            .baseline_sequence = encoded.update.sequence,
+        }
+    );
+    auto delta_decode_state = simnet::ClientReplicationState{};
+    auto const decoded_delta
+        = simnet::decode_update(delta_pipeline, delta_decode_state, {.bytes = delta.update.bytes});
+    REQUIRE(decoded_delta.report.valid);
+    auto reconstructed_delta = simnet::WorldSnapshot{};
+    REQUIRE(
+        simnet::reconstruct_world_snapshot_unchecked(
+            &encoded.resulting_snapshot,
+            decoded_delta.update,
+            reconstructed_delta
+        )
+            .valid
+    );
+    CHECK(delta.resulting_snapshot.positions[0].x == reconstructed_delta.positions[0].x);
+    CHECK(delta.resulting_snapshot.headings[0].x == reconstructed_delta.headings[0].x);
 }

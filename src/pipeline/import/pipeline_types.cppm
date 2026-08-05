@@ -36,6 +36,15 @@ export namespace simnet
     {
         None,
         SendInterval,
+        InterestSourceUnavailable,
+    };
+
+    /// Server-side population selection mode applied before update scheduling.
+    enum class AreaOfInterestMode : std::uint8_t
+    {
+        None,
+        Radius,
+        Fov,
     };
 
     /// Combines pipeline technique flags.
@@ -92,6 +101,34 @@ export namespace simnet
         Aabb3f position_bounds{make_centered_bounds(400.0F)};
     };
 
+    /// Shared Server-side area-of-interest settings.
+    struct AreaOfInterestSettings
+    {
+        AreaOfInterestMode mode{AreaOfInterestMode::None};
+        float radius{};
+        /// Full 3D cone angle in degrees when mode is Fov.
+        float fov_degrees{};
+    };
+
+    /// Role-independent authoritative pose used for one peer's AOI selection.
+    struct InterestSource
+    {
+        Vec3f position{};
+        Vec3f forward{.z = 1.0F};
+        /// Nonzero only for a querying Player that must retain its own entity.
+        EntityNetId source_entity_id{};
+    };
+
+    /// Population counts produced by the AOI stage.
+    struct AreaOfInterestReport
+    {
+        bool source_available{true};
+        std::uint32_t source_entity_count{};
+        std::uint32_t candidate_count{};
+        std::uint32_t retained_count{};
+        std::uint32_t culled_count{};
+    };
+
     // --- Pipeline state structs ---
 
     /**
@@ -108,6 +145,7 @@ export namespace simnet
         SendIntervalSettings send_interval{};
         IncrementalSettings incremental{};
         QuantizationSettings quantization{};
+        AreaOfInterestSettings area_of_interest{};
     };
 
     /// Caller-owned per-client replication state.
@@ -119,6 +157,8 @@ export namespace simnet
         SequenceId latest_remote_sequence{};
         /// Next incremental selection cursor for round-robin selection.
         std::uint32_t incremental_cursor{};
+        /// True after the first complete non-Delta Incremental population was emitted.
+        bool incremental_seeded{};
     };
 
     /// Reusable encode scratch memory. Stored externally to avoid allocations on the hot path.
@@ -128,6 +168,12 @@ export namespace simnet
         std::vector<std::uint32_t> selected_indices;
         /// IDs to delete (for delta)
         std::vector<EntityNetId> selected_delete_ids;
+        /// Source indices retained by AOI before update scheduling.
+        std::vector<std::uint32_t> relevant_source_indices;
+        /// Per-peer AOI population used as scheduling input.
+        WorldSnapshot relevant_snapshot;
+        /// Canonical logical update represented by the encoded bytes.
+        SnapshotUpdate logical_update;
         /// Temporary buffer for encoding.
         std::vector<Byte> bytes;
     };
