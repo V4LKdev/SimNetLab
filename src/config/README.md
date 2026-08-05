@@ -16,7 +16,12 @@ The current application runtime supports one server peer and one client peer. Se
 
 Visualization is local-only configuration shared by Server and Client. It controls optional window creation and does not affect network compatibility. `interpolation_enabled` makes the Server render between adjacent authoritative ticks and the Client render between retained reconstructed snapshots. Disabling it renders the latest exact state. `entity_mesh_path` is an optional local OBJ path. An empty path uses the built-in directional wedge. A load failure logs one warning and uses the same instanced wedge fallback. Stationary observer radius, vertical FOV, and the maximum displayed spatial cells are local viewer settings. The authoritative spatial cell size remains in shared spatial configuration.
 
-Client-local `gameplay.role` is either `stationary_observer` or `player`. The role is negotiated after transport session readiness and is part of the Client runtime fingerprint, not network compatibility. A stationary observer receives no owned entity. A player receives the ID of one Server-owned replicated fish. `client_player_visual.json` is the maintained visual player profile. The other Client profiles remain stationary observers.
+Client-local `gameplay.role` is either `stationary_observer` or `player`. The role is negotiated after transport session readiness and is part of the Client runtime fingerprint, not network compatibility. A stationary observer receives no owned entity. Its finite `stationary_observer_position` is sent once as its locked connection position while later messages update only its orientation. A player receives the ID of one Server-owned replicated fish. `client_player_visual.json` is the maintained visual player profile. The other Client profiles remain stationary observers.
+
+Shared `pipeline.area_of_interest` selects `none`, `radius`, or `fov`. Radius uses a positive finite
+3D radius. FOV also requires a full conical angle in `(0, 180]`. These settings participate in the
+network compatibility fingerprint. Maintained visual treatment profiles keep the world and boid
+settings equal while changing only the AOI mode and geometry.
 
 Shared `player` settings define smooth authoritative movement. Input accelerates
 private yaw and pitch velocities. Damping reduces them after release, maximum
@@ -32,7 +37,7 @@ independently by `console_log_enabled`, `file_log_enabled`, and `min_level`.
 controls the Client replication CSV on Client. When disabled, the CSV path creates no directory or
 evidence file. Enabled file logging may independently create `log_directory`.
 
-Benchmark, area-of-interest, LOD, and compression configuration vocabulary is retained for planned work. The Server's small sampled boid CSV is implemented. It is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled by the CMake build option. Unsupported pipeline selections are rejected during app startup instead of being ignored.
+Benchmark, LOD, and compression configuration vocabulary is retained for planned work. The Server's small sampled boid CSV is implemented. It is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled by the CMake build option. Unsupported pipeline selections are rejected during app startup instead of being ignored.
 
 Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.
 

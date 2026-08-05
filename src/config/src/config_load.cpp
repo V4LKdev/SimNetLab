@@ -1,6 +1,8 @@
 module;
 
+#include <algorithm>
 #include <bit>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -314,7 +316,73 @@ namespace
     void apply_gameplay(Json const& json, simnet::GameplayConfig& config)
     {
         read_optional(json, "role", config.role);
+        read_optional(json, "stationary_observer_position", config.stationary_observer_position);
         validate_one_of("gameplay.role", config.role, {"stationary_observer", "player"});
+        if (!std::ranges::all_of(config.stationary_observer_position, [](float value) {
+                return std::isfinite(value);
+            })) {
+            throw std::runtime_error(
+                "invalid config field 'gameplay.stationary_observer_position': expected finite values"
+            );
+        }
+    }
+
+    void apply_area_of_interest(Json const& json, simnet::AreaOfInterestConfig& config)
+    {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "mode" && key != "radius" && key != "fov_degrees") {
+                throw std::runtime_error(
+                    "invalid config field 'pipeline.area_of_interest." + key + "': unknown field"
+                );
+            }
+        }
+
+        read_optional(json, "mode", config.mode);
+        validate_one_of("pipeline.area_of_interest.mode", config.mode, {"none", "radius", "fov"});
+        auto const has_radius = json.contains("radius");
+        auto const has_fov = json.contains("fov_degrees");
+        if (config.mode == "none") {
+            if (has_radius || has_fov) {
+                throw std::runtime_error(
+                    "invalid pipeline.area_of_interest: none mode accepts no geometry fields"
+                );
+            }
+            return;
+        }
+
+        if (!has_radius) {
+            throw std::runtime_error(
+                "invalid pipeline.area_of_interest: active mode requires radius"
+            );
+        }
+        read_optional(json, "radius", config.radius);
+        if (!std::isfinite(config.radius) || config.radius <= 0.0F) {
+            throw std::runtime_error(
+                "invalid config field 'pipeline.area_of_interest.radius': expected positive finite value"
+            );
+        }
+        if (config.mode == "radius") {
+            if (has_fov) {
+                throw std::runtime_error(
+                    "invalid pipeline.area_of_interest: radius mode accepts no FOV field"
+                );
+            }
+            return;
+        }
+
+        if (!has_fov) {
+            throw std::runtime_error(
+                "invalid pipeline.area_of_interest: fov mode requires fov_degrees"
+            );
+        }
+        read_optional(json, "fov_degrees", config.fov_degrees);
+        if (!std::isfinite(config.fov_degrees) || config.fov_degrees <= 0.0F
+            || config.fov_degrees > 180.0F) {
+            throw std::runtime_error(
+                "invalid config field 'pipeline.area_of_interest.fov_degrees': expected (0, 180]"
+            );
+        }
     }
 
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
@@ -322,6 +390,9 @@ namespace
         read_optional(json, "enable_incremental", config.enable_incremental);
         read_optional(json, "enable_quantization", config.enable_quantization);
         read_optional(json, "enable_delta", config.enable_delta);
+        if (auto const* section = optional_object(json, "area_of_interest")) {
+            apply_area_of_interest(*section, config.area_of_interest);
+        }
     }
 
     void apply_transport(Json const& json, simnet::TransportConfig& config)
@@ -596,6 +667,9 @@ namespace
         hash_bytes(hash, config.pipeline.enable_incremental);
         hash_bytes(hash, config.pipeline.enable_quantization);
         hash_bytes(hash, config.pipeline.enable_delta);
+        hash_string(hash, config.pipeline.area_of_interest.mode);
+        hash_bytes(hash, config.pipeline.area_of_interest.radius);
+        hash_bytes(hash, config.pipeline.area_of_interest.fov_degrees);
     }
 
     void
@@ -649,6 +723,9 @@ namespace
         hash_canonical_bool(hash, config.pipeline.enable_incremental);
         hash_canonical_bool(hash, config.pipeline.enable_quantization);
         hash_canonical_bool(hash, config.pipeline.enable_delta);
+        hash_string(hash, config.pipeline.area_of_interest.mode);
+        hash_canonical_float(hash, config.pipeline.area_of_interest.radius);
+        hash_canonical_float(hash, config.pipeline.area_of_interest.fov_degrees);
     }
 
     void hash_transport_and_telemetry(
@@ -763,6 +840,9 @@ namespace simnet
         hash_shared_native(hash, shared);
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
         hash_string(hash, local.gameplay.role);
+        for (auto const value : local.gameplay.stationary_observer_position) {
+            hash_bytes(hash, value);
+        }
         hash_visualization(hash, local.visualization);
 
         return {.value = hash};

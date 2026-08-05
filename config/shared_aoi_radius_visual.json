@@ -4,8 +4,8 @@
   },
   "simulation": {
     "tick_rate_hz": 60,
-    "world_half": 70,
-    "initial_boid_count": 100
+    "world_half": 170,
+    "initial_boid_count": 1500
   },
   "spatial": {
     "cell_size": 18,
@@ -25,38 +25,39 @@
     "max_acceleration": 12.0,
     "separation_radius": 3.6,
     "alignment_radius": 12,
-    "cohesion_radius": 22,
+    "cohesion_radius": 24,
     "field_of_view_degrees": 240,
     "containment_prediction_seconds": 0.75,
     "containment_margin": 22.5,
     "separation_acceleration": 10,
     "containment_acceleration": 9,
-    "alignment_acceleration": 1.2,
-    "cohesion_acceleration": 1.0,
-    "wander_acceleration": 0.65,
+    "alignment_acceleration": 1.1,
+    "cohesion_acceleration": 2.2,
+    "wander_acceleration": 0.75,
     "wander_frequency_hz": 0.35,
     "hue_assimilation_rate": 0.04,
     "hue_drift_rate": 0.006
   },
   "player": {
     "cruise_speed": 8.0,
-    "boost_speed": 19.0,
-    "slow_speed": 1.75,
-    "speed_change_rate": 6.0,
-    "yaw_acceleration_degrees": 60.0,
-    "pitch_acceleration_degrees": 30.0,
-    "yaw_damping": 2.2,
-    "pitch_damping": 2.6,
-    "max_yaw_rate_degrees": 70.0,
-    "max_pitch_rate_degrees": 40.0,
-    "pitch_limit_degrees": 60.0
+    "boost_speed": 14.0,
+    "slow_speed": 3.0,
+    "speed_change_rate": 12.0,
+    "yaw_acceleration_degrees": 360.0,
+    "pitch_acceleration_degrees": 300.0,
+    "yaw_damping": 8.0,
+    "pitch_damping": 8.0,
+    "max_yaw_rate_degrees": 120.0,
+    "max_pitch_rate_degrees": 90.0,
+    "pitch_limit_degrees": 80.0
   },
   "pipeline": {
     "enable_incremental": false,
     "enable_quantization": false,
     "enable_delta": false,
     "area_of_interest": {
-      "mode": "none"
+      "mode": "radius",
+      "radius": 80.0
     }
   }
 }

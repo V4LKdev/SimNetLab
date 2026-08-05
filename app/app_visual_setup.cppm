@@ -156,6 +156,14 @@ namespace simnet::app
         );
         add_row("Bit packing", enabled(has(pipeline, PipelineTechniqueFlags::BitPacking)));
         add_row("Delta baseline", enabled(has(pipeline, PipelineTechniqueFlags::Delta)));
+        auto area_of_interest = std::string{"None"};
+        if (pipeline.area_of_interest.mode == AreaOfInterestMode::Radius) {
+            area_of_interest = "Radius " + format_float(pipeline.area_of_interest.radius);
+        } else if (pipeline.area_of_interest.mode == AreaOfInterestMode::Fov) {
+            area_of_interest = "3D cone " + format_float(pipeline.area_of_interest.radius)
+                + " radius, " + format_float(pipeline.area_of_interest.fov_degrees, 1) + " deg";
+        }
+        add_row("Area of interest", std::move(area_of_interest));
         add_row(
             "Packetization",
             transport.send_size_policy == "allow_backend_fragmentation"

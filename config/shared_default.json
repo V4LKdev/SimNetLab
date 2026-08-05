@@ -54,6 +54,9 @@
   "pipeline": {
     "enable_incremental": false,
     "enable_quantization": false,
-    "enable_delta": false
+    "enable_delta": false,
+    "area_of_interest": {
+      "mode": "none"
+    }
   }
 }

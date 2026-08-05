@@ -29,12 +29,12 @@ import simnet.game_shared;
 import simnet.pipeline;
 import simnet.runtime;
 import simnet.snapshot;
+import simnet.spatial;
 import simnet.telemetry;
 import simnet.transport;
 #if defined(SIMNET_ENABLE_RENDER)
 import simnet.app_visual_setup;
 import simnet.render;
-import simnet.spatial;
 #endif
 
 namespace
@@ -88,9 +88,13 @@ namespace
     struct CurrentSnapshotState
     {
         simnet::WorldSnapshot snapshot{};
+        simnet::SpatialGrid area_of_interest_grid{};
+        simnet::SpatialGridScratch area_of_interest_grid_scratch{};
         simnet::Tick extracted_tick{};
+        simnet::Tick area_of_interest_grid_tick{};
         bool valid{};
         bool dirty{true};
+        bool area_of_interest_grid_valid{};
     };
 
     [[nodiscard]] std::string_view
@@ -168,11 +172,21 @@ namespace
         std::optional<simnet::app::ClientRole> role{};
         simnet::EntityNetId player_id{};
         simnet::ClientReplicationState pipeline_state{};
+        simnet::PipelineScratch pipeline_scratch{};
+        std::vector<std::uint32_t> area_of_interest_candidates{};
+        simnet::app::StationaryObserverInterestState stationary_observer_interest{};
+        simnet::AreaOfInterestReport latest_area_of_interest{};
+        bool has_area_of_interest_report{};
+        std::uint32_t latest_upsert_count{};
+        std::uint32_t latest_delete_count{};
         simnet::SnapshotAck latest_ack{};
         simnet::SequenceId newest_emitted_sequence{};
         std::optional<simnet::SequenceId> acknowledged_baseline_sequence{};
         std::deque<RetainedSnapshot> retained_snapshots{};
     };
+
+    [[nodiscard]] std::optional<simnet::InterestSource>
+    resolve_interest_source(PeerRuntimeState const& peer, simnet::WorldSnapshot const& snapshot);
 
     [[nodiscard]] ServerOptions parse_options(int argc, char** argv)
     {
@@ -337,6 +351,26 @@ namespace
                 details.latest_applied_sequence = peer->latest_ack.newest_applied_snapshot;
             }
             details.acknowledged_baseline_sequence = peer->acknowledged_baseline_sequence;
+            details.area_of_interest_mode = config.pipeline.area_of_interest.mode;
+            if (config.pipeline.area_of_interest.mode == "none") {
+                details.interest_source_status = "not required";
+            } else if (peer->role == simnet::app::ClientRole::Player) {
+                details.interest_source_status = "authoritative Player";
+            } else if (peer->stationary_observer_interest.initialized) {
+                details.interest_source_status = "accepted stationary observer";
+            } else {
+                details.interest_source_status = "waiting for stationary observer";
+            }
+            if (peer->has_area_of_interest_report) {
+                details.source_entity_count = peer->latest_area_of_interest.source_entity_count;
+                details.candidate_entity_count = peer->latest_area_of_interest.candidate_count;
+                details.retained_entity_count = peer->latest_area_of_interest.retained_count;
+                details.culled_entity_count = peer->latest_area_of_interest.culled_count;
+            }
+            if (peer->newest_emitted_sequence != 0U) {
+                details.transmitted_upsert_count = peer->latest_upsert_count;
+                details.transmitted_delete_count = peer->latest_delete_count;
+            }
             details.retained_snapshot_count
                 = static_cast<std::uint32_t>(peer->retained_snapshots.size());
             if (!peer->retained_snapshots.empty()) {
@@ -452,6 +486,26 @@ namespace
                     .half_angle_degrees = selected_debug->field_of_view_degrees * 0.5F,
                     .color = {255U, 205U, 120U, 90U},
                     .label = "FOV",
+                });
+            }
+        }
+        if (peer.has_value() && config.pipeline.area_of_interest.mode != "none") {
+            auto const source = resolve_interest_source(*peer, snapshot);
+            if (source.has_value() && config.pipeline.area_of_interest.mode == "radius") {
+                debug_storage.spheres.push_back({
+                    .center = source->position,
+                    .radius = config.pipeline.area_of_interest.radius,
+                    .color = {102U, 214U, 255U, 72U},
+                    .label = "network AOI radius",
+                });
+            } else if (source.has_value()) {
+                debug_storage.cones.push_back({
+                    .apex = source->position,
+                    .direction = source->forward,
+                    .length = config.pipeline.area_of_interest.radius,
+                    .half_angle_degrees = config.pipeline.area_of_interest.fov_degrees * 0.5F,
+                    .color = {102U, 214U, 255U, 90U},
+                    .label = "network AOI cone",
                 });
             }
         }
@@ -718,6 +772,7 @@ namespace
         );
     }
 
+#if defined(SIMNET_ENABLE_RENDER)
     void copy_snapshot_reusing_capacity(
         simnet::WorldSnapshot const& source,
         simnet::WorldSnapshot& destination
@@ -740,7 +795,6 @@ namespace
         std::copy(source.hues.begin(), source.hues.end(), destination.hues.begin());
     }
 
-#if defined(SIMNET_ENABLE_RENDER)
     void retain_presentation_snapshot(
         PresentationSnapshotState& state,
         simnet::WorldSnapshot const& snapshot
@@ -785,26 +839,20 @@ namespace
     void retain_snapshot(
         PeerRuntimeState& peer,
         simnet::SequenceId sequence,
-        simnet::WorldSnapshot const& snapshot
+        simnet::WorldSnapshot snapshot
     )
     {
-        auto retained = RetainedSnapshot{};
         if (peer.retained_snapshots.size() >= retained_snapshot_limit) {
-            retained = std::move(peer.retained_snapshots.front());
+            auto const evicted_sequence = peer.retained_snapshots.front().sequence;
             peer.retained_snapshots.pop_front();
-            if (peer.acknowledged_baseline_sequence == retained.sequence) {
+            if (peer.acknowledged_baseline_sequence == evicted_sequence) {
                 invalidate_baseline(peer);
             }
         }
-        {
-            SIMNET_TRACE_SCOPE_CATEGORY(
-                "server.retained_snapshot_copy",
-                simnet::LogCategory::Snapshot
-            );
-            copy_snapshot_reusing_capacity(snapshot, retained.snapshot);
-        }
-        retained.sequence = sequence;
-        peer.retained_snapshots.push_back(std::move(retained));
+        peer.retained_snapshots.push_back({
+            .sequence = sequence,
+            .snapshot = std::move(snapshot),
+        });
         SIMNET_TRACE_PLOT(
             "server.retained_snapshot_count",
             static_cast<double>(peer.retained_snapshots.size())
@@ -837,7 +885,94 @@ namespace
         state.extracted_tick = tick;
         state.valid = true;
         state.dirty = false;
+        state.area_of_interest_grid_valid = false;
         return report;
+    }
+
+    void ensure_area_of_interest_grid(
+        CurrentSnapshotState& state,
+        simnet::SpatialGridSettings const& settings
+    )
+    {
+        if (state.area_of_interest_grid_valid
+            && state.area_of_interest_grid_tick == state.extracted_tick) {
+            return;
+        }
+
+        auto& grid = state.area_of_interest_grid;
+        if (grid.dim_x == 0U || grid.settings.cell_size != settings.cell_size
+            || grid.settings.bounds.min.x != settings.bounds.min.x
+            || grid.settings.bounds.max.x != settings.bounds.max.x) {
+            simnet::resize_spatial_grid(grid, settings);
+        }
+        simnet::prepare_spatial_grid_scratch(
+            state.area_of_interest_grid_scratch,
+            state.snapshot.size(),
+            1U
+        );
+        simnet::build_spatial_grid_serial(
+            grid,
+            state.area_of_interest_grid_scratch,
+            state.snapshot.positions,
+            state.snapshot.ids
+        );
+        state.area_of_interest_grid_tick = state.extracted_tick;
+        state.area_of_interest_grid_valid = true;
+    }
+
+    [[nodiscard]] std::optional<simnet::InterestSource>
+    resolve_interest_source(PeerRuntimeState const& peer, simnet::WorldSnapshot const& snapshot)
+    {
+        if (peer.role == simnet::app::ClientRole::StationaryObserver) {
+            if (!peer.stationary_observer_interest.initialized) {
+                return std::nullopt;
+            }
+            return simnet::InterestSource{
+                .position = peer.stationary_observer_interest.position,
+                .forward = peer.stationary_observer_interest.forward,
+            };
+        }
+        if (peer.role != simnet::app::ClientRole::Player || peer.player_id == 0U) {
+            return std::nullopt;
+        }
+
+        auto const found = std::ranges::lower_bound(snapshot.ids, peer.player_id);
+        if (found == snapshot.ids.end() || *found != peer.player_id) {
+            throw std::runtime_error("authoritative Player interest source is absent");
+        }
+        auto const index = static_cast<std::size_t>(std::distance(snapshot.ids.begin(), found));
+        if (snapshot.classifications[index] != simnet::player_entity_classification) {
+            throw std::runtime_error(
+                "authoritative Player interest source has wrong classification"
+            );
+        }
+        return simnet::InterestSource{
+            .position = snapshot.positions[index],
+            .forward = snapshot.headings[index],
+            .source_entity_id = peer.player_id,
+        };
+    }
+
+    void query_area_of_interest_candidates(
+        PeerRuntimeState& peer,
+        CurrentSnapshotState& snapshot_state,
+        simnet::SpatialGridSettings const& grid_settings,
+        simnet::InterestSource const& source,
+        float radius
+    )
+    {
+        ensure_area_of_interest_grid(snapshot_state, grid_settings);
+        peer.area_of_interest_candidates.clear();
+        static_cast<void>(simnet::query_radius(
+            snapshot_state.area_of_interest_grid,
+            snapshot_state.snapshot.positions,
+            source.position,
+            radius,
+            [&](std::uint32_t source_index) {
+                peer.area_of_interest_candidates.push_back(source_index);
+            }
+        ));
+        std::ranges::sort(peer.area_of_interest_candidates);
     }
 
     void apply_ack(PeerRuntimeState& peer, simnet::SnapshotAck const& ack)
@@ -1070,25 +1205,51 @@ namespace
                     continue;
                 }
             } else if (auto const* input = std::get_if<simnet::ReceivedApplicationInput>(&event)) {
-                auto decoded = simnet::app::PlayerInputMessage{};
-                if (!peer.has_value() || input->peer != peer->peer
-                    || peer->role != simnet::app::ClientRole::Player || peer->player_id == 0U
-                    || !simnet::app::decode_player_input(input->payload, decoded)
-                    || !simnet::set_authoritative_player_input(
-                        world,
-                        peer->player_id,
-                        player_control(decoded)
-                    )) {
+                auto valid
+                    = peer.has_value() && input->peer == peer->peer && peer->role.has_value();
+                auto rate_limited = false;
+                if (valid && peer->role == simnet::app::ClientRole::Player) {
+                    auto decoded = simnet::app::PlayerInputMessage{};
+                    valid = peer->player_id != 0U
+                        && simnet::app::decode_player_input(input->payload, decoded)
+                        && simnet::set_authoritative_player_input(
+                                world,
+                                peer->player_id,
+                                player_control(decoded)
+                        );
+                } else if (valid) {
+                    auto decoded = simnet::app::StationaryObserverInterestMessage{};
+                    valid
+                        = simnet::app::decode_stationary_observer_interest(input->payload, decoded);
+                    if (valid) {
+                        auto const accepted = simnet::app::accept_stationary_observer_interest(
+                            peer->stationary_observer_interest,
+                            decoded,
+                            simnet::steady_now_ns()
+                        );
+                        rate_limited = accepted
+                            == simnet::app::StationaryObserverInterestResult::RateLimited;
+                        valid = accepted == simnet::app::StationaryObserverInterestResult::Accepted
+                            || rate_limited;
+                    }
+                }
+                if (!valid) {
                     simnet::log(
                         simnet::LogCategory::Transport,
                         simnet::LogLevel::Error,
-                        "server rejected invalid or unauthorized player input"
+                        "server rejected invalid or unauthorized application input"
                     );
                     transport.disconnect(input->peer, simnet::DisconnectCode::ProtocolMismatch);
                     if (peer.has_value() && peer->peer == input->peer) {
                         remove_session_player(world, *peer, snapshot_state);
                         peer.reset();
                     }
+                } else if (rate_limited) {
+                    simnet::log(
+                        simnet::LogCategory::Transport,
+                        simnet::LogLevel::Debug,
+                        "server ignored rate-limited stationary observer interest update"
+                    );
                 }
             } else if (auto const* error = std::get_if<simnet::TransportErrorEvent>(&event)) {
                 simnet::log(
@@ -1122,10 +1283,10 @@ namespace
         simnet::Tick tick,
         simnet::Nanoseconds fixed_dt,
         simnet::PipelineDefinition const& pipeline,
+        simnet::SpatialGridSettings const& area_of_interest_grid_settings,
         simnet::Delivery delivery,
         simnet::TransportServer& transport,
         std::optional<PeerRuntimeState>& peer,
-        simnet::PipelineScratch& scratch,
         CurrentSnapshotState& snapshot_state,
         simnet::ServerReplicationMeasurements& measurements,
         simnet::ServerReplicationCsvWriter& csv
@@ -1176,20 +1337,50 @@ namespace
             }
         }
         auto const use_baseline = baseline != peer->retained_snapshots.end();
+        auto const incremental_enabled = simnet::has_all_flags(
+            pipeline.techniques,
+            simnet::PipelineTechniqueFlags::Incremental
+        );
+        auto const* replica_snapshot = static_cast<simnet::WorldSnapshot const*>(nullptr);
+        if (cadence_emits && incremental_enabled && !delta_enabled
+            && peer->pipeline_state.incremental_seeded) {
+            if (peer->retained_snapshots.empty()) {
+                throw std::runtime_error("incremental replica snapshot is unavailable");
+            }
+            replica_snapshot = &peer->retained_snapshots.back().snapshot;
+        }
+
+        auto interest_source = std::optional<simnet::InterestSource>{};
+        if (cadence_emits && pipeline.area_of_interest.mode != simnet::AreaOfInterestMode::None) {
+            interest_source = resolve_interest_source(*peer, snapshot_state.snapshot);
+            if (interest_source.has_value()) {
+                query_area_of_interest_candidates(
+                    *peer,
+                    snapshot_state,
+                    area_of_interest_grid_settings,
+                    *interest_source,
+                    pipeline.area_of_interest.radius
+                );
+            }
+        }
         measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
         auto encoded = simnet::EncodeOutput{};
+        auto pending_pipeline_state = peer->pipeline_state;
         auto const encode_start = simnet::steady_now_ns();
         {
             SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_encode", simnet::LogCategory::Pipeline);
             // Current and retained baseline snapshots come only from successful extraction.
             encoded = simnet::encode_snapshot_unchecked(
                 pipeline,
-                peer->pipeline_state,
-                scratch,
+                pending_pipeline_state,
+                peer->pipeline_scratch,
                 {
                     .snapshot = &snapshot_state.snapshot,
                     .baseline_snapshot = use_baseline ? &baseline->snapshot : nullptr,
                     .baseline_sequence = use_baseline ? baseline->sequence : 0U,
+                    .replica_snapshot = replica_snapshot,
+                    .interest_source = interest_source.has_value() ? &*interest_source : nullptr,
+                    .candidate_indices = peer->area_of_interest_candidates,
                 }
             );
         }
@@ -1199,11 +1390,15 @@ namespace
         measurement.baseline_sequence = encoded.report.baseline_sequence;
         measurement.snapshot_kind = encoded.report.snapshot_kind;
         measurement.source_entity_count = extraction.entity_count;
-        measurement.selected_entity_count = encoded.report.upsert_count;
+        measurement.selected_entity_count = encoded.report.area_of_interest.retained_count;
         measurement.upsert_count = encoded.report.upsert_count;
         measurement.delete_count = encoded.report.delete_count;
         measurement.encoded_update_bytes = static_cast<std::uint32_t>(encoded.update.bytes.size());
         if (encoded.kind == simnet::EncodeResultKind::Skipped) {
+            if (encoded.report.skip_reason == simnet::EncodeSkipReason::InterestSourceUnavailable) {
+                peer->latest_area_of_interest = encoded.report.area_of_interest;
+                peer->has_area_of_interest_report = true;
+            }
             measurement.outcome = simnet::ServerReplicationOutcome::Skipped;
             measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
             observe_server_measurement(measurements, csv, measurement);
@@ -1238,8 +1433,13 @@ namespace
             = static_cast<std::uint32_t>(encoded.update.bytes.size());
 
         auto const retention_start = simnet::steady_now_ns();
-        retain_snapshot(*peer, encoded.update.sequence, snapshot_state.snapshot);
+        peer->pipeline_state = pending_pipeline_state;
+        retain_snapshot(*peer, encoded.update.sequence, std::move(encoded.resulting_snapshot));
         peer->newest_emitted_sequence = encoded.update.sequence;
+        peer->latest_area_of_interest = encoded.report.area_of_interest;
+        peer->has_area_of_interest_report = true;
+        peer->latest_upsert_count = encoded.report.upsert_count;
+        peer->latest_delete_count = encoded.report.delete_count;
         measurement.snapshot_retention_cpu_time = simnet::steady_now_ns() - retention_start;
         measurement.outcome = simnet::ServerReplicationOutcome::Sent;
         measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
@@ -1310,6 +1510,10 @@ namespace simnet::app
 #endif
             auto signals = SignalHandlers{};
             auto const pipeline = make_snapshot_pipeline(shared);
+            if (pipeline.area_of_interest.mode != AreaOfInterestMode::None
+                && local.transport.snapshot_delivery != "reliable_sequenced") {
+                throw std::runtime_error("AOI currently requires reliable sequenced snapshots");
+            }
 #if defined(SIMNET_ENABLE_RENDER)
             auto const run_setup = RunSetupStorage{
                 shared,
@@ -1435,9 +1639,12 @@ namespace simnet::app
             auto stop = StopRequest{};
             auto peer = std::optional<PeerRuntimeState>{};
             auto events = std::vector<TransportEvent>{};
-            auto scratch = PipelineScratch{};
             auto replication_measurements = ServerReplicationMeasurements{};
             auto const delivery = snapshot_delivery(local.transport);
+            auto const area_of_interest_grid_settings = make_spatial_grid_settings(
+                make_centered_bounds(shared.simulation.world_half),
+                shared.spatial.cell_size
+            );
             auto const delta_enabled
                 = has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta);
             auto simulation_paused = false;
@@ -1506,10 +1713,10 @@ namespace simnet::app
                             tick,
                             clock.fixed_dt,
                             pipeline,
+                            area_of_interest_grid_settings,
                             delivery,
                             transport,
                             peer,
-                            scratch,
                             current_snapshot,
                             replication_measurements,
                             *replication_csv

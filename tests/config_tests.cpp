@@ -105,6 +105,54 @@ TEST_CASE("player pitch limit stays clear of the vertical camera singularity", "
     CHECK_THROWS(simnet::load_shared_config(rejected.path()));
 }
 
+TEST_CASE("AOI configuration is mode-specific strict and fingerprinted", "[config][aoi]")
+{
+    auto const radius = TemporaryConfig{
+        "simnet_aoi_radius.json",
+        R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 80.0 } } })"
+    };
+    auto const radius_config = simnet::load_shared_config(radius.path());
+    CHECK(radius_config.pipeline.area_of_interest.mode == "radius");
+    CHECK(radius_config.pipeline.area_of_interest.radius == 80.0F);
+    CHECK(
+        simnet::fingerprint_network_compatibility(radius_config).value
+        != simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
+    );
+
+    auto const fov = TemporaryConfig{
+        "simnet_aoi_fov.json",
+        R"({ "pipeline": { "area_of_interest": { "mode": "fov", "radius": 80.0, "fov_degrees": 120.0 } } })"
+    };
+    auto const fov_config = simnet::load_shared_config(fov.path());
+    CHECK(fov_config.pipeline.area_of_interest.mode == "fov");
+    CHECK(fov_config.pipeline.area_of_interest.fov_degrees == 120.0F);
+
+    for (
+        auto const contents : {
+            R"({ "pipeline": { "area_of_interest": { "mode": "none", "radius": 1.0 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius" } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 1.0, "fov_degrees": 90.0 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "fov", "radius": 1.0, "fov_degrees": 0.0 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "fov", "radius": 1.0, "fov_degrees": 180.1 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 1.0, "unexpected": true } } })",
+        }) {
+        auto const invalid = TemporaryConfig{"simnet_aoi_invalid.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+}
+
+TEST_CASE("maintained AOI visual profiles load as distinct treatments", "[config][aoi]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    auto const radius = simnet::load_shared_config(directory / "shared_aoi_radius_visual.json");
+    auto const fov = simnet::load_shared_config(directory / "shared_aoi_fov_visual.json");
+    CHECK(radius.pipeline.area_of_interest.mode == "radius");
+    CHECK(radius.pipeline.area_of_interest.radius == 80.0F);
+    CHECK(fov.pipeline.area_of_interest.mode == "fov");
+    CHECK(fov.pipeline.area_of_interest.radius == 80.0F);
+    CHECK(fov.pipeline.area_of_interest.fov_degrees == 120.0F);
+}
+
 // TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")
 // {
 //     auto const path = simnet::default_shared_config_path().parent_path()

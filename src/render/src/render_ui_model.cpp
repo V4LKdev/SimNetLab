@@ -335,6 +335,32 @@ namespace simnet
             sequence("Latest received", value.latest_received_sequence);
             sequence("Latest applied", value.latest_applied_sequence);
             sequence("ACK baseline", value.acknowledged_baseline_sequence);
+            auto text_value = [&](std::string_view label, std::optional<std::string_view> current) {
+                if (current.has_value()) {
+                    add_row(
+                        panel_model_,
+                        label,
+                        Normal,
+                        "%.*s",
+                        static_cast<int>(current->size()),
+                        current->data()
+                    );
+                }
+            };
+            auto count = [&](std::string_view label, std::optional<std::uint32_t> current) {
+                if (current.has_value()) {
+                    add_row(panel_model_, label, Normal, "%u", *current);
+                }
+            };
+            text_value("AOI mode", value.area_of_interest_mode);
+            text_value("Interest source", value.interest_source_status);
+            count("Source entities", value.source_entity_count);
+            count("Coarse candidates", value.candidate_entity_count);
+            count("AOI retained", value.retained_entity_count);
+            count("AOI culled", value.culled_entity_count);
+            count("Transmitted upserts", value.transmitted_upsert_count);
+            count("Transmitted deletes", value.transmitted_delete_count);
+            count("Reconstructed entities", value.reconstructed_entity_count);
             if (value.latest_snapshot_tick.has_value()) {
                 add_row(
                     panel_model_,

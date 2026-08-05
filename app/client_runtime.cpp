@@ -311,6 +311,7 @@ namespace
         ClientConnectionState connection_state,
         std::optional<simnet::PeerId> peer,
         simnet::SnapshotAck const& ack,
+        std::optional<std::uint32_t> reconstructed_entity_count,
         std::string_view role,
         std::optional<simnet::StationaryObserverView> stationary_observer,
         std::optional<simnet::GameCameraView> game_camera,
@@ -318,7 +319,8 @@ namespace
     )
     {
         auto replication = std::optional<simnet::RenderReplicationInfo>{};
-        if (ack.newest_received_snapshot != 0 || ack.newest_applied_snapshot != 0) {
+        if (session_ready || ack.newest_received_snapshot != 0
+            || ack.newest_applied_snapshot != 0) {
             replication = simnet::RenderReplicationInfo{
                 .latest_received_sequence = ack.newest_received_snapshot != 0
                     ? std::optional<simnet::SequenceId>{ack.newest_received_snapshot}
@@ -327,6 +329,13 @@ namespace
                     ? std::optional<simnet::SequenceId>{ack.newest_applied_snapshot}
                     : std::optional<simnet::SequenceId>{},
                 .latest_snapshot_tick = snapshot.tick,
+                .area_of_interest_mode = config.pipeline.area_of_interest.mode,
+                .interest_source_status = config.pipeline.area_of_interest.mode == "none"
+                    ? std::optional<std::string_view>{"not required"}
+                    : role == "player"
+                    ? std::optional<std::string_view>{"Server authoritative Player"}
+                    : std::optional<std::string_view>{"local pose configured"},
+                .reconstructed_entity_count = reconstructed_entity_count,
             };
         }
         return {
@@ -802,19 +811,23 @@ namespace simnet::app
             };
             auto world = flecs::world{};
             register_client_game(world);
-#if defined(SIMNET_ENABLE_RENDER)
-            auto viewer = std::optional<Viewer>{};
-            auto presentation = ClientPresentationState{};
-            auto empty_presentation = WorldSnapshot{};
             auto stationary_observer = std::optional<StationaryObserverState>{};
             if (requested_role == app::ClientRole::StationaryObserver) {
                 stationary_observer = StationaryObserverState{
-                    .position = {},
+                    .position = {
+                        local.gameplay.stationary_observer_position[0],
+                        local.gameplay.stationary_observer_position[1],
+                        local.gameplay.stationary_observer_position[2],
+                    },
                     .interest_radius = local.visualization.stationary_observer_interest_radius,
                     .vertical_fov_degrees
                     = local.visualization.stationary_observer_vertical_fov_degrees,
                 };
             }
+#if defined(SIMNET_ENABLE_RENDER)
+            auto viewer = std::optional<Viewer>{};
+            auto presentation = ClientPresentationState{};
+            auto empty_presentation = WorldSnapshot{};
             if (local.visualization.enabled) {
                 viewer.emplace(viewer_config(local.visualization), local.telemetry.log_directory);
             }
@@ -837,6 +850,8 @@ namespace simnet::app
             auto pause_state_received = false;
             auto join_accepted = false;
             auto player_id = EntityNetId{};
+            auto last_observer_interest_send_time = std::optional<Nanoseconds>{};
+            auto last_observer_interest_forward = Vec3f{};
 #if defined(SIMNET_ENABLE_RENDER)
             auto game_view_initialized = false;
             auto player_input_was_active = false;
@@ -876,6 +891,8 @@ namespace simnet::app
                         pause_state_received = false;
                         join_accepted = false;
                         player_id = 0U;
+                        last_observer_interest_send_time.reset();
+                        last_observer_interest_forward = {};
 #if defined(SIMNET_ENABLE_RENDER)
                         game_view_initialized = false;
                         player_input_was_active = false;
@@ -1062,6 +1079,11 @@ namespace simnet::app
                                 connection_state,
                                 server_peer,
                                 ack_tracker.value,
+                                snapshot_history.empty()
+                                    ? std::optional<std::uint32_t>{}
+                                    : std::optional<std::uint32_t>{static_cast<std::uint32_t>(
+                                          snapshot_history.back().snapshot.size()
+                                      )},
                                 requested_role == app::ClientRole::Player
                                     ? std::string_view{"player"}
                                     : std::string_view{"stationary observer"},
@@ -1119,6 +1141,39 @@ namespace simnet::app
                     }
                 }
 #endif
+
+                if (!stop.requested() && stationary_observer.has_value() && join_accepted
+                    && pipeline.area_of_interest.mode != AreaOfInterestMode::None) {
+                    auto const forward = app::stationary_observer_forward(*stationary_observer);
+                    auto const direction_changed = forward.x != last_observer_interest_forward.x
+                        || forward.y != last_observer_interest_forward.y
+                        || forward.z != last_observer_interest_forward.z;
+                    auto const since_last = last_observer_interest_send_time.has_value()
+                        ? stats.raw_time - *last_observer_interest_send_time
+                        : app::stationary_observer_interest_heartbeat_interval;
+                    auto const update_due = !last_observer_interest_send_time.has_value()
+                        || (direction_changed
+                            && since_last >= app::stationary_observer_interest_min_interval)
+                        || since_last >= app::stationary_observer_interest_heartbeat_interval;
+                    if (update_due) {
+                        auto const sent = transport.send_application_input(
+                            app::encode_stationary_observer_interest({
+                                .position = stationary_observer->position,
+                                .forward = forward,
+                            })
+                        );
+                        if (!sent.ok) {
+                            log(LogCategory::Transport,
+                                LogLevel::Error,
+                                "client observer-interest send failed: " + sent.error.message);
+                            stop_cause = ClientStopCause::ProtocolError;
+                            static_cast<void>(stop.request(ShutdownReason::FatalError));
+                        } else {
+                            last_observer_interest_send_time = stats.raw_time;
+                            last_observer_interest_forward = forward;
+                        }
+                    }
+                }
 
                 if (!stop.requested()) {
                     auto const limit = reached_runtime_limit(settings, stats);

@@ -10,11 +10,12 @@ target_link_libraries(Server
         simnet_game_server
         simnet_pipeline
         simnet_runtime
+        simnet_spatial
         simnet_telemetry
         simnet_transport
 )
 if (SIMNET_ENABLE_RENDER)
-    target_link_libraries(Server PRIVATE simnet_render simnet_spatial)
+    target_link_libraries(Server PRIVATE simnet_render)
     target_sources(Server PRIVATE FILE_SET CXX_MODULES FILES app_visual_setup.cppm)
     target_compile_definitions(Server PRIVATE
         SIMNET_ENABLE_RENDER=1

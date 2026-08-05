@@ -1,5 +1,6 @@
 module;
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -77,11 +78,20 @@ export namespace simnet
     };
 
     /// Snapshot processing pipeline settings.
+    struct AreaOfInterestConfig
+    {
+        std::string mode{"none"};
+        float radius{};
+        float fov_degrees{};
+    };
+
+    /// Snapshot processing pipeline settings.
     struct PipelineConfig
     {
         bool enable_incremental{false};
         bool enable_quantization{false};
         bool enable_delta{false};
+        AreaOfInterestConfig area_of_interest{};
     };
 
     /// Network transport settings.
@@ -105,6 +115,7 @@ export namespace simnet
     struct GameplayConfig
     {
         std::string role{"stationary_observer"};
+        std::array<float, 3> stationary_observer_position{};
     };
 
     /// Local visualization settings.

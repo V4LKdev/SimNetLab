@@ -1,6 +1,10 @@
 module;
 
+#include <bit>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -13,6 +17,9 @@ export namespace simnet::app
 {
     inline constexpr std::uint8_t app_message_version = 1U;
     inline constexpr std::uint8_t player_input_version = 1U;
+    inline constexpr std::uint8_t stationary_observer_interest_version = 1U;
+    inline constexpr Nanoseconds stationary_observer_interest_min_interval{50'000'000};
+    inline constexpr Nanoseconds stationary_observer_interest_heartbeat_interval{500'000'000};
 
     enum class ClientRole : std::uint8_t
     {
@@ -53,6 +60,30 @@ export namespace simnet::app
         std::uint8_t buttons{};
     };
 
+    /// Versioned stationary observer pose sent on the application input lane.
+    struct StationaryObserverInterestMessage
+    {
+        Vec3f position{};
+        Vec3f forward{.z = 1.0F};
+    };
+
+    /// Per-session accepted stationary observer state.
+    struct StationaryObserverInterestState
+    {
+        bool initialized{};
+        Vec3f position{};
+        Vec3f forward{.z = 1.0F};
+        Nanoseconds last_accepted_time{};
+    };
+
+    enum class StationaryObserverInterestResult : std::uint8_t
+    {
+        Accepted,
+        RateLimited,
+        PositionChanged,
+        TimeWentBackward,
+    };
+
     [[nodiscard]] constexpr bool button_down(PlayerInputMessage input, PlayerButton button) noexcept
     {
         return (input.buttons & static_cast<std::uint8_t>(button)) != 0U;
@@ -71,6 +102,14 @@ export namespace simnet::app
         bytes.push_back(static_cast<Byte>(value & 0xFFU));
     }
 
+    inline void write_f32(std::vector<Byte>& bytes, float value)
+    {
+        static_assert(
+            std::numeric_limits<float>::is_iec559 && sizeof(float) == sizeof(std::uint32_t)
+        );
+        write_u32(bytes, std::bit_cast<std::uint32_t>(value));
+    }
+
     [[nodiscard]] inline bool
     read_u32(std::span<Byte const> bytes, std::size_t offset, std::uint32_t& value) noexcept
     {
@@ -81,6 +120,17 @@ export namespace simnet::app
             | (static_cast<std::uint32_t>(bytes[offset + 1U]) << 16U)
             | (static_cast<std::uint32_t>(bytes[offset + 2U]) << 8U)
             | static_cast<std::uint32_t>(bytes[offset + 3U]);
+        return true;
+    }
+
+    [[nodiscard]] inline bool
+    read_f32(std::span<Byte const> bytes, std::size_t offset, float& value) noexcept
+    {
+        auto bits = std::uint32_t{};
+        if (!read_u32(bytes, offset, bits)) {
+            return false;
+        }
+        value = std::bit_cast<float>(bits);
         return true;
     }
 
@@ -169,5 +219,73 @@ export namespace simnet::app
         }
         input = {.buttons = static_cast<std::uint8_t>(bytes[1])};
         return true;
+    }
+
+    [[nodiscard]] inline std::vector<Byte>
+    encode_stationary_observer_interest(StationaryObserverInterestMessage const& message)
+    {
+        auto bytes = std::vector<Byte>{
+            static_cast<Byte>(stationary_observer_interest_version),
+        };
+        bytes.reserve(25U);
+        write_f32(bytes, message.position.x);
+        write_f32(bytes, message.position.y);
+        write_f32(bytes, message.position.z);
+        write_f32(bytes, message.forward.x);
+        write_f32(bytes, message.forward.y);
+        write_f32(bytes, message.forward.z);
+        return bytes;
+    }
+
+    [[nodiscard]] inline bool decode_stationary_observer_interest(
+        std::span<Byte const> bytes,
+        StationaryObserverInterestMessage& message
+    ) noexcept
+    {
+        if (bytes.size() != 25U
+            || bytes[0] != static_cast<Byte>(stationary_observer_interest_version)) {
+            return false;
+        }
+
+        auto decoded = StationaryObserverInterestMessage{};
+        if (!read_f32(bytes, 1U, decoded.position.x) || !read_f32(bytes, 5U, decoded.position.y)
+            || !read_f32(bytes, 9U, decoded.position.z) || !read_f32(bytes, 13U, decoded.forward.x)
+            || !read_f32(bytes, 17U, decoded.forward.y) || !read_f32(bytes, 21U, decoded.forward.z)
+            || !is_finite(decoded.position) || !is_finite(decoded.forward)) {
+            return false;
+        }
+        auto const forward_length_squared = length_squared(decoded.forward);
+        if (!std::isfinite(forward_length_squared) || forward_length_squared <= 0.0F) {
+            return false;
+        }
+        decoded.forward = decoded.forward / std::sqrt(forward_length_squared);
+        message = decoded;
+        return true;
+    }
+
+    [[nodiscard]] inline StationaryObserverInterestResult accept_stationary_observer_interest(
+        StationaryObserverInterestState& state,
+        StationaryObserverInterestMessage const& message,
+        Nanoseconds now
+    ) noexcept
+    {
+        if (state.initialized) {
+            if (message.position.x != state.position.x || message.position.y != state.position.y
+                || message.position.z != state.position.z) {
+                return StationaryObserverInterestResult::PositionChanged;
+            }
+            if (now < state.last_accepted_time) {
+                return StationaryObserverInterestResult::TimeWentBackward;
+            }
+            if (now - state.last_accepted_time < stationary_observer_interest_min_interval) {
+                return StationaryObserverInterestResult::RateLimited;
+            }
+        }
+
+        state.initialized = true;
+        state.position = message.position;
+        state.forward = message.forward;
+        state.last_accepted_time = now;
+        return StationaryObserverInterestResult::Accepted;
     }
 }

@@ -1,5 +1,8 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <limits>
+#include <utility>
+#include <vector>
 
 import simnet.app_protocol;
 import simnet.core;
@@ -93,4 +96,107 @@ TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
     auto invalid = bytes;
     invalid[0] = simnet::Byte{2U};
     CHECK_FALSE(simnet::app::decode_player_input(invalid, decoded));
+}
+
+TEST_CASE(
+    "stationary observer interest is finite normalized and transactionally decoded",
+    "[app_protocol][aoi]"
+)
+{
+    auto const message = simnet::app::StationaryObserverInterestMessage{
+        .position = {1.0F, -2.0F, 3.0F},
+        .forward = {0.0F, 0.0F, 2.0F},
+    };
+    auto const bytes = simnet::app::encode_stationary_observer_interest(message);
+    REQUIRE(bytes.size() == 25U);
+    auto decoded = simnet::app::StationaryObserverInterestMessage{};
+    REQUIRE(simnet::app::decode_stationary_observer_interest(bytes, decoded));
+    CHECK(decoded.position.x == 1.0F);
+    CHECK(decoded.position.y == -2.0F);
+    CHECK(decoded.position.z == 3.0F);
+    CHECK(decoded.forward.x == 0.0F);
+    CHECK(decoded.forward.y == 0.0F);
+    CHECK(decoded.forward.z == 1.0F);
+
+    auto reject = [&](std::vector<simnet::Byte> malformed) {
+        auto destination = simnet::app::StationaryObserverInterestMessage{
+            .position = {9.0F, 8.0F, 7.0F},
+            .forward = {.x = 1.0F},
+        };
+        CHECK_FALSE(simnet::app::decode_stationary_observer_interest(malformed, destination));
+        CHECK(destination.position.x == 9.0F);
+        CHECK(destination.forward.x == 1.0F);
+    };
+
+    auto truncated = bytes;
+    truncated.pop_back();
+    reject(std::move(truncated));
+    auto trailing = bytes;
+    trailing.push_back(simnet::Byte{});
+    reject(std::move(trailing));
+    auto incompatible = bytes;
+    incompatible[0] = simnet::Byte{2U};
+    reject(std::move(incompatible));
+    reject(
+        simnet::app::encode_stationary_observer_interest({
+            .position = {},
+            .forward = {},
+        })
+    );
+    reject(
+        simnet::app::encode_stationary_observer_interest({
+            .position = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F},
+            .forward = {.z = 1.0F},
+        })
+    );
+}
+
+TEST_CASE(
+    "stationary observer interest locks position and bounds update rate",
+    "[app_protocol][aoi]"
+)
+{
+    auto state = simnet::app::StationaryObserverInterestState{};
+    auto const initial = simnet::app::StationaryObserverInterestMessage{
+        .position = {1.0F, 2.0F, 3.0F},
+        .forward = {.z = 1.0F},
+    };
+    CHECK(
+        simnet::app::accept_stationary_observer_interest(
+            state,
+            initial,
+            simnet::Nanoseconds{100'000'000}
+        )
+        == simnet::app::StationaryObserverInterestResult::Accepted
+    );
+    auto rotated = initial;
+    rotated.forward = {.x = 1.0F};
+    CHECK(
+        simnet::app::accept_stationary_observer_interest(
+            state,
+            rotated,
+            simnet::Nanoseconds{120'000'000}
+        )
+        == simnet::app::StationaryObserverInterestResult::RateLimited
+    );
+    CHECK(state.forward.z == 1.0F);
+    CHECK(
+        simnet::app::accept_stationary_observer_interest(
+            state,
+            rotated,
+            simnet::Nanoseconds{150'000'000}
+        )
+        == simnet::app::StationaryObserverInterestResult::Accepted
+    );
+    auto translated = rotated;
+    translated.position.x = 2.0F;
+    CHECK(
+        simnet::app::accept_stationary_observer_interest(
+            state,
+            translated,
+            simnet::Nanoseconds{250'000'000}
+        )
+        == simnet::app::StationaryObserverInterestResult::PositionChanged
+    );
+    CHECK(state.position.x == 1.0F);
 }

@@ -95,6 +95,15 @@ export namespace simnet
         std::optional<std::uint32_t> retained_snapshot_count{};
         std::optional<SequenceId> oldest_retained_sequence{};
         std::optional<SequenceId> newest_retained_sequence{};
+        std::optional<std::string_view> area_of_interest_mode{};
+        std::optional<std::string_view> interest_source_status{};
+        std::optional<std::uint32_t> source_entity_count{};
+        std::optional<std::uint32_t> candidate_entity_count{};
+        std::optional<std::uint32_t> retained_entity_count{};
+        std::optional<std::uint32_t> culled_entity_count{};
+        std::optional<std::uint32_t> transmitted_upsert_count{};
+        std::optional<std::uint32_t> transmitted_delete_count{};
+        std::optional<std::uint32_t> reconstructed_entity_count{};
     };
 
     struct RenderFrameInfo

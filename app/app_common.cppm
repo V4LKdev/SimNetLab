@@ -94,7 +94,7 @@ export namespace simnet::app
 
 namespace
 {
-    constexpr std::uint32_t application_protocol_version = 3;
+    constexpr std::uint32_t application_protocol_version = 4;
     volatile std::sig_atomic_t signal_stop_latch = 0;
 
     extern "C" void request_signal_stop(int)
@@ -204,6 +204,18 @@ namespace simnet::app
         if (shared.pipeline.enable_delta) {
             pipeline.techniques |= PipelineTechniqueFlags::Delta;
         }
+        auto const& area_of_interest = shared.pipeline.area_of_interest;
+        if (area_of_interest.mode == "none") {
+            pipeline.area_of_interest.mode = AreaOfInterestMode::None;
+        } else if (area_of_interest.mode == "radius") {
+            pipeline.area_of_interest.mode = AreaOfInterestMode::Radius;
+        } else if (area_of_interest.mode == "fov") {
+            pipeline.area_of_interest.mode = AreaOfInterestMode::Fov;
+        } else {
+            throw std::runtime_error("unsupported AOI mode: " + area_of_interest.mode);
+        }
+        pipeline.area_of_interest.radius = area_of_interest.radius;
+        pipeline.area_of_interest.fov_degrees = area_of_interest.fov_degrees;
         validate_pipeline_definition(pipeline);
         return pipeline;
     }

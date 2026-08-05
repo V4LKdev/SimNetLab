@@ -8,7 +8,8 @@
     "snapshot_delivery": "reliable_sequenced"
   },
   "gameplay": {
-    "role": "stationary_observer"
+    "role": "stationary_observer",
+    "stationary_observer_position": [0.0, 0.0, 0.0]
   },
   "visualization": {
     "enabled": false,
