@@ -6,6 +6,10 @@
 - `shared_demo_visual.json`: use for a nicer medium-size Server visual demo.
 - `shared_aoi_radius_visual.json`: radius AOI treatment using the visual demo world.
 - `shared_aoi_fov_visual.json`: 3D conical FOV AOI treatment using the same visual demo world.
+- `shared_packetization_aoi_radius_visual.json`: forced 256-byte multipacket stress treatment.
+- `shared_compression_none_aoi_radius_visual.json`: 1,200-byte compression comparison control.
+- `shared_compression_whole_aoi_radius_visual.json`: whole-update Zstd comparison treatment.
+- `shared_compression_per_packet_aoi_radius_visual.json`: per-packet Zstd comparison treatment.
 - `shared_stress_50k.json`: local high-count stress and visual-inspection profile. Use it only with the Server. Do not present it as realistic current network replication.
 - `shared_default.json`: conservative fallback baseline.
 

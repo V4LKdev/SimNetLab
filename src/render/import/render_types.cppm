@@ -124,6 +124,22 @@ export namespace simnet
         std::optional<std::uint64_t> expired_packet_groups{};
         std::optional<std::uint64_t> invalid_packet_groups{};
         std::optional<std::uint64_t> stale_packet_groups{};
+        std::optional<std::string_view> compression_mode{};
+        std::optional<std::string_view> compression_outcome{};
+        std::optional<std::uint32_t> representation_bytes{};
+        std::optional<std::uint32_t> compression_input_bytes{};
+        std::optional<std::uint32_t> compression_payload_bytes{};
+        std::optional<std::uint32_t> compression_envelope_bytes{};
+        std::optional<std::uint32_t> compression_output_bytes{};
+        std::optional<double> compression_ratio{};
+        std::optional<std::uint32_t> bytes_before_packetization{};
+        std::optional<std::uint32_t> bytes_after_packetization{};
+        std::optional<std::uint32_t> final_transport_bytes{};
+        std::optional<std::uint64_t> compressed_packet_count{};
+        std::optional<std::uint64_t> raw_packet_count{};
+        std::optional<std::uint64_t> invalid_compressed_payloads{};
+        std::optional<std::uint64_t> compression_cpu_ns{};
+        std::optional<std::uint64_t> decompression_cpu_ns{};
     };
 
     struct RenderFrameInfo

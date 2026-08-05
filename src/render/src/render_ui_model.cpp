@@ -400,6 +400,30 @@ namespace simnet
             count64("Expired groups", value.expired_packet_groups);
             count64("Invalid groups", value.invalid_packet_groups);
             count64("Stale groups", value.stale_packet_groups);
+            text_value("Compression", value.compression_mode);
+            text_value("Compression outcome", value.compression_outcome);
+            count("Representation bytes", value.representation_bytes);
+            count("Compression input", value.compression_input_bytes);
+            count("Compressed payload", value.compression_payload_bytes);
+            count("Compression envelope", value.compression_envelope_bytes);
+            count("Compression output", value.compression_output_bytes);
+            if (value.compression_ratio.has_value()) {
+                add_row(
+                    panel_model_,
+                    "Compression ratio",
+                    Normal,
+                    "%.3f",
+                    *value.compression_ratio
+                );
+            }
+            count("Before packetization", value.bytes_before_packetization);
+            count("After packetization", value.bytes_after_packetization);
+            count("Final transport bytes", value.final_transport_bytes);
+            count64("Compressed packets", value.compressed_packet_count);
+            count64("Raw packets", value.raw_packet_count);
+            count64("Invalid compressed", value.invalid_compressed_payloads);
+            count64("Compression CPU ns", value.compression_cpu_ns);
+            count64("Decompression CPU ns", value.decompression_cpu_ns);
             if (value.latest_snapshot_tick.has_value()) {
                 add_row(
                     panel_model_,

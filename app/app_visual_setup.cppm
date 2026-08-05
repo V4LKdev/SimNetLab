@@ -162,6 +162,12 @@ namespace simnet::app
                 + " radius, " + format_float(pipeline.area_of_interest.fov_degrees, 1) + " deg";
         }
         add_row("Area of interest", std::move(area_of_interest));
+        auto compression = std::string{shared.compression.mode};
+        if (shared.compression.mode != "none") {
+            compression
+                += ", level " + format_u64(static_cast<std::uint64_t>(shared.compression.level));
+        }
+        add_row("Compression", std::move(compression));
         add_row(
             "Packetization",
             shared.packetization.enabled

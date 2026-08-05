@@ -23,6 +23,11 @@ Shared `pipeline.area_of_interest` selects `none`, `radius`, or `fov`. Radius us
 network compatibility fingerprint. Maintained visual treatment profiles keep the world and boid
 settings equal while changing only the AOI mode and geometry.
 
+Shared `compression` selects `none`, `whole_update`, or `per_packet`. Active modes require an
+explicit Zstd level from 1 through 19. Whole-update mode compresses the complete encoded update
+before packetization. Per-packet mode independently compresses complete application packets after
+packetization. Compression settings participate in network compatibility.
+
 Shared `player` settings define smooth authoritative movement. Input accelerates
 private yaw and pitch velocities. Damping reduces them after release, maximum
 angular rates bound the turn, and `pitch_limit_degrees` bounds orientation to at
@@ -37,7 +42,7 @@ independently by `console_log_enabled`, `file_log_enabled`, and `min_level`.
 controls the Client replication CSV on Client. When disabled, the CSV path creates no directory or
 evidence file. Enabled file logging may independently create `log_directory`.
 
-Benchmark, LOD, and compression configuration vocabulary is retained for planned work. The Server's small sampled boid CSV is implemented. It is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled by the CMake build option. Unsupported pipeline selections are rejected during app startup instead of being ignored.
+Benchmark and LOD configuration vocabulary is retained for planned work. The Server's small sampled boid CSV is implemented. It is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled by the CMake build option. Unsupported pipeline selections are rejected during app startup instead of being ignored.
 
 Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.
 

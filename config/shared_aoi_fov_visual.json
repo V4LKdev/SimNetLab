@@ -61,6 +61,9 @@
       "fov_degrees": 120.0
     }
   },
+  "compression": {
+    "mode": "none"
+  },
   "packetization": {
     "enabled": true,
     "max_payload_bytes": 1200,
