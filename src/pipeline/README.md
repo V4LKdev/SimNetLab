@@ -43,7 +43,7 @@ octahedral components.
 | 5 | Representation encoding | `Quantization`, `OctHeading` | Octahedral headings require quantization. PIPE-011 owns comparing delta candidates by canonical encoded values. |
 | 6 | Record layout | `BitPacking` | Bitpacking requires quantization and octahedral headings. It does not change decoded precision. |
 | 7 | Whole-update compression | None | Later compression consumes the complete encoded update. |
-| 8 | Application packetization | None | Later packetization owns the hard payload budget and consumes pipeline bytes. |
+| 8 | Application packetization | `simnet_packetization` | Outside the pipeline. It owns the hard payload budget and consumes opaque pipeline bytes. |
 | 9 | Delivery | Application and transport configuration | Outside the pipeline. Transport carries opaque application bytes. |
 
 Unsupported stages fail validation. All active techniques otherwise compose when their listed prerequisites are met.

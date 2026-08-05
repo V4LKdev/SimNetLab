@@ -14,7 +14,7 @@ import simnet.snapshot;
 
 export namespace simnet
 {
-    /// Fully encoded update ready to be handed to the transport layer.
+    /// Fully encoded update ready for compression or opaque byte-group packetization.
     struct EncodedUpdate
     {
         SequenceId sequence{};

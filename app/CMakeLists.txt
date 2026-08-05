@@ -8,6 +8,7 @@ target_link_libraries(Server
     PRIVATE
         simnet_config
         simnet_game_server
+        simnet_packetization
         simnet_pipeline
         simnet_runtime
         simnet_spatial
@@ -34,6 +35,7 @@ target_link_libraries(Client
     PRIVATE
         simnet_config
         simnet_game_client
+        simnet_packetization
         simnet_pipeline
         simnet_runtime
         simnet_telemetry

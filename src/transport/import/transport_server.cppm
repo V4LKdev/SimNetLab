@@ -44,10 +44,6 @@ export namespace simnet
 
         [[nodiscard]] TransportResult send(SendPacket const& packet);
 
-        /// Sends a bounded opaque application-control payload on the reliable Control lane.
-        [[nodiscard]] TransportResult
-        send_application_control(PeerId peer, std::span<Byte const> payload);
-
         void disconnect(PeerId peer, DisconnectCode code) noexcept;
 
         [[nodiscard]] TransportStats stats() const;

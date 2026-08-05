@@ -34,6 +34,8 @@ target_sources(simnet_config
 target_link_libraries(simnet_config
     PRIVATE
         nlohmann_json::nlohmann_json
+        simnet_core
+        simnet_packetization
 )
 
 target_compile_definitions(simnet_config

@@ -34,7 +34,7 @@ namespace
         return {
             .application_protocol_version = protocol,
             .compatibility_fingerprint = 0x1234U,
-            .pipeline_decode_signature = 0x5678U,
+            .application_wire_fingerprint = 0x5678U,
             .capabilities = 0U,
         };
     }
@@ -176,7 +176,7 @@ namespace
         auto payload = std::array<simnet::Byte, 128>{};
         result = server.send({
             .peer = handshake.server_peer,
-            .lane = simnet::Lane::Snapshot,
+            .lane = simnet::TransportLane::Lane1,
             .delivery = simnet::Delivery::ReliableSequenced,
             .payload = payload,
         });
@@ -186,33 +186,8 @@ namespace
         }
 
         auto small_payload = std::array<simnet::Byte, 4>{};
-        result = server.send({
-            .peer = handshake.server_peer,
-            .lane = simnet::Lane::Control,
-            .delivery = simnet::Delivery::ReliableSequenced,
-            .payload = small_payload,
-        });
-        if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidLane) {
-            std::cerr << "server reserved Control lane send was not rejected\n";
-            return false;
-        }
         result = client.send(
-            simnet::Lane::Control,
-            simnet::Delivery::ReliableSequenced,
-            small_payload
-        );
-        if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidLane) {
-            std::cerr << "client reserved Control lane send was not rejected\n";
-            return false;
-        }
-        result
-            = client.send(simnet::Lane::Input, simnet::Delivery::ReliableSequenced, small_payload);
-        if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidLane) {
-            std::cerr << "client reserved Input lane send was not rejected\n";
-            return false;
-        }
-        result = client.send(
-            static_cast<simnet::Lane>(255U),
+            static_cast<simnet::TransportLane>(255U),
             simnet::Delivery::ReliableSequenced,
             small_payload
         );
@@ -221,7 +196,7 @@ namespace
             return false;
         }
         result = client.send(
-            simnet::Lane::Snapshot,
+            simnet::TransportLane::Lane1,
             static_cast<simnet::Delivery>(255U),
             small_payload
         );
@@ -230,168 +205,74 @@ namespace
             return false;
         }
 
-        auto const expected_ack = simnet::SnapshotAck{
-            .newest_received_snapshot = 7U,
-            .received_mask = 0x35U,
-            .newest_applied_snapshot = 6U,
-        };
-        auto const ack_sent = client.send_snapshot_ack(expected_ack);
-        if (!ack_sent.ok) {
-            std::cerr << "snapshot ACK send failed: " << ack_sent.error.message << '\n';
-            return false;
-        }
-        auto ack_seen = false;
-        auto const ack_deadline = std::chrono::steady_clock::now() + poll_timeout;
-        while (!ack_seen && std::chrono::steady_clock::now() < ack_deadline) {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto poll = client.poll(events, 0);
-            if (!poll.ok) {
-                std::cerr << "client ACK service poll failed: " << poll.error.message << '\n';
+        for (auto lane : {
+                 simnet::TransportLane::Lane0,
+                 simnet::TransportLane::Lane1,
+                 simnet::TransportLane::Lane2,
+             }) {
+            auto const sent = client.send(lane, simnet::Delivery::ReliableSequenced, small_payload);
+            if (!sent.ok) {
+                std::cerr << "generic client payload send failed: " << sent.error.message << '\n';
                 return false;
             }
+            auto const service_deadline = std::chrono::steady_clock::now() + poll_timeout;
+            auto seen = false;
+            while (!seen && std::chrono::steady_clock::now() < service_deadline) {
+                auto events = std::vector<simnet::TransportEvent>{};
+                static_cast<void>(client.poll(events, 0));
+                events.clear();
+                auto const poll = server.poll(events, 10);
+                if (!poll.ok) {
+                    return false;
+                }
+                for (auto const& event : events) {
+                    if (auto const* packet = std::get_if<simnet::ReceivedPacket>(&event)) {
+                        seen = packet->peer == handshake.server_peer && packet->lane == lane
+                            && packet->payload
+                                == std::vector<simnet::Byte>{
+                                    small_payload.begin(),
+                                    small_payload.end()
+                                };
+                    }
+                }
+            }
+            if (!seen) {
+                std::cerr << "generic client payload was not received intact\n";
+                return false;
+            }
+        }
+
+        auto const sent = server.send({
+            .peer = handshake.server_peer,
+            .lane = simnet::TransportLane::Lane0,
+            .delivery = simnet::Delivery::ReliableSequenced,
+            .payload = small_payload,
+        });
+        if (!sent.ok) {
+            return false;
+        }
+        auto server_payload_seen = false;
+        auto const server_deadline = std::chrono::steady_clock::now() + poll_timeout;
+        while (!server_payload_seen && std::chrono::steady_clock::now() < server_deadline) {
+            auto events = std::vector<simnet::TransportEvent>{};
+            static_cast<void>(server.poll(events, 0));
             events.clear();
-            poll = server.poll(events, 10);
+            auto const poll = client.poll(events, 10);
             if (!poll.ok) {
-                std::cerr << "server ACK poll failed: " << poll.error.message << '\n';
                 return false;
             }
             for (auto const& event : events) {
-                if (auto const* ack = std::get_if<simnet::SnapshotAckReceived>(&event)) {
-                    ack_seen
-                        = ack->ack.newest_received_snapshot == expected_ack.newest_received_snapshot
-                        && ack->ack.received_mask == expected_ack.received_mask
-                        && ack->ack.newest_applied_snapshot == expected_ack.newest_applied_snapshot;
-                }
-            }
-        }
-        if (!ack_seen) {
-            std::cerr << "snapshot ACK was not received intact\n";
-            return false;
-        }
-
-        auto const player_input = std::array<simnet::Byte, 2>{
-            simnet::Byte{1U},
-            simnet::Byte{0x15U},
-        };
-        auto const input_sent = client.send_application_input(player_input);
-        if (!input_sent.ok) {
-            std::cerr << "application input send failed: " << input_sent.error.message << '\n';
-            return false;
-        }
-        {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto const poll = client.poll(events, 0);
-            if (!poll.ok) {
-                std::cerr << "client application input service poll failed: " << poll.error.message
-                          << '\n';
-                return false;
-            }
-        }
-        auto input_seen = false;
-        auto const input_deadline = std::chrono::steady_clock::now() + poll_timeout;
-        while (!input_seen && std::chrono::steady_clock::now() < input_deadline) {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto poll = server.poll(events, 10);
-            if (!poll.ok) {
-                std::cerr << "server application input poll failed: " << poll.error.message << '\n';
-                return false;
-            }
-            for (auto const& event : events) {
-                if (auto const* input = std::get_if<simnet::ReceivedApplicationInput>(&event)) {
-                    input_seen = input->peer == handshake.server_peer
-                        && input->payload
+                if (auto const* packet = std::get_if<simnet::ReceivedPacket>(&event)) {
+                    server_payload_seen = packet->lane == simnet::TransportLane::Lane0
+                        && packet->payload
                             == std::vector<simnet::Byte>{
-                                player_input.begin(),
-                                player_input.end(),
+                                small_payload.begin(),
+                                small_payload.end()
                             };
                 }
             }
         }
-        if (!input_seen) {
-            std::cerr << "application input was not received intact\n";
-            return false;
-        }
-
-        auto const client_control = std::array<simnet::Byte, 2>{simnet::Byte{1U}, simnet::Byte{1U}};
-        auto control_sent = client.send_application_control(client_control);
-        if (!control_sent.ok) {
-            std::cerr << "client application-control send failed: " << control_sent.error.message
-                      << '\n';
-            return false;
-        }
-        {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto const poll = client.poll(events, 0);
-            if (!poll.ok) {
-                std::cerr << "client application-control service poll failed: "
-                          << poll.error.message << '\n';
-                return false;
-            }
-        }
-        auto client_control_seen = false;
-        auto const control_deadline = std::chrono::steady_clock::now() + poll_timeout;
-        while (!client_control_seen && std::chrono::steady_clock::now() < control_deadline) {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto poll = server.poll(events, 10);
-            if (!poll.ok) {
-                std::cerr << "server application-control poll failed: " << poll.error.message
-                          << '\n';
-                return false;
-            }
-            for (auto const& event : events) {
-                if (auto const* control = std::get_if<simnet::ReceivedApplicationControl>(&event)) {
-                    client_control_seen = control->peer == handshake.server_peer
-                        && control->payload
-                            == std::vector<simnet::Byte>{
-                                client_control.begin(),
-                                client_control.end()
-                            };
-                }
-            }
-        }
-        if (!client_control_seen) {
-            std::cerr << "client application-control payload was not received intact\n";
-            return false;
-        }
-
-        auto const server_control = std::array<simnet::Byte, 2>{simnet::Byte{2U}, simnet::Byte{0U}};
-        control_sent = server.send_application_control(handshake.server_peer, server_control);
-        if (!control_sent.ok) {
-            std::cerr << "server application-control send failed: " << control_sent.error.message
-                      << '\n';
-            return false;
-        }
-        {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto const poll = server.poll(events, 0);
-            if (!poll.ok) {
-                std::cerr << "server application-control service poll failed: "
-                          << poll.error.message << '\n';
-                return false;
-            }
-        }
-        auto server_control_seen = false;
-        while (!server_control_seen && std::chrono::steady_clock::now() < control_deadline) {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto poll = client.poll(events, 10);
-            if (!poll.ok) {
-                std::cerr << "client application-control poll failed: " << poll.error.message
-                          << '\n';
-                return false;
-            }
-            for (auto const& event : events) {
-                if (auto const* control = std::get_if<simnet::ReceivedApplicationControl>(&event)) {
-                    server_control_seen = control->peer == 1U
-                        && control->payload
-                            == std::vector<simnet::Byte>{
-                                server_control.begin(),
-                                server_control.end()
-                            };
-                }
-            }
-        }
-        if (!server_control_seen) {
-            std::cerr << "server application-control payload was not received intact\n";
+        if (!server_payload_seen) {
             return false;
         }
 
@@ -524,7 +405,11 @@ namespace
         }
 
         auto payload = std::array<simnet::Byte, 128>{};
-        result = client.send(simnet::Lane::Snapshot, simnet::Delivery::ReliableSequenced, payload);
+        result = client.send(
+            simnet::TransportLane::Lane1,
+            simnet::Delivery::ReliableSequenced,
+            payload
+        );
         if (!result.ok) {
             std::cerr << "receive-limit sender unexpectedly rejected payload: "
                       << result.error.message << '\n';
@@ -584,7 +469,7 @@ TEST_CASE("ENet rejects incompatible session identities", "[transport][enet][int
     REQUIRE(mismatched_session_test(enet, fingerprint_mismatch));
 
     auto signature_mismatch = identity();
-    signature_mismatch.pipeline_decode_signature ^= 1U;
+    signature_mismatch.application_wire_fingerprint ^= 1U;
     REQUIRE(mismatched_session_test(enet, signature_mismatch));
 }
 

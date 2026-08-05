@@ -50,7 +50,7 @@ export namespace simnet::app
         void end_section();
         void add_row(std::string_view label, std::string value);
         void add_shared_sections(SharedConfig const& shared);
-        void add_techniques(PipelineDefinition const& pipeline, TransportConfig const& transport);
+        void add_techniques(PipelineDefinition const& pipeline, SharedConfig const& shared);
 
         std::array<std::string, 128> values_{};
         std::array<SetupRowView, 128> rows_{};
@@ -126,10 +126,8 @@ namespace simnet::app
         };
     }
 
-    void RunSetupStorage::add_techniques(
-        PipelineDefinition const& pipeline,
-        TransportConfig const& transport
-    )
+    void
+    RunSetupStorage::add_techniques(PipelineDefinition const& pipeline, SharedConfig const& shared)
     {
         begin_section("ACTIVE TECHNIQUES", true);
         add_row(
@@ -166,9 +164,9 @@ namespace simnet::app
         add_row("Area of interest", std::move(area_of_interest));
         add_row(
             "Packetization",
-            transport.send_size_policy == "allow_backend_fragmentation"
-                ? "ENet fragmentation allowed"
-                : "Payload limit enforced"
+            shared.packetization.enabled
+                ? "Enabled, " + format_u64(shared.packetization.max_payload_bytes) + " bytes"
+                : "Disabled"
         );
         end_section();
     }
@@ -272,7 +270,7 @@ namespace simnet::app
 #endif
         add_row("Flecs workers", format_u64(local.flecs.thread_count));
         end_section();
-        add_techniques(pipeline, local.transport);
+        add_techniques(pipeline, shared);
         add_shared_sections(shared);
 
         begin_section("PRESENTATION", false);
@@ -310,7 +308,7 @@ namespace simnet::app
 #endif
         add_row("Client role", local.gameplay.role);
         end_section();
-        add_techniques(pipeline, local.transport);
+        add_techniques(pipeline, shared);
         add_shared_sections(shared);
 
         begin_section("PRESENTATION", false);

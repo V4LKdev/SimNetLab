@@ -104,6 +104,26 @@ export namespace simnet
         std::optional<std::uint32_t> transmitted_upsert_count{};
         std::optional<std::uint32_t> transmitted_delete_count{};
         std::optional<std::uint32_t> reconstructed_entity_count{};
+        std::optional<bool> packetization_enabled{};
+        std::optional<std::uint32_t> packet_group_id{};
+        std::optional<std::uint32_t> encoded_group_bytes{};
+        std::optional<std::uint32_t> packet_chunk_count{};
+        std::optional<std::uint32_t> packet_header_bytes{};
+        std::optional<std::uint32_t> application_packet_bytes{};
+        std::optional<std::uint32_t> attempted_packet_submissions{};
+        std::optional<std::uint32_t> accepted_packet_submissions{};
+        std::optional<std::string_view> packet_submission_outcome{};
+        std::optional<std::string_view> packet_submission_failure{};
+        std::optional<std::uint64_t> received_packet_chunks{};
+        std::optional<std::uint64_t> unique_packet_chunks{};
+        std::optional<std::uint64_t> duplicate_packet_chunks{};
+        std::optional<std::uint32_t> incomplete_packet_groups{};
+        std::optional<std::uint32_t> retained_incomplete_bytes{};
+        std::optional<std::uint32_t> latest_completed_group_bytes{};
+        std::optional<std::uint64_t> completed_packet_groups{};
+        std::optional<std::uint64_t> expired_packet_groups{};
+        std::optional<std::uint64_t> invalid_packet_groups{};
+        std::optional<std::uint64_t> stale_packet_groups{};
     };
 
     struct RenderFrameInfo

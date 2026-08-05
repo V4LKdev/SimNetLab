@@ -134,10 +134,9 @@ export namespace simnet
     /**
      * Immutable definition of enabled pipeline techniques and settings.
      *
-     * Replication stages are ordered as cadence control, relevancy selection, update scheduling,
-     * delta selection, representation encoding, record layout, whole-update compression, and
-     * application packetization. Unsupported stages are rejected. Delivery remains outside the
-     * pipeline.
+     * Pipeline stages are cadence control, relevancy selection, update scheduling, delta
+     * selection, representation encoding, and record layout. Compression and opaque byte-group
+     * packetization compose after this pipeline. Delivery remains outside the pipeline.
      */
     struct PipelineDefinition
     {

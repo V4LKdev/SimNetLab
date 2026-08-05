@@ -6,11 +6,13 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 
 ## Current capability
 
-- ENet-only transport with session handshake, bounded payload policy, SnapshotAck messages, reliable opaque application control, and unreliable-sequenced opaque player input
+- ENet transport with a session handshake and generic bounded post-session byte lanes
+- Versioned application messages for acknowledgements, control, player input, and stationary observer interest
+- Configurable hard application packetization with bounded complete-group Client reassembly
 - Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
 - One authoritative server peer and one client peer
 - Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
-- Application configuration for full replacement, incremental selection, quantization, and exact-baseline delta reconstruction
+- Application configuration for full replacement, incremental selection, quantization, exact-baseline delta reconstruction, radius or conical-FOV AOI, and packetization
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
 - 1,000-entity Server to Client replication in the bounded runtime path
@@ -19,7 +21,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 
 ## Planned work
 
-Area of interest, LOD, compression, the repeatable benchmark runner, and external experiment
+LOD, compression, the repeatable benchmark runner, and external experiment
 orchestration remain planned. Tracy instrumentation is available through the
 `SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are available when local
 visualization is enabled. The Server can display occupied spatial cells and selected-boid

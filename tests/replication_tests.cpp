@@ -9,6 +9,7 @@
 #include <vector>
 
 import simnet.core;
+import simnet.app_protocol;
 import simnet.game_client;
 import simnet.game_server;
 import simnet.game_shared;
@@ -44,7 +45,7 @@ namespace
         }
     }
 
-    void record_received(simnet::SnapshotAck& ack, simnet::SequenceId sequence)
+    void record_received(simnet::app::SnapshotAck& ack, simnet::SequenceId sequence)
     {
         auto const previous = ack.newest_received_snapshot;
         if (previous == 0) {
@@ -169,7 +170,7 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     auto encode_scratch = simnet::PipelineScratch{};
     auto acknowledged_snapshot = simnet::WorldSnapshot{};
     auto acknowledged_sequence = simnet::SequenceId{};
-    auto ack = simnet::SnapshotAck{};
+    auto ack = simnet::app::SnapshotAck{};
     auto emitted_index = std::size_t{};
 
     constexpr auto expected_sequences = std::array<simnet::SequenceId, 3>{1, 2, 3};

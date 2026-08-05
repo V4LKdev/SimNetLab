@@ -84,7 +84,7 @@ TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
             | static_cast<std::uint8_t>(simnet::app::PlayerButton::LeftMouse),
     };
     auto const bytes = simnet::app::encode_player_input(input);
-    REQUIRE(bytes.size() == 2U);
+    REQUIRE(bytes.size() == 3U);
     auto decoded = simnet::app::PlayerInputMessage{};
     REQUIRE(simnet::app::decode_player_input(bytes, decoded));
     CHECK(decoded.buttons == input.buttons);
@@ -94,8 +94,29 @@ TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
     CHECK_FALSE(simnet::app::button_down(decoded, simnet::app::PlayerButton::S));
 
     auto invalid = bytes;
-    invalid[0] = simnet::Byte{2U};
+    invalid[1] = simnet::Byte{2U};
     CHECK_FALSE(simnet::app::decode_player_input(invalid, decoded));
+}
+
+TEST_CASE("snapshot ACK uses the application-owned envelope", "[app_protocol][ack]")
+{
+    auto const expected = simnet::app::SnapshotAck{
+        .newest_received_snapshot = 9U,
+        .received_mask = 0x12345678U,
+        .newest_applied_snapshot = 8U,
+    };
+    auto const bytes = simnet::app::encode_snapshot_ack(expected);
+    REQUIRE(bytes.size() == 14U);
+    CHECK(simnet::app::decode_app_message_kind(bytes) == simnet::app::AppMessageKind::SnapshotAck);
+    auto decoded = simnet::app::SnapshotAck{};
+    REQUIRE(simnet::app::decode_snapshot_ack(bytes, decoded));
+    CHECK(decoded.newest_received_snapshot == expected.newest_received_snapshot);
+    CHECK(decoded.received_mask == expected.received_mask);
+    CHECK(decoded.newest_applied_snapshot == expected.newest_applied_snapshot);
+
+    auto malformed = bytes;
+    malformed.push_back(simnet::Byte{});
+    CHECK_FALSE(simnet::app::decode_snapshot_ack(malformed, decoded));
 }
 
 TEST_CASE(
@@ -108,7 +129,7 @@ TEST_CASE(
         .forward = {0.0F, 0.0F, 2.0F},
     };
     auto const bytes = simnet::app::encode_stationary_observer_interest(message);
-    REQUIRE(bytes.size() == 25U);
+    REQUIRE(bytes.size() == 26U);
     auto decoded = simnet::app::StationaryObserverInterestMessage{};
     REQUIRE(simnet::app::decode_stationary_observer_interest(bytes, decoded));
     CHECK(decoded.position.x == 1.0F);
@@ -135,7 +156,7 @@ TEST_CASE(
     trailing.push_back(simnet::Byte{});
     reject(std::move(trailing));
     auto incompatible = bytes;
-    incompatible[0] = simnet::Byte{2U};
+    incompatible[1] = simnet::Byte{2U};
     reject(std::move(incompatible));
     reject(
         simnet::app::encode_stationary_observer_interest({

@@ -15,11 +15,11 @@ import simnet.core;
 
 export namespace simnet
 {
-    enum class Lane : std::uint8_t
+    enum class TransportLane : std::uint8_t
     {
-        Control = 0,
-        Snapshot = 1,
-        Input = 2
+        Lane0 = 0,
+        Lane1 = 1,
+        Lane2 = 2
     };
 
     enum class Delivery : std::uint8_t
@@ -68,7 +68,7 @@ export namespace simnet
     {
         std::uint32_t application_protocol_version{};
         std::uint64_t compatibility_fingerprint{};
-        std::uint64_t pipeline_decode_signature{};
+        std::uint64_t application_wire_fingerprint{};
         std::uint32_t capabilities{};
     };
 
@@ -94,7 +94,7 @@ export namespace simnet
     struct SendPacket
     {
         PeerId peer{};
-        Lane lane{Lane::Snapshot};
+        TransportLane lane{TransportLane::Lane0};
         Delivery delivery{Delivery::UnreliableSequenced};
         std::span<Byte const> payload{};
     };
@@ -102,7 +102,7 @@ export namespace simnet
     struct ReceivedPacket
     {
         PeerId peer{};
-        Lane lane{};
+        TransportLane lane{};
         Delivery delivery{};
         std::vector<Byte> payload;
     };
@@ -124,36 +124,6 @@ export namespace simnet
         std::uint32_t native_reason{};
     };
 
-    /// Cumulative semantic acknowledgement of decoded and applied snapshots.
-    struct SnapshotAck
-    {
-        SequenceId newest_received_snapshot{};
-        /// Receipt bits for the 32 sequences preceding `newest_received_snapshot`.
-        /// The current Client advances this history monotonically and ignores late packets.
-        std::uint32_t received_mask{};
-        SequenceId newest_applied_snapshot{};
-    };
-
-    struct SnapshotAckReceived
-    {
-        PeerId peer{};
-        SnapshotAck ack{};
-    };
-
-    /// Opaque reliable application-control payload received after session readiness.
-    struct ReceivedApplicationControl
-    {
-        PeerId peer{};
-        std::vector<Byte> payload;
-    };
-
-    /// Opaque unreliable-sequenced latest-state input received after session readiness.
-    struct ReceivedApplicationInput
-    {
-        PeerId peer{};
-        std::vector<Byte> payload;
-    };
-
     struct TransportErrorEvent
     {
         std::string message{};
@@ -163,9 +133,6 @@ export namespace simnet
         PeerConnected,
         PeerSessionReady,
         PeerDisconnected,
-        SnapshotAckReceived,
-        ReceivedApplicationControl,
-        ReceivedApplicationInput,
         ReceivedPacket,
         TransportErrorEvent>;
 

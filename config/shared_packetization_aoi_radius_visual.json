@@ -57,16 +57,16 @@
     "enable_delta": false,
     "area_of_interest": {
       "mode": "radius",
-      "radius": 80.0
+      "radius": 160.0
     }
   },
   "packetization": {
     "enabled": true,
-    "max_payload_bytes": 1200,
-    "max_update_bytes": 4194304,
+    "max_payload_bytes": 256,
+    "max_update_bytes": 524288,
     "max_chunks_per_update": 4096,
     "max_in_flight_updates": 4,
-    "max_incomplete_bytes": 8388608,
+    "max_incomplete_bytes": 1048576,
     "reassembly_timeout_ms": 5000
   }
 }

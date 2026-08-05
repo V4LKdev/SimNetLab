@@ -133,7 +133,7 @@ namespace simnet
                 || enet_address_set_host(&address, host.c_str()) == 0;
         }
 
-        void add_send_stats(TransportStats& stats, Lane lane, std::size_t bytes)
+        void add_send_stats(TransportStats& stats, TransportLane lane, std::size_t bytes)
         {
             auto const index = lane_index(lane);
             ++stats.packets_sent;
@@ -142,7 +142,7 @@ namespace simnet
             stats.lane_bytes_sent[index] += bytes;
         }
 
-        void add_receive_stats(TransportStats& stats, Lane lane, std::size_t bytes)
+        void add_receive_stats(TransportStats& stats, TransportLane lane, std::size_t bytes)
         {
             auto const index = lane_index(lane);
             ++stats.packets_received;
@@ -155,7 +155,7 @@ namespace simnet
             ENetPeer* peer,
             TransportStats& stats,
             TransportLimits const& limits,
-            Lane lane,
+            TransportLane lane,
             Delivery delivery,
             std::span<Byte const> payload
         )
@@ -358,12 +358,6 @@ namespace simnet
                     "transport peer session is not ready"
                 );
             }
-            if (packet.lane == Lane::Control) {
-                return fail(
-                    TransportErrorCode::InvalidLane,
-                    "Control lane is reserved for the transport protocol"
-                );
-            }
             return send_to_peer(
                 slot->peer,
                 counters_,
@@ -371,33 +365,6 @@ namespace simnet
                 packet.lane,
                 packet.delivery,
                 packet.payload
-            );
-        }
-
-        TransportResult send_application_control(PeerId peer, std::span<Byte const> payload)
-        {
-            auto* slot = find(peer);
-            if (slot == nullptr) {
-                return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
-            }
-            if (!slot->session_ready) {
-                return fail(
-                    TransportErrorCode::PeerNotReady,
-                    "transport peer session is not ready"
-                );
-            }
-            if (payload.size() > max_application_control_bytes) {
-                return fail(
-                    TransportErrorCode::PayloadTooLarge,
-                    "application-control payload exceeds transport limit"
-                );
-            }
-            return send_session(
-                slot->peer,
-                {
-                    .kind = SessionMessageKind::ApplicationControl,
-                    .application_control = {payload.begin(), payload.end()},
-                }
             );
         }
 
@@ -448,7 +415,7 @@ namespace simnet
                     .max_payload_bytes = settings_.limits.max_payload_bytes,
                     .size_policy = SendSizePolicy::AllowBackendFragmentation,
                 },
-                Lane::Control,
+                TransportLane::Lane0,
                 Delivery::ReliableSequenced,
                 bytes
             );
@@ -505,7 +472,7 @@ namespace simnet
         void handle_receive(ENetEvent const& event, std::vector<TransportEvent>& out_events)
         {
             auto const peer = event_peer_id(event.peer);
-            auto const lane = static_cast<Lane>(event.channelID);
+            auto const lane = static_cast<TransportLane>(event.channelID);
             if (!valid_lane(lane)) {
                 out_events.push_back(
                     TransportErrorEvent{
@@ -514,10 +481,11 @@ namespace simnet
                 );
                 return;
             }
-            auto const size_allowed = lane == Lane::Control
-                ? event.packet->dataLength <= max_control_message_bytes
-                : lane == Lane::Input
-                ? event.packet->dataLength <= max_input_message_bytes
+            auto* slot = find(peer);
+            auto const handshake_packet
+                = slot != nullptr && !slot->session_ready && lane == TransportLane::Lane0;
+            auto const size_allowed = handshake_packet
+                ? event.packet->dataLength <= max_session_message_bytes
                 : payload_size_allowed(event.packet->dataLength, settings_.limits);
             if (!size_allowed) {
                 ++counters_.oversize_drops;
@@ -531,72 +499,25 @@ namespace simnet
             }
             add_receive_stats(counters_, lane, event.packet->dataLength);
 
-            auto* slot = find(peer);
-            if (slot != nullptr && lane == Lane::Control) {
+            if (slot == nullptr) {
+                return;
+            }
+            if (!slot->session_ready) {
                 auto message = SessionMessage{};
                 auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
-                if (!decode_session_message(data, event.packet->dataLength, message)) {
+                if (lane != TransportLane::Lane0
+                    || !decode_session_message(data, event.packet->dataLength, message)
+                    || message.kind != SessionMessageKind::ClientHello) {
                     out_events.push_back(
                         TransportErrorEvent{
                             .message = "invalid client session message",
                         }
                     );
                     disconnect(peer, DisconnectCode::ProtocolMismatch);
-                } else if (!slot->session_ready) {
-                    if (message.kind != SessionMessageKind::ClientHello) {
-                        out_events.push_back(
-                            TransportErrorEvent{
-                                .message = "application control received before session readiness",
-                            }
-                        );
-                        disconnect(peer, DisconnectCode::ProtocolMismatch);
-                    } else {
-                        handle_client_hello(*slot, message, out_events);
-                    }
-                } else if (message.kind == SessionMessageKind::ApplicationControl) {
-                    out_events.push_back(
-                        ReceivedApplicationControl{
-                            .peer = peer,
-                            .payload = std::move(message.application_control),
-                        }
-                    );
                 } else {
-                    out_events.push_back(
-                        TransportErrorEvent{
-                            .message = "invalid client control message after session readiness",
-                        }
-                    );
-                    disconnect(peer, DisconnectCode::ProtocolMismatch);
+                    handle_client_hello(*slot, message, out_events);
                 }
-            } else if (slot != nullptr && lane == Lane::Input) {
-                auto message = SessionMessage{};
-                auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
-                if (!slot->session_ready
-                    || !decode_session_message(data, event.packet->dataLength, message)
-                    || (message.kind != SessionMessageKind::SnapshotAck
-                        && message.kind != SessionMessageKind::ApplicationInput)) {
-                    out_events.push_back(
-                        TransportErrorEvent{
-                            .message = "invalid Input-lane message",
-                        }
-                    );
-                    disconnect(peer, DisconnectCode::ProtocolMismatch);
-                } else if (message.kind == SessionMessageKind::ApplicationInput) {
-                    out_events.push_back(
-                        ReceivedApplicationInput{
-                            .peer = peer,
-                            .payload = std::move(message.application_input),
-                        }
-                    );
-                } else {
-                    out_events.push_back(
-                        SnapshotAckReceived{
-                            .peer = peer,
-                            .ack = message.snapshot_ack,
-                        }
-                    );
-                }
-            } else if (slot != nullptr && slot->session_ready) {
+            } else {
                 auto payload = std::vector<Byte>(event.packet->dataLength);
                 std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
                 out_events.push_back(
@@ -822,7 +743,7 @@ namespace simnet
             return ok();
         }
 
-        TransportResult send(Lane lane, Delivery delivery, std::span<Byte const> payload)
+        TransportResult send(TransportLane lane, Delivery delivery, std::span<Byte const> payload)
         {
             if (host_ == nullptr || server_ == nullptr) {
                 return fail(TransportErrorCode::NotStarted, "transport client is not connected");
@@ -831,92 +752,9 @@ namespace simnet
                 return fail(
                     TransportErrorCode::PeerNotReady,
                     "transport server session is not ready"
-                );
-            }
-            if (lane == Lane::Control || lane == Lane::Input) {
-                return fail(
-                    TransportErrorCode::InvalidLane,
-                    "lane is reserved for the transport protocol"
                 );
             }
             return send_to_peer(server_, counters_, settings_.limits, lane, delivery, payload);
-        }
-
-        TransportResult send_snapshot_ack(SnapshotAck const& ack)
-        {
-            if (host_ == nullptr || server_ == nullptr) {
-                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-            }
-            if (!session_ready_) {
-                return fail(
-                    TransportErrorCode::PeerNotReady,
-                    "transport server session is not ready"
-                );
-            }
-            return send_session(
-                {
-                    .kind = SessionMessageKind::SnapshotAck,
-                    .snapshot_ack = ack,
-                },
-                Lane::Input
-            );
-        }
-
-        TransportResult send_application_control(std::span<Byte const> payload)
-        {
-            if (host_ == nullptr || server_ == nullptr) {
-                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-            }
-            if (!session_ready_) {
-                return fail(
-                    TransportErrorCode::PeerNotReady,
-                    "transport server session is not ready"
-                );
-            }
-            if (payload.size() > max_application_control_bytes) {
-                return fail(
-                    TransportErrorCode::PayloadTooLarge,
-                    "application-control payload exceeds transport limit"
-                );
-            }
-            return send_session({
-                .kind = SessionMessageKind::ApplicationControl,
-                .application_control = {payload.begin(), payload.end()},
-            });
-        }
-
-        TransportResult send_application_input(std::span<Byte const> payload)
-        {
-            if (host_ == nullptr || server_ == nullptr) {
-                return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-            }
-            if (!session_ready_) {
-                return fail(
-                    TransportErrorCode::PeerNotReady,
-                    "transport server session is not ready"
-                );
-            }
-            if (payload.size() > max_application_input_bytes) {
-                return fail(
-                    TransportErrorCode::PayloadTooLarge,
-                    "application-input payload exceeds transport limit"
-                );
-            }
-            auto bytes = encode_session_message({
-                .kind = SessionMessageKind::ApplicationInput,
-                .application_input = {payload.begin(), payload.end()},
-            });
-            return send_to_peer(
-                server_,
-                counters_,
-                {
-                    .max_payload_bytes = settings_.limits.max_payload_bytes,
-                    .size_policy = SendSizePolicy::AllowBackendFragmentation,
-                },
-                Lane::Input,
-                Delivery::UnreliableSequenced,
-                bytes
-            );
         }
 
         TransportStats stats() const
@@ -931,7 +769,7 @@ namespace simnet
 
     private:
         [[nodiscard]] TransportResult
-        send_session(SessionMessage const& message, Lane lane = Lane::Control)
+        send_session(SessionMessage const& message, TransportLane lane = TransportLane::Lane0)
         {
             auto bytes = encode_session_message(message);
             return send_to_peer(
@@ -949,7 +787,7 @@ namespace simnet
 
         void handle_receive(ENetEvent const& event, std::vector<TransportEvent>& out_events)
         {
-            auto const lane = static_cast<Lane>(event.channelID);
+            auto const lane = static_cast<TransportLane>(event.channelID);
             if (!valid_lane(lane)) {
                 out_events.push_back(
                     TransportErrorEvent{
@@ -958,10 +796,9 @@ namespace simnet
                 );
                 return;
             }
-            auto const size_allowed = lane == Lane::Control
-                ? event.packet->dataLength <= max_control_message_bytes
-                : lane == Lane::Input
-                ? event.packet->dataLength <= max_input_message_bytes
+            auto const handshake_packet = !session_ready_ && lane == TransportLane::Lane0;
+            auto const size_allowed = handshake_packet
+                ? event.packet->dataLength <= max_session_message_bytes
                 : payload_size_allowed(event.packet->dataLength, settings_.limits);
             if (!size_allowed) {
                 ++counters_.oversize_drops;
@@ -990,10 +827,11 @@ namespace simnet
             }
             add_receive_stats(counters_, lane, event.packet->dataLength);
 
-            if (lane == Lane::Control) {
+            if (!session_ready_) {
                 auto message = SessionMessage{};
                 auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
-                if (!decode_session_message(data, event.packet->dataLength, message)) {
+                if (lane != TransportLane::Lane0
+                    || !decode_session_message(data, event.packet->dataLength, message)) {
                     out_events.push_back(
                         TransportErrorEvent{
                             .message = "invalid server session message",
@@ -1029,15 +867,6 @@ namespace simnet
                     server_ = nullptr;
                     transport_connected_ = false;
                     session_ready_ = false;
-                } else if (
-                    message.kind == SessionMessageKind::ApplicationControl && session_ready_
-                ) {
-                    out_events.push_back(
-                        ReceivedApplicationControl{
-                            .peer = server_peer_id,
-                            .payload = std::move(message.application_control),
-                        }
-                    );
                 } else {
                     out_events.push_back(
                         TransportErrorEvent{
@@ -1052,7 +881,7 @@ namespace simnet
                     transport_connected_ = false;
                     session_ready_ = false;
                 }
-            } else if (session_ready_) {
+            } else {
                 auto payload = std::vector<Byte>(event.packet->dataLength);
                 std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
                 out_events.push_back(
@@ -1158,15 +987,6 @@ namespace simnet
         return impl_->send(packet);
     }
 
-    TransportResult
-    TransportServer::send_application_control(PeerId peer, std::span<Byte const> payload)
-    {
-        if (impl_ == nullptr) {
-            return fail(TransportErrorCode::NotStarted, "transport server is not started");
-        }
-        return impl_->send_application_control(peer, payload);
-    }
-
     void TransportServer::disconnect(PeerId peer, DisconnectCode code) noexcept
     {
         if (impl_ != nullptr) {
@@ -1248,36 +1068,12 @@ namespace simnet
     }
 
     TransportResult
-    TransportClient::send(Lane lane, Delivery delivery, std::span<Byte const> payload)
+    TransportClient::send(TransportLane lane, Delivery delivery, std::span<Byte const> payload)
     {
         if (impl_ == nullptr) {
             return fail(TransportErrorCode::NotStarted, "transport client is not connected");
         }
         return impl_->send(lane, delivery, payload);
-    }
-
-    TransportResult TransportClient::send_snapshot_ack(SnapshotAck const& ack)
-    {
-        if (impl_ == nullptr) {
-            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-        }
-        return impl_->send_snapshot_ack(ack);
-    }
-
-    TransportResult TransportClient::send_application_control(std::span<Byte const> payload)
-    {
-        if (impl_ == nullptr) {
-            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-        }
-        return impl_->send_application_control(payload);
-    }
-
-    TransportResult TransportClient::send_application_input(std::span<Byte const> payload)
-    {
-        if (impl_ == nullptr) {
-            return fail(TransportErrorCode::NotStarted, "transport client is not connected");
-        }
-        return impl_->send_application_input(payload);
     }
 
     TransportStats TransportClient::stats() const

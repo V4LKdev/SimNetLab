@@ -26,7 +26,7 @@ namespace simnet::transport_protocol
         if (actual.compatibility_fingerprint != expected.compatibility_fingerprint) {
             return DisconnectCode::IncompatibleConfig;
         }
-        if (actual.pipeline_decode_signature != expected.pipeline_decode_signature) {
+        if (actual.application_wire_fingerprint != expected.application_wire_fingerprint) {
             return DisconnectCode::IncompatibleWireProfile;
         }
         if (actual.capabilities != expected.capabilities) {
@@ -35,12 +35,12 @@ namespace simnet::transport_protocol
         return DisconnectCode::None;
     }
 
-    std::uint8_t lane_index(Lane lane) noexcept
+    std::uint8_t lane_index(TransportLane lane) noexcept
     {
         return static_cast<std::uint8_t>(lane);
     }
 
-    bool valid_lane(Lane lane) noexcept
+    bool valid_lane(TransportLane lane) noexcept
     {
         return lane_index(lane) < channel_count;
     }
@@ -152,18 +152,10 @@ namespace simnet::transport_protocol
         if (message.kind == SessionMessageKind::ClientHello) {
             write_u32(payload, message.identity.application_protocol_version);
             write_u64(payload, message.identity.compatibility_fingerprint);
-            write_u64(payload, message.identity.pipeline_decode_signature);
+            write_u64(payload, message.identity.application_wire_fingerprint);
             write_u32(payload, message.identity.capabilities);
         } else if (message.kind == SessionMessageKind::ServerReject) {
             write_u16(payload, static_cast<std::uint16_t>(message.reject_code));
-        } else if (message.kind == SessionMessageKind::SnapshotAck) {
-            write_u32(payload, message.snapshot_ack.newest_received_snapshot);
-            write_u32(payload, message.snapshot_ack.received_mask);
-            write_u32(payload, message.snapshot_ack.newest_applied_snapshot);
-        } else if (message.kind == SessionMessageKind::ApplicationControl) {
-            payload = message.application_control;
-        } else if (message.kind == SessionMessageKind::ApplicationInput) {
-            payload = message.application_input;
         }
 
         auto bytes = std::vector<Byte>{};
@@ -196,7 +188,7 @@ namespace simnet::transport_protocol
             return payload_size == 24U
                 && read_u32(data, size, offset, message.identity.application_protocol_version)
                 && read_u64(data, size, offset, message.identity.compatibility_fingerprint)
-                && read_u64(data, size, offset, message.identity.pipeline_decode_signature)
+                && read_u64(data, size, offset, message.identity.application_wire_fingerprint)
                 && read_u32(data, size, offset, message.identity.capabilities);
         }
         if (message.kind == SessionMessageKind::ServerAccept) {
@@ -210,26 +202,6 @@ namespace simnet::transport_protocol
             message.reject_code = static_cast<DisconnectCode>(code);
             return valid_disconnect_code(message.reject_code)
                 && message.reject_code != DisconnectCode::None;
-        }
-        if (message.kind == SessionMessageKind::SnapshotAck) {
-            return payload_size == 12U
-                && read_u32(data, size, offset, message.snapshot_ack.newest_received_snapshot)
-                && read_u32(data, size, offset, message.snapshot_ack.received_mask)
-                && read_u32(data, size, offset, message.snapshot_ack.newest_applied_snapshot);
-        }
-        if (message.kind == SessionMessageKind::ApplicationControl) {
-            if (payload_size > max_application_control_bytes) {
-                return false;
-            }
-            message.application_control.assign(data + offset, data + offset + payload_size);
-            return true;
-        }
-        if (message.kind == SessionMessageKind::ApplicationInput) {
-            if (payload_size > max_application_input_bytes) {
-                return false;
-            }
-            message.application_input.assign(data + offset, data + offset + payload_size);
-            return true;
         }
         return false;
     }

@@ -20,6 +20,8 @@ module;
 module simnet.config;
 
 import :types;
+import simnet.core;
+import simnet.packetization;
 
 namespace
 {
@@ -395,6 +397,40 @@ namespace
         }
     }
 
+    void apply_packetization(Json const& json, simnet::PacketizationConfig& config)
+    {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "enabled" && key != "max_payload_bytes" && key != "max_update_bytes"
+                && key != "max_chunks_per_update" && key != "max_in_flight_updates"
+                && key != "max_incomplete_bytes" && key != "reassembly_timeout_ms") {
+                throw std::runtime_error(
+                    "invalid config field 'packetization." + key + "': unknown field"
+                );
+            }
+        }
+
+        read_optional(json, "enabled", config.enabled);
+        read_optional(json, "max_payload_bytes", config.max_payload_bytes);
+        read_optional(json, "max_update_bytes", config.max_update_bytes);
+        read_optional(json, "max_chunks_per_update", config.max_chunks_per_update);
+        read_optional(json, "max_in_flight_updates", config.max_in_flight_updates);
+        read_optional(json, "max_incomplete_bytes", config.max_incomplete_bytes);
+        read_optional(json, "reassembly_timeout_ms", config.reassembly_timeout_ms);
+
+        simnet::validate_packetization_settings({
+            .enabled = config.enabled,
+            .max_payload_bytes = config.max_payload_bytes,
+            .max_group_bytes = config.max_update_bytes,
+            .max_chunks_per_group = config.max_chunks_per_update,
+            .max_in_flight_groups = config.max_in_flight_updates,
+            .max_incomplete_bytes = config.max_incomplete_bytes,
+            .reassembly_timeout = simnet::Nanoseconds{
+                static_cast<std::int64_t>(config.reassembly_timeout_ms) * 1'000'000
+            },
+        });
+    }
+
     void apply_transport(Json const& json, simnet::TransportConfig& config)
     {
         if (json.contains("backend")) {
@@ -566,6 +602,9 @@ namespace
         if (auto const* section = optional_object(json, "pipeline")) {
             apply_pipeline(*section, config.pipeline);
         }
+        if (auto const* section = optional_object(json, "packetization")) {
+            apply_packetization(*section, config.packetization);
+        }
 
         return config;
     }
@@ -670,6 +709,13 @@ namespace
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_bytes(hash, config.pipeline.area_of_interest.radius);
         hash_bytes(hash, config.pipeline.area_of_interest.fov_degrees);
+        hash_bytes(hash, config.packetization.enabled);
+        hash_bytes(hash, config.packetization.max_payload_bytes);
+        hash_bytes(hash, config.packetization.max_update_bytes);
+        hash_bytes(hash, config.packetization.max_chunks_per_update);
+        hash_bytes(hash, config.packetization.max_in_flight_updates);
+        hash_bytes(hash, config.packetization.max_incomplete_bytes);
+        hash_bytes(hash, config.packetization.reassembly_timeout_ms);
     }
 
     void
@@ -726,6 +772,13 @@ namespace
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_canonical_float(hash, config.pipeline.area_of_interest.radius);
         hash_canonical_float(hash, config.pipeline.area_of_interest.fov_degrees);
+        hash_canonical_bool(hash, config.packetization.enabled);
+        hash_canonical_u32(hash, config.packetization.max_payload_bytes);
+        hash_canonical_u32(hash, config.packetization.max_update_bytes);
+        hash_canonical_u32(hash, config.packetization.max_chunks_per_update);
+        hash_canonical_u32(hash, config.packetization.max_in_flight_updates);
+        hash_canonical_u32(hash, config.packetization.max_incomplete_bytes);
+        hash_canonical_u32(hash, config.packetization.reassembly_timeout_ms);
     }
 
     void hash_transport_and_telemetry(

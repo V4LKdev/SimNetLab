@@ -361,6 +361,45 @@ namespace simnet
             count("Transmitted upserts", value.transmitted_upsert_count);
             count("Transmitted deletes", value.transmitted_delete_count);
             count("Reconstructed entities", value.reconstructed_entity_count);
+            if (value.packetization_enabled.has_value()) {
+                add_row(
+                    panel_model_,
+                    "Packetization",
+                    Normal,
+                    "%s",
+                    *value.packetization_enabled ? "Enabled" : "Disabled"
+                );
+            }
+            sequence("Packet group", value.packet_group_id);
+            count("Encoded group bytes", value.encoded_group_bytes);
+            count("Application chunks", value.packet_chunk_count);
+            count("Application header bytes", value.packet_header_bytes);
+            count("Application packet bytes", value.application_packet_bytes);
+            count("Attempted submissions", value.attempted_packet_submissions);
+            count("Accepted submissions", value.accepted_packet_submissions);
+            text_value("Submission outcome", value.packet_submission_outcome);
+            text_value("Submission failure", value.packet_submission_failure);
+            auto count64 = [&](std::string_view label, std::optional<std::uint64_t> current) {
+                if (current.has_value()) {
+                    add_row(
+                        panel_model_,
+                        label,
+                        Normal,
+                        "%llu",
+                        static_cast<unsigned long long>(*current)
+                    );
+                }
+            };
+            count64("Received chunks", value.received_packet_chunks);
+            count64("Unique chunks", value.unique_packet_chunks);
+            count64("Duplicate chunks", value.duplicate_packet_chunks);
+            count("Incomplete groups", value.incomplete_packet_groups);
+            count("Incomplete bytes", value.retained_incomplete_bytes);
+            count("Completed group bytes", value.latest_completed_group_bytes);
+            count64("Completed groups", value.completed_packet_groups);
+            count64("Expired groups", value.expired_packet_groups);
+            count64("Invalid groups", value.invalid_packet_groups);
+            count64("Stale groups", value.stale_packet_groups);
             if (value.latest_snapshot_tick.has_value()) {
                 add_row(
                     panel_model_,

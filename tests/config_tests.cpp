@@ -62,6 +62,34 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     changed = baseline;
     changed.player.yaw_acceleration_degrees += 1.0F;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.packetization.enabled = !changed.packetization.enabled;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    ++changed.packetization.max_payload_bytes;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    --changed.packetization.max_update_bytes;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    --changed.packetization.max_chunks_per_update;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    --changed.packetization.max_in_flight_updates;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    --changed.packetization.max_incomplete_bytes;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    --changed.packetization.reassembly_timeout_ms;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
 }
 
 TEST_CASE("visual interpolation is local runtime configuration", "[config]")
@@ -151,6 +179,59 @@ TEST_CASE("maintained AOI visual profiles load as distinct treatments", "[config
     CHECK(fov.pipeline.area_of_interest.mode == "fov");
     CHECK(fov.pipeline.area_of_interest.radius == 80.0F);
     CHECK(fov.pipeline.area_of_interest.fov_degrees == 120.0F);
+}
+
+TEST_CASE(
+    "packetization configuration is strict bounded and fingerprinted",
+    "[config][packetization]"
+)
+{
+    auto const accepted = TemporaryConfig{
+        "simnet_packetization_accepted.json",
+        R"({
+            "packetization": {
+                "enabled": true,
+                "max_payload_bytes": 256,
+                "max_update_bytes": 524288,
+                "max_chunks_per_update": 4096,
+                "max_in_flight_updates": 4,
+                "max_incomplete_bytes": 1048576,
+                "reassembly_timeout_ms": 5000
+            }
+        })"
+    };
+    auto const loaded = simnet::load_shared_config(accepted.path());
+    CHECK(loaded.packetization.enabled);
+    CHECK(loaded.packetization.max_payload_bytes == 256U);
+    CHECK(loaded.packetization.max_update_bytes == 524288U);
+    CHECK(
+        simnet::fingerprint_network_compatibility(loaded).value
+        != simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
+    );
+
+    for (auto const contents : {
+             R"({ "packetization": { "enabled": true, "unexpected": 1 } })",
+             R"({ "packetization": { "enabled": true, "max_payload_bytes": 25 } })",
+             R"({ "packetization": { "enabled": true, "max_update_bytes": 4194305 } })",
+             R"({ "packetization": { "enabled": true, "max_chunks_per_update": 4097 } })",
+             R"({ "packetization": { "enabled": true, "max_in_flight_updates": 0 } })",
+             R"({ "packetization": { "enabled": true, "max_incomplete_bytes": 1 } })",
+             R"({ "packetization": { "enabled": true, "reassembly_timeout_ms": 0 } })",
+         }) {
+        auto const invalid = TemporaryConfig{"simnet_packetization_invalid.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+}
+
+TEST_CASE("maintained forced packetization treatment loads", "[config][packetization][aoi]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    auto const config
+        = simnet::load_shared_config(directory / "shared_packetization_aoi_radius_visual.json");
+    CHECK(config.packetization.enabled);
+    CHECK(config.packetization.max_payload_bytes == 256U);
+    CHECK(config.pipeline.area_of_interest.mode == "radius");
+    CHECK(config.pipeline.area_of_interest.radius == 160.0F);
 }
 
 // TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")

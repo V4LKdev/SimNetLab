@@ -42,16 +42,7 @@ export namespace simnet
         poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms);
 
         [[nodiscard]] TransportResult
-        send(Lane lane, Delivery delivery, std::span<Byte const> payload);
-
-        /// Sends a semantic snapshot acknowledgement on the reserved Input lane.
-        [[nodiscard]] TransportResult send_snapshot_ack(SnapshotAck const& ack);
-
-        /// Sends a bounded opaque application-control payload on the reliable Control lane.
-        [[nodiscard]] TransportResult send_application_control(std::span<Byte const> payload);
-
-        /// Sends bounded opaque latest-state input unreliably and sequenced on the Input lane.
-        [[nodiscard]] TransportResult send_application_input(std::span<Byte const> payload);
+        send(TransportLane lane, Delivery delivery, std::span<Byte const> payload);
 
         [[nodiscard]] TransportStats stats() const;
         [[nodiscard]] PeerStats server_stats() const;

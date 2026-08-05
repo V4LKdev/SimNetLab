@@ -5,6 +5,7 @@ module;
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -12,14 +13,16 @@ module;
 export module simnet.app_protocol;
 
 import simnet.core;
+import simnet.transport;
 
 export namespace simnet::app
 {
     inline constexpr std::uint8_t app_message_version = 1U;
-    inline constexpr std::uint8_t player_input_version = 1U;
-    inline constexpr std::uint8_t stationary_observer_interest_version = 1U;
     inline constexpr Nanoseconds stationary_observer_interest_min_interval{50'000'000};
     inline constexpr Nanoseconds stationary_observer_interest_heartbeat_interval{500'000'000};
+    inline constexpr TransportLane control_lane{TransportLane::Lane0};
+    inline constexpr TransportLane snapshot_lane{TransportLane::Lane1};
+    inline constexpr TransportLane input_lane{TransportLane::Lane2};
 
     enum class ClientRole : std::uint8_t
     {
@@ -32,7 +35,10 @@ export namespace simnet::app
         PauseSetRequest = 1,
         PauseState = 2,
         JoinRequest = 3,
-        JoinAccepted = 4
+        JoinAccepted = 4,
+        SnapshotAck = 5,
+        PlayerInput = 6,
+        StationaryObserverInterest = 7
     };
 
     struct AppMessage
@@ -58,6 +64,14 @@ export namespace simnet::app
     struct PlayerInputMessage
     {
         std::uint8_t buttons{};
+    };
+
+    /// Cumulative acknowledgement of decoded and applied snapshot groups.
+    struct SnapshotAck
+    {
+        SequenceId newest_received_snapshot{};
+        std::uint32_t received_mask{};
+        SequenceId newest_applied_snapshot{};
     };
 
     /// Versioned stationary observer pose sent on the application input lane.
@@ -134,6 +148,26 @@ export namespace simnet::app
         return true;
     }
 
+    [[nodiscard]] inline std::optional<AppMessageKind>
+    decode_app_message_kind(std::span<Byte const> bytes) noexcept
+    {
+        if (bytes.size() < 2U || bytes[1] != static_cast<Byte>(app_message_version)) {
+            return std::nullopt;
+        }
+        auto const kind = static_cast<AppMessageKind>(bytes[0]);
+        switch (kind) {
+            case AppMessageKind::PauseSetRequest:
+            case AppMessageKind::PauseState:
+            case AppMessageKind::JoinRequest:
+            case AppMessageKind::JoinAccepted:
+            case AppMessageKind::SnapshotAck:
+            case AppMessageKind::PlayerInput:
+            case AppMessageKind::StationaryObserverInterest:
+                return kind;
+        }
+        return std::nullopt;
+    }
+
     [[nodiscard]] inline std::vector<Byte> encode_app_message(AppMessage message)
     {
         auto bytes = std::vector<Byte>{
@@ -152,6 +186,10 @@ export namespace simnet::app
                 bytes.push_back(static_cast<Byte>(message.role));
                 write_u32(bytes, message.player_id);
                 break;
+            case AppMessageKind::SnapshotAck:
+            case AppMessageKind::PlayerInput:
+            case AppMessageKind::StationaryObserverInterest:
+                return {};
         }
         return bytes;
     }
@@ -206,7 +244,8 @@ export namespace simnet::app
     [[nodiscard]] inline std::vector<Byte> encode_player_input(PlayerInputMessage input)
     {
         return {
-            static_cast<Byte>(player_input_version),
+            static_cast<Byte>(AppMessageKind::PlayerInput),
+            static_cast<Byte>(app_message_version),
             static_cast<Byte>(input.buttons),
         };
     }
@@ -214,10 +253,39 @@ export namespace simnet::app
     [[nodiscard]] inline bool
     decode_player_input(std::span<Byte const> bytes, PlayerInputMessage& input) noexcept
     {
-        if (bytes.size() != 2U || bytes[0] != static_cast<Byte>(player_input_version)) {
+        if (bytes.size() != 3U || bytes[0] != static_cast<Byte>(AppMessageKind::PlayerInput)
+            || bytes[1] != static_cast<Byte>(app_message_version)) {
             return false;
         }
-        input = {.buttons = static_cast<std::uint8_t>(bytes[1])};
+        input = {.buttons = static_cast<std::uint8_t>(bytes[2])};
+        return true;
+    }
+
+    [[nodiscard]] inline std::vector<Byte> encode_snapshot_ack(SnapshotAck const& ack)
+    {
+        auto bytes = std::vector<Byte>{
+            static_cast<Byte>(AppMessageKind::SnapshotAck),
+            static_cast<Byte>(app_message_version),
+        };
+        bytes.reserve(14U);
+        write_u32(bytes, ack.newest_received_snapshot);
+        write_u32(bytes, ack.received_mask);
+        write_u32(bytes, ack.newest_applied_snapshot);
+        return bytes;
+    }
+
+    [[nodiscard]] inline bool
+    decode_snapshot_ack(std::span<Byte const> bytes, SnapshotAck& ack) noexcept
+    {
+        auto decoded = SnapshotAck{};
+        if (bytes.size() != 14U || bytes[0] != static_cast<Byte>(AppMessageKind::SnapshotAck)
+            || bytes[1] != static_cast<Byte>(app_message_version)
+            || !read_u32(bytes, 2U, decoded.newest_received_snapshot)
+            || !read_u32(bytes, 6U, decoded.received_mask)
+            || !read_u32(bytes, 10U, decoded.newest_applied_snapshot)) {
+            return false;
+        }
+        ack = decoded;
         return true;
     }
 
@@ -225,9 +293,10 @@ export namespace simnet::app
     encode_stationary_observer_interest(StationaryObserverInterestMessage const& message)
     {
         auto bytes = std::vector<Byte>{
-            static_cast<Byte>(stationary_observer_interest_version),
+            static_cast<Byte>(AppMessageKind::StationaryObserverInterest),
+            static_cast<Byte>(app_message_version),
         };
-        bytes.reserve(25U);
+        bytes.reserve(26U);
         write_f32(bytes, message.position.x);
         write_f32(bytes, message.position.y);
         write_f32(bytes, message.position.z);
@@ -242,15 +311,16 @@ export namespace simnet::app
         StationaryObserverInterestMessage& message
     ) noexcept
     {
-        if (bytes.size() != 25U
-            || bytes[0] != static_cast<Byte>(stationary_observer_interest_version)) {
+        if (bytes.size() != 26U
+            || bytes[0] != static_cast<Byte>(AppMessageKind::StationaryObserverInterest)
+            || bytes[1] != static_cast<Byte>(app_message_version)) {
             return false;
         }
 
         auto decoded = StationaryObserverInterestMessage{};
-        if (!read_f32(bytes, 1U, decoded.position.x) || !read_f32(bytes, 5U, decoded.position.y)
-            || !read_f32(bytes, 9U, decoded.position.z) || !read_f32(bytes, 13U, decoded.forward.x)
-            || !read_f32(bytes, 17U, decoded.forward.y) || !read_f32(bytes, 21U, decoded.forward.z)
+        if (!read_f32(bytes, 2U, decoded.position.x) || !read_f32(bytes, 6U, decoded.position.y)
+            || !read_f32(bytes, 10U, decoded.position.z) || !read_f32(bytes, 14U, decoded.forward.x)
+            || !read_f32(bytes, 18U, decoded.forward.y) || !read_f32(bytes, 22U, decoded.forward.z)
             || !is_finite(decoded.position) || !is_finite(decoded.forward)) {
             return false;
         }

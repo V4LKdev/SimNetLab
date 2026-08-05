@@ -94,6 +94,18 @@ export namespace simnet
         AreaOfInterestConfig area_of_interest{};
     };
 
+    /// Shared opaque application byte-group packetization settings.
+    struct PacketizationConfig
+    {
+        bool enabled{true};
+        std::uint32_t max_payload_bytes{1200U};
+        std::uint32_t max_update_bytes{4U * 1024U * 1024U};
+        std::uint32_t max_chunks_per_update{4096U};
+        std::uint32_t max_in_flight_updates{4U};
+        std::uint32_t max_incomplete_bytes{8U * 1024U * 1024U};
+        std::uint32_t reassembly_timeout_ms{5000U};
+    };
+
     /// Network transport settings.
     struct TransportConfig
     {
@@ -173,6 +185,7 @@ export namespace simnet
         BoidsConfig boids{};
         PlayerConfig player{};
         PipelineConfig pipeline{};
+        PacketizationConfig packetization{};
     };
 
     /// Server-local runtime configuration.

@@ -26,6 +26,7 @@ import simnet.app_protocol;
 import simnet.core;
 import simnet.game_server;
 import simnet.game_shared;
+import simnet.packetization;
 import simnet.pipeline;
 import simnet.runtime;
 import simnet.snapshot;
@@ -166,6 +167,30 @@ namespace
     };
 #endif
 
+    enum class PacketSubmissionOutcome : std::uint8_t
+    {
+        None,
+        Prepared,
+        Committed,
+        Abandoned
+    };
+
+    [[nodiscard]] constexpr std::string_view
+    packet_submission_outcome_name(PacketSubmissionOutcome outcome) noexcept
+    {
+        switch (outcome) {
+            case PacketSubmissionOutcome::None:
+                return "None";
+            case PacketSubmissionOutcome::Prepared:
+                return "Prepared";
+            case PacketSubmissionOutcome::Committed:
+                return "Committed";
+            case PacketSubmissionOutcome::Abandoned:
+                return "Abandoned";
+        }
+        return "Unknown";
+    }
+
     struct PeerRuntimeState
     {
         simnet::PeerId peer{};
@@ -179,10 +204,17 @@ namespace
         bool has_area_of_interest_report{};
         std::uint32_t latest_upsert_count{};
         std::uint32_t latest_delete_count{};
-        simnet::SnapshotAck latest_ack{};
+        simnet::app::SnapshotAck latest_ack{};
         simnet::SequenceId newest_emitted_sequence{};
         std::optional<simnet::SequenceId> acknowledged_baseline_sequence{};
         std::deque<RetainedSnapshot> retained_snapshots{};
+        std::vector<simnet::Byte> packet_serialization_scratch{};
+        simnet::PacketizationReport latest_packetization{};
+        std::uint32_t latest_attempted_submissions{};
+        std::uint32_t latest_accepted_submissions{};
+        PacketSubmissionOutcome latest_submission_outcome{PacketSubmissionOutcome::None};
+        std::string latest_submission_error{};
+        bool logged_multi_packet_commit{};
     };
 
     [[nodiscard]] std::optional<simnet::InterestSource>
@@ -228,23 +260,6 @@ namespace
             }
         }
         return options;
-    }
-
-    [[nodiscard]] simnet::Delivery snapshot_delivery(simnet::TransportConfig const& config)
-    {
-        if (config.snapshot_delivery == "reliable_sequenced") {
-            return simnet::Delivery::ReliableSequenced;
-        }
-        if (config.snapshot_delivery == "unreliable_sequenced") {
-            return simnet::Delivery::UnreliableSequenced;
-        }
-        if (config.snapshot_delivery == "unreliable_unsequenced") {
-            return simnet::Delivery::UnreliableUnsequenced;
-        }
-        if (config.snapshot_delivery == "unreliable_fragmented") {
-            return simnet::Delivery::UnreliableFragmented;
-        }
-        throw std::runtime_error("unsupported snapshot delivery: " + config.snapshot_delivery);
     }
 
     [[nodiscard]] simnet::BoidSimulationSettings boid_settings(simnet::SharedConfig const& config)
@@ -352,6 +367,7 @@ namespace
             }
             details.acknowledged_baseline_sequence = peer->acknowledged_baseline_sequence;
             details.area_of_interest_mode = config.pipeline.area_of_interest.mode;
+            details.packetization_enabled = config.packetization.enabled;
             if (config.pipeline.area_of_interest.mode == "none") {
                 details.interest_source_status = "not required";
             } else if (peer->role == simnet::app::ClientRole::Player) {
@@ -370,6 +386,20 @@ namespace
             if (peer->newest_emitted_sequence != 0U) {
                 details.transmitted_upsert_count = peer->latest_upsert_count;
                 details.transmitted_delete_count = peer->latest_delete_count;
+            }
+            if (peer->latest_packetization.group_id != 0U) {
+                details.packet_group_id = peer->latest_packetization.group_id;
+                details.encoded_group_bytes = peer->latest_packetization.group_bytes;
+                details.packet_chunk_count = peer->latest_packetization.chunk_count;
+                details.packet_header_bytes = peer->latest_packetization.total_header_bytes;
+                details.application_packet_bytes = peer->latest_packetization.total_packet_bytes;
+                details.attempted_packet_submissions = peer->latest_attempted_submissions;
+                details.accepted_packet_submissions = peer->latest_accepted_submissions;
+                details.packet_submission_outcome
+                    = packet_submission_outcome_name(peer->latest_submission_outcome);
+                if (!peer->latest_submission_error.empty()) {
+                    details.packet_submission_failure = peer->latest_submission_error;
+                }
             }
             details.retained_snapshot_count
                 = static_cast<std::uint32_t>(peer->retained_snapshots.size());
@@ -737,7 +767,7 @@ namespace
         return world.progress(seconds) && game.last_step_report().valid;
     }
 
-    [[nodiscard]] bool valid_ack(PeerRuntimeState const& peer, simnet::SnapshotAck const& ack)
+    [[nodiscard]] bool valid_ack(PeerRuntimeState const& peer, simnet::app::SnapshotAck const& ack)
     {
         return ack.newest_received_snapshot != 0
             && ack.newest_applied_snapshot <= ack.newest_received_snapshot
@@ -975,7 +1005,7 @@ namespace
         std::ranges::sort(peer.area_of_interest_candidates);
     }
 
-    void apply_ack(PeerRuntimeState& peer, simnet::SnapshotAck const& ack)
+    void apply_ack(PeerRuntimeState& peer, simnet::app::SnapshotAck const& ack)
     {
         peer.latest_ack = ack;
         auto const retained = find_retained_snapshot(peer, ack.newest_applied_snapshot);
@@ -1009,7 +1039,12 @@ namespace
             .kind = simnet::app::AppMessageKind::PauseState,
             .paused = paused,
         });
-        auto const sent = transport.send_application_control(peer->peer, bytes);
+        auto const sent = transport.send({
+            .peer = peer->peer,
+            .lane = simnet::app::control_lane,
+            .delivery = simnet::Delivery::ReliableSequenced,
+            .payload = bytes,
+        });
         if (!sent.ok) {
             simnet::log(
                 simnet::LogCategory::Transport,
@@ -1029,7 +1064,12 @@ namespace
             .role = *peer.role,
             .player_id = peer.player_id,
         });
-        auto const sent = transport.send_application_control(peer.peer, bytes);
+        auto const sent = transport.send({
+            .peer = peer.peer,
+            .lane = simnet::app::control_lane,
+            .delivery = simnet::Delivery::ReliableSequenced,
+            .payload = bytes,
+        });
         if (!sent.ok) {
             simnet::log(
                 simnet::LogCategory::Transport,
@@ -1113,105 +1153,140 @@ namespace
                     remove_session_player(world, *peer, snapshot_state);
                     peer.reset();
                 }
-            } else if (auto const* received = std::get_if<simnet::SnapshotAckReceived>(&event)) {
-                if (peer.has_value() && received->peer == peer->peer
-                    && valid_ack(*peer, received->ack)) {
-                    if (delta_enabled) {
-                        apply_ack(*peer, received->ack);
-                    } else {
-                        peer->latest_ack = received->ack;
-                    }
-                } else {
-                    simnet::log(
-                        simnet::LogCategory::Transport,
-                        simnet::LogLevel::Warn,
-                        "server ignored invalid snapshot ACK"
-                    );
-                }
-            } else if (
-                auto const* control = std::get_if<simnet::ReceivedApplicationControl>(&event)
-            ) {
-                auto message = simnet::app::AppMessage{};
-                if (!peer.has_value() || control->peer != peer->peer
-                    || !simnet::app::decode_app_message(control->payload, message)) {
+            } else if (auto const* packet = std::get_if<simnet::ReceivedPacket>(&event)) {
+                if (!peer.has_value() || packet->peer != peer->peer) {
                     simnet::log(
                         simnet::LogCategory::Transport,
                         simnet::LogLevel::Error,
-                        "server received invalid application-control message"
+                        "server received application payload from an unknown peer"
                     );
-                    transport.disconnect(control->peer, simnet::DisconnectCode::ProtocolMismatch);
-                    if (peer.has_value() && peer->peer == control->peer) {
+                    transport.disconnect(packet->peer, simnet::DisconnectCode::ProtocolMismatch);
+                    continue;
+                }
+
+                if (packet->lane == simnet::app::control_lane) {
+                    auto message = simnet::app::AppMessage{};
+                    if (packet->delivery != simnet::Delivery::ReliableSequenced
+                        || !simnet::app::decode_app_message(packet->payload, message)) {
+                        simnet::log(
+                            simnet::LogCategory::Transport,
+                            simnet::LogLevel::Error,
+                            "server received invalid application-control message"
+                        );
+                        transport.disconnect(
+                            packet->peer,
+                            simnet::DisconnectCode::ProtocolMismatch
+                        );
+                        remove_session_player(world, *peer, snapshot_state);
+                        peer.reset();
+                        continue;
+                    }
+                    if (message.kind == simnet::app::AppMessageKind::JoinRequest
+                        && !peer->role.has_value()) {
+                        peer->role = message.role;
+                        if (message.role == simnet::app::ClientRole::Player) {
+                            peer->player_id = simnet::spawn_authoritative_player(world);
+                            if (peer->player_id == 0U) {
+                                simnet::log(
+                                    simnet::LogCategory::Simulation,
+                                    simnet::LogLevel::Error,
+                                    "server failed to create authoritative player"
+                                );
+                                transport.disconnect(
+                                    packet->peer,
+                                    simnet::DisconnectCode::ServerFull
+                                );
+                                peer.reset();
+                                continue;
+                            }
+                            snapshot_state.dirty = true;
+                        }
+                        simnet::log(
+                            simnet::LogCategory::Simulation,
+                            simnet::LogLevel::Info,
+                            "server accepted role="
+                                + std::
+                                    string{message.role == simnet::app::ClientRole::Player ? "player" : "stationary_observer"}
+                                + " player_id=" + std::to_string(peer->player_id)
+                        );
+                        if (!send_join_accepted(transport, *peer)
+                            || !send_pause_state(transport, peer, simulation_paused)) {
+                            return false;
+                        }
+                    } else if (
+                        message.kind == simnet::app::AppMessageKind::PauseSetRequest
+                        && peer->role.has_value()
+                    ) {
+                        pause_state_changed
+                            = pause_state_changed || simulation_paused != message.paused;
+                        simulation_paused = message.paused;
+                        if (pause_state_changed) {
+                            simnet::log(
+                                simnet::LogCategory::Simulation,
+                                simnet::LogLevel::Info,
+                                simulation_paused ? "server simulation paused by client"
+                                                  : "server simulation resumed by client"
+                            );
+                        }
+                        if (!send_pause_state(transport, peer, simulation_paused)) {
+                            return false;
+                        }
+                    } else {
+                        simnet::log(
+                            simnet::LogCategory::Transport,
+                            simnet::LogLevel::Error,
+                            "server rejected unauthorized application-control message"
+                        );
+                        transport.disconnect(
+                            packet->peer,
+                            simnet::DisconnectCode::ProtocolMismatch
+                        );
                         remove_session_player(world, *peer, snapshot_state);
                         peer.reset();
                     }
                     continue;
                 }
-                if (message.kind == simnet::app::AppMessageKind::JoinRequest
-                    && !peer->role.has_value()) {
-                    peer->role = message.role;
-                    if (message.role == simnet::app::ClientRole::Player) {
-                        peer->player_id = simnet::spawn_authoritative_player(world);
-                        if (peer->player_id == 0U) {
-                            simnet::log(
-                                simnet::LogCategory::Simulation,
-                                simnet::LogLevel::Error,
-                                "server failed to create authoritative player"
-                            );
-                            transport.disconnect(control->peer, simnet::DisconnectCode::ServerFull);
-                            peer.reset();
-                            continue;
-                        }
-                        snapshot_state.dirty = true;
-                    }
-                    simnet::log(
-                        simnet::LogCategory::Simulation,
-                        simnet::LogLevel::Info,
-                        "server accepted role="
-                            + std::
-                                string{message.role == simnet::app::ClientRole::Player ? "player" : "stationary_observer"}
-                            + " player_id=" + std::to_string(peer->player_id)
-                    );
-                    if (!send_join_accepted(transport, *peer)
-                        || !send_pause_state(transport, peer, simulation_paused)) {
-                        return false;
-                    }
-                } else if (
-                    message.kind == simnet::app::AppMessageKind::PauseSetRequest
-                    && peer->role.has_value()
-                ) {
-                    pause_state_changed
-                        = pause_state_changed || simulation_paused != message.paused;
-                    simulation_paused = message.paused;
-                    if (pause_state_changed) {
-                        simnet::log(
-                            simnet::LogCategory::Simulation,
-                            simnet::LogLevel::Info,
-                            simulation_paused ? "server simulation paused by client"
-                                              : "server simulation resumed by client"
-                        );
-                    }
-                    if (!send_pause_state(transport, peer, simulation_paused)) {
-                        return false;
-                    }
-                } else {
+
+                if (packet->lane != simnet::app::input_lane) {
                     simnet::log(
                         simnet::LogCategory::Transport,
                         simnet::LogLevel::Error,
-                        "server rejected unauthorized or duplicate application-control message"
+                        "server received application payload on an unauthorized lane"
                     );
-                    transport.disconnect(control->peer, simnet::DisconnectCode::ProtocolMismatch);
+                    transport.disconnect(packet->peer, simnet::DisconnectCode::ProtocolMismatch);
                     remove_session_player(world, *peer, snapshot_state);
                     peer.reset();
                     continue;
                 }
-            } else if (auto const* input = std::get_if<simnet::ReceivedApplicationInput>(&event)) {
-                auto valid
-                    = peer.has_value() && input->peer == peer->peer && peer->role.has_value();
+
+                auto const kind = simnet::app::decode_app_message_kind(packet->payload);
+                if (kind == simnet::app::AppMessageKind::SnapshotAck) {
+                    auto ack = simnet::app::SnapshotAck{};
+                    if (packet->delivery == simnet::Delivery::ReliableSequenced
+                        && simnet::app::decode_snapshot_ack(packet->payload, ack)
+                        && valid_ack(*peer, ack)) {
+                        if (delta_enabled) {
+                            apply_ack(*peer, ack);
+                        } else {
+                            peer->latest_ack = ack;
+                        }
+                    } else {
+                        simnet::log(
+                            simnet::LogCategory::Transport,
+                            simnet::LogLevel::Warn,
+                            "server ignored invalid snapshot ACK"
+                        );
+                    }
+                    continue;
+                }
+
+                auto valid = peer->role.has_value()
+                    && packet->delivery == simnet::Delivery::UnreliableSequenced;
                 auto rate_limited = false;
                 if (valid && peer->role == simnet::app::ClientRole::Player) {
                     auto decoded = simnet::app::PlayerInputMessage{};
                     valid = peer->player_id != 0U
-                        && simnet::app::decode_player_input(input->payload, decoded)
+                        && simnet::app::decode_player_input(packet->payload, decoded)
                         && simnet::set_authoritative_player_input(
                                 world,
                                 peer->player_id,
@@ -1219,8 +1294,10 @@ namespace
                         );
                 } else if (valid) {
                     auto decoded = simnet::app::StationaryObserverInterestMessage{};
-                    valid
-                        = simnet::app::decode_stationary_observer_interest(input->payload, decoded);
+                    valid = simnet::app::decode_stationary_observer_interest(
+                        packet->payload,
+                        decoded
+                    );
                     if (valid) {
                         auto const accepted = simnet::app::accept_stationary_observer_interest(
                             peer->stationary_observer_interest,
@@ -1239,11 +1316,9 @@ namespace
                         simnet::LogLevel::Error,
                         "server rejected invalid or unauthorized application input"
                     );
-                    transport.disconnect(input->peer, simnet::DisconnectCode::ProtocolMismatch);
-                    if (peer.has_value() && peer->peer == input->peer) {
-                        remove_session_player(world, *peer, snapshot_state);
-                        peer.reset();
-                    }
+                    transport.disconnect(packet->peer, simnet::DisconnectCode::ProtocolMismatch);
+                    remove_session_player(world, *peer, snapshot_state);
+                    peer.reset();
                 } else if (rate_limited) {
                     simnet::log(
                         simnet::LogCategory::Transport,
@@ -1283,6 +1358,7 @@ namespace
         simnet::Tick tick,
         simnet::Nanoseconds fixed_dt,
         simnet::PipelineDefinition const& pipeline,
+        simnet::PacketizationSettings const& packetization,
         simnet::SpatialGridSettings const& area_of_interest_grid_settings,
         simnet::Delivery delivery,
         simnet::TransportServer& transport,
@@ -1404,33 +1480,72 @@ namespace
             observe_server_measurement(measurements, csv, measurement);
             return true;
         }
-        measurement.application_payload_bytes
-            = static_cast<std::uint32_t>(encoded.update.bytes.size());
-        auto sent = simnet::TransportResult{};
-        auto const send_start = simnet::steady_now_ns();
-        {
-            SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_send", simnet::LogCategory::Transport);
-            sent = transport.send({
-                .peer = peer->peer,
-                .lane = simnet::Lane::Snapshot,
-                .delivery = delivery,
-                .payload = encoded.update.bytes,
-            });
-        }
-        measurement.transport_send_cpu_time = simnet::steady_now_ns() - send_start;
-        if (!sent.ok) {
+        auto prepared = simnet::PreparedByteGroup{};
+        auto const preparation = simnet::prepare_byte_group(
+            packetization,
+            encoded.update.sequence,
+            std::move(encoded.update.bytes),
+            prepared
+        );
+        peer->latest_packetization = preparation;
+        peer->latest_attempted_submissions = 0U;
+        peer->latest_accepted_submissions = 0U;
+        peer->latest_submission_error.clear();
+        if (preparation.outcome != simnet::GroupPreparationOutcome::Prepared) {
+            peer->latest_submission_outcome = PacketSubmissionOutcome::Abandoned;
+            peer->latest_submission_error = preparation.error;
             measurement.outcome = simnet::ServerReplicationOutcome::TransportSendFailed;
             measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
             observe_server_measurement(measurements, csv, measurement);
             simnet::log(
-                simnet::LogCategory::Transport,
+                simnet::LogCategory::Pipeline,
                 simnet::LogLevel::Error,
-                "snapshot send failed: " + sent.error.message
+                "snapshot packet preparation failed: " + preparation.error
             );
             return false;
         }
-        measurement.transport_payload_bytes
-            = static_cast<std::uint32_t>(encoded.update.bytes.size());
+        peer->latest_submission_outcome = PacketSubmissionOutcome::Prepared;
+        measurement.application_payload_bytes = preparation.total_packet_bytes;
+        auto accepted_packet_bytes = std::uint32_t{};
+        auto const send_start = simnet::steady_now_ns();
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_send", simnet::LogCategory::Transport);
+            for (auto index = std::uint16_t{}; index < prepared.chunk_count; ++index) {
+                auto const packet_bytes = simnet::serialize_group_chunk(
+                    packetization,
+                    prepared,
+                    index,
+                    peer->packet_serialization_scratch
+                );
+                ++peer->latest_attempted_submissions;
+                auto const sent = transport.send({
+                    .peer = peer->peer,
+                    .lane = simnet::app::snapshot_lane,
+                    .delivery = delivery,
+                    .payload = packet_bytes,
+                });
+                if (!sent.ok) {
+                    peer->latest_submission_outcome = PacketSubmissionOutcome::Abandoned;
+                    peer->latest_submission_error = sent.error.message;
+                    measurement.transport_send_cpu_time = simnet::steady_now_ns() - send_start;
+                    measurement.transport_payload_bytes = accepted_packet_bytes;
+                    measurement.outcome = simnet::ServerReplicationOutcome::TransportSendFailed;
+                    measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
+                    observe_server_measurement(measurements, csv, measurement);
+                    simnet::log(
+                        simnet::LogCategory::Transport,
+                        simnet::LogLevel::Error,
+                        "snapshot chunk submission failed: " + sent.error.message
+                    );
+                    transport.disconnect(peer->peer, simnet::DisconnectCode::TransportError);
+                    return false;
+                }
+                ++peer->latest_accepted_submissions;
+                accepted_packet_bytes += static_cast<std::uint32_t>(packet_bytes.size());
+            }
+        }
+        measurement.transport_send_cpu_time = simnet::steady_now_ns() - send_start;
+        measurement.transport_payload_bytes = accepted_packet_bytes;
 
         auto const retention_start = simnet::steady_now_ns();
         peer->pipeline_state = pending_pipeline_state;
@@ -1440,10 +1555,26 @@ namespace
         peer->has_area_of_interest_report = true;
         peer->latest_upsert_count = encoded.report.upsert_count;
         peer->latest_delete_count = encoded.report.delete_count;
+        peer->latest_submission_outcome = PacketSubmissionOutcome::Committed;
         measurement.snapshot_retention_cpu_time = simnet::steady_now_ns() - retention_start;
         measurement.outcome = simnet::ServerReplicationOutcome::Sent;
         measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
         observe_server_measurement(measurements, csv, measurement);
+        if (preparation.chunk_count > 1U && !peer->logged_multi_packet_commit) {
+            peer->logged_multi_packet_commit = true;
+            simnet::log(
+                simnet::LogCategory::Transport,
+                simnet::LogLevel::Info,
+                "server packet group committed group_id=" + std::to_string(preparation.group_id)
+                    + " encoded_bytes=" + std::to_string(preparation.group_bytes)
+                    + " chunks=" + std::to_string(preparation.chunk_count) + " header_bytes="
+                    + std::to_string(preparation.total_header_bytes) + " application_packet_bytes="
+                    + std::to_string(preparation.total_packet_bytes) + " attempted_submissions="
+                    + std::to_string(peer->latest_attempted_submissions) + " accepted_submissions="
+                    + std::to_string(peer->latest_accepted_submissions) + " aoi_retained="
+                    + std::to_string(encoded.report.area_of_interest.retained_count)
+            );
+        }
         return true;
     }
 
@@ -1510,6 +1641,13 @@ namespace simnet::app
 #endif
             auto signals = SignalHandlers{};
             auto const pipeline = make_snapshot_pipeline(shared);
+            auto const packetization = make_packetization_settings(shared);
+            if (packetization.max_payload_bytes > local.transport.max_payload_bytes
+                || (packetization.enabled && local.transport.send_size_policy != "enforce_limit")) {
+                throw std::runtime_error(
+                    "packetization payload limit must fit the hard transport payload limit"
+                );
+            }
             if (pipeline.area_of_interest.mode != AreaOfInterestMode::None
                 && local.transport.snapshot_delivery != "reliable_sequenced") {
                 throw std::runtime_error("AOI currently requires reliable sequenced snapshots");
@@ -1713,6 +1851,7 @@ namespace simnet::app
                             tick,
                             clock.fixed_dt,
                             pipeline,
+                            packetization,
                             area_of_interest_grid_settings,
                             delivery,
                             transport,

@@ -16,6 +16,7 @@ export module simnet.app_common;
 import simnet.config;
 import simnet.core;
 import simnet.pipeline;
+import simnet.packetization;
 import simnet.runtime;
 import simnet.telemetry;
 import simnet.transport;
@@ -86,7 +87,9 @@ export namespace simnet::app
     milliseconds_option(int& index, int argc, char** argv, std::string_view option);
 
     [[nodiscard]] SendSizePolicy transport_send_size_policy(TransportConfig const& config);
+    [[nodiscard]] Delivery snapshot_delivery(TransportConfig const& config);
     [[nodiscard]] PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared);
+    [[nodiscard]] PacketizationSettings make_packetization_settings(SharedConfig const& shared);
     [[nodiscard]] SessionIdentity
     make_session_identity(SharedConfig const& shared, PipelineDefinition const& pipeline);
     [[nodiscard]] std::string_view shutdown_reason_name(ShutdownReason reason);
@@ -94,7 +97,7 @@ export namespace simnet::app
 
 namespace
 {
-    constexpr std::uint32_t application_protocol_version = 4;
+    constexpr std::uint32_t application_protocol_version = 5;
     volatile std::sig_atomic_t signal_stop_latch = 0;
 
     extern "C" void request_signal_stop(int)
@@ -190,6 +193,23 @@ namespace simnet::app
         throw std::runtime_error("unsupported send size policy: " + config.send_size_policy);
     }
 
+    Delivery snapshot_delivery(TransportConfig const& config)
+    {
+        if (config.snapshot_delivery == "reliable_sequenced") {
+            return Delivery::ReliableSequenced;
+        }
+        if (config.snapshot_delivery == "unreliable_sequenced") {
+            return Delivery::UnreliableSequenced;
+        }
+        if (config.snapshot_delivery == "unreliable_unsequenced") {
+            return Delivery::UnreliableUnsequenced;
+        }
+        if (config.snapshot_delivery == "unreliable_fragmented") {
+            return Delivery::UnreliableFragmented;
+        }
+        throw std::runtime_error("unsupported snapshot delivery: " + config.snapshot_delivery);
+    }
+
     PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared)
     {
         auto pipeline = PipelineDefinition{};
@@ -220,13 +240,30 @@ namespace simnet::app
         return pipeline;
     }
 
+    PacketizationSettings make_packetization_settings(SharedConfig const& shared)
+    {
+        auto const& config = shared.packetization;
+        auto settings = PacketizationSettings{
+            .enabled = config.enabled,
+            .max_payload_bytes = config.max_payload_bytes,
+            .max_group_bytes = config.max_update_bytes,
+            .max_chunks_per_group = config.max_chunks_per_update,
+            .max_in_flight_groups = config.max_in_flight_updates,
+            .max_incomplete_bytes = config.max_incomplete_bytes,
+            .reassembly_timeout
+            = Nanoseconds{static_cast<std::int64_t>(config.reassembly_timeout_ms) * 1'000'000},
+        };
+        validate_packetization_settings(settings);
+        return settings;
+    }
+
     SessionIdentity
     make_session_identity(SharedConfig const& shared, PipelineDefinition const& pipeline)
     {
         return {
             .application_protocol_version = application_protocol_version,
             .compatibility_fingerprint = fingerprint_network_compatibility(shared).value,
-            .pipeline_decode_signature = pipeline_decode_signature(pipeline),
+            .application_wire_fingerprint = pipeline_decode_signature(pipeline),
             .capabilities = 0,
         };
     }
