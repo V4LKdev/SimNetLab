@@ -42,9 +42,10 @@ octahedral components.
 | 4 | Delta selection | `Delta` plus an exact retained baseline | Filters scheduled or complete upsert candidates. Baseline-only deletes remain truthful and are included. Without a baseline this stage is inactive. |
 | 5 | Representation encoding | `Quantization`, `OctHeading` | Octahedral headings require quantization. PIPE-011 owns comparing delta candidates by canonical encoded values. |
 | 6 | Record layout | `BitPacking` | Bitpacking requires quantization and octahedral headings. It does not change decoded precision. |
-| 7 | Whole-update compression | None | Later compression consumes the complete encoded update. |
+| 7 | Whole-update compression | `simnet_compression` | Outside the pipeline. It transforms the complete encoded update as opaque bytes. |
 | 8 | Application packetization | `simnet_packetization` | Outside the pipeline. It owns the hard payload budget and consumes opaque pipeline bytes. |
-| 9 | Delivery | Application and transport configuration | Outside the pipeline. Transport carries opaque application bytes. |
+| 9 | Per-packet compression | `simnet_compression` | Outside packetization. It independently transforms complete serialized application packets. |
+| 10 | Delivery | Application and transport configuration | Outside the pipeline. Transport carries opaque application bytes. |
 
 Unsupported stages fail validation. All active techniques otherwise compose when their listed prerequisites are met.
 

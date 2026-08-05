@@ -14,6 +14,7 @@ module;
 export module simnet.app_common;
 
 import simnet.config;
+import simnet.compression;
 import simnet.core;
 import simnet.pipeline;
 import simnet.packetization;
@@ -23,6 +24,19 @@ import simnet.transport;
 
 export namespace simnet::app
 {
+    enum class CompressionMode : std::uint8_t
+    {
+        None,
+        WholeUpdate,
+        PerPacket,
+    };
+
+    struct CompressionSettings
+    {
+        CompressionMode mode{CompressionMode::None};
+        int level{1};
+    };
+
     /// App-local stationary interest/debug view state.
     struct StationaryObserverState
     {
@@ -89,6 +103,8 @@ export namespace simnet::app
     [[nodiscard]] SendSizePolicy transport_send_size_policy(TransportConfig const& config);
     [[nodiscard]] Delivery snapshot_delivery(TransportConfig const& config);
     [[nodiscard]] PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared);
+    [[nodiscard]] CompressionSettings make_compression_settings(SharedConfig const& shared);
+    [[nodiscard]] constexpr std::string_view compression_mode_name(CompressionMode mode) noexcept;
     [[nodiscard]] PacketizationSettings make_packetization_settings(SharedConfig const& shared);
     [[nodiscard]] SessionIdentity
     make_session_identity(SharedConfig const& shared, PipelineDefinition const& pipeline);
@@ -238,6 +254,39 @@ namespace simnet::app
         pipeline.area_of_interest.fov_degrees = area_of_interest.fov_degrees;
         validate_pipeline_definition(pipeline);
         return pipeline;
+    }
+
+    CompressionSettings make_compression_settings(SharedConfig const& shared)
+    {
+        auto mode = CompressionMode::None;
+        if (shared.compression.mode == "whole_update") {
+            mode = CompressionMode::WholeUpdate;
+        } else if (shared.compression.mode == "per_packet") {
+            mode = CompressionMode::PerPacket;
+        } else if (shared.compression.mode != "none") {
+            throw std::runtime_error("unsupported compression mode: " + shared.compression.mode);
+        }
+        if (mode != CompressionMode::None
+            && (shared.compression.level < 1 || shared.compression.level > 19)) {
+            throw std::runtime_error("unsupported Zstd compression level");
+        }
+        return {
+            .mode = mode,
+            .level = shared.compression.level,
+        };
+    }
+
+    constexpr std::string_view compression_mode_name(CompressionMode mode) noexcept
+    {
+        switch (mode) {
+            case CompressionMode::None:
+                return "none";
+            case CompressionMode::WholeUpdate:
+                return "whole_update";
+            case CompressionMode::PerPacket:
+                return "per_packet";
+        }
+        return "unknown";
     }
 
     PacketizationSettings make_packetization_settings(SharedConfig const& shared)

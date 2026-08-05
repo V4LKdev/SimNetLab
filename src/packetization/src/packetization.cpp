@@ -303,7 +303,7 @@ namespace simnet
     ReassemblyResult accept_group_packet(
         PacketizationSettings const& settings,
         ReassemblyState& state,
-        std::vector<Byte> packet,
+        ByteSpan packet,
         Nanoseconds now
     )
     {
@@ -328,12 +328,12 @@ namespace simnet
                 .completed = {
                     .chunk_count = 1U,
                     .total_packet_bytes = static_cast<std::uint32_t>(packet.size()),
-                    .bytes = std::move(packet),
+                    .bytes = std::vector<Byte>{packet.begin(), packet.end()},
                 },
             };
         }
 
-        auto const bytes = ByteSpan{packet};
+        auto const bytes = packet;
         auto header = PacketHeader{};
         if (bytes.size() < packet_header_bytes || !read_header(bytes, header)) {
             ++state.report.invalid_groups;
@@ -363,6 +363,7 @@ namespace simnet
             ++state.report.invalid_groups;
             return ReassemblyResult{
                 .kind = ReassemblyResultKind::Invalid,
+                .group_id = header.group_id,
                 .error = std::move(error),
             };
         };
@@ -376,7 +377,7 @@ namespace simnet
         }
         if (header.group_id <= state.latest_committed_group) {
             ++state.report.stale_groups;
-            return {.kind = ReassemblyResultKind::Stale};
+            return {.kind = ReassemblyResultKind::Stale, .group_id = header.group_id};
         }
 
         auto const capacity = settings.max_payload_bytes - packet_header_bytes;
@@ -403,6 +404,7 @@ namespace simnet
             update_current_report(state);
             return {
                 .kind = ReassemblyResultKind::Invalid,
+                .group_id = header.group_id,
                 .error = "packet metadata conflicts with the incomplete group"
             };
         }
@@ -413,6 +415,7 @@ namespace simnet
                 || retained > settings.max_incomplete_bytes) {
                 return {
                     .kind = ReassemblyResultKind::LimitExceeded,
+                    .group_id = header.group_id,
                     .error = "packet group exceeds reassembly resource limits"
                 };
             }
@@ -446,11 +449,12 @@ namespace simnet
                 update_current_report(state);
                 return {
                     .kind = ReassemblyResultKind::Invalid,
+                    .group_id = header.group_id,
                     .error = "duplicate packet chunk payload conflicts"
                 };
             }
             ++state.report.duplicate_chunks;
-            return {.kind = ReassemblyResultKind::Duplicate};
+            return {.kind = ReassemblyResultKind::Duplicate, .group_id = header.group_id};
         }
 
         std::copy(
@@ -461,7 +465,7 @@ namespace simnet
         mark_chunk_received(*found, header.chunk_index);
         ++state.report.unique_chunks;
         if (found->received_count != found->chunk_count) {
-            return {.kind = ReassemblyResultKind::Incomplete};
+            return {.kind = ReassemblyResultKind::Incomplete, .group_id = header.group_id};
         }
 
         auto completed = CompletedByteGroup{
@@ -476,7 +480,11 @@ namespace simnet
         state.report.latest_completed_group_bytes
             = static_cast<std::uint32_t>(completed.bytes.size());
         update_current_report(state);
-        return {.kind = ReassemblyResultKind::Complete, .completed = std::move(completed)};
+        return {
+            .kind = ReassemblyResultKind::Complete,
+            .group_id = completed.group_id,
+            .completed = std::move(completed)
+        };
     }
 
     void commit_reassembled_group(ReassemblyState& state, PacketGroupId group_id) noexcept

@@ -9,6 +9,7 @@
 #include <vector>
 
 import simnet.core;
+import simnet.compression;
 import simnet.app_protocol;
 import simnet.game_client;
 import simnet.game_server;
@@ -172,6 +173,10 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     auto acknowledged_sequence = simnet::SequenceId{};
     auto ack = simnet::app::SnapshotAck{};
     auto emitted_index = std::size_t{};
+    auto compressor = simnet::ZstdCompressor{};
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto compressed_bytes = std::vector<simnet::Byte>{};
+    auto decompressed_bytes = std::vector<simnet::Byte>{};
 
     constexpr auto expected_sequences = std::array<simnet::SequenceId, 3>{1, 2, 3};
     constexpr auto expected_baselines = std::array<simnet::SequenceId, 3>{0, 1, 2};
@@ -207,11 +212,29 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
         CHECK(encoded.report.baseline_sequence == expected_baselines[emitted_index]);
         CHECK(encoded.report.snapshot_kind == expected_kinds[emitted_index]);
 
+        auto const compression = simnet::compress_bytes(
+            compressor,
+            encoded.update.bytes,
+            1,
+            {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
+            simnet::CompressionEnvelopePolicy::Always,
+            compressed_bytes
+        );
+        REQUIRE(compression.valid);
+        auto const decompression = simnet::decompress_bytes(
+            decompressor,
+            compressed_bytes,
+            {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
+            decompressed_bytes
+        );
+        REQUIRE(decompression.valid);
+        REQUIRE(decompressed_bytes == encoded.update.bytes);
+
         auto const decoded = simnet::decode_update(
             pipeline,
             decode_state,
             {
-                .bytes = encoded.update.bytes,
+                .bytes = decompressed_bytes,
             }
         );
         REQUIRE(decoded.report.valid);

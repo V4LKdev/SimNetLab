@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 import simnet.app_protocol;
+import simnet.compression;
 import simnet.core;
 import simnet.packetization;
 import simnet.pipeline;
@@ -609,4 +610,297 @@ TEST_CASE(
     REQUIRE(retry.kind == simnet::EncodeResultKind::Update);
     CHECK(retry.update.sequence == first.update.sequence);
     CHECK(same_snapshot(retry.resulting_snapshot, first.resulting_snapshot));
+}
+
+TEST_CASE(
+    "per-packet compression preserves packet ordering and complete group bytes",
+    "[compression][packetization][roundtrip]"
+)
+{
+    auto config = settings();
+    auto source = std::vector<simnet::Byte>(50U, simnet::Byte{0U});
+    auto const group_packets = packets(config, 7U, source);
+    REQUIRE(group_packets.size() == 2U);
+
+    auto compressor = simnet::ZstdCompressor{};
+    auto transport_packets = std::vector<std::vector<simnet::Byte>>{};
+    auto compressed_count = std::uint32_t{};
+    auto raw_count = std::uint32_t{};
+    for (auto const& packet : group_packets) {
+        auto output = std::vector<simnet::Byte>{};
+        auto const report = simnet::compress_bytes(
+            compressor,
+            packet,
+            1,
+            {
+                .max_uncompressed_bytes = config.max_payload_bytes,
+                .max_output_bytes = config.max_payload_bytes,
+            },
+            simnet::CompressionEnvelopePolicy::OnlyWhenSmaller,
+            output
+        );
+        REQUIRE(report.valid);
+        if (report.encoding == simnet::CompressionEncoding::Zstd) {
+            ++compressed_count;
+        } else {
+            ++raw_count;
+        }
+        transport_packets.push_back(std::move(output));
+    }
+    CHECK(compressed_count == 1U);
+    CHECK(raw_count == 1U);
+
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto decompression_scratch = std::vector<simnet::Byte>{};
+    auto state = simnet::ReassemblyState{};
+    auto result = simnet::ReassemblyResult{};
+    for (auto const index : {1U, 0U}) {
+        auto application_packet = simnet::ByteSpan{transport_packets[index]};
+        if (simnet::has_compression_envelope(application_packet)) {
+            auto const report = simnet::decompress_bytes(
+                decompressor,
+                application_packet,
+                {
+                    .max_uncompressed_bytes = config.max_payload_bytes,
+                    .max_output_bytes = config.max_payload_bytes,
+                },
+                decompression_scratch
+            );
+            REQUIRE(report.valid);
+            application_packet = decompression_scratch;
+        }
+        result = simnet::accept_group_packet(
+            config,
+            state,
+            application_packet,
+            simnet::Nanoseconds{100U}
+        );
+    }
+    REQUIRE(result.kind == simnet::ReassemblyResultKind::Complete);
+    CHECK(result.completed.group_id == 7U);
+    CHECK(result.completed.bytes == source);
+}
+
+TEST_CASE(
+    "invalid compressed packets never enter reassembly and later traffic succeeds",
+    "[compression][packetization][transaction]"
+)
+{
+    auto config = settings();
+    auto source = std::vector<simnet::Byte>(39U, simnet::Byte{0U});
+    auto const group_packets = packets(config, 3U, source);
+    REQUIRE(group_packets.size() == 1U);
+
+    auto compressor = simnet::ZstdCompressor{};
+    auto compressed = std::vector<simnet::Byte>{};
+    auto const encoded = simnet::compress_bytes(
+        compressor,
+        group_packets.front(),
+        1,
+        {
+            .max_uncompressed_bytes = config.max_payload_bytes,
+            .max_output_bytes = config.max_payload_bytes,
+        },
+        simnet::CompressionEnvelopePolicy::OnlyWhenSmaller,
+        compressed
+    );
+    REQUIRE(encoded.valid);
+    REQUIRE(encoded.encoding == simnet::CompressionEncoding::Zstd);
+
+    auto malformed = compressed;
+    malformed.back() ^= simnet::Byte{0xFFU};
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto restored = std::vector<simnet::Byte>{};
+    CHECK_FALSE(
+        simnet::decompress_bytes(
+            decompressor,
+            malformed,
+            {
+                .max_uncompressed_bytes = config.max_payload_bytes,
+                .max_output_bytes = config.max_payload_bytes,
+            },
+            restored
+        )
+            .valid
+    );
+
+    auto state = simnet::ReassemblyState{};
+    CHECK(state.report.received_chunks == 0U);
+    auto const decoded = simnet::decompress_bytes(
+        decompressor,
+        compressed,
+        {
+            .max_uncompressed_bytes = config.max_payload_bytes,
+            .max_output_bytes = config.max_payload_bytes,
+        },
+        restored
+    );
+    REQUIRE(decoded.valid);
+    auto const completed
+        = simnet::accept_group_packet(config, state, restored, simnet::Nanoseconds{100U});
+    REQUIRE(completed.kind == simnet::ReassemblyResultKind::Complete);
+    CHECK(completed.completed.bytes == source);
+}
+
+TEST_CASE(
+    "compression preparation failure leaves pipeline candidate state uncommitted",
+    "[compression][pipeline][transaction]"
+)
+{
+    auto const source = area_of_interest_source_snapshot();
+    auto const pipeline = simnet::PipelineDefinition{};
+    auto live_state = simnet::ClientReplicationState{};
+    auto candidate_state = live_state;
+    auto scratch = simnet::PipelineScratch{};
+    auto const encoded
+        = simnet::encode_snapshot(pipeline, candidate_state, scratch, {.snapshot = &source});
+    REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+    REQUIRE(candidate_state.next_sequence == 2U);
+
+    auto compressor = simnet::ZstdCompressor{};
+    auto output = std::vector<simnet::Byte>{};
+    auto const compressed = simnet::compress_bytes(
+        compressor,
+        encoded.update.bytes,
+        1,
+        {
+            .max_uncompressed_bytes = 4096U,
+            .max_output_bytes = simnet::compression_envelope_bytes,
+        },
+        simnet::CompressionEnvelopePolicy::Always,
+        output
+    );
+    CHECK_FALSE(compressed.valid);
+    CHECK(live_state.next_sequence == 1U);
+    CHECK_FALSE(live_state.incremental_seeded);
+    CHECK(live_state.incremental_cursor == 0U);
+}
+
+TEST_CASE(
+    "whole and per-packet compression preserve exact FOV pipeline reconstruction",
+    "[compression][packetization][pipeline][aoi][transaction]"
+)
+{
+    auto const source = area_of_interest_source_snapshot();
+    auto candidates = std::vector<std::uint32_t>(source.size());
+    std::iota(candidates.begin(), candidates.end(), 0U);
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::BitPacking;
+    pipeline.quantization.position_bounds = simnet::make_centered_bounds(100.0F);
+    pipeline.area_of_interest = {
+        .mode = simnet::AreaOfInterestMode::Fov,
+        .radius = 25.0F,
+        .fov_degrees = 90.0F,
+    };
+    auto const interest = simnet::InterestSource{
+        .position = {},
+        .forward = {.z = 1.0F},
+        .source_entity_id = 1U,
+    };
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+    auto const encoded = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        encode_scratch,
+        {
+            .snapshot = &source,
+            .interest_source = &interest,
+            .candidate_indices = candidates,
+        }
+    );
+    REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+
+    auto config = settings();
+    config.max_group_bytes = 4096U;
+    config.max_chunks_per_group = 128U;
+    config.max_incomplete_bytes = 8192U;
+    for (auto const whole_update : {false, true}) {
+        auto compressor = simnet::ZstdCompressor{};
+        auto decompressor = simnet::ZstdDecompressor{};
+        auto compressed_group = std::vector<simnet::Byte>{};
+        auto group_source = encoded.update.bytes;
+        if (whole_update) {
+            auto const report = simnet::compress_bytes(
+                compressor,
+                group_source,
+                1,
+                {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
+                simnet::CompressionEnvelopePolicy::Always,
+                compressed_group
+            );
+            REQUIRE(report.valid);
+            group_source = compressed_group;
+        }
+
+        auto transport_packets = packets(config, encoded.update.sequence, group_source);
+        if (!whole_update) {
+            for (auto& packet : transport_packets) {
+                auto compressed_packet = std::vector<simnet::Byte>{};
+                auto const report = simnet::compress_bytes(
+                    compressor,
+                    packet,
+                    1,
+                    {
+                        .max_uncompressed_bytes = config.max_payload_bytes,
+                        .max_output_bytes = config.max_payload_bytes,
+                    },
+                    simnet::CompressionEnvelopePolicy::OnlyWhenSmaller,
+                    compressed_packet
+                );
+                REQUIRE(report.valid);
+                packet = std::move(compressed_packet);
+            }
+        }
+
+        auto reassembly = simnet::ReassemblyState{};
+        auto completed = simnet::ReassemblyResult{};
+        auto packet_scratch = std::vector<simnet::Byte>{};
+        for (auto index = transport_packets.size(); index > 0U; --index) {
+            auto packet = simnet::ByteSpan{transport_packets[index - 1U]};
+            if (!whole_update && simnet::has_compression_envelope(packet)) {
+                auto const report = simnet::decompress_bytes(
+                    decompressor,
+                    packet,
+                    {
+                        .max_uncompressed_bytes = config.max_payload_bytes,
+                        .max_output_bytes = config.max_payload_bytes,
+                    },
+                    packet_scratch
+                );
+                REQUIRE(report.valid);
+                packet = packet_scratch;
+            }
+            completed = simnet::accept_group_packet(
+                config,
+                reassembly,
+                packet,
+                simnet::Nanoseconds{100U}
+            );
+        }
+        REQUIRE(completed.kind == simnet::ReassemblyResultKind::Complete);
+
+        auto decoded_group = simnet::ByteSpan{completed.completed.bytes};
+        auto decoded_scratch = std::vector<simnet::Byte>{};
+        if (whole_update) {
+            auto const report = simnet::decompress_bytes(
+                decompressor,
+                decoded_group,
+                {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
+                decoded_scratch
+            );
+            REQUIRE(report.valid);
+            decoded_group = decoded_scratch;
+        }
+        auto decode_state = simnet::ClientReplicationState{};
+        auto const decoded
+            = simnet::decode_update(pipeline, decode_state, {.bytes = decoded_group});
+        REQUIRE(decoded.report.valid);
+        REQUIRE(decoded.report.sequence == completed.completed.group_id);
+        auto reconstructed = simnet::WorldSnapshot{};
+        REQUIRE(simnet::reconstruct_world_snapshot(nullptr, decoded.update, reconstructed).valid);
+        CHECK(same_snapshot(reconstructed, encoded.resulting_snapshot));
+    }
 }

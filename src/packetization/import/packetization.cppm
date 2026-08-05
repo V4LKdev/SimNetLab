@@ -78,6 +78,7 @@ export namespace simnet
     struct ReassemblyResult
     {
         ReassemblyResultKind kind{ReassemblyResultKind::Invalid};
+        PacketGroupId group_id{};
         CompletedByteGroup completed{};
         std::string error{};
     };
@@ -135,7 +136,7 @@ export namespace simnet
     [[nodiscard]] ReassemblyResult accept_group_packet(
         PacketizationSettings const& settings,
         ReassemblyState& state,
-        std::vector<Byte> packet,
+        ByteSpan packet,
         Nanoseconds now
     );
 

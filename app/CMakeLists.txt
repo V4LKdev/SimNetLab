@@ -7,6 +7,7 @@ target_sources(
 target_link_libraries(Server
     PRIVATE
         simnet_config
+        simnet_compression
         simnet_game_server
         simnet_packetization
         simnet_pipeline
@@ -34,6 +35,7 @@ target_sources(Client
 target_link_libraries(Client
     PRIVATE
         simnet_config
+        simnet_compression
         simnet_game_client
         simnet_packetization
         simnet_pipeline

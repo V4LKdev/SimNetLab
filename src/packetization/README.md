@@ -6,4 +6,6 @@ The fixed 25-byte network-order header contains `SNPK`, protocol and schema vers
 
 Reassembly validates all sizes and widened arithmetic before allocation. It accepts reordered and byte-identical duplicate chunks. Conflicting metadata or duplicate bytes destroy only that group. Per-peer caller-owned state bounds incomplete groups, declared retained bytes, chunk count, and lifetime. Completing a byte group does not make it canonical. The application commits the group only after decoding, reconstruction, and sink application succeed.
 
-Compression is not part of this target. Whole-update compression can produce the opaque group before packetization. A later per-packet encoding requires a packet schema change and bounded decoding before byte-group completion.
+Compression is not part of this target. Whole-update compression produces the opaque group before
+packetization. Per-packet compression wraps complete serialized application packets outside this
+target, then restores the original packet bytes before parsing and reassembly.
