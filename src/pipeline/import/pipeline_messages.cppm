@@ -25,6 +25,7 @@ export namespace simnet
     struct EncodeReport
     {
         Tick tick{};
+        EncodeSkipReason skip_reason{EncodeSkipReason::None};
         SequenceId sequence{};
         SequenceId baseline_sequence{};
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};

@@ -30,6 +30,7 @@ namespace
     {
         simnet::EncodeReport report{};
         report.tick = snapshot.tick;
+        report.skip_reason = simnet::EncodeSkipReason::SendInterval;
         report.sequence = 0;
         report.baseline_sequence = 0;
         report.snapshot_kind = simnet::SnapshotKind::FullReplace;
@@ -74,6 +75,16 @@ namespace simnet
         pipeline_validate::require_quantization_settings(pipeline);
     }
 
+    bool should_emit_snapshot(PipelineDefinition const& pipeline, Tick tick)
+    {
+        if (!has_all_flags(pipeline.techniques, PipelineTechniqueFlags::SendInterval)) {
+            return true;
+        }
+
+        pipeline_validate::require_send_interval_settings(pipeline);
+        return (tick % pipeline.send_interval.interval_ticks) == 0U;
+    }
+
     EncodeOutput encode_snapshot_unchecked(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
@@ -103,7 +114,7 @@ namespace simnet
 
         // --- Send interval ---
 
-        if (!pipeline_selection::should_emit_for_send_interval(pipeline, snapshot.tick)) {
+        if (!should_emit_snapshot(pipeline, snapshot.tick)) {
             return skipped_encode(snapshot);
         }
 

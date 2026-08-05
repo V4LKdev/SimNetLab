@@ -8,6 +8,7 @@
 - `ClientReplicationState` holds per-client sequence and incremental cursor state.
 - `PipelineScratch` owns reusable encode and decode buffers.
 - `validate_pipeline_definition` rejects unsupported technique combinations and invalid settings.
+- `should_emit_snapshot` provides the pure cadence preflight used before baseline resolution.
 - `encode_snapshot` produces an encoded update or a skipped result.
 - `decode_update` validates encoded update bytes and returns a state update or an error report.
 - `pipeline_decode_signature` identifies the receiver-side representation.
@@ -16,7 +17,14 @@ Each concurrent caller needs its own `ClientReplicationState` and `PipelineScrat
 
 ## Supported techniques
 
-`SendInterval` skips selected ticks without consuming a sequence number. `Incremental` without `Delta` schedules round-robin candidate upserts. `Delta` filters scheduled candidates against a retained acknowledged baseline, while retaining every baseline-only delete. Without a baseline, `Delta` emits a complete `FullReplace` and does not advance the incremental cursor. `Quantization` encodes positions within configured bounds. `OctHeading` requires quantization and encodes a heading as two octahedral components.
+`SendInterval` uses the authoritative snapshot tick. Interval `1` emits every tick. Interval `N > 1`
+emits only when `tick % N == 0`. Other ticks return `Skipped` with reason `SendInterval` and do
+not change sequence, selection, scratch, or baseline state. `Incremental` without `Delta`
+schedules round-robin candidate upserts. `Delta` filters scheduled candidates against a retained
+acknowledged baseline, while retaining every baseline-only delete. Without a baseline, `Delta`
+emits a complete `FullReplace` and does not advance the incremental cursor. `Quantization` encodes
+positions within configured bounds. `OctHeading` requires quantization and encodes a heading as two
+octahedral components.
 
 `BitPacking` requires quantization and octahedral headings. The current record layout totals 128 bits, which is also 16 bytes in the byte-aligned representation. It is retained for technique evaluation even though it currently does not reduce record size.
 

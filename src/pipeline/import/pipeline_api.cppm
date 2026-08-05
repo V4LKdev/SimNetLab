@@ -18,6 +18,14 @@ export namespace simnet
      */
     void validate_pipeline_definition(PipelineDefinition const& pipeline);
 
+    /**
+     * Returns whether the authoritative snapshot tick is eligible for encoding.
+     *
+     * Disabled cadence always emits. Enabled cadence requires a positive interval and emits only
+     * when the tick is divisible by it. This query does not mutate pipeline state or scratch.
+     */
+    [[nodiscard]] bool should_emit_snapshot(PipelineDefinition const& pipeline, Tick tick);
+
     /// Computes the canonical decode-representation signature for the given pipeline.
     [[nodiscard]] std::uint64_t
     pipeline_decode_signature(PipelineDefinition const& definition) noexcept;

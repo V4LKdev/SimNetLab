@@ -31,6 +31,13 @@ export namespace simnet
         Skipped /// no encoded update was emitted by this call.
     };
 
+    /// Active reason why an encode call emitted no update.
+    enum class EncodeSkipReason : std::uint8_t
+    {
+        None,
+        SendInterval,
+    };
+
     /// Combines pipeline technique flags.
     [[nodiscard]] constexpr PipelineTechniqueFlags
     operator|(PipelineTechniqueFlags lhs, PipelineTechniqueFlags rhs) noexcept
@@ -69,10 +76,8 @@ export namespace simnet
     /// Configuration for the send-interval policy.
     struct SendIntervalSettings
     {
-        /// Send every N ticks.
+        /// Emit on authoritative ticks divisible by this positive interval.
         std::uint32_t interval_ticks{1};
-        /// Tick offset for staggered sends.
-        std::uint32_t phase_offset{0};
     };
 
     /// Configuration for incremental round-robin selection.

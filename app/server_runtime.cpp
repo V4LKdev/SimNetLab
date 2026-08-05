@@ -1167,7 +1167,9 @@ namespace
         auto const delta_enabled
             = simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::Delta);
         auto baseline = peer->retained_snapshots.end();
-        if (delta_enabled && peer->acknowledged_baseline_sequence.has_value()) {
+        bool const cadence_emits
+            = simnet::should_emit_snapshot(pipeline, snapshot_state.snapshot.tick);
+        if (cadence_emits && delta_enabled && peer->acknowledged_baseline_sequence.has_value()) {
             baseline = find_retained_snapshot(*peer, *peer->acknowledged_baseline_sequence);
             if (baseline == peer->retained_snapshots.end()) {
                 invalidate_baseline(*peer);

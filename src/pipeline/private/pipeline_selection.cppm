@@ -8,25 +8,11 @@ module;
 module simnet.pipeline:selection;
 
 import :types;
-import :messages;
 import simnet.core;
 import simnet.snapshot;
 
 namespace simnet::pipeline_selection
 {
-    /// Returns true when send interval policy allows an emit on this tick.
-    [[nodiscard]] bool
-    should_emit_for_send_interval(PipelineDefinition const& pipeline, Tick tick) noexcept
-    {
-        if (!has_all_flags(pipeline.techniques, PipelineTechniqueFlags::SendInterval)) {
-            return true;
-        }
-
-        auto const interval = static_cast<Tick>(pipeline.send_interval.interval_ticks);
-        auto const phase = static_cast<Tick>(pipeline.send_interval.phase_offset);
-        return ((tick + phase) % interval) == 0U;
-    }
-
     /// Selects a round-robin slice of source indices.
     void select_incremental_indices(
         PipelineScratch& scratch,

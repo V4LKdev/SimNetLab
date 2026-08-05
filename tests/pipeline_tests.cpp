@@ -270,6 +270,10 @@ TEST_CASE(
         = simnet::PipelineTechniqueFlags::Quantization | simnet::PipelineTechniqueFlags::BitPacking;
     REQUIRE_THROWS(simnet::validate_pipeline_definition(pipeline));
 
+    pipeline.techniques = simnet::PipelineTechniqueFlags::SendInterval;
+    pipeline.send_interval.interval_ticks = 0U;
+    REQUIRE_THROWS(simnet::validate_pipeline_definition(pipeline));
+
     pipeline.techniques = static_cast<simnet::PipelineTechniqueFlags>(1U << 31U);
     REQUIRE_THROWS(simnet::validate_pipeline_definition(pipeline));
 }
@@ -855,6 +859,154 @@ TEST_CASE(
     CHECK(emitted_index == expected_ids.size());
     CHECK(encode_state.incremental_cursor == 2);
     CHECK(encode_state.next_sequence == 4);
+}
+
+TEST_CASE("send interval emits the documented deterministic tick sequence", "[pipeline][cadence]")
+{
+    auto every_tick = simnet::PipelineDefinition{};
+    every_tick.techniques = simnet::PipelineTechniqueFlags::SendInterval;
+    auto every_tick_state = simnet::ClientReplicationState{};
+    auto every_tick_scratch = simnet::PipelineScratch{};
+    for (simnet::Tick tick = 0; tick < 6U; ++tick) {
+        auto const snapshot = make_linear_snapshot(tick, 1U);
+        auto const encoded = simnet::encode_snapshot(
+            every_tick,
+            every_tick_state,
+            every_tick_scratch,
+            {.snapshot = &snapshot}
+        );
+        CHECK(simnet::should_emit_snapshot(every_tick, tick));
+        CHECK(encoded.kind == simnet::EncodeResultKind::Update);
+        CHECK(encoded.report.skip_reason == simnet::EncodeSkipReason::None);
+    }
+
+    auto every_third = simnet::PipelineDefinition{};
+    every_third.techniques = simnet::PipelineTechniqueFlags::SendInterval;
+    every_third.send_interval.interval_ticks = 3U;
+    auto every_third_state = simnet::ClientReplicationState{};
+    auto every_third_scratch = simnet::PipelineScratch{};
+    auto const expected_kinds = std::array{
+        simnet::EncodeResultKind::Update,
+        simnet::EncodeResultKind::Skipped,
+        simnet::EncodeResultKind::Skipped,
+        simnet::EncodeResultKind::Update,
+        simnet::EncodeResultKind::Skipped,
+        simnet::EncodeResultKind::Skipped,
+        simnet::EncodeResultKind::Update,
+        simnet::EncodeResultKind::Skipped,
+    };
+
+    for (simnet::Tick tick = 0; tick < expected_kinds.size(); ++tick) {
+        auto const snapshot = make_linear_snapshot(tick, 1U);
+        auto const encoded = simnet::encode_snapshot(
+            every_third,
+            every_third_state,
+            every_third_scratch,
+            {.snapshot = &snapshot}
+        );
+        CHECK(
+            simnet::should_emit_snapshot(every_third, tick)
+            == (expected_kinds[tick] == simnet::EncodeResultKind::Update)
+        );
+        CHECK(encoded.kind == expected_kinds[tick]);
+        if (encoded.kind == simnet::EncodeResultKind::Skipped) {
+            CHECK(encoded.report.skip_reason == simnet::EncodeSkipReason::SendInterval);
+            CHECK(encoded.update.bytes.empty());
+        } else {
+            CHECK(encoded.report.skip_reason == simnet::EncodeSkipReason::None);
+        }
+    }
+    CHECK(every_third_state.next_sequence == 4U);
+
+    every_third.send_interval.interval_ticks = 0U;
+    REQUIRE_THROWS(simnet::should_emit_snapshot(every_third, 0U));
+}
+
+TEST_CASE(
+    "send interval skips preserve delta scheduling, baseline, and scratch state",
+    "[pipeline][cadence][incremental][delta]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::SendInterval
+        | simnet::PipelineTechniqueFlags::Incremental | simnet::PipelineTechniqueFlags::Delta;
+    pipeline.send_interval.interval_ticks = 3U;
+    pipeline.incremental.max_entities_per_update = 2U;
+
+    auto const baseline = make_linear_snapshot(0U, 4U);
+    auto current = baseline;
+    current.positions[1].x = 11.0F;
+    current.positions[2].x = 12.0F;
+    auto encode_state = simnet::ClientReplicationState{
+        .next_sequence = 7U,
+        .incremental_cursor = 1U,
+    };
+    auto scratch = simnet::PipelineScratch{};
+    scratch.selected_indices = {9U};
+    scratch.selected_delete_ids = {10U};
+    scratch.bytes = {simnet::Byte{11U}};
+
+    for (simnet::Tick tick : {1U, 2U}) {
+        current.tick = tick;
+        auto const skipped = simnet::encode_snapshot(
+            pipeline,
+            encode_state,
+            scratch,
+            {
+                .snapshot = &current,
+                .baseline_snapshot = &baseline,
+                .baseline_sequence = 5U,
+            }
+        );
+        CHECK(skipped.kind == simnet::EncodeResultKind::Skipped);
+        CHECK(skipped.report.skip_reason == simnet::EncodeSkipReason::SendInterval);
+        CHECK(skipped.update.bytes.empty());
+        CHECK(encode_state.next_sequence == 7U);
+        CHECK(encode_state.incremental_cursor == 1U);
+        CHECK(scratch.selected_indices == std::vector<std::uint32_t>{9U});
+        CHECK(scratch.selected_delete_ids == std::vector<simnet::EntityNetId>{10U});
+        CHECK(scratch.bytes == std::vector<simnet::Byte>{simnet::Byte{11U}});
+    }
+
+    current.tick = 3U;
+    auto const emitted = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        scratch,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &baseline,
+            .baseline_sequence = 5U,
+        }
+    );
+    REQUIRE(emitted.kind == simnet::EncodeResultKind::Update);
+    CHECK(emitted.report.skip_reason == simnet::EncodeSkipReason::None);
+    CHECK(emitted.update.sequence == 7U);
+    CHECK(emitted.report.baseline_sequence == 5U);
+    CHECK(emitted.report.snapshot_kind == simnet::SnapshotKind::Patch);
+    CHECK(emitted.report.upsert_count == 2U);
+    CHECK(encode_state.incremental_cursor == 3U);
+
+    auto decode_state = simnet::ClientReplicationState{};
+    auto const decoded
+        = simnet::decode_update(pipeline, decode_state, {.bytes = emitted.update.bytes});
+    REQUIRE(decoded.report.valid);
+    CHECK(decoded.update.upserts[0].id == 2U);
+    CHECK(decoded.update.upserts[1].id == 3U);
+
+    auto baseline_less_state = simnet::ClientReplicationState{.incremental_cursor = 2U};
+    auto baseline_less_scratch = simnet::PipelineScratch{};
+    auto const baseline_less = simnet::encode_snapshot(
+        pipeline,
+        baseline_less_state,
+        baseline_less_scratch,
+        {.snapshot = &current}
+    );
+    REQUIRE(baseline_less.kind == simnet::EncodeResultKind::Update);
+    CHECK(baseline_less.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+    CHECK(baseline_less.report.baseline_sequence == 0U);
+    CHECK(baseline_less.report.upsert_count == current.size());
+    CHECK(baseline_less_state.incremental_cursor == 2U);
 }
 
 TEST_CASE(
