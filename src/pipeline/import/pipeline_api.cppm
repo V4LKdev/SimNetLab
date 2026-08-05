@@ -10,7 +10,12 @@ import :messages;
 
 export namespace simnet
 {
-    /// Validates a supported pipeline definition and its settings.
+    /**
+     * Validates a supported pipeline definition and its settings.
+     *
+     * Active techniques compose unless one requires another representation technique.
+     * OctHeading requires Quantization. BitPacking requires Quantization and OctHeading.
+     */
     void validate_pipeline_definition(PipelineDefinition const& pipeline);
 
     /// Computes the canonical decode-representation signature for the given pipeline.

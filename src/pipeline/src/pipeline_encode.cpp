@@ -132,18 +132,14 @@ namespace simnet
             throw std::runtime_error("delta baseline sequence must precede update sequence");
         }
 
-        // --- Entity selection ---
+        // --- Relevancy selection and update scheduling ---
 
         bool const incremental_enabled = pipeline_validate::is_incremental(pipeline);
         bool const emit_delta = delta_enabled && input.baseline_snapshot != nullptr;
+        bool const schedule_incremental = incremental_enabled && (!delta_enabled || emit_delta);
+        auto incremental_selection_count = std::size_t{};
 
-        if (emit_delta) {
-            pipeline_validate::require_u32_count(
-                input.baseline_snapshot->size(),
-                "baseline snapshot entity count"
-            );
-            pipeline_selection::select_delta_records(scratch, snapshot, *input.baseline_snapshot);
-        } else if (incremental_enabled) {
+        if (schedule_incremental) {
             scratch.selected_delete_ids.clear();
             pipeline_selection::select_incremental_indices(
                 scratch,
@@ -151,20 +147,46 @@ namespace simnet
                 client_state.incremental_cursor,
                 pipeline.incremental.max_entities_per_update
             );
-        } else {
-            scratch.selected_indices.clear();
-            scratch.selected_delete_ids.clear();
+            incremental_selection_count = scratch.selected_indices.size();
         }
 
-        std::size_t const selected_count = (emit_delta || incremental_enabled)
+        // --- Delta selection ---
+
+        if (emit_delta) {
+            pipeline_validate::require_u32_count(
+                input.baseline_snapshot->size(),
+                "baseline snapshot entity count"
+            );
+            if (schedule_incremental) {
+                pipeline_selection::filter_scheduled_delta_records(
+                    scratch,
+                    snapshot,
+                    *input.baseline_snapshot
+                );
+            } else {
+                pipeline_selection::select_delta_records(
+                    scratch,
+                    snapshot,
+                    *input.baseline_snapshot
+                );
+            }
+        } else {
+            scratch.selected_delete_ids.clear();
+            if (!schedule_incremental) {
+                scratch.selected_indices.clear();
+            }
+        }
+
+        std::size_t const selected_count = (emit_delta || schedule_incremental)
             ? scratch.selected_indices.size()
             : snapshot.size();
         std::size_t const delete_count = emit_delta ? scratch.selected_delete_ids.size() : 0U;
-        SnapshotKind const snapshot_kind
-            = (emit_delta || incremental_enabled) ? SnapshotKind::Patch : SnapshotKind::FullReplace;
+        SnapshotKind const snapshot_kind = (emit_delta || schedule_incremental)
+            ? SnapshotKind::Patch
+            : SnapshotKind::FullReplace;
         SequenceId const baseline_sequence = emit_delta ? input.baseline_sequence : 0U;
 
-        // --- Payload layout / sizing ---
+        // --- Representation encoding and layout ---
 
         pipeline_records::RecordLayout const layout
             = pipeline_records::resolve_record_layout(pipeline);
@@ -215,7 +237,7 @@ namespace simnet
             );
         };
 
-        if (emit_delta || incremental_enabled) {
+        if (emit_delta || schedule_incremental) {
             for (std::uint32_t const idx : scratch.selected_indices) {
                 write_record(idx);
             }
@@ -264,11 +286,11 @@ namespace simnet
 
         // --- Update client state ---
 
-        if (incremental_enabled) {
+        if (schedule_incremental) {
             client_state.incremental_cursor = next_incremental_cursor(
                 snapshot.size(),
                 client_state.incremental_cursor,
-                static_cast<std::uint32_t>(selected_count)
+                static_cast<std::uint32_t>(incremental_selection_count)
             );
         }
         client_state.next_sequence = sequence + 1U;

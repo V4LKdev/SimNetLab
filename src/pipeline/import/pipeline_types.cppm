@@ -101,7 +101,14 @@ export namespace simnet
 
     // --- Pipeline state structs ---
 
-    /// Immutable definition of enabled pipeline techniques and settings.
+    /**
+     * Immutable definition of enabled pipeline techniques and settings.
+     *
+     * Replication stages are ordered as cadence control, relevancy selection, update scheduling,
+     * delta selection, representation encoding, record layout, whole-update compression, and
+     * application packetization. Unsupported stages are rejected. Delivery remains outside the
+     * pipeline.
+     */
     struct PipelineDefinition
     {
         PipelineTechniqueFlags techniques{PipelineTechniqueFlags::None};

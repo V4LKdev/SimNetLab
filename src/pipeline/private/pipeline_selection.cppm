@@ -44,7 +44,8 @@ namespace simnet::pipeline_selection
         scratch.selected_indices.reserve(selected_count);
         auto const start = static_cast<std::size_t>(cursor) % entity_count;
 
-        // Snapshot-order cursoring is sorted afterward to satisfy patch validation.
+        // WorldSnapshot IDs are strictly ascending, so sorting indices restores ID order after
+        // cursor wraparound and satisfies patch validation.
         for (std::size_t offset = 0; offset < selected_count; ++offset) {
             auto const source_index = (start + offset) % entity_count;
             scratch.selected_indices.push_back(static_cast<std::uint32_t>(source_index));
@@ -107,6 +108,59 @@ namespace simnet::pipeline_selection
         while (current_index < current.size()) {
             scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
             ++current_index;
+        }
+        while (baseline_index < baseline.size()) {
+            scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);
+            ++baseline_index;
+        }
+    }
+
+    /**
+     * Filters scheduled upserts against a baseline and selects every baseline-only delete.
+     *
+     * Deleted entities have no current snapshot index and therefore cannot participate in the
+     * round-robin schedule. Including every truthful delete prevents a partial update from
+     * retaining entities that no longer exist.
+     */
+    void filter_scheduled_delta_records(
+        PipelineScratch& scratch,
+        WorldSnapshot const& current,
+        WorldSnapshot const& baseline
+    )
+    {
+        auto baseline_index = std::size_t{};
+        auto retained_count = std::size_t{};
+        for (std::uint32_t const current_index : scratch.selected_indices) {
+            auto const current_id = current.ids[current_index];
+            while (baseline_index < baseline.size() && baseline.ids[baseline_index] < current_id) {
+                ++baseline_index;
+            }
+
+            bool const unchanged = baseline_index < baseline.size()
+                && baseline.ids[baseline_index] == current_id
+                && same_entity_state(current, current_index, baseline, baseline_index);
+            if (!unchanged) {
+                scratch.selected_indices[retained_count++] = current_index;
+            }
+        }
+        scratch.selected_indices.resize(retained_count);
+
+        scratch.selected_delete_ids.clear();
+        scratch.selected_delete_ids.reserve(baseline.size());
+        auto current_index = std::size_t{};
+        baseline_index = 0;
+        while (current_index < current.size() && baseline_index < baseline.size()) {
+            auto const current_id = current.ids[current_index];
+            auto const baseline_id = baseline.ids[baseline_index];
+            if (current_id < baseline_id) {
+                ++current_index;
+            } else if (baseline_id < current_id) {
+                scratch.selected_delete_ids.push_back(baseline_id);
+                ++baseline_index;
+            } else {
+                ++current_index;
+                ++baseline_index;
+            }
         }
         while (baseline_index < baseline.size()) {
             scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);

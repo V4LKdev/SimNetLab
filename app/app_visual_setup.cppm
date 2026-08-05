@@ -139,10 +139,9 @@ namespace simnet::app
                 : "Every tick"
         );
         add_row(
-            "Selection",
-            has(pipeline, PipelineTechniqueFlags::Incremental) ? "Incremental"
-                : has(pipeline, PipelineTechniqueFlags::Delta) ? "Delta patches"
-                                                               : "Full snapshot"
+            "Update scheduling",
+            has(pipeline, PipelineTechniqueFlags::Incremental) ? "Incremental round-robin"
+                                                               : "All entities"
         );
         add_row(
             "Position encoding",

@@ -29,18 +29,6 @@ namespace simnet::pipeline_validate
             throw std::runtime_error("pipeline does not support requested techniques");
         }
 
-        if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental)
-            && has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {
-            throw std::runtime_error(
-                "pipeline does not support combining incremental and quantization"
-            );
-        }
-        if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental)
-            && has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta)) {
-            throw std::runtime_error(
-                "pipeline does not support combining incremental and delta selection"
-            );
-        }
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading)
             && !has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {
             throw std::runtime_error("oct heading requires quantization");
