@@ -3,6 +3,7 @@ module;
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -88,6 +89,8 @@ namespace simnet::pipeline_wire
     static_assert(bitpacked_quantized_oct_record_bytes == 16);
     static_assert(delete_record_bytes == 4);
     static_assert(header_bytes == 45);
+    static_assert(sizeof(float) == f32_bytes);
+    static_assert(std::numeric_limits<float>::is_iec559);
 
     // --- Header struct decoded ---
 

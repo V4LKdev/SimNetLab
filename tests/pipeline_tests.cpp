@@ -364,6 +364,254 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "reference FullReplace codec has a deterministic fixed-width wire layout",
+    "[pipeline][reference][fullreplace]"
+)
+{
+    auto const snapshot = make_snapshot(
+        0x0102030405060708ULL,
+        {
+            {.id = 0x01020304U,
+             .classification = simnet::EntityClassification{0xA5U},
+             .position = {1.0F, -2.5F, 0.0F},
+             .heading = {0.0F, 0.0F, 1.0F},
+             .hue = 0x7FU},
+        }
+    );
+    auto const pipeline = simnet::PipelineDefinition{};
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+
+    auto const encoded
+        = simnet::encode_snapshot(pipeline, encode_state, encode_scratch, {.snapshot = &snapshot});
+
+    auto constexpr expected = std::array<simnet::Byte, 75U>{
+        simnet::Byte{0x53U},
+        simnet::Byte{0x4EU},
+        simnet::Byte{0x50U},
+        simnet::Byte{0x4CU},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x01U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x04U},
+        simnet::Byte{0xB0U},
+        simnet::Byte{0xB9U},
+        simnet::Byte{0xEFU},
+        simnet::Byte{0xFDU},
+        simnet::Byte{0xE1U},
+        simnet::Byte{0x08U},
+        simnet::Byte{0xBDU},
+        simnet::Byte{0x5EU},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x01U},
+        simnet::Byte{0x02U},
+        simnet::Byte{0x03U},
+        simnet::Byte{0x04U},
+        simnet::Byte{0x05U},
+        simnet::Byte{0x06U},
+        simnet::Byte{0x07U},
+        simnet::Byte{0x08U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x01U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x01U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x1EU},
+        simnet::Byte{0x01U},
+        simnet::Byte{0x02U},
+        simnet::Byte{0x03U},
+        simnet::Byte{0x04U},
+        simnet::Byte{0xA5U},
+        simnet::Byte{0x3FU},
+        simnet::Byte{0x80U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0xC0U},
+        simnet::Byte{0x20U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x3FU},
+        simnet::Byte{0x80U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x00U},
+        simnet::Byte{0x7FU},
+    };
+
+    REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+    CHECK(encoded.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+    CHECK(encoded.report.baseline_sequence == 0U);
+    CHECK(encoded.update.bytes == std::vector<simnet::Byte>{expected.begin(), expected.end()});
+
+    auto decode_state = simnet::ClientReplicationState{};
+    auto const decoded
+        = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
+    REQUIRE(decoded.report.valid);
+    REQUIRE(decoded.update.upserts.size() == 1U);
+    CHECK(decoded.report.baseline_sequence == 0U);
+    CHECK(decoded.update.tick == snapshot.tick);
+    CHECK(decoded.update.upserts[0].id == snapshot.ids[0]);
+    CHECK(decoded.update.upserts[0].classification == snapshot.classifications[0]);
+    CHECK(decoded.update.upserts[0].position.x == snapshot.positions[0].x);
+    CHECK(decoded.update.upserts[0].position.y == snapshot.positions[0].y);
+    CHECK(decoded.update.upserts[0].position.z == snapshot.positions[0].z);
+    CHECK(decoded.update.upserts[0].heading.x == snapshot.headings[0].x);
+    CHECK(decoded.update.upserts[0].heading.y == snapshot.headings[0].y);
+    CHECK(decoded.update.upserts[0].heading.z == snapshot.headings[0].z);
+    CHECK(decoded.update.upserts[0].hue == snapshot.hues[0]);
+}
+
+TEST_CASE(
+    "reference FullReplace codec round-trips complete and empty snapshots",
+    "[pipeline][reference][fullreplace]"
+)
+{
+    auto const pipeline = simnet::PipelineDefinition{};
+    auto const snapshots = std::array{
+        make_snapshot(
+            19U,
+            {
+                {.id = 2U,
+                 .classification = simnet::EntityClassification{3U},
+                 .position = {-12.5F, 7.25F, 0.125F},
+                 .heading = {0.0F, 1.0F, 0.0F},
+                 .hue = 7U},
+                {.id = 99U,
+                 .classification = unknown_classification,
+                 .position = {40.0F, -0.25F, 8.0F},
+                 .heading = {1.0F, 0.0F, 0.0F},
+                 .hue = 240U},
+            }
+        ),
+        make_snapshot(20U, {}),
+    };
+
+    for (auto const& snapshot : snapshots) {
+        auto encode_state = simnet::ClientReplicationState{};
+        auto encode_scratch = simnet::PipelineScratch{};
+        auto const encoded = simnet::encode_snapshot(
+            pipeline,
+            encode_state,
+            encode_scratch,
+            {.snapshot = &snapshot}
+        );
+        REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+        CHECK(encoded.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+        CHECK(encoded.report.baseline_sequence == 0U);
+        CHECK(encoded.report.upsert_count == snapshot.size());
+
+        auto decode_state = simnet::ClientReplicationState{};
+        auto const decoded
+            = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
+        REQUIRE(decoded.report.valid);
+        CHECK(decoded.update.kind == simnet::SnapshotKind::FullReplace);
+        CHECK(decoded.report.baseline_sequence == 0U);
+        CHECK(decoded.update.tick == snapshot.tick);
+        REQUIRE(decoded.update.upserts.size() == snapshot.size());
+        for (std::size_t index = 0; index < snapshot.size(); ++index) {
+            CHECK(decoded.update.upserts[index].id == snapshot.ids[index]);
+            CHECK(decoded.update.upserts[index].classification == snapshot.classifications[index]);
+            CHECK(decoded.update.upserts[index].position.x == snapshot.positions[index].x);
+            CHECK(decoded.update.upserts[index].position.y == snapshot.positions[index].y);
+            CHECK(decoded.update.upserts[index].position.z == snapshot.positions[index].z);
+            CHECK(decoded.update.upserts[index].heading.x == snapshot.headings[index].x);
+            CHECK(decoded.update.upserts[index].heading.y == snapshot.headings[index].y);
+            CHECK(decoded.update.upserts[index].heading.z == snapshot.headings[index].z);
+            CHECK(decoded.update.upserts[index].hue == snapshot.hues[index]);
+        }
+    }
+}
+
+TEST_CASE(
+    "reference FullReplace decoding rejects malformed bytes transactionally",
+    "[pipeline][reference][fullreplace][validation]"
+)
+{
+    auto const pipeline = simnet::PipelineDefinition{};
+    auto const snapshot = make_linear_snapshot(1U, 1U);
+    auto encode_state = simnet::ClientReplicationState{};
+    auto encode_scratch = simnet::PipelineScratch{};
+    auto const encoded
+        = simnet::encode_snapshot(pipeline, encode_state, encode_scratch, {.snapshot = &snapshot});
+
+    auto reject
+        = [](simnet::PipelineDefinition const& decoder_pipeline, std::vector<simnet::Byte> bytes) {
+              auto decode_state = simnet::ClientReplicationState{};
+              auto const decoded
+                  = simnet::decode_update(decoder_pipeline, decode_state, {.bytes = bytes});
+              CHECK_FALSE(decoded.report.valid);
+              CHECK(decoded.update.empty());
+              CHECK(decode_state.latest_remote_sequence == 0U);
+          };
+
+    auto truncated_header = std::vector<simnet::Byte>{
+        encoded.update.bytes.begin(),
+        encoded.update.bytes.begin()
+            + static_cast<std::ptrdiff_t>(encoded_update_header_bytes - 1U),
+    };
+    reject(pipeline, std::move(truncated_header));
+
+    auto truncated_record = encoded.update.bytes;
+    truncated_record.pop_back();
+    reject(pipeline, std::move(truncated_record));
+
+    auto inconsistent_count = encoded.update.bytes;
+    inconsistent_count[36U] = simnet::Byte{2U};
+    reject(pipeline, std::move(inconsistent_count));
+
+    auto impossible_count = encoded.update.bytes;
+    for (std::size_t offset = 33U; offset < 37U; ++offset) {
+        impossible_count[offset] = simnet::Byte{0xFFU};
+    }
+    reject(pipeline, std::move(impossible_count));
+
+    auto trailing_bytes = encoded.update.bytes;
+    trailing_bytes.push_back(simnet::Byte{0xFFU});
+    reject(pipeline, std::move(trailing_bytes));
+
+    auto unsupported_version = encoded.update.bytes;
+    unsupported_version[7U] = simnet::Byte{3U};
+    reject(pipeline, std::move(unsupported_version));
+
+    auto unsupported_signature = encoded.update.bytes;
+    unsupported_signature[8U] = simnet::Byte{};
+    reject(pipeline, std::move(unsupported_signature));
+
+    auto unsupported_kind = encoded.update.bytes;
+    unsupported_kind[16U] = simnet::Byte{2U};
+    reject(pipeline, std::move(unsupported_kind));
+
+    auto quantized = simnet::PipelineDefinition{};
+    quantized.techniques = simnet::PipelineTechniqueFlags::Quantization;
+    reject(quantized, encoded.update.bytes);
+}
+
+TEST_CASE(
     "pipeline rejects zero wire classifications without sequence advancement",
     "[pipeline][snapshot][classification][validation]"
 )

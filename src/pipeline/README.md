@@ -43,3 +43,18 @@ Unsupported stages fail validation. All active techniques otherwise compose when
 - `PipelineScratch` should be reused across calls to avoid recurring allocations.
 - The private wire header carries a magic value, protocol and schema versions, and a decode signature. Schema version 4 adds one lossless classification byte to every entity record. Decode rejects mismatches and stale sequences.
 - Delta decoding reports the declared baseline sequence. Client storage must retain and resolve that exact reconstructed snapshot before applying the patch.
+
+### Reference FullReplace codec
+
+The reference layout is a complete, baseline-independent `FullReplace` with baseline sequence zero.
+All fields are fixed-width and written in network byte order. It uses IEEE 754 binary32 bit patterns
+for float fields and is not a native C++ object representation.
+
+| Field | Width | Order |
+| --- | ---: | --- |
+| Header | 45 bytes | magic `u32`, protocol `u16`, schema `u16`, decode signature `u64`, kind `u8`, tick `u64`, sequence `u32`, baseline sequence `u32`, upsert count `u32`, delete count `u32`, payload bytes `u32` |
+| Reference entity | 30 bytes | id `u32`, classification `u8`, position x/y/z `f32`, heading x/y/z `f32`, hue `u8` |
+
+FullReplace records are encoded in the snapshot's strictly ascending entity-ID order. The decoder
+checks the complete declared payload before advancing its accepted sequence, then delegates entity
+ID ordering and snapshot semantics to `simnet_snapshot`.
