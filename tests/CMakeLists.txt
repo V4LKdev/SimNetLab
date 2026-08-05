@@ -1,5 +1,6 @@
 # tests
 find_package(Catch2 CONFIG REQUIRED)
+find_package(zstd CONFIG REQUIRED)
 
 add_executable(SimNetTests
     app_camera_tests.cpp
@@ -8,6 +9,7 @@ add_executable(SimNetTests
     aoi_tests.cpp
     boid_simulation_tests.cpp
     config_tests.cpp
+    compression_tests.cpp
     core_time_tests.cpp
     pipeline_tests.cpp
     packetization_tests.cpp
@@ -42,6 +44,7 @@ target_link_libraries(SimNetTests
     PRIVATE
         simnet_core
         simnet_config
+        simnet_compression
         simnet_game_client
         simnet_game_server
         simnet_packetization
@@ -51,6 +54,7 @@ target_link_libraries(SimNetTests
         simnet_spatial
         simnet_telemetry
         simnet_transport
+        zstd::libzstd
         Catch2::Catch2WithMain
 )
 

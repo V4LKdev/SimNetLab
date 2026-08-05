@@ -90,6 +90,14 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     changed = baseline;
     --changed.packetization.reassembly_timeout_ms;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.compression.mode = "whole_update";
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    ++changed.compression.level;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
 }
 
 TEST_CASE("visual interpolation is local runtime configuration", "[config]")
@@ -232,6 +240,64 @@ TEST_CASE("maintained forced packetization treatment loads", "[config][packetiza
     CHECK(config.packetization.max_payload_bytes == 256U);
     CHECK(config.pipeline.area_of_interest.mode == "radius");
     CHECK(config.pipeline.area_of_interest.radius == 160.0F);
+}
+
+TEST_CASE("compression configuration is strict and fingerprinted", "[config][compression]")
+{
+    auto const accepted = TemporaryConfig{
+        "simnet_compression_accepted.json",
+        R"({ "compression": { "mode": "whole_update", "level": 1 } })"
+    };
+    auto const loaded = simnet::load_shared_config(accepted.path());
+    CHECK(loaded.compression.mode == "whole_update");
+    CHECK(loaded.compression.level == 1);
+
+    for (auto const contents : {
+             R"({ "compression": { "mode": "none", "level": 1 } })",
+             R"({ "compression": { "mode": "whole_update" } })",
+             R"({ "compression": { "mode": "per_packet", "level": 0 } })",
+             R"({ "compression": { "mode": "per_packet", "level": 20 } })",
+             R"({ "compression": { "mode": "unknown", "level": 1 } })",
+             R"({ "compression": { "mode": "whole_update", "level": 1, "extra": true } })",
+         }) {
+        auto const invalid = TemporaryConfig{"simnet_compression_invalid.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+}
+
+TEST_CASE("maintained compression treatments load with matching controls", "[config][compression]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    auto const none
+        = simnet::load_shared_config(directory / "shared_compression_none_aoi_radius_visual.json");
+    auto const whole
+        = simnet::load_shared_config(directory / "shared_compression_whole_aoi_radius_visual.json");
+    auto const per_packet = simnet::load_shared_config(
+        directory / "shared_compression_per_packet_aoi_radius_visual.json"
+    );
+    CHECK(none.compression.mode == "none");
+    CHECK(whole.compression.mode == "whole_update");
+    CHECK(per_packet.compression.mode == "per_packet");
+    CHECK(whole.compression.level == 1);
+    CHECK(per_packet.compression.level == 1);
+    CHECK(none.simulation.initial_boid_count == 1500U);
+    CHECK(none.packetization.max_payload_bytes == 1200U);
+
+    auto normalized_none = none;
+    auto normalized_whole = whole;
+    auto normalized_per_packet = per_packet;
+    normalized_none.compression = {};
+    normalized_whole.compression = {};
+    normalized_per_packet.compression = {};
+    auto const control_fingerprint = simnet::fingerprint_network_compatibility(normalized_none);
+    CHECK(
+        simnet::fingerprint_network_compatibility(normalized_whole).value
+        == control_fingerprint.value
+    );
+    CHECK(
+        simnet::fingerprint_network_compatibility(normalized_per_packet).value
+        == control_fingerprint.value
+    );
 }
 
 // TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")

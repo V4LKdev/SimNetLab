@@ -1,0 +1,365 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+#include <vector>
+#include <zstd.h>
+
+import simnet.compression;
+import simnet.core;
+
+namespace
+{
+    [[nodiscard]] std::vector<simnet::Byte> bytes(std::string_view text)
+    {
+        auto result = std::vector<simnet::Byte>{};
+        result.reserve(text.size());
+        for (auto const value : text) {
+            result.push_back(static_cast<simnet::Byte>(value));
+        }
+        return result;
+    }
+
+    void write_u32(std::vector<simnet::Byte>& data, std::size_t offset, std::uint32_t value)
+    {
+        data[offset] = static_cast<simnet::Byte>(value >> 24U);
+        data[offset + 1U] = static_cast<simnet::Byte>(value >> 16U);
+        data[offset + 2U] = static_cast<simnet::Byte>(value >> 8U);
+        data[offset + 3U] = static_cast<simnet::Byte>(value);
+    }
+
+    [[nodiscard]] simnet::CompressionLimits limits(std::uint32_t maximum = 8192U)
+    {
+        return {
+            .max_uncompressed_bytes = maximum,
+            .max_output_bytes = maximum,
+        };
+    }
+
+    [[nodiscard]] std::vector<simnet::Byte> compressible_bytes()
+    {
+        auto result = std::vector<simnet::Byte>(4096U);
+        for (auto index = std::size_t{}; index < result.size(); ++index) {
+            result[index] = static_cast<simnet::Byte>(index % 7U);
+        }
+        return result;
+    }
+
+    [[nodiscard]] std::vector<simnet::Byte> incompressible_bytes(std::size_t size)
+    {
+        auto result = std::vector<simnet::Byte>(size);
+        auto state = std::uint32_t{0x12345678U};
+        for (auto& value : result) {
+            state = state * 1664525U + 1013904223U;
+            value = static_cast<simnet::Byte>(state >> 24U);
+        }
+        return result;
+    }
+}
+
+TEST_CASE("compression preserves raw bytes when an envelope is not required", "[compression]")
+{
+    auto compressor = simnet::ZstdCompressor{};
+    auto const input = bytes("one byte is enough");
+    auto output = std::vector<simnet::Byte>{};
+    auto const report = simnet::compress_bytes(
+        compressor,
+        input,
+        1,
+        limits(),
+        simnet::CompressionEnvelopePolicy::OnlyWhenSmaller,
+        output
+    );
+    REQUIRE(report.valid);
+    CHECK(report.encoding == simnet::CompressionEncoding::Raw);
+    CHECK(report.envelope_bytes == 0U);
+    CHECK(output == input);
+}
+
+TEST_CASE("Raw and Zstd envelopes roundtrip exactly", "[compression][roundtrip]")
+{
+    auto compressor = simnet::ZstdCompressor{};
+    auto decompressor = simnet::ZstdDecompressor{};
+    for (auto const& input : {bytes("x"), compressible_bytes()}) {
+        auto envelope = std::vector<simnet::Byte>{};
+        auto const encoded = simnet::compress_bytes(
+            compressor,
+            input,
+            1,
+            limits(),
+            simnet::CompressionEnvelopePolicy::Always,
+            envelope
+        );
+        REQUIRE(encoded.valid);
+        CHECK(encoded.envelope_bytes == simnet::compression_envelope_bytes);
+        CHECK(encoded.input_bytes == input.size());
+        CHECK(encoded.encoded_payload_bytes + encoded.envelope_bytes == encoded.output_bytes);
+        CHECK(simnet::has_compression_envelope(envelope));
+        CHECK(
+            encoded.encoding
+            == (input.size() == 1U ? simnet::CompressionEncoding::Raw
+                                   : simnet::CompressionEncoding::Zstd)
+        );
+
+        auto decoded_bytes = std::vector<simnet::Byte>{};
+        auto const decoded
+            = simnet::decompress_bytes(decompressor, envelope, limits(), decoded_bytes);
+        REQUIRE(decoded.valid);
+        CHECK(decoded.encoding == encoded.encoding);
+        CHECK(decoded.output_bytes == input.size());
+        CHECK(decoded_bytes == input);
+    }
+}
+
+TEST_CASE("compression enforces levels and contextual bounds", "[compression][bounds]")
+{
+    auto compressor = simnet::ZstdCompressor{};
+    auto output = std::vector<simnet::Byte>{};
+    auto const input = bytes("bounded input");
+    CHECK_FALSE(
+        simnet::compress_bytes(
+            compressor,
+            {},
+            1,
+            limits(),
+            simnet::CompressionEnvelopePolicy::Always,
+            output
+        )
+            .valid
+    );
+    CHECK_FALSE(
+        simnet::compress_bytes(
+            compressor,
+            input,
+            0,
+            limits(),
+            simnet::CompressionEnvelopePolicy::Always,
+            output
+        )
+            .valid
+    );
+    CHECK_FALSE(
+        simnet::compress_bytes(
+            compressor,
+            input,
+            20,
+            limits(),
+            simnet::CompressionEnvelopePolicy::Always,
+            output
+        )
+            .valid
+    );
+    CHECK_FALSE(
+        simnet::compress_bytes(
+            compressor,
+            input,
+            1,
+            {.max_uncompressed_bytes = 4U, .max_output_bytes = 64U},
+            simnet::CompressionEnvelopePolicy::Always,
+            output
+        )
+            .valid
+    );
+    CHECK_FALSE(
+        simnet::compress_bytes(
+            compressor,
+            input,
+            1,
+            {.max_uncompressed_bytes = 64U, .max_output_bytes = 17U},
+            simnet::CompressionEnvelopePolicy::Always,
+            output
+        )
+            .valid
+    );
+}
+
+TEST_CASE("maximum bounded and incompressible inputs follow deterministic policy", "[compression]")
+{
+    auto compressor = simnet::ZstdCompressor{};
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto maximum_input = std::vector<simnet::Byte>(8192U, simnet::Byte{0x5AU});
+    auto envelope = std::vector<simnet::Byte>{};
+    auto const maximum_report = simnet::compress_bytes(
+        compressor,
+        maximum_input,
+        1,
+        limits(),
+        simnet::CompressionEnvelopePolicy::Always,
+        envelope
+    );
+    REQUIRE(maximum_report.valid);
+    auto restored = std::vector<simnet::Byte>{};
+    REQUIRE(simnet::decompress_bytes(decompressor, envelope, limits(), restored).valid);
+    CHECK(restored == maximum_input);
+
+    auto const incompressible = incompressible_bytes(1024U);
+    auto first = std::vector<simnet::Byte>{};
+    auto second = std::vector<simnet::Byte>{};
+    auto const first_report = simnet::compress_bytes(
+        compressor,
+        incompressible,
+        1,
+        limits(),
+        simnet::CompressionEnvelopePolicy::OnlyWhenSmaller,
+        first
+    );
+    auto const second_report = simnet::compress_bytes(
+        compressor,
+        incompressible,
+        1,
+        limits(),
+        simnet::CompressionEnvelopePolicy::OnlyWhenSmaller,
+        second
+    );
+    REQUIRE(first_report.valid);
+    REQUIRE(second_report.valid);
+    CHECK(first_report.encoding == simnet::CompressionEncoding::Raw);
+    CHECK(first == incompressible);
+    CHECK(second == first);
+}
+
+TEST_CASE("decompression rejects malformed envelope fields", "[compression][malformed]")
+{
+    auto compressor = simnet::ZstdCompressor{};
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto const input = compressible_bytes();
+    auto valid = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::compress_bytes(
+            compressor,
+            input,
+            1,
+            limits(),
+            simnet::CompressionEnvelopePolicy::Always,
+            valid
+        )
+            .valid
+    );
+
+    auto output = std::vector<simnet::Byte>{};
+    for (auto mutation : {0U, 4U, 6U, 8U}) {
+        auto malformed = valid;
+        malformed[mutation] ^= simnet::Byte{0x7FU};
+        CHECK_FALSE(simnet::decompress_bytes(decompressor, malformed, limits(), output).valid);
+    }
+    auto truncated = valid;
+    truncated.pop_back();
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, truncated, limits(), output).valid);
+
+    auto zero_size = valid;
+    write_u32(zero_size, 9U, 0U);
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, zero_size, limits(), output).valid);
+
+    auto excessive = valid;
+    write_u32(excessive, 9U, 8193U);
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, excessive, limits(), output).valid);
+
+    auto inconsistent = valid;
+    write_u32(inconsistent, 13U, static_cast<std::uint32_t>(valid.size()));
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, inconsistent, limits(), output).valid);
+}
+
+TEST_CASE("Zstd frame validation rejects corruption and extra frames", "[compression][zstd]")
+{
+    auto compressor = simnet::ZstdCompressor{};
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto const input = compressible_bytes();
+    auto valid = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::compress_bytes(
+            compressor,
+            input,
+            1,
+            limits(),
+            simnet::CompressionEnvelopePolicy::Always,
+            valid
+        )
+            .valid
+    );
+
+    auto output = std::vector<simnet::Byte>{};
+    auto corrupt = valid;
+    corrupt.back() ^= simnet::Byte{0xFFU};
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, corrupt, limits(), output).valid);
+
+    auto concatenated = valid;
+    auto const payload = std::vector<simnet::Byte>(
+        valid.begin() + static_cast<std::ptrdiff_t>(simnet::compression_envelope_bytes),
+        valid.end()
+    );
+    concatenated.insert(concatenated.end(), payload.begin(), payload.end());
+    write_u32(
+        concatenated,
+        13U,
+        static_cast<std::uint32_t>(concatenated.size() - simnet::compression_envelope_bytes)
+    );
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, concatenated, limits(16384U), output).valid);
+
+    auto trailing = valid;
+    trailing.push_back(simnet::Byte{0U});
+    write_u32(
+        trailing,
+        13U,
+        static_cast<std::uint32_t>(trailing.size() - simnet::compression_envelope_bytes)
+    );
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, trailing, limits(), output).valid);
+}
+
+TEST_CASE("unknown Zstd frame sizes are rejected without poisoning later input", "[compression]")
+{
+    auto const input = compressible_bytes();
+    auto* context = ZSTD_createCCtx();
+    REQUIRE(context != nullptr);
+    REQUIRE_FALSE(ZSTD_isError(ZSTD_CCtx_setParameter(context, ZSTD_c_contentSizeFlag, 0)));
+    auto frame = std::vector<simnet::Byte>(ZSTD_compressBound(input.size()));
+    auto const frame_size
+        = ZSTD_compress2(context, frame.data(), frame.size(), input.data(), input.size());
+    ZSTD_freeCCtx(context);
+    REQUIRE_FALSE(ZSTD_isError(frame_size));
+    frame.resize(frame_size);
+
+    auto unknown = std::vector<simnet::Byte>{
+        simnet::Byte{'S'},
+        simnet::Byte{'N'},
+        simnet::Byte{'C'},
+        simnet::Byte{'Z'},
+        simnet::Byte{0U},
+        simnet::Byte{1U},
+        simnet::Byte{0U},
+        simnet::Byte{1U},
+        simnet::Byte{1U},
+        simnet::Byte{0U},
+        simnet::Byte{0U},
+        simnet::Byte{0x10U},
+        simnet::Byte{0U},
+        simnet::Byte{0U},
+        simnet::Byte{0U},
+        simnet::Byte{0U},
+        simnet::Byte{0U},
+    };
+    write_u32(unknown, 9U, static_cast<std::uint32_t>(input.size()));
+    write_u32(unknown, 13U, static_cast<std::uint32_t>(frame.size()));
+    unknown.insert(unknown.end(), frame.begin(), frame.end());
+
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto output = std::vector<simnet::Byte>{};
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, unknown, limits(), output).valid);
+
+    auto compressor = simnet::ZstdCompressor{};
+    auto valid = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::compress_bytes(
+            compressor,
+            input,
+            1,
+            limits(),
+            simnet::CompressionEnvelopePolicy::Always,
+            valid
+        )
+            .valid
+    );
+    REQUIRE(simnet::decompress_bytes(decompressor, valid, limits(), output).valid);
+    CHECK(output == input);
+}

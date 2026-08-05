@@ -431,6 +431,41 @@ namespace
         });
     }
 
+    void apply_compression(Json const& json, simnet::CompressionConfig& config)
+    {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "mode" && key != "level") {
+                throw std::runtime_error(
+                    "invalid config field 'compression." + key + "': unknown field"
+                );
+            }
+        }
+
+        auto const has_level = json.contains("level");
+        read_optional(json, "mode", config.mode);
+        if (config.mode == "none") {
+            if (has_level) {
+                throw std::runtime_error("invalid compression config: none mode accepts no level");
+            }
+            return;
+        }
+        if (config.mode != "whole_update" && config.mode != "per_packet") {
+            throw std::runtime_error(
+                "invalid config field 'compression.mode': expected none, whole_update, or per_packet"
+            );
+        }
+        if (!has_level) {
+            throw std::runtime_error("invalid compression config: active mode requires level");
+        }
+        read_optional(json, "level", config.level);
+        if (config.level < 1 || config.level > 19) {
+            throw std::runtime_error(
+                "invalid config field 'compression.level': expected integer in [1, 19]"
+            );
+        }
+    }
+
     void apply_transport(Json const& json, simnet::TransportConfig& config)
     {
         if (json.contains("backend")) {
@@ -602,6 +637,9 @@ namespace
         if (auto const* section = optional_object(json, "pipeline")) {
             apply_pipeline(*section, config.pipeline);
         }
+        if (auto const* section = optional_object(json, "compression")) {
+            apply_compression(*section, config.compression);
+        }
         if (auto const* section = optional_object(json, "packetization")) {
             apply_packetization(*section, config.packetization);
         }
@@ -709,6 +747,8 @@ namespace
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_bytes(hash, config.pipeline.area_of_interest.radius);
         hash_bytes(hash, config.pipeline.area_of_interest.fov_degrees);
+        hash_string(hash, config.compression.mode);
+        hash_bytes(hash, config.compression.level);
         hash_bytes(hash, config.packetization.enabled);
         hash_bytes(hash, config.packetization.max_payload_bytes);
         hash_bytes(hash, config.packetization.max_update_bytes);
@@ -772,6 +812,8 @@ namespace
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_canonical_float(hash, config.pipeline.area_of_interest.radius);
         hash_canonical_float(hash, config.pipeline.area_of_interest.fov_degrees);
+        hash_string(hash, config.compression.mode);
+        hash_canonical_u32(hash, static_cast<std::uint32_t>(config.compression.level));
         hash_canonical_bool(hash, config.packetization.enabled);
         hash_canonical_u32(hash, config.packetization.max_payload_bytes);
         hash_canonical_u32(hash, config.packetization.max_update_bytes);

@@ -106,6 +106,13 @@ export namespace simnet
         std::uint32_t reassembly_timeout_ms{5000U};
     };
 
+    /// Shared opaque byte compression settings.
+    struct CompressionConfig
+    {
+        std::string mode{"none"};
+        int level{1};
+    };
+
     /// Network transport settings.
     struct TransportConfig
     {
@@ -185,6 +192,7 @@ export namespace simnet
         BoidsConfig boids{};
         PlayerConfig player{};
         PipelineConfig pipeline{};
+        CompressionConfig compression{};
         PacketizationConfig packetization{};
     };
 
