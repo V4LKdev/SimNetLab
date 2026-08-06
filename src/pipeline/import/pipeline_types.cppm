@@ -47,6 +47,21 @@ export namespace simnet
         Fov,
     };
 
+    /// Server-side temporal level-of-detail selection mode.
+    enum class LevelOfDetailMode : std::uint8_t
+    {
+        None,
+        DistanceBands,
+    };
+
+    /// Distance band assigned to one AOI-retained entity.
+    enum class LevelOfDetailBand : std::uint8_t
+    {
+        Near,
+        Medium,
+        Far,
+    };
+
     /// Combines pipeline technique flags.
     [[nodiscard]] constexpr PipelineTechniqueFlags
     operator|(PipelineTechniqueFlags lhs, PipelineTechniqueFlags rhs) noexcept
@@ -110,6 +125,16 @@ export namespace simnet
         float fov_degrees{};
     };
 
+    /// Shared temporal distance-LOD settings applied after AOI filtering.
+    struct LevelOfDetailSettings
+    {
+        LevelOfDetailMode mode{LevelOfDetailMode::None};
+        float near_distance{};
+        float medium_distance{};
+        std::uint32_t medium_interval_ticks{};
+        std::uint32_t far_interval_ticks{};
+    };
+
     /// Role-independent authoritative pose used for one peer's AOI selection.
     struct InterestSource
     {
@@ -129,6 +154,41 @@ export namespace simnet
         std::uint32_t culled_count{};
     };
 
+    /// Counts grouped by deterministic distance band.
+    struct LevelOfDetailBandCounts
+    {
+        std::uint32_t near{};
+        std::uint32_t medium{};
+        std::uint32_t far{};
+    };
+
+    /// Per-update diagnostics produced by temporal distance LOD.
+    struct LevelOfDetailReport
+    {
+        LevelOfDetailMode mode{LevelOfDetailMode::None};
+        LevelOfDetailBandCounts population{};
+        LevelOfDetailBandCounts eligible{};
+        LevelOfDetailBandCounts serviced{};
+        LevelOfDetailBandCounts represented{};
+        LevelOfDetailBandCounts deferred{};
+        std::uint32_t pending_due_count{};
+        std::uint32_t transition_count{};
+        std::uint32_t forced_immediate_count{};
+        std::uint32_t recovery_forced_count{};
+        std::uint32_t deletions_bypassing_count{};
+        std::uint32_t full_replace_override_count{};
+        std::uint32_t encoded_bytes{};
+    };
+
+    /// Per-entity temporal LOD authority retained for one peer.
+    struct LevelOfDetailScheduleEntry
+    {
+        EntityNetId id{};
+        LevelOfDetailBand band{LevelOfDetailBand::Near};
+        Tick next_due_tick{};
+        bool pending_due{};
+    };
+
     // --- Pipeline state structs ---
 
     /**
@@ -145,6 +205,7 @@ export namespace simnet
         IncrementalSettings incremental{};
         QuantizationSettings quantization{};
         AreaOfInterestSettings area_of_interest{};
+        LevelOfDetailSettings level_of_detail{};
     };
 
     /// Caller-owned per-client replication state.
@@ -158,6 +219,10 @@ export namespace simnet
         std::uint32_t incremental_cursor{};
         /// True after the first complete non-Delta Incremental population was emitted.
         bool incremental_seeded{};
+        /// True after a complete LOD population was emitted.
+        bool level_of_detail_seeded{};
+        /// Sorted temporal LOD authority for the current AOI-retained population.
+        std::vector<LevelOfDetailScheduleEntry> level_of_detail_schedule;
     };
 
     /// Reusable encode scratch memory. Stored externally to avoid allocations on the hot path.
@@ -171,6 +236,8 @@ export namespace simnet
         std::vector<std::uint32_t> relevant_source_indices;
         /// Per-peer AOI population used as scheduling input.
         WorldSnapshot relevant_snapshot;
+        /// Candidate LOD schedule storage used during deterministic population reconciliation.
+        std::vector<LevelOfDetailScheduleEntry> level_of_detail_schedule;
         /// Canonical logical update represented by the encoded bytes.
         SnapshotUpdate logical_update;
         /// Temporary buffer for encoding.

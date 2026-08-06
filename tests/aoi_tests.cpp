@@ -257,7 +257,11 @@ TEST_CASE("missing AOI source skips without mutating scheduling or scratch", "[a
         .mode = simnet::AreaOfInterestMode::Radius,
         .radius = 5.0F,
     };
-    auto state = simnet::ClientReplicationState{.next_sequence = 7U, .incremental_cursor = 3U};
+    auto state = simnet::ClientReplicationState{
+        .next_sequence = 7U,
+        .incremental_cursor = 3U,
+        .level_of_detail_schedule = {},
+    };
     auto scratch = simnet::PipelineScratch{};
     scratch.selected_indices = {9U};
     scratch.selected_delete_ids = {8U};
@@ -473,7 +477,8 @@ TEST_CASE("Delta AOI uses the selected acknowledged population", "[aoi][delta]")
         .mode = simnet::AreaOfInterestMode::Radius,
         .radius = 5.0F,
     };
-    auto state = simnet::ClientReplicationState{.next_sequence = 2U};
+    auto state
+        = simnet::ClientReplicationState{.next_sequence = 2U, .level_of_detail_schedule = {}};
     auto scratch = simnet::PipelineScratch{};
     auto const candidates = std::array<std::uint32_t, 1>{0U};
     auto const encoded = simnet::encode_snapshot(

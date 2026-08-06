@@ -32,6 +32,7 @@ export namespace simnet
         std::uint32_t upsert_count{}; /// number of upserts in the payload
         std::uint32_t delete_count{}; /// number of deletes in the payload
         AreaOfInterestReport area_of_interest{};
+        LevelOfDetailReport level_of_detail{};
     };
 
     /// Metrics produced by each decode call.
@@ -50,7 +51,8 @@ export namespace simnet
     struct EncodeInput
     {
         WorldSnapshot const* snapshot{}; /// current snapshot (required)
-        WorldSnapshot const* baseline_snapshot{}; /// optional explicit baseline for Delta
+        /// Optional explicit baseline for Delta or temporal LOD.
+        WorldSnapshot const* baseline_snapshot{};
         SequenceId baseline_sequence{}; /// nonzero if baseline_snapshot is present
         /// Exact Client replica selected by the application for non-Delta Incremental convergence.
         WorldSnapshot const* replica_snapshot{};

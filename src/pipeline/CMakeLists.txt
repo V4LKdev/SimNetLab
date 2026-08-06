@@ -21,6 +21,7 @@ target_sources(simnet_pipeline
             private/pipeline_records.cppm
             private/pipeline_validate.cppm
             private/pipeline_selection.cppm
+            private/pipeline_lod.cppm
             private/pipeline_signature.cppm
     PRIVATE
         src/pipeline_encode.cpp

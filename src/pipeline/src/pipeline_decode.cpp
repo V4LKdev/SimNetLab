@@ -123,13 +123,14 @@ namespace simnet
 
         bool const delta_enabled = pipeline_validate::is_delta(pipeline);
         bool const incremental_enabled = pipeline_validate::is_incremental(pipeline);
+        bool const level_of_detail_enabled = pipeline_validate::is_level_of_detail(pipeline);
 
         if (header.snapshot_kind == SnapshotKind::FullReplace) {
             if (header.baseline_sequence != 0U)
                 return invalid_update("full snapshot baseline sequence must be 0");
         } else {
-            if (!delta_enabled && !incremental_enabled)
-                return invalid_update("patch requires Incremental or Delta");
+            if (!delta_enabled && !incremental_enabled && !level_of_detail_enabled)
+                return invalid_update("patch requires Incremental, Delta, or level of detail");
             if (header.baseline_sequence == 0U)
                 return invalid_update("patch baseline sequence 0 is reserved");
             if (header.baseline_sequence >= header.sequence)

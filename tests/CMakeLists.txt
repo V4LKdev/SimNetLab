@@ -12,6 +12,7 @@ add_executable(SimNetTests
     config_tests.cpp
     compression_tests.cpp
     core_time_tests.cpp
+    lod_tests.cpp
     pipeline_tests.cpp
     packetization_tests.cpp
     replication_tests.cpp

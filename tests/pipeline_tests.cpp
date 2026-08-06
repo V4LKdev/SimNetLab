@@ -1079,6 +1079,7 @@ TEST_CASE(
         .next_sequence = 7U,
         .incremental_cursor = 1U,
         .incremental_seeded = true,
+        .level_of_detail_schedule = {},
     };
     auto scratch = simnet::PipelineScratch{};
     scratch.selected_indices = {9U};
@@ -1138,7 +1139,10 @@ TEST_CASE(
     CHECK(decoded.update.upserts[0].id == 2U);
     CHECK(decoded.update.upserts[1].id == 3U);
 
-    auto baseline_less_state = simnet::ClientReplicationState{.incremental_cursor = 2U};
+    auto baseline_less_state = simnet::ClientReplicationState{
+        .incremental_cursor = 2U,
+        .level_of_detail_schedule = {},
+    };
     auto baseline_less_scratch = simnet::PipelineScratch{};
     auto const baseline_less = simnet::encode_snapshot(
         pipeline,
@@ -1345,7 +1349,8 @@ TEST_CASE(
     auto current = source;
     current.tick = 2U;
     current.positions[0].x = 5.4321F;
-    auto delta_state = simnet::ClientReplicationState{.next_sequence = 2U};
+    auto delta_state
+        = simnet::ClientReplicationState{.next_sequence = 2U, .level_of_detail_schedule = {}};
     auto delta_scratch = simnet::PipelineScratch{};
     auto const delta = simnet::encode_snapshot(
         delta_pipeline,

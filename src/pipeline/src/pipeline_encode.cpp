@@ -17,6 +17,7 @@ import :messages;
 import :wire;
 import :records;
 import :selection;
+import :lod;
 import :signature;
 import :validate;
 import simnet.core;
@@ -77,6 +78,7 @@ namespace simnet
         pipeline_validate::require_incremental_settings(pipeline);
         pipeline_validate::require_quantization_settings(pipeline);
         pipeline_validate::require_area_of_interest_settings(pipeline);
+        pipeline_validate::require_level_of_detail_settings(pipeline);
     }
 
     bool should_emit_snapshot(PipelineDefinition const& pipeline, Tick tick)
@@ -100,13 +102,14 @@ namespace simnet
         pipeline_validate::require_snapshot_pointer(input.snapshot, "encode input snapshot");
 
         bool const delta_enabled = pipeline_validate::is_delta(pipeline);
+        bool const level_of_detail_enabled = pipeline_validate::is_level_of_detail(pipeline);
         if (input.baseline_snapshot == nullptr) {
             if (input.baseline_sequence != 0U) {
                 throw std::runtime_error("baseline sequence requires a baseline snapshot");
             }
         } else {
-            if (!delta_enabled) {
-                throw std::runtime_error("baseline snapshot requires the delta technique");
+            if (!delta_enabled && !level_of_detail_enabled) {
+                throw std::runtime_error("baseline snapshot requires Delta or level of detail");
             }
             if (input.baseline_sequence == 0U) {
                 throw std::runtime_error("delta baseline sequence 0 is reserved");
@@ -118,6 +121,9 @@ namespace simnet
             }
         } else if (input.replica_sequence == 0U) {
             throw std::runtime_error("replica baseline sequence 0 is reserved");
+        }
+        if (level_of_detail_enabled && input.replica_snapshot != nullptr) {
+            throw std::runtime_error("level of detail uses the explicit baseline snapshot");
         }
         auto previous_recovery_id = EntityNetId{};
         for (auto const id : input.recovery_upsert_ids) {
@@ -213,27 +219,90 @@ namespace simnet
         // --- Update scheduling ---
 
         bool const incremental_enabled = pipeline_validate::is_incremental(pipeline);
+        bool const schedule_level_of_detail = level_of_detail_enabled
+            && client_state.level_of_detail_seeded && !input.force_full_replace;
+        if (level_of_detail_enabled && !client_state.level_of_detail_seeded
+            && input.baseline_snapshot != nullptr) {
+            throw std::runtime_error("initial level-of-detail synchronization must be FullReplace");
+        }
+        if (schedule_level_of_detail && input.baseline_snapshot == nullptr) {
+            throw std::runtime_error("level-of-detail Patch requires an explicit baseline");
+        }
         bool const emit_delta
             = !input.force_full_replace && delta_enabled && input.baseline_snapshot != nullptr;
-        bool const seed_incremental = incremental_enabled && !delta_enabled
-            && !client_state.incremental_seeded && !input.force_full_replace;
-        bool const schedule_incremental = incremental_enabled && !input.force_full_replace
-            && !seed_incremental && (!delta_enabled || emit_delta);
+        bool const seed_incremental = !level_of_detail_enabled && incremental_enabled
+            && !delta_enabled && !client_state.incremental_seeded && !input.force_full_replace;
+        bool const schedule_incremental = incremental_enabled
+            && (schedule_level_of_detail
+                || (!level_of_detail_enabled && !input.force_full_replace && !seed_incremental
+                    && (!delta_enabled || emit_delta)));
+        bool const emit_patch = schedule_level_of_detail || emit_delta || schedule_incremental;
         auto incremental_selection_count = std::size_t{};
+        auto level_of_detail_cursor = client_state.incremental_cursor;
 
-        if (input.replica_snapshot != nullptr && (!incremental_enabled || delta_enabled)) {
+        if (input.replica_snapshot != nullptr
+            && (!incremental_enabled || delta_enabled || level_of_detail_enabled)) {
             throw std::runtime_error(
                 "replica snapshot is only valid for non-delta incremental encoding"
             );
         }
-        if (schedule_incremental && !delta_enabled && input.replica_snapshot == nullptr) {
+        if (schedule_incremental && !level_of_detail_enabled && !delta_enabled
+            && input.replica_snapshot == nullptr) {
             throw std::runtime_error("incremental patch requires the latest replica snapshot");
         }
-        if (!input.recovery_upsert_ids.empty() && !schedule_incremental) {
-            throw std::runtime_error("recovery upserts require an Incremental Patch");
+        if (!input.recovery_upsert_ids.empty() && !emit_patch) {
+            throw std::runtime_error("recovery upserts require a partial Patch");
         }
 
-        if (schedule_incremental) {
+        auto level_of_detail = LevelOfDetailReport{};
+        if (level_of_detail_enabled) {
+            level_of_detail = pipeline_lod::reconcile_schedule(
+                client_state,
+                scratch,
+                *selected_snapshot,
+                pipeline.level_of_detail,
+                *input.interest_source
+            );
+            if (schedule_level_of_detail) {
+                level_of_detail_cursor = pipeline_lod::select_pending_indices(
+                    scratch.level_of_detail_schedule,
+                    *selected_snapshot,
+                    input.interest_source->source_entity_id,
+                    incremental_enabled,
+                    client_state.incremental_cursor,
+                    pipeline.incremental.max_entities_per_update,
+                    scratch.selected_indices
+                );
+                pipeline_lod::service_selected_indices(
+                    scratch.level_of_detail_schedule,
+                    *selected_snapshot,
+                    pipeline.level_of_detail,
+                    scratch.selected_indices,
+                    level_of_detail
+                );
+                level_of_detail.recovery_forced_count
+                    = pipeline_selection::merge_recovery_upsert_indices(
+                        scratch,
+                        *selected_snapshot,
+                        input.recovery_upsert_ids
+                    );
+                if (!delta_enabled) {
+                    pipeline_selection::select_replica_deletes(
+                        scratch,
+                        *selected_snapshot,
+                        *input.baseline_snapshot
+                    );
+                }
+            } else {
+                pipeline_lod::service_full_replace(
+                    scratch.level_of_detail_schedule,
+                    scratch,
+                    *selected_snapshot,
+                    pipeline.level_of_detail,
+                    level_of_detail
+                );
+            }
+        } else if (schedule_incremental) {
             scratch.selected_delete_ids.clear();
             pipeline_selection::select_incremental_indices(
                 scratch,
@@ -242,11 +311,11 @@ namespace simnet
                 pipeline.incremental.max_entities_per_update
             );
             incremental_selection_count = scratch.selected_indices.size();
-            pipeline_selection::merge_recovery_upsert_indices(
+            static_cast<void>(pipeline_selection::merge_recovery_upsert_indices(
                 scratch,
                 *selected_snapshot,
                 input.recovery_upsert_ids
-            );
+            ));
             if (!delta_enabled) {
                 pipeline_selection::select_replica_deletes(
                     scratch,
@@ -263,7 +332,7 @@ namespace simnet
                 input.baseline_snapshot->size(),
                 "baseline snapshot entity count"
             );
-            if (schedule_incremental) {
+            if (schedule_level_of_detail || schedule_incremental) {
                 pipeline_selection::filter_scheduled_delta_records(
                     scratch,
                     *selected_snapshot,
@@ -277,23 +346,28 @@ namespace simnet
                 );
             }
         } else {
-            if (!schedule_incremental) {
+            if (!emit_patch) {
                 scratch.selected_delete_ids.clear();
             }
-            if (!schedule_incremental) {
+            if (!emit_patch) {
                 scratch.selected_indices.clear();
             }
         }
 
-        std::size_t const selected_count = (emit_delta || schedule_incremental)
-            ? scratch.selected_indices.size()
-            : selected_snapshot->size();
-        std::size_t const delete_count
-            = (emit_delta || schedule_incremental) ? scratch.selected_delete_ids.size() : 0U;
-        SnapshotKind const snapshot_kind = (emit_delta || schedule_incremental)
-            ? SnapshotKind::Patch
-            : SnapshotKind::FullReplace;
-        SequenceId const baseline_sequence = emit_delta
+        if (level_of_detail_enabled) {
+            pipeline_lod::count_represented(
+                scratch.level_of_detail_schedule,
+                scratch.selected_indices,
+                level_of_detail
+            );
+        }
+
+        std::size_t const selected_count
+            = emit_patch ? scratch.selected_indices.size() : selected_snapshot->size();
+        std::size_t const delete_count = emit_patch ? scratch.selected_delete_ids.size() : 0U;
+        SnapshotKind const snapshot_kind
+            = emit_patch ? SnapshotKind::Patch : SnapshotKind::FullReplace;
+        SequenceId const baseline_sequence = schedule_level_of_detail || emit_delta
             ? input.baseline_sequence
             : (schedule_incremental ? input.replica_sequence : 0U);
 
@@ -367,7 +441,7 @@ namespace simnet
             );
         };
 
-        if (emit_delta || schedule_incremental) {
+        if (emit_patch) {
             for (std::uint32_t const idx : scratch.selected_indices) {
                 write_record(idx);
             }
@@ -380,7 +454,9 @@ namespace simnet
         auto resulting_snapshot = WorldSnapshot{};
         WorldSnapshot const* reconstruction_baseline = nullptr;
         if (snapshot_kind == SnapshotKind::Patch) {
-            reconstruction_baseline = emit_delta ? input.baseline_snapshot : input.replica_snapshot;
+            reconstruction_baseline = schedule_level_of_detail || emit_delta
+                ? input.baseline_snapshot
+                : input.replica_snapshot;
         }
         auto const reconstruction = reconstruct_world_snapshot_unchecked(
             reconstruction_baseline,
@@ -408,6 +484,11 @@ namespace simnet
         report.upsert_count = static_cast<std::uint32_t>(selected_count);
         report.delete_count = static_cast<std::uint32_t>(delete_count);
         report.area_of_interest = area_of_interest;
+        if (level_of_detail_enabled) {
+            level_of_detail.deletions_bypassing_count = report.delete_count;
+            level_of_detail.encoded_bytes = static_cast<std::uint32_t>(update.bytes.size());
+            report.level_of_detail = level_of_detail;
+        }
 
         EncodeOutput output;
         output.kind = EncodeResultKind::Update;
@@ -417,7 +498,7 @@ namespace simnet
 
         // --- Update client state ---
 
-        if (schedule_incremental) {
+        if (schedule_incremental && !level_of_detail_enabled) {
             client_state.incremental_cursor = next_incremental_cursor(
                 selected_snapshot->size(),
                 client_state.incremental_cursor,
@@ -426,6 +507,13 @@ namespace simnet
         }
         if (incremental_enabled && snapshot_kind == SnapshotKind::FullReplace) {
             client_state.incremental_seeded = true;
+        }
+        if (level_of_detail_enabled && snapshot_kind == SnapshotKind::FullReplace) {
+            client_state.level_of_detail_seeded = true;
+        }
+        if (level_of_detail_enabled) {
+            client_state.incremental_cursor = level_of_detail_cursor;
+            client_state.level_of_detail_schedule.swap(scratch.level_of_detail_schedule);
         }
         client_state.next_sequence = sequence + 1U;
         return output;

@@ -129,12 +129,13 @@ namespace simnet::pipeline_selection
     }
 
     /// Adds current indices for sorted recovery IDs while preserving strict ID order.
-    void merge_recovery_upsert_indices(
+    [[nodiscard]] std::uint32_t merge_recovery_upsert_indices(
         PipelineScratch& scratch,
         WorldSnapshot const& current,
         std::span<EntityNetId const> recovery_ids
     )
     {
+        auto const previous_size = scratch.selected_indices.size();
         for (auto const id : recovery_ids) {
             auto const found = std::ranges::lower_bound(current.ids, id);
             if (found != current.ids.end() && *found == id) {
@@ -146,6 +147,7 @@ namespace simnet::pipeline_selection
         std::ranges::sort(scratch.selected_indices);
         auto const unique_end = std::ranges::unique(scratch.selected_indices).begin();
         scratch.selected_indices.erase(unique_end, scratch.selected_indices.end());
+        return static_cast<std::uint32_t>(scratch.selected_indices.size() - previous_size);
     }
 
     [[nodiscard]] bool same_vec3(Vec3f left, Vec3f right) noexcept

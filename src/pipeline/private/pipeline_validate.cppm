@@ -135,6 +135,44 @@ namespace simnet::pipeline_validate
         throw std::runtime_error("unsupported AOI mode");
     }
 
+    /// Validates the active temporal distance-LOD treatment.
+    void require_level_of_detail_settings(PipelineDefinition const& pipeline)
+    {
+        auto const& settings = pipeline.level_of_detail;
+        if (settings.mode == LevelOfDetailMode::None) {
+            if (settings.near_distance != 0.0F || settings.medium_distance != 0.0F
+                || settings.medium_interval_ticks != 0U || settings.far_interval_ticks != 0U) {
+                throw std::runtime_error("none level of detail accepts no band settings");
+            }
+            return;
+        }
+        if (settings.mode != LevelOfDetailMode::DistanceBands) {
+            throw std::runtime_error("unsupported level-of-detail mode");
+        }
+        if (pipeline.area_of_interest.mode == AreaOfInterestMode::None) {
+            throw std::runtime_error("distance LOD requires radius or FOV AOI");
+        }
+        if (!std::isfinite(settings.near_distance) || settings.near_distance <= 0.0F
+            || !std::isfinite(settings.medium_distance) || settings.medium_distance <= 0.0F) {
+            throw std::runtime_error("distance LOD requires positive finite distances");
+        }
+        if (settings.near_distance >= settings.medium_distance) {
+            throw std::runtime_error("distance LOD requires near distance below medium distance");
+        }
+        if (settings.medium_distance >= pipeline.area_of_interest.radius) {
+            throw std::runtime_error("distance LOD medium distance must be below the AOI radius");
+        }
+        if (settings.medium_interval_ticks < 2U) {
+            throw std::runtime_error("distance LOD medium interval must be at least 2 ticks");
+        }
+        if (settings.far_interval_ticks <= settings.medium_interval_ticks) {
+            throw std::runtime_error("distance LOD far interval must exceed the medium interval");
+        }
+        if (settings.far_interval_ticks > 65'535U) {
+            throw std::runtime_error("distance LOD intervals must not exceed 65535 ticks");
+        }
+    }
+
     /// Validates one authoritative interest pose.
     void require_interest_source(InterestSource const& source)
     {
@@ -177,5 +215,11 @@ namespace simnet::pipeline_validate
     [[nodiscard]] bool is_delta(PipelineDefinition const& pipeline) noexcept
     {
         return has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta);
+    }
+
+    /// Returns true when temporal distance LOD is active.
+    [[nodiscard]] bool is_level_of_detail(PipelineDefinition const& pipeline) noexcept
+    {
+        return pipeline.level_of_detail.mode == LevelOfDetailMode::DistanceBands;
     }
 }
