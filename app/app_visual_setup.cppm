@@ -162,6 +162,15 @@ namespace simnet::app
                 + " radius, " + format_float(pipeline.area_of_interest.fov_degrees, 1) + " deg";
         }
         add_row("Area of interest", std::move(area_of_interest));
+        auto level_of_detail = std::string{"None"};
+        if (pipeline.level_of_detail.mode == LevelOfDetailMode::DistanceBands) {
+            level_of_detail = "Distance bands "
+                + format_float(pipeline.level_of_detail.near_distance) + " / "
+                + format_float(pipeline.level_of_detail.medium_distance) + ", intervals 1 / "
+                + format_u64(pipeline.level_of_detail.medium_interval_ticks) + " / "
+                + format_u64(pipeline.level_of_detail.far_interval_ticks);
+        }
+        add_row("Level of detail", std::move(level_of_detail));
         auto compression = std::string{shared.compression.mode};
         if (shared.compression.mode != "none") {
             compression

@@ -358,8 +358,31 @@ namespace simnet
             count("Coarse candidates", value.candidate_entity_count);
             count("AOI retained", value.retained_entity_count);
             count("AOI culled", value.culled_entity_count);
+            text_value("Level of detail", value.level_of_detail_mode);
+            count("LOD Near population", value.lod_near_population);
+            count("LOD Medium population", value.lod_medium_population);
+            count("LOD Far population", value.lod_far_population);
+            count("LOD Near eligible", value.lod_near_eligible);
+            count("LOD Medium eligible", value.lod_medium_eligible);
+            count("LOD Far eligible", value.lod_far_eligible);
+            count("LOD Near serviced", value.lod_near_serviced);
+            count("LOD Medium serviced", value.lod_medium_serviced);
+            count("LOD Far serviced", value.lod_far_serviced);
+            count("LOD Near represented", value.lod_near_represented);
+            count("LOD Medium represented", value.lod_medium_represented);
+            count("LOD Far represented", value.lod_far_represented);
+            count("LOD Near deferred", value.lod_near_deferred);
+            count("LOD Medium deferred", value.lod_medium_deferred);
+            count("LOD Far deferred", value.lod_far_deferred);
+            count("LOD pending due", value.lod_pending_due);
+            count("LOD transitions", value.lod_transitions);
+            count("LOD forced immediate", value.lod_forced_immediate);
+            count("LOD recovery forced", value.lod_recovery_forced);
+            count("LOD deletes bypassed", value.lod_deletions_bypassing);
             count("Transmitted upserts", value.transmitted_upsert_count);
             count("Transmitted deletes", value.transmitted_delete_count);
+            count("Applied upserts", value.applied_upsert_count);
+            count("Applied deletes", value.applied_delete_count);
             count("Reconstructed entities", value.reconstructed_entity_count);
             if (value.packetization_enabled.has_value()) {
                 add_row(
@@ -392,6 +415,7 @@ namespace simnet
                     );
                 }
             };
+            count64("LOD FullReplace overrides", value.lod_full_replace_overrides);
             count64("Received chunks", value.received_packet_chunks);
             count64("Unique chunks", value.unique_packet_chunks);
             count64("Duplicate chunks", value.duplicate_packet_chunks);

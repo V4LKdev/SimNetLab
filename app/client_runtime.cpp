@@ -406,6 +406,8 @@ namespace
         simnet::ReassemblyReport const& packet_report,
         ClientCompressionReport const& compression_report,
         std::optional<std::uint32_t> reconstructed_entity_count,
+        std::optional<std::uint32_t> applied_upsert_count,
+        std::optional<std::uint32_t> applied_delete_count,
         std::string_view role,
         std::optional<simnet::StationaryObserverView> stationary_observer,
         std::optional<simnet::GameCameraView> game_camera,
@@ -439,6 +441,9 @@ namespace
                     : role == "player"
                     ? std::optional<std::string_view>{"Server authoritative Player"}
                     : std::optional<std::string_view>{"local pose configured"},
+                .level_of_detail_mode = config.pipeline.level_of_detail.mode,
+                .applied_upsert_count = applied_upsert_count,
+                .applied_delete_count = applied_delete_count,
                 .reconstructed_entity_count = reconstructed_entity_count,
                 .packetization_enabled = config.packetization.enabled,
                 .received_packet_chunks = packet_report.received_chunks,
@@ -662,7 +667,9 @@ namespace
         simnet::ClientReplicationCsvWriter& csv,
         bool& logged_multi_packet_application,
         simnet::app::ClientRecoveryRequestState& recovery_request_state,
-        std::uint64_t& sequence_gap_count
+        std::uint64_t& sequence_gap_count,
+        std::uint32_t& latest_applied_upserts,
+        std::uint32_t& latest_applied_deletes
     )
     {
         auto measurement = simnet::ClientReplicationMeasurement{
@@ -845,6 +852,8 @@ namespace
         candidate_ack_tracker.value.newest_applied_snapshot = decoded.report.sequence;
         ack_tracker = candidate_ack_tracker;
         latest_applied_sequence = decoded.report.sequence;
+        latest_applied_upserts = static_cast<std::uint32_t>(decoded.update.upserts.size());
+        latest_applied_deletes = static_cast<std::uint32_t>(decoded.update.deletes.size());
         retain_snapshot(snapshot_history, decoded.report.sequence, std::move(reconstructed));
         simnet::app::record_snapshot_progress(recovery_request_state);
         stats.ticks = applied.tick;
@@ -891,7 +900,12 @@ namespace
                 simnet::LogLevel::Debug,
                 "client snapshot applied tick=" + std::to_string(applied.tick)
                     + " sequence=" + std::to_string(decoded.report.sequence)
-                    + " entities=" + std::to_string(applied.final_entities)
+                    + " entities=" + std::to_string(applied.final_entities) + " fingerprint="
+                    + std::to_string(
+                        simnet::app::snapshot_diagnostic_fingerprint(
+                            snapshot_history.back().snapshot
+                        )
+                    )
             );
         }
         return ApplyPacketOutcome::Applied;
@@ -1075,6 +1089,8 @@ namespace simnet::app
             auto events = std::vector<TransportEvent>{};
             auto decode_state = ClientReplicationState{};
             auto latest_applied_sequence = SequenceId{};
+            auto latest_applied_upserts = std::uint32_t{};
+            auto latest_applied_deletes = std::uint32_t{};
             auto ack_tracker = SnapshotAckTracker{};
             auto recovery_request_state = app::ClientRecoveryRequestState{};
             auto sequence_gap_count = std::uint64_t{};
@@ -1319,7 +1335,9 @@ namespace simnet::app
                                     *replication_csv,
                                     logged_multi_packet_application,
                                     recovery_request_state,
-                                    sequence_gap_count
+                                    sequence_gap_count,
+                                    latest_applied_upserts,
+                                    latest_applied_deletes
                                 );
                                 valid = apply_outcome != ApplyPacketOutcome::Fatal;
                                 if (apply_outcome == ApplyPacketOutcome::Applied) {
@@ -1539,6 +1557,12 @@ namespace simnet::app
                                     : std::optional<std::uint32_t>{static_cast<std::uint32_t>(
                                           snapshot_history.back().snapshot.size()
                                       )},
+                                latest_applied_sequence == 0U
+                                    ? std::optional<std::uint32_t>{}
+                                    : std::optional<std::uint32_t>{latest_applied_upserts},
+                                latest_applied_sequence == 0U
+                                    ? std::optional<std::uint32_t>{}
+                                    : std::optional<std::uint32_t>{latest_applied_deletes},
                                 requested_role == app::ClientRole::Player
                                     ? std::string_view{"player"}
                                     : std::string_view{"stationary observer"},
