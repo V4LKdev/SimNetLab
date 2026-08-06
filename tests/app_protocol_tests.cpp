@@ -119,6 +119,35 @@ TEST_CASE("snapshot ACK uses the application-owned envelope", "[app_protocol][ac
     CHECK_FALSE(simnet::app::decode_snapshot_ack(malformed, decoded));
 }
 
+TEST_CASE("snapshot recovery request is versioned and transactional", "[app_protocol][recovery]")
+{
+    auto const expected = simnet::app::SnapshotRecoveryRequest{
+        .rejected_update_sequence = 19U,
+        .missing_baseline_sequence = 12U,
+    };
+    auto const bytes = simnet::app::encode_snapshot_recovery_request(expected);
+    REQUIRE(bytes.size() == 10U);
+    CHECK(
+        simnet::app::decode_app_message_kind(bytes)
+        == simnet::app::AppMessageKind::SnapshotRecoveryRequest
+    );
+    auto decoded = simnet::app::SnapshotRecoveryRequest{};
+    REQUIRE(simnet::app::decode_snapshot_recovery_request(bytes, decoded));
+    CHECK(decoded.rejected_update_sequence == expected.rejected_update_sequence);
+    CHECK(decoded.missing_baseline_sequence == expected.missing_baseline_sequence);
+
+    auto malformed = bytes;
+    malformed.pop_back();
+    CHECK_FALSE(simnet::app::decode_snapshot_recovery_request(malformed, decoded));
+    malformed = bytes;
+    malformed[2] = simnet::Byte{};
+    malformed[3] = simnet::Byte{};
+    malformed[4] = simnet::Byte{};
+    malformed[5] = simnet::Byte{1U};
+    CHECK_FALSE(simnet::app::decode_snapshot_recovery_request(malformed, decoded));
+    CHECK(decoded.rejected_update_sequence == expected.rejected_update_sequence);
+}
+
 TEST_CASE(
     "stationary observer interest is finite normalized and transactionally decoded",
     "[app_protocol][aoi]"

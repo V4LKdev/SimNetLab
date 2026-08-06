@@ -2,7 +2,11 @@
 add_executable(Server server_main.cpp server_runtime.cpp app_evidence.cpp)
 target_sources(
     Server
-    PRIVATE FILE_SET CXX_MODULES FILES app_common.cppm app_evidence.cppm app_protocol.cppm
+    PRIVATE FILE_SET CXX_MODULES FILES
+        app_common.cppm
+        app_evidence.cppm
+        app_protocol.cppm
+        app_snapshot_delivery.cppm
 )
 target_link_libraries(Server
     PRIVATE
@@ -30,7 +34,7 @@ add_executable(Client client_main.cpp client_runtime.cpp)
 target_sources(Client
     PRIVATE
         FILE_SET CXX_MODULES
-        FILES app_camera.cppm app_common.cppm app_protocol.cppm
+        FILES app_camera.cppm app_common.cppm app_protocol.cppm app_snapshot_delivery.cppm
 )
 target_link_libraries(Client
     PRIVATE

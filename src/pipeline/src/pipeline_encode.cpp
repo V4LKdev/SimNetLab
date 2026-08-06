@@ -112,6 +112,25 @@ namespace simnet
                 throw std::runtime_error("delta baseline sequence 0 is reserved");
             }
         }
+        if (input.replica_snapshot == nullptr) {
+            if (input.replica_sequence != 0U) {
+                throw std::runtime_error("replica sequence requires a replica snapshot");
+            }
+        } else if (input.replica_sequence == 0U) {
+            throw std::runtime_error("replica baseline sequence 0 is reserved");
+        }
+        auto previous_recovery_id = EntityNetId{};
+        for (auto const id : input.recovery_upsert_ids) {
+            if (id == 0U || id <= previous_recovery_id) {
+                throw std::runtime_error("recovery upsert IDs must be nonzero and ascending");
+            }
+            previous_recovery_id = id;
+        }
+        if (input.force_full_replace
+            && (input.baseline_snapshot != nullptr || input.replica_snapshot != nullptr
+                || !input.recovery_upsert_ids.empty())) {
+            throw std::runtime_error("forced FullReplace accepts no baseline or recovery upserts");
+        }
 
         WorldSnapshot const& snapshot = *input.snapshot;
         pipeline_validate::require_u32_count(snapshot.size(), "snapshot entity count");
@@ -149,6 +168,9 @@ namespace simnet
         }
         if (input.baseline_snapshot != nullptr && input.baseline_sequence >= sequence) {
             throw std::runtime_error("delta baseline sequence must precede update sequence");
+        }
+        if (input.replica_snapshot != nullptr && input.replica_sequence >= sequence) {
+            throw std::runtime_error("replica baseline sequence must precede update sequence");
         }
 
         // --- Relevancy selection ---
@@ -191,11 +213,12 @@ namespace simnet
         // --- Update scheduling ---
 
         bool const incremental_enabled = pipeline_validate::is_incremental(pipeline);
-        bool const emit_delta = delta_enabled && input.baseline_snapshot != nullptr;
-        bool const seed_incremental
-            = incremental_enabled && !delta_enabled && !client_state.incremental_seeded;
-        bool const schedule_incremental
-            = incremental_enabled && !seed_incremental && (!delta_enabled || emit_delta);
+        bool const emit_delta
+            = !input.force_full_replace && delta_enabled && input.baseline_snapshot != nullptr;
+        bool const seed_incremental = incremental_enabled && !delta_enabled
+            && !client_state.incremental_seeded && !input.force_full_replace;
+        bool const schedule_incremental = incremental_enabled && !input.force_full_replace
+            && !seed_incremental && (!delta_enabled || emit_delta);
         auto incremental_selection_count = std::size_t{};
 
         if (input.replica_snapshot != nullptr && (!incremental_enabled || delta_enabled)) {
@@ -205,6 +228,9 @@ namespace simnet
         }
         if (schedule_incremental && !delta_enabled && input.replica_snapshot == nullptr) {
             throw std::runtime_error("incremental patch requires the latest replica snapshot");
+        }
+        if (!input.recovery_upsert_ids.empty() && !schedule_incremental) {
+            throw std::runtime_error("recovery upserts require an Incremental Patch");
         }
 
         if (schedule_incremental) {
@@ -216,6 +242,11 @@ namespace simnet
                 pipeline.incremental.max_entities_per_update
             );
             incremental_selection_count = scratch.selected_indices.size();
+            pipeline_selection::merge_recovery_upsert_indices(
+                scratch,
+                *selected_snapshot,
+                input.recovery_upsert_ids
+            );
             if (!delta_enabled) {
                 pipeline_selection::select_replica_deletes(
                     scratch,
@@ -262,7 +293,9 @@ namespace simnet
         SnapshotKind const snapshot_kind = (emit_delta || schedule_incremental)
             ? SnapshotKind::Patch
             : SnapshotKind::FullReplace;
-        SequenceId const baseline_sequence = emit_delta ? input.baseline_sequence : 0U;
+        SequenceId const baseline_sequence = emit_delta
+            ? input.baseline_sequence
+            : (schedule_incremental ? input.replica_sequence : 0U);
 
         // --- Representation encoding and layout ---
 

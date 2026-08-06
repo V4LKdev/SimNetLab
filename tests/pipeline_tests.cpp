@@ -309,7 +309,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "pipeline schema 4 preserves classifications in every record layout",
+    "pipeline schema 5 preserves classifications in every record layout",
     "[pipeline][snapshot][classification]"
 )
 {
@@ -341,7 +341,7 @@ TEST_CASE(
         );
         REQUIRE(encoded.update.bytes.size() >= 8U);
         CHECK(std::to_integer<std::uint8_t>(encoded.update.bytes[6U]) == 0U);
-        CHECK(std::to_integer<std::uint8_t>(encoded.update.bytes[7U]) == 4U);
+        CHECK(std::to_integer<std::uint8_t>(encoded.update.bytes[7U]) == 5U);
         CHECK(encoded.update.bytes.size() == encoded_update_header_bytes + record_bytes * 2U);
 
         auto const decoded
@@ -397,15 +397,15 @@ TEST_CASE(
         simnet::Byte{0x00U},
         simnet::Byte{0x01U},
         simnet::Byte{0x00U},
-        simnet::Byte{0x04U},
-        simnet::Byte{0xB0U},
-        simnet::Byte{0xB9U},
-        simnet::Byte{0xEFU},
-        simnet::Byte{0xFDU},
-        simnet::Byte{0xE1U},
-        simnet::Byte{0x08U},
+        simnet::Byte{0x05U},
         simnet::Byte{0xBDU},
+        simnet::Byte{0x68U},
+        simnet::Byte{0xD3U},
+        simnet::Byte{0x28U},
         simnet::Byte{0x5EU},
+        simnet::Byte{0x58U},
+        simnet::Byte{0x27U},
+        simnet::Byte{0xC1U},
         simnet::Byte{0x00U},
         simnet::Byte{0x01U},
         simnet::Byte{0x02U},
@@ -818,6 +818,7 @@ TEST_CASE(
     auto encode_scratch = simnet::PipelineScratch{};
     auto emitted_index = std::size_t{};
     auto replica = simnet::WorldSnapshot{};
+    auto replica_sequence = simnet::SequenceId{};
     auto const expected_ids = std::array{
         std::vector<simnet::EntityNetId>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
         std::vector<simnet::EntityNetId>{1, 2, 3, 4},
@@ -833,6 +834,7 @@ TEST_CASE(
             {
                 .snapshot = &snapshot,
                 .replica_snapshot = encode_state.incremental_seeded ? &replica : nullptr,
+                .replica_sequence = encode_state.incremental_seeded ? replica_sequence : 0U,
             }
         );
 
@@ -850,6 +852,10 @@ TEST_CASE(
                                     : simnet::SnapshotKind::Patch)
         );
         CHECK(encoded.report.upsert_count == expected_ids[emitted_index].size());
+        CHECK(
+            encoded.report.baseline_sequence
+            == (emitted_index == 0U ? 0U : static_cast<simnet::SequenceId>(emitted_index))
+        );
 
         auto const decoded
             = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
@@ -862,12 +868,50 @@ TEST_CASE(
         }
         CHECK(ids == expected_ids[emitted_index]);
         replica = encoded.resulting_snapshot;
+        replica_sequence = encoded.update.sequence;
         ++emitted_index;
     }
 
     CHECK(emitted_index == expected_ids.size());
     CHECK(encode_state.incremental_cursor == 8);
     CHECK(encode_state.next_sequence == 4);
+}
+
+TEST_CASE("every Patch requires an explicit nonzero baseline", "[pipeline][incremental]")
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental;
+    pipeline.incremental.max_entities_per_update = 1U;
+    auto encode_state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto source = make_linear_snapshot(1U, 2U);
+    auto first = simnet::encode_snapshot(pipeline, encode_state, scratch, {.snapshot = &source});
+    auto second = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        scratch,
+        {
+            .snapshot = &source,
+            .replica_snapshot = &first.resulting_snapshot,
+            .replica_sequence = first.update.sequence,
+        }
+    );
+    REQUIRE(second.report.snapshot_kind == simnet::SnapshotKind::Patch);
+    REQUIRE(second.report.baseline_sequence == first.update.sequence);
+
+    constexpr auto baseline_sequence_offset = std::size_t{29U};
+    for (auto offset = std::size_t{}; offset < 4U; ++offset) {
+        second.update.bytes[baseline_sequence_offset + offset] = simnet::Byte{};
+    }
+    auto decode_state = simnet::ClientReplicationState{};
+    REQUIRE(
+        simnet::decode_update(pipeline, decode_state, {.bytes = first.update.bytes}).report.valid
+    );
+    auto const rejected
+        = simnet::decode_update(pipeline, decode_state, {.bytes = second.update.bytes});
+    CHECK_FALSE(rejected.report.valid);
+    CHECK(rejected.report.error.find("patch baseline sequence 0") != std::string::npos);
+    CHECK(decode_state.latest_remote_sequence == first.update.sequence);
 }
 
 TEST_CASE(
@@ -923,7 +967,7 @@ TEST_CASE(
             pipeline,
             state,
             scratch,
-            {.snapshot = &source, .replica_snapshot = &replica}
+            {.snapshot = &source, .replica_snapshot = &replica, .replica_sequence = 1U}
         );
         REQUIRE(second.report.snapshot_kind == simnet::SnapshotKind::Patch);
         CHECK(second.report.delete_count == 1U);
@@ -936,7 +980,7 @@ TEST_CASE(
             pipeline,
             state,
             scratch,
-            {.snapshot = &source, .replica_snapshot = &replica}
+            {.snapshot = &source, .replica_snapshot = &replica, .replica_sequence = 2U}
         );
         CHECK(third.resulting_snapshot.ids == std::vector<simnet::EntityNetId>{1U, 3U, 4U});
         replica = third.resulting_snapshot;
@@ -947,7 +991,7 @@ TEST_CASE(
             pipeline,
             state,
             scratch,
-            {.snapshot = &empty, .replica_snapshot = &replica}
+            {.snapshot = &empty, .replica_snapshot = &replica, .replica_sequence = 3U}
         );
         CHECK(fourth.report.upsert_count == 0U);
         CHECK(fourth.report.delete_count == 3U);

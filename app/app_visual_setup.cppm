@@ -286,7 +286,7 @@ namespace simnet::app
 
         begin_section("TRANSPORT", false);
         add_row("Backend", "ENet");
-        add_row("Delivery", local.transport.snapshot_delivery);
+        add_row("Delivery", shared.snapshot_delivery.mode);
         add_row("Maximum payload", format_u64(local.transport.max_payload_bytes) + " bytes");
         add_row("Configured client limit", format_u64(local.transport.max_clients));
         end_section();
@@ -324,7 +324,7 @@ namespace simnet::app
 
         begin_section("TRANSPORT", false);
         add_row("Backend", "ENet");
-        add_row("Delivery", local.transport.snapshot_delivery);
+        add_row("Delivery", shared.snapshot_delivery.mode);
         add_row("Maximum payload", format_u64(local.transport.max_payload_bytes) + " bytes");
         end_section();
     }

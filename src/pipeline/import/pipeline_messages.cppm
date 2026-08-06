@@ -50,10 +50,15 @@ export namespace simnet
     struct EncodeInput
     {
         WorldSnapshot const* snapshot{}; /// current snapshot (required)
-        WorldSnapshot const* baseline_snapshot{}; /// optional baseline for delta
-        SequenceId baseline_sequence{}; /// nonzero if delta
-        /// Latest exact emitted Client result for non-Delta Incremental convergence.
+        WorldSnapshot const* baseline_snapshot{}; /// optional explicit baseline for Delta
+        SequenceId baseline_sequence{}; /// nonzero if baseline_snapshot is present
+        /// Exact Client replica selected by the application for non-Delta Incremental convergence.
         WorldSnapshot const* replica_snapshot{};
+        SequenceId replica_sequence{}; /// nonzero if replica_snapshot is present
+        /// Sorted IDs whose latest canonical state must join an Incremental schedule.
+        std::span<EntityNetId const> recovery_upsert_ids{};
+        /// Emits a complete current population without advancing the Incremental cursor.
+        bool force_full_replace{};
         /// Authoritative AOI pose. Required only when AOI is enabled and cadence emits.
         InterestSource const* interest_source{};
         /// Sorted source indices returned by the Server-owned coarse spatial query.

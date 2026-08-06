@@ -24,6 +24,7 @@ import simnet.config;
 import simnet.app_camera;
 import simnet.app_common;
 import simnet.app_protocol;
+import simnet.app_snapshot_delivery;
 import simnet.compression;
 import simnet.core;
 import simnet.game_client;
@@ -59,6 +60,7 @@ namespace
     {
         simnet::SequenceId sequence{};
         simnet::WorldSnapshot snapshot{};
+        std::uint64_t capacity_bytes{};
     };
 
     struct PendingCompressionGroup
@@ -86,6 +88,14 @@ namespace
     };
 
     constexpr std::size_t retained_snapshot_limit = 64;
+
+    enum class ApplyPacketOutcome : std::uint8_t
+    {
+        Applied,
+        Ignored,
+        RecoveryRequested,
+        Fatal
+    };
 
     void expire_pending_compression_groups(
         std::vector<PendingCompressionGroup>& groups,
@@ -388,6 +398,11 @@ namespace
         ClientConnectionState connection_state,
         std::optional<simnet::PeerId> peer,
         simnet::app::SnapshotAck const& ack,
+        std::optional<simnet::TransportDelivery> effective_delivery,
+        std::uint64_t sequence_gap_count,
+        std::uint64_t recovery_request_count,
+        std::uint64_t missing_baseline_rejection_count,
+        std::uint64_t reliable_promotion_count,
         simnet::ReassemblyReport const& packet_report,
         ClientCompressionReport const& compression_report,
         std::optional<std::uint32_t> reconstructed_entity_count,
@@ -407,6 +422,16 @@ namespace
                 .latest_applied_sequence = ack.newest_applied_snapshot != 0
                     ? std::optional<simnet::SequenceId>{ack.newest_applied_snapshot}
                     : std::optional<simnet::SequenceId>{},
+                .configured_delivery = config.snapshot_delivery.mode,
+                .effective_delivery = effective_delivery.has_value()
+                    ? std::optional<std::string_view>{simnet::app::transport_delivery_name(
+                          *effective_delivery
+                      )}
+                    : std::optional<std::string_view>{},
+                .recovery_request_count = recovery_request_count,
+                .missing_baseline_rejection_count = missing_baseline_rejection_count,
+                .sequence_gap_count = sequence_gap_count,
+                .reliable_promotion_count = reliable_promotion_count,
                 .latest_snapshot_tick = snapshot.tick,
                 .area_of_interest_mode = config.pipeline.area_of_interest.mode,
                 .interest_source_status = config.pipeline.area_of_interest.mode == "none"
@@ -581,12 +606,21 @@ namespace
         simnet::WorldSnapshot snapshot
     )
     {
-        if (history.size() == retained_snapshot_limit) {
+        auto const bytes = simnet::app::snapshot_capacity_bytes(snapshot);
+        auto retained_bytes = std::uint64_t{};
+        for (auto const& retained : history) {
+            retained_bytes += retained.capacity_bytes;
+        }
+        while (!history.empty()
+               && (history.size() >= retained_snapshot_limit
+                   || retained_bytes > simnet::app::maximum_retained_capacity_bytes - bytes)) {
+            retained_bytes -= history.front().capacity_bytes;
             history.pop_front();
         }
         history.push_back({
             .sequence = sequence,
             .snapshot = std::move(snapshot),
+            .capacity_bytes = bytes,
         });
     }
 
@@ -610,7 +644,7 @@ namespace
         return patch;
     }
 
-    [[nodiscard]] bool apply_packet(
+    [[nodiscard]] ApplyPacketOutcome apply_packet(
         simnet::CompletedByteGroup const& group,
         simnet::ByteSpan encoded_bytes,
         std::uint32_t transport_payload_bytes,
@@ -626,7 +660,9 @@ namespace
         simnet::RuntimeStats& stats,
         simnet::ClientReplicationMeasurements& measurements,
         simnet::ClientReplicationCsvWriter& csv,
-        bool& logged_multi_packet_application
+        bool& logged_multi_packet_application,
+        simnet::app::ClientRecoveryRequestState& recovery_request_state,
+        std::uint64_t& sequence_gap_count
     )
     {
         auto measurement = simnet::ClientReplicationMeasurement{
@@ -663,14 +699,14 @@ namespace
                 simnet::LogLevel::Error,
                 "client packet group id does not match decoded sequence"
             );
-            return false;
+            return ApplyPacketOutcome::Fatal;
         }
         if (!decoded.report.valid) {
             if (decoded.report.sequence != 0U
                 && decoded.report.sequence <= decode_state.latest_remote_sequence) {
                 measurement.outcome = simnet::ClientReplicationOutcome::StaleSequenceIgnored;
                 observe_client_measurement(measurements, csv, measurement);
-                return true;
+                return ApplyPacketOutcome::Ignored;
             }
             measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
             observe_client_measurement(measurements, csv, measurement);
@@ -679,7 +715,7 @@ namespace
                 simnet::LogLevel::Error,
                 "client snapshot decode failed: " + decoded.report.error
             );
-            return false;
+            return ApplyPacketOutcome::Fatal;
         }
         auto candidate_ack_tracker = ack_tracker;
         if (!record_received_snapshot(candidate_ack_tracker, decoded.report.sequence)) {
@@ -690,11 +726,15 @@ namespace
                 simnet::LogLevel::Warn,
                 "client ignored stale snapshot sequence=" + std::to_string(decoded.report.sequence)
             );
-            return true;
+            return ApplyPacketOutcome::Ignored;
+        }
+
+        if (latest_applied_sequence != 0U
+            && decoded.report.sequence > latest_applied_sequence + 1U) {
+            ++sequence_gap_count;
         }
 
         auto const baseline_start = simnet::steady_now_ns();
-        auto const empty_baseline = simnet::WorldSnapshot{};
         auto const* baseline = static_cast<simnet::WorldSnapshot const*>(nullptr);
         if (decoded.report.baseline_sequence != 0U) {
             baseline = find_retained_snapshot(snapshot_history, decoded.report.baseline_sequence);
@@ -704,15 +744,39 @@ namespace
                 observe_client_measurement(measurements, csv, measurement);
                 simnet::log(
                     simnet::LogCategory::Snapshot,
-                    simnet::LogLevel::Error,
-                    "client delta baseline is not retained sequence="
+                    simnet::LogLevel::Warn,
+                    "client Patch baseline is not retained sequence="
                         + std::to_string(decoded.report.baseline_sequence)
                 );
-                return false;
+                simnet::app::record_missing_baseline_rejection(recovery_request_state);
+                if (simnet::app::recovery_request_needed(
+                        recovery_request_state,
+                        decoded.report.baseline_sequence
+                    )) {
+                    auto const request = simnet::app::encode_snapshot_recovery_request({
+                        .rejected_update_sequence = decoded.report.sequence,
+                        .missing_baseline_sequence = decoded.report.baseline_sequence,
+                    });
+                    auto const sent = transport.send(
+                        simnet::app::input_lane,
+                        simnet::TransportDelivery::ReliableSequenced,
+                        request
+                    );
+                    if (!sent.ok) {
+                        simnet::log(
+                            simnet::LogCategory::Transport,
+                            simnet::LogLevel::Error,
+                            "client recovery request send failed: " + sent.error.message
+                        );
+                        return ApplyPacketOutcome::Fatal;
+                    }
+                    simnet::app::record_recovery_request(
+                        recovery_request_state,
+                        decoded.report.baseline_sequence
+                    );
+                }
+                return ApplyPacketOutcome::RecoveryRequested;
             }
-        } else if (decoded.update.kind == simnet::SnapshotKind::Patch) {
-            baseline
-                = snapshot_history.empty() ? &empty_baseline : &snapshot_history.back().snapshot;
         }
         measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
 
@@ -730,7 +794,18 @@ namespace
                 simnet::LogLevel::Error,
                 "client snapshot reconstruction failed: " + reconstruction.message
             );
-            return false;
+            return ApplyPacketOutcome::Fatal;
+        }
+        if (simnet::app::snapshot_capacity_bytes(reconstructed)
+            > simnet::app::maximum_retained_capacity_bytes) {
+            measurement.outcome = simnet::ClientReplicationOutcome::ReconstructionFailed;
+            observe_client_measurement(measurements, csv, measurement);
+            simnet::log(
+                simnet::LogCategory::Snapshot,
+                simnet::LogLevel::Error,
+                "client reconstructed snapshot exceeds the retained capacity limit"
+            );
+            return ApplyPacketOutcome::Fatal;
         }
         measurement.reconstructed_entity_count = static_cast<std::uint32_t>(reconstructed.size());
 
@@ -762,7 +837,7 @@ namespace
                 simnet::LogLevel::Error,
                 "client snapshot apply failed: " + applied.error
             );
-            return false;
+            return ApplyPacketOutcome::Fatal;
         }
 
         auto const commit_start = simnet::steady_now_ns();
@@ -771,6 +846,7 @@ namespace
         ack_tracker = candidate_ack_tracker;
         latest_applied_sequence = decoded.report.sequence;
         retain_snapshot(snapshot_history, decoded.report.sequence, std::move(reconstructed));
+        simnet::app::record_snapshot_progress(recovery_request_state);
         stats.ticks = applied.tick;
         simnet::commit_reassembled_group(reassembly_state, decoded.report.sequence);
         measurement.canonical_snapshot_commit_cpu_time = simnet::steady_now_ns() - commit_start;
@@ -781,8 +857,11 @@ namespace
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_ack", simnet::LogCategory::Transport);
             auto const bytes = simnet::app::encode_snapshot_ack(ack_tracker.value);
-            sent = transport
-                       .send(simnet::app::input_lane, simnet::Delivery::ReliableSequenced, bytes);
+            sent = transport.send(
+                simnet::app::input_lane,
+                simnet::TransportDelivery::ReliableSequenced,
+                bytes
+            );
         }
         if (!sent.ok) {
             simnet::log(
@@ -790,7 +869,7 @@ namespace
                 simnet::LogLevel::Error,
                 "client snapshot ACK send failed: " + sent.error.message
             );
-            return false;
+            return ApplyPacketOutcome::Fatal;
         }
         if (group.chunk_count > 1U && !logged_multi_packet_application) {
             logged_multi_packet_application = true;
@@ -815,7 +894,7 @@ namespace
                     + " entities=" + std::to_string(applied.final_entities)
             );
         }
-        return true;
+        return ApplyPacketOutcome::Applied;
     }
 
     [[nodiscard]] bool apply_application_control(
@@ -914,7 +993,7 @@ namespace simnet::app
             auto const pipeline = make_snapshot_pipeline(shared);
             auto const compression = make_compression_settings(shared);
             auto const packetization = make_packetization_settings(shared);
-            auto const delivery = snapshot_delivery(local.transport);
+            auto const delivery = snapshot_transport_delivery(shared.snapshot_delivery);
             if (packetization.max_payload_bytes > local.transport.max_payload_bytes
                 || (packetization.enabled && local.transport.send_size_policy != "enforce_limit")) {
                 throw std::runtime_error(
@@ -997,6 +1076,10 @@ namespace simnet::app
             auto decode_state = ClientReplicationState{};
             auto latest_applied_sequence = SequenceId{};
             auto ack_tracker = SnapshotAckTracker{};
+            auto recovery_request_state = app::ClientRecoveryRequestState{};
+            auto sequence_gap_count = std::uint64_t{};
+            auto reliable_promotion_count = std::uint64_t{};
+            auto effective_snapshot_delivery = std::optional<TransportDelivery>{};
             auto reassembly_state = ReassemblyState{};
             auto decompressor = ZstdDecompressor{};
             auto decompression_scratch = std::vector<Byte>{};
@@ -1064,6 +1147,8 @@ namespace simnet::app
                         player_id = 0U;
                         last_observer_interest_send_time.reset();
                         last_observer_interest_forward = {};
+                        app::record_snapshot_progress(recovery_request_state);
+                        effective_snapshot_delivery.reset();
                         clear_reassembly_state(reassembly_state);
                         pending_compression_groups.clear();
 #if defined(SIMNET_ENABLE_RENDER)
@@ -1079,7 +1164,7 @@ namespace simnet::app
                         });
                         auto const joined = transport.send(
                             app::control_lane,
-                            Delivery::ReliableSequenced,
+                            TransportDelivery::ReliableSequenced,
                             join_bytes
                         );
                         if (!joined.ok) {
@@ -1093,7 +1178,7 @@ namespace simnet::app
                     } else if (auto const* packet = std::get_if<ReceivedPacket>(&event)) {
                         auto valid = connection_state == ClientConnectionState::SessionReady;
                         if (valid && packet->lane == app::control_lane) {
-                            valid = packet->delivery == Delivery::ReliableSequenced
+                            valid = packet->delivery == TransportDelivery::ReliableSequenced
                                 && apply_application_control(
                                         *packet,
                                         requested_role,
@@ -1104,7 +1189,12 @@ namespace simnet::app
                                         *replication_csv
                                 );
                         } else if (valid && packet->lane == app::snapshot_lane) {
-                            valid = packet->delivery == delivery;
+                            effective_snapshot_delivery = packet->delivery;
+                            if (delivery == TransportDelivery::ReliableSequenced) {
+                                valid = packet->delivery == TransportDelivery::ReliableSequenced;
+                            } else if (packet->delivery == TransportDelivery::ReliableSequenced) {
+                                ++reliable_promotion_count;
+                            }
                             auto application_packet = ByteSpan{packet->payload};
                             if (valid && compression.mode == app::CompressionMode::PerPacket) {
                                 if (has_compression_envelope(application_packet)) {
@@ -1211,7 +1301,7 @@ namespace simnet::app
                                               reassembled.completed.total_packet_bytes
                                           )
                                     : reassembled.completed.total_packet_bytes;
-                                valid = apply_packet(
+                                auto const apply_outcome = apply_packet(
                                     reassembled.completed,
                                     encoded_bytes,
                                     outer_bytes,
@@ -1227,9 +1317,12 @@ namespace simnet::app
                                     stats,
                                     replication_measurements,
                                     *replication_csv,
-                                    logged_multi_packet_application
+                                    logged_multi_packet_application,
+                                    recovery_request_state,
+                                    sequence_gap_count
                                 );
-                                if (valid) {
+                                valid = apply_outcome != ApplyPacketOutcome::Fatal;
+                                if (apply_outcome == ApplyPacketOutcome::Applied) {
                                     compression_report.latest_completed_representation_bytes
                                         = static_cast<std::uint32_t>(encoded_bytes.size());
                                     compression_report.latest_completed_transport_bytes
@@ -1434,6 +1527,11 @@ namespace simnet::app
                                 connection_state,
                                 server_peer,
                                 ack_tracker.value,
+                                effective_snapshot_delivery,
+                                sequence_gap_count,
+                                recovery_request_state.sent_count,
+                                recovery_request_state.missing_baseline_rejection_count,
+                                reliable_promotion_count,
                                 reassembly_state.report,
                                 compression_report,
                                 snapshot_history.empty()
@@ -1468,7 +1566,7 @@ namespace simnet::app
                             });
                             auto const sent = transport.send(
                                 app::control_lane,
-                                Delivery::ReliableSequenced,
+                                TransportDelivery::ReliableSequenced,
                                 bytes
                             );
                             if (!sent.ok) {
@@ -1489,7 +1587,7 @@ namespace simnet::app
                                 auto const bytes = app::encode_player_input(input);
                                 auto const sent = transport.send(
                                     app::input_lane,
-                                    Delivery::UnreliableSequenced,
+                                    TransportDelivery::UnreliableSequenced,
                                     bytes
                                 );
                                 if (!sent.ok) {
@@ -1524,8 +1622,11 @@ namespace simnet::app
                             .position = stationary_observer->position,
                             .forward = forward,
                         });
-                        auto const sent
-                            = transport.send(app::input_lane, Delivery::UnreliableSequenced, bytes);
+                        auto const sent = transport.send(
+                            app::input_lane,
+                            TransportDelivery::UnreliableSequenced,
+                            bytes
+                        );
                         if (!sent.ok) {
                             log(LogCategory::Transport,
                                 LogLevel::Error,
@@ -1555,6 +1656,23 @@ namespace simnet::app
                 );
             }
             log_client_replication_measurements(replication_measurements);
+            auto const canonical_entities
+                = snapshot_history.empty() ? 0U : snapshot_history.back().snapshot.size();
+            auto const canonical_fingerprint = snapshot_history.empty()
+                ? 0U
+                : app::snapshot_diagnostic_fingerprint(snapshot_history.back().snapshot);
+            log(LogCategory::Transport,
+                LogLevel::Info,
+                "client snapshot delivery mode=" + shared.snapshot_delivery.mode + " effective="
+                    + std::
+                        string{effective_snapshot_delivery.has_value() ? app::transport_delivery_name(*effective_snapshot_delivery) : "unavailable"}
+                    + " applied_sequence=" + std::to_string(latest_applied_sequence)
+                    + " ack_sequence=" + std::to_string(ack_tracker.value.newest_applied_snapshot)
+                    + " canonical_entities=" + std::to_string(canonical_entities)
+                    + " canonical_fingerprint=" + std::to_string(canonical_fingerprint)
+                    + " sequence_gaps=" + std::to_string(sequence_gap_count)
+                    + " recovery_requests=" + std::to_string(recovery_request_state.sent_count)
+                    + " reliable_promotions=" + std::to_string(reliable_promotion_count));
             log(LogCategory::Simulation,
                 LogLevel::Info,
                 "client runtime stopped reason=" + std::string{shutdown_reason_name(stop.reason())}

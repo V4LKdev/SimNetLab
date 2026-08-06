@@ -6,6 +6,7 @@ add_executable(SimNetTests
     app_camera_tests.cpp
     app_evidence_tests.cpp
     app_protocol_tests.cpp
+    app_snapshot_delivery_tests.cpp
     aoi_tests.cpp
     boid_simulation_tests.cpp
     config_tests.cpp
@@ -30,6 +31,7 @@ target_sources(SimNetTests
             ${PROJECT_SOURCE_DIR}/app/app_camera.cppm
             ${PROJECT_SOURCE_DIR}/app/app_evidence.cppm
             ${PROJECT_SOURCE_DIR}/app/app_protocol.cppm
+            ${PROJECT_SOURCE_DIR}/app/app_snapshot_delivery.cppm
 )
 
 if (SIMNET_ENABLE_RENDER)

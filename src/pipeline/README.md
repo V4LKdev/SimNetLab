@@ -22,9 +22,11 @@ Each concurrent caller needs its own `ClientReplicationState` and `PipelineScrat
 emits only when `tick % N == 0`. Other ticks return `Skipped` with reason `SendInterval` and do
 not change sequence, selection, scratch, or baseline state. `Incremental` without `Delta`
 schedules round-robin candidate upserts. `Delta` filters scheduled candidates against a retained
-acknowledged baseline, while retaining every baseline-only delete. The first non-Delta
+explicit baseline, while retaining every baseline-only delete. The first non-Delta
 `Incremental` emission is a complete `FullReplace` and does not advance the cursor. Later
-incremental patches include every entity removed from the latest exact replica. Without a
+incremental Patch carries the exact replica sequence and includes every entity removed from that
+replica. Applications choose the latest submitted replica for reliable ordered delivery or the
+latest ACK-proven replica for loss recovery. Without a
 baseline, `Delta` emits a complete `FullReplace` and does not advance the incremental cursor.
 `Quantization` encodes
 positions within configured bounds. `OctHeading` requires quantization and encodes a heading as two
@@ -60,8 +62,8 @@ Unsupported stages fail validation. All active techniques otherwise compose when
   Zero-distance entities are retained and entities behind the source are rejected.
 - For offset `d`, radius accepts `dot(d, d) <= radius^2`. FOV also requires
   `dot(forward, d) >= 0` and `dot(forward, d)^2 >= dot(d, d) * cos(fov_degrees / 2)^2`.
-- The private wire header carries a magic value, protocol and schema versions, and a decode signature. Schema version 4 adds one lossless classification byte to every entity record. Decode rejects mismatches and stale sequences.
-- Delta decoding reports the declared baseline sequence. Client storage must retain and resolve that exact reconstructed snapshot before applying the patch.
+- The private wire header carries a magic value, protocol and schema versions, and a decode signature. Schema version 5 requires every Patch to carry an explicit nonzero baseline sequence. Decode rejects mismatches and stale sequences.
+- Patch decoding reports the declared baseline sequence. Client storage must retain and resolve that exact reconstructed snapshot before applying the patch.
 
 ### Reference FullReplace codec
 

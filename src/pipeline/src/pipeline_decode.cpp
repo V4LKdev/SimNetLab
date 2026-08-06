@@ -127,16 +127,13 @@ namespace simnet
         if (header.snapshot_kind == SnapshotKind::FullReplace) {
             if (header.baseline_sequence != 0U)
                 return invalid_update("full snapshot baseline sequence must be 0");
-        } else if (delta_enabled) {
-            if (header.baseline_sequence == 0U)
-                return invalid_update("delta patch baseline sequence 0 is reserved");
-            if (header.baseline_sequence >= header.sequence)
-                return invalid_update("delta patch baseline must precede update sequence");
         } else {
-            if (header.baseline_sequence != 0U)
-                return invalid_update("non-delta patch baseline sequence must be 0");
-            if (!incremental_enabled && header.delete_count != 0U)
-                return invalid_update("non-delta patch delete count must be 0");
+            if (!delta_enabled && !incremental_enabled)
+                return invalid_update("patch requires Incremental or Delta");
+            if (header.baseline_sequence == 0U)
+                return invalid_update("patch baseline sequence 0 is reserved");
+            if (header.baseline_sequence >= header.sequence)
+                return invalid_update("patch baseline must precede update sequence");
         }
 
         // --- Payload layout / size verification ---

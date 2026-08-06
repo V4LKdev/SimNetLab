@@ -328,6 +328,7 @@ TEST_CASE("incremental AOI converges leave and re-entry", "[aoi][incremental][re
         {
             .snapshot = &source_snapshot,
             .replica_snapshot = &replica,
+            .replica_sequence = first.update.sequence,
             .interest_source = &source,
             .candidate_indices = candidates,
         }
@@ -346,6 +347,7 @@ TEST_CASE("incremental AOI converges leave and re-entry", "[aoi][incremental][re
         {
             .snapshot = &source_snapshot,
             .replica_snapshot = &replica,
+            .replica_sequence = left.update.sequence,
             .interest_source = &source,
             .candidate_indices = candidates,
         }
@@ -359,6 +361,7 @@ TEST_CASE("incremental AOI converges leave and re-entry", "[aoi][incremental][re
         {
             .snapshot = &source_snapshot,
             .replica_snapshot = &replica,
+            .replica_sequence = first_reentry.update.sequence,
             .interest_source = &source,
             .candidate_indices = candidates,
         }
@@ -415,6 +418,7 @@ TEST_CASE("AOI candidates remain ordered through incremental wraparound", "[aoi]
     );
     REQUIRE(first.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
     auto replica = first.resulting_snapshot;
+    auto replica_sequence = first.update.sequence;
 
     auto encode_next = [&]() {
         ++snapshot.tick;
@@ -425,11 +429,13 @@ TEST_CASE("AOI candidates remain ordered through incremental wraparound", "[aoi]
             {
                 .snapshot = &snapshot,
                 .replica_snapshot = &replica,
+                .replica_sequence = replica_sequence,
                 .interest_source = &source,
                 .candidate_indices = candidates,
             }
         );
         replica = encoded.resulting_snapshot;
+        replica_sequence = encoded.update.sequence;
         return encoded;
     };
 

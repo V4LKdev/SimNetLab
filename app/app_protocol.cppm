@@ -38,7 +38,8 @@ export namespace simnet::app
         JoinAccepted = 4,
         SnapshotAck = 5,
         PlayerInput = 6,
-        StationaryObserverInterest = 7
+        StationaryObserverInterest = 7,
+        SnapshotRecoveryRequest = 8
     };
 
     struct AppMessage
@@ -72,6 +73,13 @@ export namespace simnet::app
         SequenceId newest_received_snapshot{};
         std::uint32_t received_mask{};
         SequenceId newest_applied_snapshot{};
+    };
+
+    /// Requests a self-contained update after an exact Patch baseline is unavailable.
+    struct SnapshotRecoveryRequest
+    {
+        SequenceId rejected_update_sequence{};
+        SequenceId missing_baseline_sequence{};
     };
 
     /// Versioned stationary observer pose sent on the application input lane.
@@ -163,6 +171,7 @@ export namespace simnet::app
             case AppMessageKind::SnapshotAck:
             case AppMessageKind::PlayerInput:
             case AppMessageKind::StationaryObserverInterest:
+            case AppMessageKind::SnapshotRecoveryRequest:
                 return kind;
         }
         return std::nullopt;
@@ -189,6 +198,7 @@ export namespace simnet::app
             case AppMessageKind::SnapshotAck:
             case AppMessageKind::PlayerInput:
             case AppMessageKind::StationaryObserverInterest:
+            case AppMessageKind::SnapshotRecoveryRequest:
                 return {};
         }
         return bytes;
@@ -286,6 +296,38 @@ export namespace simnet::app
             return false;
         }
         ack = decoded;
+        return true;
+    }
+
+    [[nodiscard]] inline std::vector<Byte>
+    encode_snapshot_recovery_request(SnapshotRecoveryRequest const& request)
+    {
+        auto bytes = std::vector<Byte>{
+            static_cast<Byte>(AppMessageKind::SnapshotRecoveryRequest),
+            static_cast<Byte>(app_message_version),
+        };
+        bytes.reserve(10U);
+        write_u32(bytes, request.rejected_update_sequence);
+        write_u32(bytes, request.missing_baseline_sequence);
+        return bytes;
+    }
+
+    [[nodiscard]] inline bool decode_snapshot_recovery_request(
+        std::span<Byte const> bytes,
+        SnapshotRecoveryRequest& request
+    ) noexcept
+    {
+        auto decoded = SnapshotRecoveryRequest{};
+        if (bytes.size() != 10U
+            || bytes[0] != static_cast<Byte>(AppMessageKind::SnapshotRecoveryRequest)
+            || bytes[1] != static_cast<Byte>(app_message_version)
+            || !read_u32(bytes, 2U, decoded.rejected_update_sequence)
+            || !read_u32(bytes, 6U, decoded.missing_baseline_sequence)
+            || decoded.rejected_update_sequence == 0U || decoded.missing_baseline_sequence == 0U
+            || decoded.missing_baseline_sequence >= decoded.rejected_update_sequence) {
+            return false;
+        }
+        request = decoded;
         return true;
     }
 

@@ -24,7 +24,7 @@ namespace simnet::pipeline_wire
     // Magic 'SNPL' (SimNet Pipeline Layout) used to reject invalid encoded updates.
     inline constexpr std::uint32_t encoded_update_magic = 0x534E504Cu; // S N P L
     inline constexpr std::uint16_t protocol_version = 1;
-    inline constexpr std::uint16_t schema_version = 4;
+    inline constexpr std::uint16_t schema_version = 5;
 
     // Field sizes
     inline constexpr std::uint32_t u8_bytes = 1;
