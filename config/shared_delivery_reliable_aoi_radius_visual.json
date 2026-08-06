@@ -1,0 +1,39 @@
+{
+  "run": {
+    "seed": 12345
+  },
+  "snapshot_delivery": {
+    "mode": "reliable_sequenced",
+    "full_replace_after_unacknowledged_updates": 32
+  },
+  "simulation": {
+    "tick_rate_hz": 60,
+    "world_half": 170,
+    "initial_boid_count": 1500
+  },
+  "spatial": {
+    "cell_size": 18,
+    "max_neighbors": 64
+  },
+  "pipeline": {
+    "enable_incremental": true,
+    "enable_quantization": false,
+    "enable_delta": true,
+    "area_of_interest": {
+      "mode": "radius",
+      "radius": 160.0
+    }
+  },
+  "compression": {
+    "mode": "none"
+  },
+  "packetization": {
+    "enabled": true,
+    "max_payload_bytes": 1200,
+    "max_update_bytes": 524288,
+    "max_chunks_per_update": 4096,
+    "max_in_flight_updates": 4,
+    "max_incomplete_bytes": 1048576,
+    "reassembly_timeout_ms": 5000
+  }
+}

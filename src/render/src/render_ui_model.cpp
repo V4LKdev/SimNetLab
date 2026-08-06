@@ -379,6 +379,8 @@ namespace simnet
             count("Accepted submissions", value.accepted_packet_submissions);
             text_value("Submission outcome", value.packet_submission_outcome);
             text_value("Submission failure", value.packet_submission_failure);
+            text_value("Configured delivery", value.configured_delivery);
+            text_value("Effective delivery", value.effective_delivery);
             auto count64 = [&](std::string_view label, std::optional<std::uint64_t> current) {
                 if (current.has_value()) {
                     add_row(
@@ -400,6 +402,22 @@ namespace simnet
             count64("Expired groups", value.expired_packet_groups);
             count64("Invalid groups", value.invalid_packet_groups);
             count64("Stale groups", value.stale_packet_groups);
+            count("ACK lag", value.ack_lag_updates);
+            count64("ACK lag ns", value.ack_lag_ns);
+            count64("Retained capacity", value.retained_snapshot_capacity_bytes);
+            text_value("Snapshot recovery", value.snapshot_recovery_reason);
+            count64("Forced FullReplace", value.forced_full_replace_count);
+            count64("Recovery requests", value.recovery_request_count);
+            count64("Missing baselines", value.missing_baseline_rejection_count);
+            count64("Baseline evictions", value.baseline_eviction_count);
+            count64("Sequence gaps", value.sequence_gap_count);
+            count64("Reliable promotions", value.reliable_promotion_count);
+            count64("Reliable groups", value.reliable_group_count);
+            count64("Unreliable groups", value.unreliable_group_count);
+            count64("Reliable packets", value.reliable_packet_count);
+            count64("Unreliable packets", value.unreliable_packet_count);
+            count64("Repeated upserts", value.repeated_recovery_upserts);
+            count64("Repeated deletes", value.repeated_recovery_deletes);
             text_value("Compression", value.compression_mode);
             text_value("Compression outcome", value.compression_outcome);
             count("Representation bytes", value.representation_bytes);
