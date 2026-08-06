@@ -98,6 +98,65 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     changed = baseline;
     ++changed.compression.level;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.snapshot_delivery.mode = "unreliable_sequenced";
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    ++changed.snapshot_delivery.full_replace_after_unacknowledged_updates;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+}
+
+TEST_CASE("snapshot delivery configuration is strict shared treatment", "[config][delivery]")
+{
+    auto const accepted = TemporaryConfig{
+        "simnet_delivery_accepted.json",
+        R"({
+            "snapshot_delivery": {
+                "mode": "unreliable_sequenced",
+                "full_replace_after_unacknowledged_updates": 32
+            }
+        })"
+    };
+    auto const loaded = simnet::load_shared_config(accepted.path());
+    CHECK(loaded.snapshot_delivery.mode == "unreliable_sequenced");
+    CHECK(loaded.snapshot_delivery.full_replace_after_unacknowledged_updates == 32U);
+
+    for (
+        auto const contents : {
+            R"({ "snapshot_delivery": { "mode": "unreliable", "full_replace_after_unacknowledged_updates": 32 } })",
+            R"({ "snapshot_delivery": { "mode": "reliable_sequenced" } })",
+            R"({ "snapshot_delivery": { "mode": "reliable_sequenced", "full_replace_after_unacknowledged_updates": 0 } })",
+            R"({ "snapshot_delivery": { "mode": "reliable_sequenced", "full_replace_after_unacknowledged_updates": 64 } })",
+            R"({ "snapshot_delivery": { "mode": "reliable_sequenced", "full_replace_after_unacknowledged_updates": 32, "extra": true } })",
+        }) {
+        auto const invalid = TemporaryConfig{"simnet_delivery_invalid.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+
+    auto const obsolete_local = TemporaryConfig{
+        "simnet_delivery_obsolete_local.json",
+        R"({ "transport": { "snapshot_delivery": "reliable_sequenced" } })"
+    };
+    CHECK_THROWS(simnet::load_server_config(obsolete_local.path()));
+}
+
+TEST_CASE("maintained delivery treatments differ only by mode", "[config][delivery]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    auto reliable
+        = simnet::load_shared_config(directory / "shared_delivery_reliable_aoi_radius_visual.json");
+    auto unreliable = simnet::load_shared_config(
+        directory / "shared_delivery_unreliable_aoi_radius_visual.json"
+    );
+    CHECK(reliable.snapshot_delivery.mode == "reliable_sequenced");
+    CHECK(unreliable.snapshot_delivery.mode == "unreliable_sequenced");
+    unreliable.snapshot_delivery.mode = reliable.snapshot_delivery.mode;
+    CHECK(
+        simnet::fingerprint_network_compatibility(unreliable).value
+        == simnet::fingerprint_network_compatibility(reliable).value
+    );
 }
 
 TEST_CASE("visual interpolation is local runtime configuration", "[config]")

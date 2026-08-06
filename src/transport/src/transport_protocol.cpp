@@ -45,13 +45,11 @@ namespace simnet::transport_protocol
         return lane_index(lane) < channel_count;
     }
 
-    bool valid_delivery(Delivery delivery) noexcept
+    bool valid_delivery(TransportDelivery delivery) noexcept
     {
         switch (delivery) {
-            case Delivery::ReliableSequenced:
-            case Delivery::UnreliableSequenced:
-            case Delivery::UnreliableUnsequenced:
-            case Delivery::UnreliableFragmented:
+            case TransportDelivery::ReliableSequenced:
+            case TransportDelivery::UnreliableSequenced:
                 return true;
         }
         return false;

@@ -10,6 +10,8 @@
 - `shared_compression_none_aoi_radius_visual.json`: 1,200-byte compression comparison control.
 - `shared_compression_whole_aoi_radius_visual.json`: whole-update Zstd comparison treatment.
 - `shared_compression_per_packet_aoi_radius_visual.json`: per-packet Zstd comparison treatment.
+- `shared_delivery_reliable_aoi_radius_visual.json`: matched reliable sequenced delivery control.
+- `shared_delivery_unreliable_aoi_radius_visual.json`: matched unreliable sequenced delivery treatment.
 - `shared_stress_50k.json`: local high-count stress and visual-inspection profile. Use it only with the Server. Do not present it as realistic current network replication.
 - `shared_default.json`: conservative fallback baseline.
 

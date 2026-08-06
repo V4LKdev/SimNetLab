@@ -42,7 +42,7 @@ export namespace simnet
         poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms);
 
         [[nodiscard]] TransportResult
-        send(TransportLane lane, Delivery delivery, std::span<Byte const> payload);
+        send(TransportLane lane, TransportDelivery delivery, std::span<Byte const> payload);
 
         [[nodiscard]] TransportStats stats() const;
         [[nodiscard]] PeerStats server_stats() const;

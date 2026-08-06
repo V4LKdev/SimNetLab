@@ -24,9 +24,14 @@ ENet connect
 
 `TransportLane::Lane0`, `Lane1`, and `Lane2` map directly to ENet channels 0, 1, and 2. The application owns the meaning of each lane after session readiness. Transport exposes every post-session payload as `ReceivedPacket` and accepts it through the generic send operations. It does not parse application messages, acknowledgements, packet groups, or snapshot bytes.
 
-The API supports reliable sequenced, unreliable sequenced, unreliable unsequenced, and unreliable fragmented delivery. App configuration selects snapshot delivery. Current default snapshots use reliable sequenced delivery.
+The API exposes only reliable sequenced and unreliable sequenced delivery. Reliable sequenced maps
+to `ENET_PACKET_FLAG_RELIABLE`. Unreliable sequenced maps to flags zero and therefore retains ENet's
+per-channel sequencing without reliability. Application configuration selects snapshot delivery.
 
-`TransportLimits` applies real send-time limits. `EnforceLimit` rejects oversized payloads before ENet. `AllowBackendFragmentation` passes them to ENet while preserving the hard reassembly limit.
+`TransportLimits` applies real send-time limits. `EnforceLimit` rejects oversized payloads before
+ENet. `AllowBackendFragmentation` permits reliable ENet fragmentation. Unreliable sequenced sends
+always reject payloads above the live peer MTU after public ENet protocol overhead because ENet
+would otherwise promote fragmentation to reliable delivery.
 
 ## Threading
 

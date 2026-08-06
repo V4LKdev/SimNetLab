@@ -2,6 +2,10 @@
   "run": {
     "seed": 12345
   },
+  "snapshot_delivery": {
+    "mode": "reliable_sequenced",
+    "full_replace_after_unacknowledged_updates": 32
+  },
   "simulation": {
     "tick_rate_hz": 60,
     "world_half": 70,

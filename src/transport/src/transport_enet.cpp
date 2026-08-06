@@ -58,33 +58,32 @@ namespace simnet
                 || size <= limits.max_payload_bytes;
         }
 
-        [[nodiscard]] ENetPacketFlag delivery_flags(Delivery delivery) noexcept
+        [[nodiscard]] ENetPacketFlag delivery_flags(TransportDelivery delivery) noexcept
         {
             switch (delivery) {
-                case Delivery::ReliableSequenced:
+                case TransportDelivery::ReliableSequenced:
                     return ENET_PACKET_FLAG_RELIABLE;
-                case Delivery::UnreliableSequenced:
+                case TransportDelivery::UnreliableSequenced:
                     return static_cast<ENetPacketFlag>(0);
-                case Delivery::UnreliableUnsequenced:
-                    return ENET_PACKET_FLAG_UNSEQUENCED;
-                case Delivery::UnreliableFragmented:
-                    return ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT;
             }
             return static_cast<ENetPacketFlag>(0);
         }
 
-        [[nodiscard]] Delivery packet_delivery(ENetPacket const& packet) noexcept
+        [[nodiscard]] TransportDelivery packet_delivery(ENetPacket const& packet) noexcept
         {
             if ((packet.flags & ENET_PACKET_FLAG_RELIABLE) != 0U) {
-                return Delivery::ReliableSequenced;
+                return TransportDelivery::ReliableSequenced;
             }
-            if ((packet.flags & ENET_PACKET_FLAG_UNSEQUENCED) != 0U) {
-                return Delivery::UnreliableUnsequenced;
+            return TransportDelivery::UnreliableSequenced;
+        }
+
+        [[nodiscard]] std::size_t unfragmented_payload_limit(ENetPeer const& peer) noexcept
+        {
+            auto overhead = sizeof(ENetProtocolHeader) + sizeof(ENetProtocolSendFragment);
+            if (peer.host->checksum != nullptr) {
+                overhead += sizeof(enet_uint32);
             }
-            if ((packet.flags & ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT) != 0U) {
-                return Delivery::UnreliableFragmented;
-            }
-            return Delivery::UnreliableSequenced;
+            return peer.mtu > overhead ? peer.mtu - overhead : 0U;
         }
 
         [[nodiscard]] PeerId event_peer_id(ENetPeer const* peer) noexcept
@@ -156,7 +155,7 @@ namespace simnet
             TransportStats& stats,
             TransportLimits const& limits,
             TransportLane lane,
-            Delivery delivery,
+            TransportDelivery delivery,
             std::span<Byte const> payload
         )
         {
@@ -183,6 +182,15 @@ namespace simnet
                 return fail(
                     TransportErrorCode::PayloadTooLarge,
                     "transport payload exceeds hard payload limit"
+                );
+            }
+            if (delivery == TransportDelivery::UnreliableSequenced
+                && payload.size() > unfragmented_payload_limit(*peer)) {
+                ++stats.send_failures;
+                ++stats.oversize_drops;
+                return fail(
+                    TransportErrorCode::PayloadTooLarge,
+                    "unreliable sequenced payload would require ENet fragmentation"
                 );
             }
 
@@ -416,7 +424,7 @@ namespace simnet
                     .size_policy = SendSizePolicy::AllowBackendFragmentation,
                 },
                 TransportLane::Lane0,
-                Delivery::ReliableSequenced,
+                TransportDelivery::ReliableSequenced,
                 bytes
             );
         }
@@ -743,7 +751,8 @@ namespace simnet
             return ok();
         }
 
-        TransportResult send(TransportLane lane, Delivery delivery, std::span<Byte const> payload)
+        TransportResult
+        send(TransportLane lane, TransportDelivery delivery, std::span<Byte const> payload)
         {
             if (host_ == nullptr || server_ == nullptr) {
                 return fail(TransportErrorCode::NotStarted, "transport client is not connected");
@@ -780,7 +789,7 @@ namespace simnet
                     .size_policy = SendSizePolicy::AllowBackendFragmentation,
                 },
                 lane,
-                Delivery::ReliableSequenced,
+                TransportDelivery::ReliableSequenced,
                 bytes
             );
         }
@@ -1067,8 +1076,11 @@ namespace simnet
         return impl_->poll(out_events, timeout_ms);
     }
 
-    TransportResult
-    TransportClient::send(TransportLane lane, Delivery delivery, std::span<Byte const> payload)
+    TransportResult TransportClient::send(
+        TransportLane lane,
+        TransportDelivery delivery,
+        std::span<Byte const> payload
+    )
     {
         if (impl_ == nullptr) {
             return fail(TransportErrorCode::NotStarted, "transport client is not connected");

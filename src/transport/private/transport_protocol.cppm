@@ -33,7 +33,7 @@ namespace simnet::transport_protocol
 
     [[nodiscard]] std::uint8_t lane_index(TransportLane lane) noexcept;
     [[nodiscard]] bool valid_lane(TransportLane lane) noexcept;
-    [[nodiscard]] bool valid_delivery(Delivery delivery) noexcept;
+    [[nodiscard]] bool valid_delivery(TransportDelivery delivery) noexcept;
     [[nodiscard]] bool valid_disconnect_code(DisconnectCode code) noexcept;
 
     void write_u8(std::vector<Byte>& bytes, std::uint8_t value);

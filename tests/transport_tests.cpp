@@ -177,7 +177,7 @@ namespace
         result = server.send({
             .peer = handshake.server_peer,
             .lane = simnet::TransportLane::Lane1,
-            .delivery = simnet::Delivery::ReliableSequenced,
+            .delivery = simnet::TransportDelivery::ReliableSequenced,
             .payload = payload,
         });
         if (result.ok || result.error.code != simnet::TransportErrorCode::PayloadTooLarge) {
@@ -188,7 +188,7 @@ namespace
         auto small_payload = std::array<simnet::Byte, 4>{};
         result = client.send(
             static_cast<simnet::TransportLane>(255U),
-            simnet::Delivery::ReliableSequenced,
+            simnet::TransportDelivery::ReliableSequenced,
             small_payload
         );
         if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidLane) {
@@ -197,7 +197,7 @@ namespace
         }
         result = client.send(
             simnet::TransportLane::Lane1,
-            static_cast<simnet::Delivery>(255U),
+            static_cast<simnet::TransportDelivery>(255U),
             small_payload
         );
         if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidDelivery) {
@@ -210,7 +210,8 @@ namespace
                  simnet::TransportLane::Lane1,
                  simnet::TransportLane::Lane2,
              }) {
-            auto const sent = client.send(lane, simnet::Delivery::ReliableSequenced, small_payload);
+            auto const sent
+                = client.send(lane, simnet::TransportDelivery::ReliableSequenced, small_payload);
             if (!sent.ok) {
                 std::cerr << "generic client payload send failed: " << sent.error.message << '\n';
                 return false;
@@ -242,10 +243,47 @@ namespace
             }
         }
 
+        auto const unreliable_sent = client.send(
+            simnet::TransportLane::Lane1,
+            simnet::TransportDelivery::UnreliableSequenced,
+            small_payload
+        );
+        if (!unreliable_sent.ok) {
+            std::cerr << "unreliable sequenced send failed: " << unreliable_sent.error.message
+                      << '\n';
+            return false;
+        }
+        auto unreliable_seen = false;
+        auto const unreliable_deadline = std::chrono::steady_clock::now() + poll_timeout;
+        while (!unreliable_seen && std::chrono::steady_clock::now() < unreliable_deadline) {
+            auto events = std::vector<simnet::TransportEvent>{};
+            static_cast<void>(client.poll(events, 0));
+            events.clear();
+            auto const poll = server.poll(events, 10);
+            if (!poll.ok) {
+                return false;
+            }
+            for (auto const& event : events) {
+                if (auto const* packet = std::get_if<simnet::ReceivedPacket>(&event)) {
+                    unreliable_seen = packet->lane == simnet::TransportLane::Lane1
+                        && packet->delivery == simnet::TransportDelivery::UnreliableSequenced
+                        && packet->payload
+                            == std::vector<simnet::Byte>{
+                                small_payload.begin(),
+                                small_payload.end()
+                            };
+                }
+            }
+        }
+        if (!unreliable_seen) {
+            std::cerr << "unreliable sequenced payload was not observed with zero ENet flags\n";
+            return false;
+        }
+
         auto const sent = server.send({
             .peer = handshake.server_peer,
             .lane = simnet::TransportLane::Lane0,
-            .delivery = simnet::Delivery::ReliableSequenced,
+            .delivery = simnet::TransportDelivery::ReliableSequenced,
             .payload = small_payload,
         });
         if (!sent.ok) {
@@ -407,7 +445,7 @@ namespace
         auto payload = std::array<simnet::Byte, 128>{};
         result = client.send(
             simnet::TransportLane::Lane1,
-            simnet::Delivery::ReliableSequenced,
+            simnet::TransportDelivery::ReliableSequenced,
             payload
         );
         if (!result.ok) {
@@ -451,6 +489,50 @@ namespace
         return true;
     }
 
+    [[nodiscard]] bool unreliable_fragment_rejection_test(TransportTestSettings const& settings)
+    {
+        auto server = simnet::TransportServer{};
+        auto client = simnet::TransportClient{};
+        auto limits = simnet::TransportLimits{
+            .max_payload_bytes = 4096U,
+            .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
+        };
+        auto server_config = server_settings(settings);
+        server_config.limits = limits;
+        auto result = server.start(server_config);
+        if (!result.ok) {
+            return false;
+        }
+        auto client_config = client_settings(settings);
+        client_config.limits = limits;
+        result = client.connect(client_config);
+        if (!result.ok) {
+            return false;
+        }
+        auto handshake = HandshakeResult{};
+        if (!poll_until(server, client, handshake, true)) {
+            return false;
+        }
+
+        auto payload = std::array<simnet::Byte, 2000U>{};
+        result = client.send(
+            simnet::TransportLane::Lane1,
+            simnet::TransportDelivery::UnreliableSequenced,
+            payload
+        );
+        if (result.ok || result.error.code != simnet::TransportErrorCode::PayloadTooLarge) {
+            return false;
+        }
+        result = client.send(
+            simnet::TransportLane::Lane1,
+            simnet::TransportDelivery::ReliableSequenced,
+            payload
+        );
+        client.disconnect(simnet::DisconnectCode::None);
+        server.stop();
+        return result.ok;
+    }
+
 } // namespace
 
 TEST_CASE("ENet session handshake and transport contract", "[transport][enet][integration]")
@@ -481,4 +563,12 @@ TEST_CASE("ENet disconnects and reconnects", "[transport][enet][integration]")
 TEST_CASE("ENet enforces receive limits", "[transport][enet][integration]")
 {
     REQUIRE(receive_limit_test(TransportTestSettings{}));
+}
+
+TEST_CASE(
+    "ENet unreliable sequenced delivery rejects implicit fragmentation",
+    "[transport][enet][integration]"
+)
+{
+    REQUIRE(unreliable_fragment_rejection_test(TransportTestSettings{}));
 }

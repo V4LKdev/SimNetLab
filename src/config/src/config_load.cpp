@@ -466,24 +466,57 @@ namespace
         }
     }
 
-    void apply_transport(Json const& json, simnet::TransportConfig& config)
+    void apply_snapshot_delivery(Json const& json, simnet::SnapshotDeliveryConfig& config)
     {
-        if (json.contains("backend")) {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "mode" && key != "full_replace_after_unacknowledged_updates") {
+                throw std::runtime_error(
+                    "invalid config field 'snapshot_delivery." + key + "': unknown field"
+                );
+            }
+        }
+
+        if (!json.contains("mode") || !json.contains("full_replace_after_unacknowledged_updates")) {
             throw std::runtime_error(
-                "invalid config field 'transport.backend': ENet is the only supported transport"
+                "invalid snapshot_delivery config: mode and recovery threshold are required"
             );
         }
-        if (json.contains("local_ipc_path")) {
+        read_optional(json, "mode", config.mode);
+        read_optional(
+            json,
+            "full_replace_after_unacknowledged_updates",
+            config.full_replace_after_unacknowledged_updates
+        );
+        validate_one_of(
+            "snapshot_delivery.mode",
+            config.mode,
+            {"reliable_sequenced", "unreliable_sequenced"}
+        );
+        if (config.full_replace_after_unacknowledged_updates == 0U
+            || config.full_replace_after_unacknowledged_updates >= 64U) {
             throw std::runtime_error(
-                "invalid config field 'transport.local_ipc_path': LocalIpc transport has been removed"
+                "invalid config field 'snapshot_delivery.full_replace_after_unacknowledged_updates': expected 1..63"
             );
+        }
+    }
+
+    void apply_transport(Json const& json, simnet::TransportConfig& config)
+    {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "host" && key != "port" && key != "max_clients" && key != "max_payload_bytes"
+                && key != "send_size_policy") {
+                throw std::runtime_error(
+                    "invalid config field 'transport." + key + "': unknown field"
+                );
+            }
         }
         read_optional(json, "host", config.host);
         read_optional(json, "port", config.port);
         read_optional(json, "max_clients", config.max_clients);
         read_optional(json, "max_payload_bytes", config.max_payload_bytes);
         read_optional(json, "send_size_policy", config.send_size_policy);
-        read_optional(json, "snapshot_delivery", config.snapshot_delivery);
 
         if (config.port == 0) {
             throw std::runtime_error(
@@ -496,16 +529,6 @@ namespace
             "transport.send_size_policy",
             config.send_size_policy,
             {"enforce_limit", "allow_backend_fragmentation"}
-        );
-        validate_one_of(
-            "transport.snapshot_delivery",
-            config.snapshot_delivery,
-            {
-                "reliable_sequenced",
-                "unreliable_sequenced",
-                "unreliable_unsequenced",
-                "unreliable_fragmented",
-            }
         );
     }
 
@@ -637,6 +660,9 @@ namespace
         if (auto const* section = optional_object(json, "pipeline")) {
             apply_pipeline(*section, config.pipeline);
         }
+        if (auto const* section = optional_object(json, "snapshot_delivery")) {
+            apply_snapshot_delivery(*section, config.snapshot_delivery);
+        }
         if (auto const* section = optional_object(json, "compression")) {
             apply_compression(*section, config.compression);
         }
@@ -747,6 +773,8 @@ namespace
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_bytes(hash, config.pipeline.area_of_interest.radius);
         hash_bytes(hash, config.pipeline.area_of_interest.fov_degrees);
+        hash_string(hash, config.snapshot_delivery.mode);
+        hash_bytes(hash, config.snapshot_delivery.full_replace_after_unacknowledged_updates);
         hash_string(hash, config.compression.mode);
         hash_bytes(hash, config.compression.level);
         hash_bytes(hash, config.packetization.enabled);
@@ -812,6 +840,11 @@ namespace
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_canonical_float(hash, config.pipeline.area_of_interest.radius);
         hash_canonical_float(hash, config.pipeline.area_of_interest.fov_degrees);
+        hash_string(hash, config.snapshot_delivery.mode);
+        hash_canonical_u32(
+            hash,
+            config.snapshot_delivery.full_replace_after_unacknowledged_updates
+        );
         hash_string(hash, config.compression.mode);
         hash_canonical_u32(hash, static_cast<std::uint32_t>(config.compression.level));
         hash_canonical_bool(hash, config.packetization.enabled);
@@ -834,7 +867,6 @@ namespace
         hash_bytes(hash, transport.max_clients);
         hash_bytes(hash, transport.max_payload_bytes);
         hash_string(hash, transport.send_size_policy);
-        hash_string(hash, transport.snapshot_delivery);
         hash_bytes(hash, telemetry.console_log_enabled);
         hash_bytes(hash, telemetry.file_log_enabled);
         hash_string(hash, telemetry.min_level);

@@ -101,7 +101,10 @@ export namespace simnet::app
     milliseconds_option(int& index, int argc, char** argv, std::string_view option);
 
     [[nodiscard]] SendSizePolicy transport_send_size_policy(TransportConfig const& config);
-    [[nodiscard]] Delivery snapshot_delivery(TransportConfig const& config);
+    [[nodiscard]] TransportDelivery
+    snapshot_transport_delivery(SnapshotDeliveryConfig const& config);
+    [[nodiscard]] constexpr std::string_view
+    transport_delivery_name(TransportDelivery delivery) noexcept;
     [[nodiscard]] PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared);
     [[nodiscard]] CompressionSettings make_compression_settings(SharedConfig const& shared);
     [[nodiscard]] constexpr std::string_view compression_mode_name(CompressionMode mode) noexcept;
@@ -113,7 +116,7 @@ export namespace simnet::app
 
 namespace
 {
-    constexpr std::uint32_t application_protocol_version = 5;
+    constexpr std::uint32_t application_protocol_version = 6;
     volatile std::sig_atomic_t signal_stop_latch = 0;
 
     extern "C" void request_signal_stop(int)
@@ -209,21 +212,26 @@ namespace simnet::app
         throw std::runtime_error("unsupported send size policy: " + config.send_size_policy);
     }
 
-    Delivery snapshot_delivery(TransportConfig const& config)
+    TransportDelivery snapshot_transport_delivery(SnapshotDeliveryConfig const& config)
     {
-        if (config.snapshot_delivery == "reliable_sequenced") {
-            return Delivery::ReliableSequenced;
+        if (config.mode == "reliable_sequenced") {
+            return TransportDelivery::ReliableSequenced;
         }
-        if (config.snapshot_delivery == "unreliable_sequenced") {
-            return Delivery::UnreliableSequenced;
+        if (config.mode == "unreliable_sequenced") {
+            return TransportDelivery::UnreliableSequenced;
         }
-        if (config.snapshot_delivery == "unreliable_unsequenced") {
-            return Delivery::UnreliableUnsequenced;
+        throw std::runtime_error("unsupported snapshot delivery: " + config.mode);
+    }
+
+    constexpr std::string_view transport_delivery_name(TransportDelivery delivery) noexcept
+    {
+        switch (delivery) {
+            case TransportDelivery::ReliableSequenced:
+                return "reliable_sequenced";
+            case TransportDelivery::UnreliableSequenced:
+                return "unreliable_sequenced";
         }
-        if (config.snapshot_delivery == "unreliable_fragmented") {
-            return Delivery::UnreliableFragmented;
-        }
-        throw std::runtime_error("unsupported snapshot delivery: " + config.snapshot_delivery);
+        return "unknown";
     }
 
     PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared)

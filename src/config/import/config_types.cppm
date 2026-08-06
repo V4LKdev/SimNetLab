@@ -113,6 +113,13 @@ export namespace simnet
         int level{1};
     };
 
+    /// Shared snapshot delivery and bounded recovery treatment.
+    struct SnapshotDeliveryConfig
+    {
+        std::string mode{"reliable_sequenced"};
+        std::uint32_t full_replace_after_unacknowledged_updates{32U};
+    };
+
     /// Network transport settings.
     struct TransportConfig
     {
@@ -121,7 +128,6 @@ export namespace simnet
         std::uint32_t max_clients{8};
         std::uint32_t max_payload_bytes{1200};
         std::string send_size_policy{"enforce_limit"};
-        std::string snapshot_delivery{"reliable_sequenced"};
     };
 
     /// Server-local Flecs scheduler settings.
@@ -192,6 +198,7 @@ export namespace simnet
         BoidsConfig boids{};
         PlayerConfig player{};
         PipelineConfig pipeline{};
+        SnapshotDeliveryConfig snapshot_delivery{};
         CompressionConfig compression{};
         PacketizationConfig packetization{};
     };

@@ -22,12 +22,10 @@ export namespace simnet
         Lane2 = 2
     };
 
-    enum class Delivery : std::uint8_t
+    enum class TransportDelivery : std::uint8_t
     {
         ReliableSequenced,
-        UnreliableSequenced,
-        UnreliableUnsequenced,
-        UnreliableFragmented
+        UnreliableSequenced
     };
 
     enum class SendSizePolicy : std::uint8_t
@@ -95,7 +93,7 @@ export namespace simnet
     {
         PeerId peer{};
         TransportLane lane{TransportLane::Lane0};
-        Delivery delivery{Delivery::UnreliableSequenced};
+        TransportDelivery delivery{TransportDelivery::UnreliableSequenced};
         std::span<Byte const> payload{};
     };
 
@@ -103,7 +101,7 @@ export namespace simnet
     {
         PeerId peer{};
         TransportLane lane{};
-        Delivery delivery{};
+        TransportDelivery delivery{};
         std::vector<Byte> payload;
     };
 
