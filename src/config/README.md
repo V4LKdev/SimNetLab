@@ -23,6 +23,12 @@ Shared `pipeline.area_of_interest` selects `none`, `radius`, or `fov`. Radius us
 network compatibility fingerprint. Maintained visual treatment profiles keep the world and boid
 settings equal while changing only the AOI mode and geometry.
 
+Shared `pipeline.level_of_detail` selects `none` or `distance_bands`. Distance bands require an
+active radius or FOV AOI, positive Near and Medium distances below the AOI radius, a Medium
+interval of at least two ticks, and a larger Far interval no greater than 65,535 ticks. Near
+cadence is fixed at every tick. These values participate in runtime and network compatibility but
+do not change the pipeline decode signature.
+
 Shared `compression` selects `none`, `whole_update`, or `per_packet`. Active modes require an
 explicit Zstd level from 1 through 19. Whole-update mode compresses the complete encoded update
 before packetization. Per-packet mode independently compresses complete application packets after
@@ -42,7 +48,11 @@ independently by `console_log_enabled`, `file_log_enabled`, and `min_level`.
 controls the Client replication CSV on Client. When disabled, the CSV path creates no directory or
 evidence file. Enabled file logging may independently create `log_directory`.
 
-Benchmark and LOD configuration vocabulary is retained for planned work. The Server's small sampled boid CSV is implemented. It is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled by the CMake build option. Unsupported pipeline selections are rejected during app startup instead of being ignored.
+Benchmark configuration vocabulary is retained for planned work. Temporal distance LOD is an
+implemented independent Patch-producing pipeline selection. The Server's small sampled boid CSV
+is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled
+by the CMake build option. Unsupported pipeline selections are rejected during app startup
+instead of being ignored.
 
 Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.
 

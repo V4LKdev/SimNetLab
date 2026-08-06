@@ -260,6 +260,18 @@ namespace simnet::app
         }
         pipeline.area_of_interest.radius = area_of_interest.radius;
         pipeline.area_of_interest.fov_degrees = area_of_interest.fov_degrees;
+        auto const& level_of_detail = shared.pipeline.level_of_detail;
+        if (level_of_detail.mode == "none") {
+            pipeline.level_of_detail.mode = LevelOfDetailMode::None;
+        } else if (level_of_detail.mode == "distance_bands") {
+            pipeline.level_of_detail.mode = LevelOfDetailMode::DistanceBands;
+        } else {
+            throw std::runtime_error("unsupported level-of-detail mode: " + level_of_detail.mode);
+        }
+        pipeline.level_of_detail.near_distance = level_of_detail.near_distance;
+        pipeline.level_of_detail.medium_distance = level_of_detail.medium_distance;
+        pipeline.level_of_detail.medium_interval_ticks = level_of_detail.medium_interval_ticks;
+        pipeline.level_of_detail.far_interval_ticks = level_of_detail.far_interval_ticks;
         validate_pipeline_definition(pipeline);
         return pipeline;
     }

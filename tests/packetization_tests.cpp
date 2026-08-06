@@ -777,22 +777,30 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "whole and per-packet compression preserve exact FOV pipeline reconstruction",
-    "[compression][packetization][pipeline][aoi][transaction]"
+    "compression and packetization preserve an exact FOV LOD Patch",
+    "[compression][packetization][pipeline][aoi][lod][transaction]"
 )
 {
-    auto const source = area_of_interest_source_snapshot();
+    auto source = area_of_interest_source_snapshot();
     auto candidates = std::vector<std::uint32_t>(source.size());
     std::iota(candidates.begin(), candidates.end(), 0U);
     auto pipeline = simnet::PipelineDefinition{};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::BitPacking;
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
     pipeline.quantization.position_bounds = simnet::make_centered_bounds(100.0F);
     pipeline.area_of_interest = {
         .mode = simnet::AreaOfInterestMode::Fov,
         .radius = 25.0F,
         .fov_degrees = 90.0F,
+    };
+    pipeline.level_of_detail = {
+        .mode = simnet::LevelOfDetailMode::DistanceBands,
+        .near_distance = 5.0F,
+        .medium_distance = 15.0F,
+        .medium_interval_ticks = 2U,
+        .far_interval_ticks = 4U,
     };
     auto const interest = simnet::InterestSource{
         .position = {},
@@ -801,7 +809,7 @@ TEST_CASE(
     };
     auto encode_state = simnet::ClientReplicationState{};
     auto encode_scratch = simnet::PipelineScratch{};
-    auto const encoded = simnet::encode_snapshot(
+    auto const full = simnet::encode_snapshot(
         pipeline,
         encode_state,
         encode_scratch,
@@ -811,7 +819,24 @@ TEST_CASE(
             .candidate_indices = candidates,
         }
     );
+    source.tick = 13U;
+    for (auto& position : source.positions) {
+        position.y += 1.0F;
+    }
+    auto const encoded = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        encode_scratch,
+        {
+            .snapshot = &source,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+            .interest_source = &interest,
+            .candidate_indices = candidates,
+        }
+    );
     REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+    REQUIRE(encoded.report.snapshot_kind == simnet::SnapshotKind::Patch);
 
     auto config = settings();
     config.max_group_bytes = 4096U;
@@ -895,12 +920,22 @@ TEST_CASE(
             decoded_group = decoded_scratch;
         }
         auto decode_state = simnet::ClientReplicationState{};
+        REQUIRE(
+            simnet::decode_update(pipeline, decode_state, {.bytes = full.update.bytes}).report.valid
+        );
         auto const decoded
             = simnet::decode_update(pipeline, decode_state, {.bytes = decoded_group});
         REQUIRE(decoded.report.valid);
         REQUIRE(decoded.report.sequence == completed.completed.group_id);
         auto reconstructed = simnet::WorldSnapshot{};
-        REQUIRE(simnet::reconstruct_world_snapshot(nullptr, decoded.update, reconstructed).valid);
+        REQUIRE(
+            simnet::reconstruct_world_snapshot(
+                &full.resulting_snapshot,
+                decoded.update,
+                reconstructed
+            )
+                .valid
+        );
         CHECK(same_snapshot(reconstructed, encoded.resulting_snapshot));
     }
 }

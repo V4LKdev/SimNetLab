@@ -248,6 +248,102 @@ TEST_CASE("maintained AOI visual profiles load as distinct treatments", "[config
     CHECK(fov.pipeline.area_of_interest.fov_degrees == 120.0F);
 }
 
+TEST_CASE("level-of-detail configuration is strict shared treatment", "[config][lod]")
+{
+    auto const accepted = TemporaryConfig{
+        "simnet_lod_accepted.json",
+        R"({
+            "pipeline": {
+                "area_of_interest": { "mode": "radius", "radius": 160.0 },
+                "level_of_detail": {
+                    "mode": "distance_bands",
+                    "near_distance": 40.0,
+                    "medium_distance": 100.0,
+                    "medium_interval_ticks": 4,
+                    "far_interval_ticks": 16
+                }
+            }
+        })"
+    };
+    auto const loaded = simnet::load_shared_config(accepted.path());
+    CHECK(loaded.pipeline.level_of_detail.mode == "distance_bands");
+    CHECK(loaded.pipeline.level_of_detail.near_distance == 40.0F);
+    CHECK(loaded.pipeline.level_of_detail.medium_distance == 100.0F);
+    CHECK(loaded.pipeline.level_of_detail.medium_interval_ticks == 4U);
+    CHECK(loaded.pipeline.level_of_detail.far_interval_ticks == 16U);
+    CHECK_FALSE(loaded.pipeline.enable_incremental);
+    CHECK(
+        simnet::fingerprint_network_compatibility(loaded).value
+        != simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
+    );
+    auto changed = loaded;
+    changed.pipeline.level_of_detail.near_distance += 1.0F;
+    CHECK(
+        simnet::fingerprint_network_compatibility(changed).value
+        != simnet::fingerprint_network_compatibility(loaded).value
+    );
+    CHECK(
+        simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value
+        != simnet::fingerprint_runtime_config(loaded, simnet::default_server_config()).value
+    );
+    changed = loaded;
+    changed.pipeline.level_of_detail.medium_distance += 1.0F;
+    CHECK(
+        simnet::fingerprint_network_compatibility(changed).value
+        != simnet::fingerprint_network_compatibility(loaded).value
+    );
+    changed = loaded;
+    ++changed.pipeline.level_of_detail.medium_interval_ticks;
+    CHECK(
+        simnet::fingerprint_network_compatibility(changed).value
+        != simnet::fingerprint_network_compatibility(loaded).value
+    );
+    changed = loaded;
+    ++changed.pipeline.level_of_detail.far_interval_ticks;
+    CHECK(
+        simnet::fingerprint_network_compatibility(changed).value
+        != simnet::fingerprint_network_compatibility(loaded).value
+    );
+
+    for (
+        auto const contents : {
+            R"({ "pipeline": { "level_of_detail": { "mode": "none", "near_distance": 1.0 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 4 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 4, "far_interval_ticks": 16 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 100.0, "medium_distance": 40.0, "medium_interval_ticks": 4, "far_interval_ticks": 16 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 100.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 4, "far_interval_ticks": 16 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 1, "far_interval_ticks": 16 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 4, "far_interval_ticks": 4 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 4, "far_interval_ticks": 65536 } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 4, "far_interval_ticks": 16, "extra": true } } })",
+            R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "unexpected": true } })",
+        }) {
+        auto const invalid = TemporaryConfig{"simnet_lod_invalid.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+}
+
+TEST_CASE("maintained LOD treatments differ only by level of detail", "[config][lod]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    auto none = simnet::load_shared_config(directory / "shared_lod_none_aoi_radius_visual.json");
+    auto distance = simnet::load_shared_config(
+        directory / "shared_lod_distance_bands_aoi_radius_visual.json"
+    );
+    CHECK_FALSE(none.pipeline.enable_incremental);
+    CHECK(none.pipeline.enable_delta);
+    CHECK(distance.pipeline.level_of_detail.mode == "distance_bands");
+    CHECK(distance.pipeline.level_of_detail.near_distance == 40.0F);
+    CHECK(distance.pipeline.level_of_detail.medium_distance == 100.0F);
+    CHECK(distance.pipeline.level_of_detail.medium_interval_ticks == 4U);
+    CHECK(distance.pipeline.level_of_detail.far_interval_ticks == 16U);
+    distance.pipeline.level_of_detail = none.pipeline.level_of_detail;
+    CHECK(
+        simnet::fingerprint_network_compatibility(distance).value
+        == simnet::fingerprint_network_compatibility(none).value
+    );
+}
+
 TEST_CASE(
     "packetization configuration is strict bounded and fingerprinted",
     "[config][packetization]"

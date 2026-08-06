@@ -226,6 +226,12 @@ namespace
         return encoding == simnet::CompressionEncoding::Zstd ? "Zstd" : "Raw";
     }
 
+    [[nodiscard]] constexpr std::string_view
+    level_of_detail_mode_name(simnet::LevelOfDetailMode mode) noexcept
+    {
+        return mode == simnet::LevelOfDetailMode::DistanceBands ? "distance_bands" : "none";
+    }
+
     struct PeerRuntimeState
     {
         simnet::PeerId peer{};
@@ -236,6 +242,7 @@ namespace
         std::vector<std::uint32_t> area_of_interest_candidates{};
         simnet::app::StationaryObserverInterestState stationary_observer_interest{};
         simnet::AreaOfInterestReport latest_area_of_interest{};
+        simnet::LevelOfDetailReport latest_level_of_detail{};
         bool has_area_of_interest_report{};
         std::uint32_t latest_upsert_count{};
         std::uint32_t latest_delete_count{};
@@ -259,6 +266,7 @@ namespace
         std::uint64_t unreliable_packet_count{};
         std::uint64_t repeated_recovery_upserts{};
         std::uint64_t repeated_recovery_deletes{};
+        std::uint64_t level_of_detail_full_replace_override_count{};
     };
 
     void log_snapshot_delivery_state(PeerRuntimeState const& peer, std::string_view configured_mode)
@@ -284,9 +292,20 @@ namespace
                 + " reliable_packets=" + std::to_string(peer.reliable_packet_count)
                 + " unreliable_packets=" + std::to_string(peer.unreliable_packet_count)
                 + " recovery_reason="
-                + std::string{
-                    simnet::app::snapshot_recovery_reason_name(delivery_state.recovery_reason)
-                }
+                + std::string{simnet::app::snapshot_recovery_reason_name(
+                    delivery_state.recovery_reason
+                )}
+                + " lod_mode="
+                + std::string{level_of_detail_mode_name(peer.latest_level_of_detail.mode)}
+                + " lod_near_population="
+                + std::to_string(peer.latest_level_of_detail.population.near)
+                + " lod_medium_population="
+                + std::to_string(peer.latest_level_of_detail.population.medium)
+                + " lod_far_population="
+                + std::to_string(peer.latest_level_of_detail.population.far) + " lod_pending_due="
+                + std::to_string(peer.latest_level_of_detail.pending_due_count)
+                + " lod_full_replace_overrides="
+                + std::to_string(peer.level_of_detail_full_replace_override_count)
         );
         for (auto const& retained : delivery_state.submitted) {
             simnet::log(
@@ -564,6 +583,7 @@ namespace
             details.repeated_recovery_upserts = peer->repeated_recovery_upserts;
             details.repeated_recovery_deletes = peer->repeated_recovery_deletes;
             details.area_of_interest_mode = config.pipeline.area_of_interest.mode;
+            details.level_of_detail_mode = config.pipeline.level_of_detail.mode;
             details.packetization_enabled = config.packetization.enabled;
             if (config.pipeline.area_of_interest.mode == "none") {
                 details.interest_source_status = "not required";
@@ -579,6 +599,31 @@ namespace
                 details.candidate_entity_count = peer->latest_area_of_interest.candidate_count;
                 details.retained_entity_count = peer->latest_area_of_interest.retained_count;
                 details.culled_entity_count = peer->latest_area_of_interest.culled_count;
+            }
+            if (config.pipeline.level_of_detail.mode == "distance_bands") {
+                auto const& lod = peer->latest_level_of_detail;
+                details.lod_near_population = lod.population.near;
+                details.lod_medium_population = lod.population.medium;
+                details.lod_far_population = lod.population.far;
+                details.lod_near_eligible = lod.eligible.near;
+                details.lod_medium_eligible = lod.eligible.medium;
+                details.lod_far_eligible = lod.eligible.far;
+                details.lod_near_serviced = lod.serviced.near;
+                details.lod_medium_serviced = lod.serviced.medium;
+                details.lod_far_serviced = lod.serviced.far;
+                details.lod_near_represented = lod.represented.near;
+                details.lod_medium_represented = lod.represented.medium;
+                details.lod_far_represented = lod.represented.far;
+                details.lod_near_deferred = lod.deferred.near;
+                details.lod_medium_deferred = lod.deferred.medium;
+                details.lod_far_deferred = lod.deferred.far;
+                details.lod_pending_due = lod.pending_due_count;
+                details.lod_transitions = lod.transition_count;
+                details.lod_forced_immediate = lod.forced_immediate_count;
+                details.lod_recovery_forced = lod.recovery_forced_count;
+                details.lod_deletions_bypassing = lod.deletions_bypassing_count;
+                details.lod_full_replace_overrides
+                    = peer->level_of_detail_full_replace_override_count;
             }
             if (peer->snapshot_delivery.latest_submitted_sequence != 0U) {
                 details.transmitted_upsert_count = peer->latest_upsert_count;
@@ -752,6 +797,20 @@ namespace
         }
         if (peer.has_value() && config.pipeline.area_of_interest.mode != "none") {
             auto const source = resolve_interest_source(*peer, snapshot);
+            if (source.has_value() && config.pipeline.level_of_detail.mode == "distance_bands") {
+                debug_storage.spheres.push_back({
+                    .center = source->position,
+                    .radius = config.pipeline.level_of_detail.near_distance,
+                    .color = {118U, 238U, 146U, 90U},
+                    .label = "network LOD near",
+                });
+                debug_storage.spheres.push_back({
+                    .center = source->position,
+                    .radius = config.pipeline.level_of_detail.medium_distance,
+                    .color = {248U, 202U, 92U, 82U},
+                    .label = "network LOD medium",
+                });
+            }
             if (source.has_value() && config.pipeline.area_of_interest.mode == "radius") {
                 debug_storage.spheres.push_back({
                     .center = source->position,
@@ -1629,6 +1688,9 @@ namespace
             pipeline.techniques,
             simnet::PipelineTechniqueFlags::Incremental
         );
+        auto const level_of_detail_enabled
+            = pipeline.level_of_detail.mode == simnet::LevelOfDetailMode::DistanceBands;
+        auto const partial_selection_enabled = incremental_enabled || level_of_detail_enabled;
         if (cadence_emits) {
             simnet::app::expire_retained_snapshots(
                 peer->snapshot_delivery,
@@ -1653,15 +1715,33 @@ namespace
                 );
             }
         }
-        auto const force_full_replace = cadence_emits && peer->snapshot_delivery.recovery_active;
         auto const* acknowledged = peer->snapshot_delivery.acknowledged.has_value()
             ? &*peer->snapshot_delivery.acknowledged
             : nullptr;
-        auto const* delta_baseline
-            = cadence_emits && !force_full_replace && delta_enabled ? acknowledged : nullptr;
+        auto const* level_of_detail_baseline = acknowledged;
+        if (cadence_emits && level_of_detail_enabled
+            && delivery == simnet::TransportDelivery::ReliableSequenced
+            && !peer->snapshot_delivery.submitted.empty()) {
+            level_of_detail_baseline = &peer->snapshot_delivery.submitted.back();
+        }
+        if (cadence_emits && level_of_detail_enabled && peer->pipeline_state.level_of_detail_seeded
+            && !peer->snapshot_delivery.recovery_active && level_of_detail_baseline == nullptr) {
+            simnet::app::enter_snapshot_recovery(
+                peer->snapshot_delivery,
+                simnet::app::SnapshotRecoveryReason::MissingRetainedResult
+            );
+        }
+        auto const force_full_replace = cadence_emits && peer->snapshot_delivery.recovery_active;
+        auto const* delta_baseline = cadence_emits && !force_full_replace && delta_enabled
+            ? (level_of_detail_enabled ? level_of_detail_baseline : acknowledged)
+            : nullptr;
+        auto const* explicit_level_of_detail_baseline
+            = cadence_emits && !force_full_replace && level_of_detail_enabled
+            ? level_of_detail_baseline
+            : nullptr;
         auto const* replica_snapshot = static_cast<simnet::WorldSnapshot const*>(nullptr);
         auto replica_sequence = simnet::SequenceId{};
-        if (cadence_emits && incremental_enabled && !delta_enabled
+        if (cadence_emits && incremental_enabled && !level_of_detail_enabled && !delta_enabled
             && peer->pipeline_state.incremental_seeded && !force_full_replace) {
             auto const* replica = acknowledged;
             if (delivery == simnet::TransportDelivery::ReliableSequenced
@@ -1680,7 +1760,7 @@ namespace
         }
 
         peer->recovery_upsert_ids.clear();
-        if (cadence_emits && incremental_enabled && !peer->snapshot_delivery.recovery_active
+        if (cadence_emits && partial_selection_enabled && !peer->snapshot_delivery.recovery_active
             && delivery == simnet::TransportDelivery::UnreliableSequenced) {
             peer->recovery_upsert_ids.reserve(peer->snapshot_delivery.recovery_upserts.size());
             for (auto const& upsert : peer->snapshot_delivery.recovery_upserts) {
@@ -1714,9 +1794,14 @@ namespace
                 peer->pipeline_scratch,
                 {
                     .snapshot = &snapshot_state.snapshot,
-                    .baseline_snapshot
-                    = delta_baseline != nullptr ? &delta_baseline->snapshot : nullptr,
-                    .baseline_sequence = delta_baseline != nullptr ? delta_baseline->sequence : 0U,
+                    .baseline_snapshot = explicit_level_of_detail_baseline != nullptr
+                        ? &explicit_level_of_detail_baseline->snapshot
+                        : delta_baseline != nullptr ? &delta_baseline->snapshot
+                                                    : nullptr,
+                    .baseline_sequence = explicit_level_of_detail_baseline != nullptr
+                        ? explicit_level_of_detail_baseline->sequence
+                        : delta_baseline != nullptr ? delta_baseline->sequence
+                                                    : 0U,
                     .replica_snapshot = replica_snapshot,
                     .replica_sequence = replica_sequence,
                     .recovery_upsert_ids = peer->recovery_upsert_ids,
@@ -1752,7 +1837,8 @@ namespace
             encoded.resulting_snapshot
         );
         if (!retention_plan.valid
-            || (delivery == simnet::TransportDelivery::UnreliableSequenced && incremental_enabled
+            || (delivery == simnet::TransportDelivery::UnreliableSequenced
+                && partial_selection_enabled
                 && encoded.report.snapshot_kind == simnet::SnapshotKind::Patch
                 && peer->snapshot_delivery.recovery_upserts.size()
                         + peer->pipeline_scratch.logical_update.upserts.size()
@@ -1776,7 +1862,7 @@ namespace
             observe_server_measurement(measurements, csv, measurement);
             return true;
         }
-        if (delivery == simnet::TransportDelivery::UnreliableSequenced && incremental_enabled
+        if (delivery == simnet::TransportDelivery::UnreliableSequenced && partial_selection_enabled
             && encoded.report.snapshot_kind == simnet::SnapshotKind::Patch) {
             peer->snapshot_delivery.recovery_upserts.reserve(
                 peer->snapshot_delivery.recovery_upserts.size()
@@ -1953,7 +2039,7 @@ namespace
             peer->repeated_recovery_upserts += encoded.report.upsert_count;
             peer->repeated_recovery_deletes += encoded.report.delete_count;
         }
-        if (delivery == simnet::TransportDelivery::UnreliableSequenced && incremental_enabled
+        if (delivery == simnet::TransportDelivery::UnreliableSequenced && partial_selection_enabled
             && encoded.report.snapshot_kind == simnet::SnapshotKind::Patch) {
             static_cast<void>(simnet::app::merge_recovery_upserts(
                 peer->snapshot_delivery,
@@ -1968,6 +2054,19 @@ namespace
             simnet::steady_now_ns(),
             retention_plan
         );
+        if (simnet::log_enabled(simnet::LogLevel::Debug)
+            && !peer->snapshot_delivery.submitted.empty()) {
+            auto const& committed = peer->snapshot_delivery.submitted.back();
+            simnet::log(
+                simnet::LogCategory::Snapshot,
+                simnet::LogLevel::Debug,
+                "server canonical result sequence=" + std::to_string(committed.sequence)
+                    + " entities=" + std::to_string(committed.snapshot.size()) + " fingerprint="
+                    + std::to_string(
+                        simnet::app::snapshot_diagnostic_fingerprint(committed.snapshot)
+                    )
+            );
+        }
         if (!peer->snapshot_delivery.recovery_active
             && simnet::app::ack_progress_stalled(
                 peer->snapshot_delivery,
@@ -1979,6 +2078,9 @@ namespace
             );
         }
         peer->latest_area_of_interest = encoded.report.area_of_interest;
+        peer->latest_level_of_detail = encoded.report.level_of_detail;
+        peer->level_of_detail_full_replace_override_count
+            += encoded.report.level_of_detail.full_replace_override_count;
         peer->has_area_of_interest_report = true;
         peer->latest_upsert_count = encoded.report.upsert_count;
         peer->latest_delete_count = encoded.report.delete_count;

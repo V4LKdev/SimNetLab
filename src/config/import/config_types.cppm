@@ -85,6 +85,16 @@ export namespace simnet
         float fov_degrees{};
     };
 
+    /// Shared temporal distance-LOD treatment settings.
+    struct LevelOfDetailConfig
+    {
+        std::string mode{"none"};
+        float near_distance{};
+        float medium_distance{};
+        std::uint32_t medium_interval_ticks{};
+        std::uint32_t far_interval_ticks{};
+    };
+
     /// Snapshot processing pipeline settings.
     struct PipelineConfig
     {
@@ -92,6 +102,7 @@ export namespace simnet
         bool enable_quantization{false};
         bool enable_delta{false};
         AreaOfInterestConfig area_of_interest{};
+        LevelOfDetailConfig level_of_detail{};
     };
 
     /// Shared opaque application byte-group packetization settings.

@@ -387,13 +387,97 @@ namespace
         }
     }
 
+    void apply_level_of_detail(Json const& json, simnet::LevelOfDetailConfig& config)
+    {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "mode" && key != "near_distance" && key != "medium_distance"
+                && key != "medium_interval_ticks" && key != "far_interval_ticks") {
+                throw std::runtime_error(
+                    "invalid config field 'pipeline.level_of_detail." + key + "': unknown field"
+                );
+            }
+        }
+
+        read_optional(json, "mode", config.mode);
+        validate_one_of("pipeline.level_of_detail.mode", config.mode, {"none", "distance_bands"});
+        auto const has_near = json.contains("near_distance");
+        auto const has_medium = json.contains("medium_distance");
+        auto const has_medium_interval = json.contains("medium_interval_ticks");
+        auto const has_far_interval = json.contains("far_interval_ticks");
+        if (config.mode == "none") {
+            if (has_near || has_medium || has_medium_interval || has_far_interval) {
+                throw std::runtime_error(
+                    "invalid pipeline.level_of_detail: none mode accepts no band fields"
+                );
+            }
+            return;
+        }
+        if (!has_near || !has_medium || !has_medium_interval || !has_far_interval) {
+            throw std::runtime_error(
+                "invalid pipeline.level_of_detail: distance_bands requires every band field"
+            );
+        }
+
+        read_optional(json, "near_distance", config.near_distance);
+        read_optional(json, "medium_distance", config.medium_distance);
+        read_optional(json, "medium_interval_ticks", config.medium_interval_ticks);
+        read_optional(json, "far_interval_ticks", config.far_interval_ticks);
+        if (!std::isfinite(config.near_distance) || config.near_distance <= 0.0F
+            || !std::isfinite(config.medium_distance) || config.medium_distance <= 0.0F) {
+            throw std::runtime_error(
+                "invalid pipeline.level_of_detail: distances must be positive and finite"
+            );
+        }
+        if (config.near_distance >= config.medium_distance) {
+            throw std::runtime_error(
+                "invalid pipeline.level_of_detail: near_distance must be below medium_distance"
+            );
+        }
+        if (config.medium_interval_ticks < 2U) {
+            throw std::runtime_error(
+                "invalid pipeline.level_of_detail: medium interval must be at least 2"
+            );
+        }
+        if (config.far_interval_ticks <= config.medium_interval_ticks
+            || config.far_interval_ticks > 65'535U) {
+            throw std::runtime_error(
+                "invalid pipeline.level_of_detail: far interval must be greater and at most 65535"
+            );
+        }
+    }
+
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
     {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "enable_incremental" && key != "enable_quantization" && key != "enable_delta"
+                && key != "area_of_interest" && key != "level_of_detail") {
+                throw std::runtime_error(
+                    "invalid config field 'pipeline." + key + "': unknown field"
+                );
+            }
+        }
         read_optional(json, "enable_incremental", config.enable_incremental);
         read_optional(json, "enable_quantization", config.enable_quantization);
         read_optional(json, "enable_delta", config.enable_delta);
         if (auto const* section = optional_object(json, "area_of_interest")) {
             apply_area_of_interest(*section, config.area_of_interest);
+        }
+        if (auto const* section = optional_object(json, "level_of_detail")) {
+            apply_level_of_detail(*section, config.level_of_detail);
+        }
+        if (config.level_of_detail.mode == "distance_bands") {
+            if (config.area_of_interest.mode == "none") {
+                throw std::runtime_error(
+                    "invalid pipeline.level_of_detail: distance_bands requires radius or FOV AOI"
+                );
+            }
+            if (config.level_of_detail.medium_distance >= config.area_of_interest.radius) {
+                throw std::runtime_error(
+                    "invalid pipeline.level_of_detail: medium_distance must be below AOI radius"
+                );
+            }
         }
     }
 
@@ -773,6 +857,11 @@ namespace
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_bytes(hash, config.pipeline.area_of_interest.radius);
         hash_bytes(hash, config.pipeline.area_of_interest.fov_degrees);
+        hash_string(hash, config.pipeline.level_of_detail.mode);
+        hash_bytes(hash, config.pipeline.level_of_detail.near_distance);
+        hash_bytes(hash, config.pipeline.level_of_detail.medium_distance);
+        hash_bytes(hash, config.pipeline.level_of_detail.medium_interval_ticks);
+        hash_bytes(hash, config.pipeline.level_of_detail.far_interval_ticks);
         hash_string(hash, config.snapshot_delivery.mode);
         hash_bytes(hash, config.snapshot_delivery.full_replace_after_unacknowledged_updates);
         hash_string(hash, config.compression.mode);
@@ -840,6 +929,11 @@ namespace
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_canonical_float(hash, config.pipeline.area_of_interest.radius);
         hash_canonical_float(hash, config.pipeline.area_of_interest.fov_degrees);
+        hash_string(hash, config.pipeline.level_of_detail.mode);
+        hash_canonical_float(hash, config.pipeline.level_of_detail.near_distance);
+        hash_canonical_float(hash, config.pipeline.level_of_detail.medium_distance);
+        hash_canonical_u32(hash, config.pipeline.level_of_detail.medium_interval_ticks);
+        hash_canonical_u32(hash, config.pipeline.level_of_detail.far_interval_ticks);
         hash_string(hash, config.snapshot_delivery.mode);
         hash_canonical_u32(
             hash,
