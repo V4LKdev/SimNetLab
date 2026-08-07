@@ -239,6 +239,8 @@ namespace simnet
         bool const emit_patch = schedule_level_of_detail || emit_delta || schedule_incremental;
         auto incremental_selection_count = std::size_t{};
         auto level_of_detail_cursor = client_state.incremental_cursor;
+        pipeline_records::RecordLayout const layout
+            = pipeline_records::resolve_record_layout(pipeline);
 
         if (input.replica_snapshot != nullptr
             && (!incremental_enabled || delta_enabled || level_of_detail_enabled)) {
@@ -327,25 +329,29 @@ namespace simnet
 
         // --- Delta selection ---
 
+        auto delta = DeltaReport{};
         if (emit_delta) {
             pipeline_validate::require_u32_count(
                 input.baseline_snapshot->size(),
                 "baseline snapshot entity count"
             );
             if (schedule_level_of_detail || schedule_incremental) {
-                pipeline_selection::filter_scheduled_delta_records(
+                delta = pipeline_selection::filter_scheduled_delta_records(
                     scratch,
                     *selected_snapshot,
-                    *input.baseline_snapshot
+                    *input.baseline_snapshot,
+                    layout
                 );
             } else {
-                pipeline_selection::select_delta_records(
+                delta = pipeline_selection::select_delta_records(
                     scratch,
                     *selected_snapshot,
-                    *input.baseline_snapshot
+                    *input.baseline_snapshot,
+                    layout
                 );
             }
         } else {
+            scratch.prepared_record_bytes.clear();
             if (!emit_patch) {
                 scratch.selected_delete_ids.clear();
             }
@@ -373,8 +379,6 @@ namespace simnet
 
         // --- Representation encoding and layout ---
 
-        pipeline_records::RecordLayout const layout
-            = pipeline_records::resolve_record_layout(pipeline);
         std::uint32_t const record_bytes = layout.record_bytes;
 
         std::size_t const payload_byte_count
@@ -410,7 +414,11 @@ namespace simnet
             pipeline_wire::write_u32(scratch.bytes, id);
         }
 
-        scratch.logical_update.clear();
+        if (!emit_delta) {
+            scratch.logical_update.clear();
+        } else {
+            scratch.logical_update.deletes.clear();
+        }
         scratch.logical_update.tick = selected_snapshot->tick;
         scratch.logical_update.kind = snapshot_kind;
         scratch.logical_update.reserve(selected_count, delete_count);
@@ -419,9 +427,8 @@ namespace simnet
             scratch.selected_delete_ids.end()
         );
 
-        auto write_record = [&](std::size_t source_index) {
-            pipeline_records::write_record(
-                scratch.bytes,
+        auto prepare_and_write_record = [&](std::size_t source_index) {
+            auto const prepared = pipeline_records::prepare_record(
                 layout,
                 selected_snapshot->ids[source_index],
                 selected_snapshot->classifications[source_index],
@@ -429,25 +436,23 @@ namespace simnet
                 selected_snapshot->headings[source_index],
                 selected_snapshot->hues[source_index]
             );
-            scratch.logical_update.upserts.push_back(
-                pipeline_records::canonicalize_record(
-                    layout,
-                    selected_snapshot->ids[source_index],
-                    selected_snapshot->classifications[source_index],
-                    selected_snapshot->positions[source_index],
-                    selected_snapshot->headings[source_index],
-                    selected_snapshot->hues[source_index]
-                )
-            );
+            pipeline_records::write_prepared_record(scratch.bytes, layout, prepared);
+            scratch.logical_update.upserts.push_back(prepared.canonical);
         };
 
-        if (emit_patch) {
+        if (emit_delta) {
+            scratch.bytes.insert(
+                scratch.bytes.end(),
+                scratch.prepared_record_bytes.begin(),
+                scratch.prepared_record_bytes.end()
+            );
+        } else if (emit_patch) {
             for (std::uint32_t const idx : scratch.selected_indices) {
-                write_record(idx);
+                prepare_and_write_record(idx);
             }
         } else {
             for (std::size_t idx = 0; idx < selected_snapshot->size(); ++idx) {
-                write_record(idx);
+                prepare_and_write_record(idx);
             }
         }
 
@@ -483,6 +488,7 @@ namespace simnet
         report.snapshot_kind = snapshot_kind;
         report.upsert_count = static_cast<std::uint32_t>(selected_count);
         report.delete_count = static_cast<std::uint32_t>(delete_count);
+        report.delta = delta;
         report.area_of_interest = area_of_interest;
         if (level_of_detail_enabled) {
             level_of_detail.deletions_bypassing_count = report.delete_count;

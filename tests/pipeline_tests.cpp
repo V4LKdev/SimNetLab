@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -45,6 +46,33 @@ namespace
             });
         }
         return make_snapshot(tick, boids);
+    }
+
+    [[nodiscard]] bool same_binary32(float left, float right)
+    {
+        return std::bit_cast<std::uint32_t>(left) == std::bit_cast<std::uint32_t>(right);
+    }
+
+    [[nodiscard]] bool
+    same_snapshot_bits(simnet::WorldSnapshot const& left, simnet::WorldSnapshot const& right)
+    {
+        if (left.tick != right.tick || left.ids != right.ids
+            || left.classifications != right.classifications || left.hues != right.hues
+            || left.positions.size() != right.positions.size()
+            || left.headings.size() != right.headings.size()) {
+            return false;
+        }
+        for (auto index = std::size_t{}; index < left.size(); ++index) {
+            if (!same_binary32(left.positions[index].x, right.positions[index].x)
+                || !same_binary32(left.positions[index].y, right.positions[index].y)
+                || !same_binary32(left.positions[index].z, right.positions[index].z)
+                || !same_binary32(left.headings[index].x, right.headings[index].x)
+                || !same_binary32(left.headings[index].y, right.headings[index].y)
+                || !same_binary32(left.headings[index].z, right.headings[index].z)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
 
@@ -124,6 +152,11 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
     REQUIRE(delta.report.baseline_sequence == full.update.sequence);
     REQUIRE(delta.report.upsert_count == 2);
     REQUIRE(delta.report.delete_count == 1);
+    CHECK(delta.report.delta.candidate_count == 3U);
+    CHECK(delta.report.delta.unchanged_count == 1U);
+    CHECK(delta.report.delta.changed_existing_count == 1U);
+    CHECK(delta.report.delta.spawned_count == 1U);
+    CHECK(delta.report.delta.produced_upsert_count == delta.report.upsert_count);
 
     auto const decoded
         = simnet::decode_update(pipeline, decode_state, {.bytes = delta.update.bytes});
@@ -132,6 +165,277 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
     CHECK(decoded.update.upserts[0].id == 2);
     CHECK(decoded.update.upserts[1].id == 4);
     CHECK(decoded.update.deletes == std::vector<simnet::EntityNetId>{3});
+}
+
+TEST_CASE("raw Delta comparison uses exact binary32 values", "[pipeline][delta]")
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Delta;
+    auto const source = make_snapshot(
+        1U,
+        {{.id = 1U,
+          .classification = known_classification,
+          .position = {0.0F, 1.0F, 2.0F},
+          .heading = {1.0F, 0.0F, 0.0F},
+          .hue = 4U}}
+    );
+    auto state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto const full = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &source});
+
+    auto encode_against_full = [&](simnet::WorldSnapshot const& current) {
+        return simnet::encode_snapshot(
+            pipeline,
+            state,
+            scratch,
+            {
+                .snapshot = &current,
+                .baseline_snapshot = &full.resulting_snapshot,
+                .baseline_sequence = full.update.sequence,
+            }
+        );
+    };
+
+    auto equal = source;
+    equal.tick = 2U;
+    auto const equal_delta = encode_against_full(equal);
+    CHECK(equal_delta.report.upsert_count == 0U);
+    CHECK(equal_delta.report.delta.unchanged_count == 1U);
+
+    auto changed = equal;
+    changed.tick = 3U;
+    changed.positions[0].x = 1.0F;
+    auto const changed_delta = encode_against_full(changed);
+    CHECK(changed_delta.report.upsert_count == 1U);
+    CHECK(changed_delta.report.delta.changed_existing_count == 1U);
+
+    auto signed_zero = equal;
+    signed_zero.tick = 4U;
+    signed_zero.positions[0].x = -0.0F;
+    auto const signed_zero_delta = encode_against_full(signed_zero);
+    REQUIRE(signed_zero_delta.report.upsert_count == 1U);
+    CHECK(signed_zero_delta.report.delta.changed_existing_count == 1U);
+    auto decode_state = simnet::ClientReplicationState{};
+    auto const decoded
+        = simnet::decode_update(pipeline, decode_state, {.bytes = signed_zero_delta.update.bytes});
+    REQUIRE(decoded.report.valid);
+    REQUIRE(decoded.update.upserts.size() == 1U);
+    CHECK(same_binary32(decoded.update.upserts[0].position.x, -0.0F));
+}
+
+TEST_CASE(
+    "quantized Delta compares canonical position and heading values",
+    "[pipeline][delta][quantized]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques
+        = simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::Quantization;
+    pipeline.quantization.position_bounds = simnet::make_centered_bounds(10.0F);
+    auto source = make_snapshot(
+        1U,
+        {{.id = 1U,
+          .classification = known_classification,
+          .position = {0.0F, 10.0F, -10.0F},
+          .heading = {1.0F, 0.0F, 0.0F},
+          .hue = 4U}}
+    );
+    auto state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto const full = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &source});
+
+    auto encode_against_full = [&](simnet::WorldSnapshot const& current) {
+        return simnet::encode_snapshot(
+            pipeline,
+            state,
+            scratch,
+            {
+                .snapshot = &current,
+                .baseline_snapshot = &full.resulting_snapshot,
+                .baseline_sequence = full.update.sequence,
+            }
+        );
+    };
+
+    source.tick = 2U;
+    source.positions[0].x = 0.0001F;
+    auto const sub_quantum = encode_against_full(source);
+    CHECK(sub_quantum.report.upsert_count == 0U);
+    CHECK(sub_quantum.report.delta.unchanged_count == 1U);
+
+    source.tick = 3U;
+    source.positions[0].x = 0.001F;
+    auto const adjacent_bin = encode_against_full(source);
+    CHECK(adjacent_bin.report.upsert_count == 1U);
+
+    source.tick = 4U;
+    source.positions[0] = {20.0F, 10.0F, -10.0F};
+    auto clamped_baseline_source = source;
+    clamped_baseline_source.tick = 5U;
+    auto clamped_state = simnet::ClientReplicationState{};
+    auto clamped_scratch = simnet::PipelineScratch{};
+    auto const clamped_full = simnet::encode_snapshot(
+        pipeline,
+        clamped_state,
+        clamped_scratch,
+        {.snapshot = &clamped_baseline_source}
+    );
+    source.tick = 6U;
+    source.positions[0].x = 30.0F;
+    auto const same_clamped_boundary = simnet::encode_snapshot(
+        pipeline,
+        clamped_state,
+        clamped_scratch,
+        {
+            .snapshot = &source,
+            .baseline_snapshot = &clamped_full.resulting_snapshot,
+            .baseline_sequence = clamped_full.update.sequence,
+        }
+    );
+    CHECK(same_clamped_boundary.report.upsert_count == 0U);
+
+    source.tick = 7U;
+    source.positions[0].x = -20.0F;
+    auto const opposite_clamped_boundary = simnet::encode_snapshot(
+        pipeline,
+        clamped_state,
+        clamped_scratch,
+        {
+            .snapshot = &source,
+            .baseline_snapshot = &clamped_full.resulting_snapshot,
+            .baseline_sequence = clamped_full.update.sequence,
+        }
+    );
+    CHECK(opposite_clamped_boundary.report.upsert_count == 1U);
+
+    auto heading_source = make_snapshot(
+        8U,
+        {{.id = 1U, .classification = known_classification, .heading = {1.0F, 0.0F, 0.0F}}}
+    );
+    auto heading_state = simnet::ClientReplicationState{};
+    auto heading_scratch = simnet::PipelineScratch{};
+    auto const heading_full = simnet::encode_snapshot(
+        pipeline,
+        heading_state,
+        heading_scratch,
+        {.snapshot = &heading_source}
+    );
+    heading_source.tick = 9U;
+    heading_source.headings[0] = simnet::normalize_or({1.0F, 0.000001F, 0.0F}, {.x = 1.0F});
+    auto const same_heading = simnet::encode_snapshot(
+        pipeline,
+        heading_state,
+        heading_scratch,
+        {
+            .snapshot = &heading_source,
+            .baseline_snapshot = &heading_full.resulting_snapshot,
+            .baseline_sequence = heading_full.update.sequence,
+        }
+    );
+    CHECK(same_heading.report.upsert_count == 0U);
+}
+
+TEST_CASE(
+    "octahedral and bit-packed Delta compare their canonical headings",
+    "[pipeline][delta][quantized][bitpacked]"
+)
+{
+    auto verify
+        = [](bool bitpacked, simnet::Vec3f baseline_heading, simnet::Vec3f current_heading) {
+              auto pipeline = simnet::PipelineDefinition{};
+              pipeline.techniques = simnet::PipelineTechniqueFlags::Delta
+                  | simnet::PipelineTechniqueFlags::Quantization
+                  | simnet::PipelineTechniqueFlags::OctHeading;
+              if (bitpacked) {
+                  pipeline.techniques |= simnet::PipelineTechniqueFlags::BitPacking;
+              }
+              auto source = make_snapshot(
+                  1U,
+                  {{.id = 1U, .classification = known_classification, .heading = baseline_heading}}
+              );
+              auto state = simnet::ClientReplicationState{};
+              auto scratch = simnet::PipelineScratch{};
+              auto const full
+                  = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &source});
+              source.tick = 2U;
+              source.headings[0] = current_heading;
+              auto const delta = simnet::encode_snapshot(
+                  pipeline,
+                  state,
+                  scratch,
+                  {
+                      .snapshot = &source,
+                      .baseline_snapshot = &full.resulting_snapshot,
+                      .baseline_sequence = full.update.sequence,
+                  }
+              );
+              CHECK(delta.report.delta.candidate_count == 1U);
+              CHECK(delta.report.delta.unchanged_count == 1U);
+              CHECK(delta.report.upsert_count == 0U);
+          };
+
+    auto const axis_perturbation = simnet::normalize_or({1.0F, 0.000001F, 0.0F}, {.x = 1.0F});
+    verify(false, {1.0F, 0.0F, 0.0F}, axis_perturbation);
+    verify(true, {1.0F, 0.0F, 0.0F}, axis_perturbation);
+
+    auto const fold = simnet::normalize_or({1.0F, 0.0F, -1.0F}, {.x = 1.0F});
+    auto const fold_perturbation = simnet::normalize_or({1.0F, 0.000001F, -1.0F}, {.x = 1.0F});
+    verify(false, fold, fold_perturbation);
+
+    auto const boundary_perturbation = simnet::normalize_or({1.0F, 0.0F, -0.000001F}, {.x = 1.0F});
+    verify(false, {1.0F, 0.0F, 0.0F}, boundary_perturbation);
+}
+
+TEST_CASE(
+    "Delta accounting distinguishes complete changed and spawned records",
+    "[pipeline][delta][classification]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Delta;
+    auto const baseline_source = make_linear_snapshot(1U, 3U);
+    auto current = baseline_source;
+    current.tick = 2U;
+    current.classifications[1] = unknown_classification;
+    current.hues[2] = 99U;
+    current.ids.push_back(4U);
+    current.classifications.push_back(known_classification);
+    current.positions.push_back({4.0F, 0.0F, 0.0F});
+    current.headings.push_back({1.0F, 0.0F, 0.0F});
+    current.hues.push_back(4U);
+
+    auto state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto const full
+        = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &baseline_source});
+    auto const delta = simnet::encode_snapshot(
+        pipeline,
+        state,
+        scratch,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+
+    CHECK(delta.report.delta.candidate_count == 4U);
+    CHECK(delta.report.delta.unchanged_count == 1U);
+    CHECK(delta.report.delta.changed_existing_count == 2U);
+    CHECK(delta.report.delta.spawned_count == 1U);
+    CHECK(delta.report.delta.produced_upsert_count == 3U);
+    CHECK(delta.report.upsert_count == 3U);
+    auto decode_state = simnet::ClientReplicationState{};
+    auto const decoded
+        = simnet::decode_update(pipeline, decode_state, {.bytes = delta.update.bytes});
+    REQUIRE(decoded.report.valid);
+    REQUIRE(decoded.update.upserts.size() == 3U);
+    CHECK(decoded.update.upserts[0].id == 2U);
+    CHECK(decoded.update.upserts[0].classification == unknown_classification);
+    CHECK(decoded.update.upserts[0].position.x == baseline_source.positions[1].x);
+    CHECK(decoded.update.upserts[1].id == 3U);
+    CHECK(decoded.update.upserts[1].hue == 99U);
+    CHECK(decoded.update.upserts[2].id == 4U);
 }
 
 TEST_CASE("deltas reconstruct from their exact retained baseline", "[pipeline][delta][replication]")
@@ -1206,7 +1510,7 @@ TEST_CASE(
             encode_scratch,
             {
                 .snapshot = &current,
-                .baseline_snapshot = &baseline,
+                .baseline_snapshot = &baseline_less.resulting_snapshot,
                 .baseline_sequence = baseline_less.update.sequence,
             }
         );
@@ -1227,10 +1531,15 @@ TEST_CASE(
 
     auto first_reconstructed = simnet::WorldSnapshot{};
     REQUIRE(
-        simnet::reconstruct_world_snapshot_unchecked(&baseline, first, first_reconstructed).valid
+        simnet::reconstruct_world_snapshot_unchecked(
+            &baseline_less.resulting_snapshot,
+            first,
+            first_reconstructed
+        )
+            .valid
     );
     CHECK(first_reconstructed.ids == std::vector<simnet::EntityNetId>{1, 2, 3, 4, 5});
-    CHECK(first_reconstructed.positions[3].x == baseline.positions[3].x);
+    CHECK(first_reconstructed.positions[3].x == baseline_less.resulting_snapshot.positions[3].x);
 
     auto const second = encode_and_decode();
     REQUIRE(second.upserts.size() == 2);
@@ -1241,9 +1550,65 @@ TEST_CASE(
 
     auto second_reconstructed = simnet::WorldSnapshot{};
     REQUIRE(
-        simnet::reconstruct_world_snapshot_unchecked(&baseline, second, second_reconstructed).valid
+        simnet::reconstruct_world_snapshot_unchecked(
+            &baseline_less.resulting_snapshot,
+            second,
+            second_reconstructed
+        )
+            .valid
     );
     CHECK(second_reconstructed.ids == std::vector<simnet::EntityNetId>{1, 2, 3, 4, 5, 7});
+}
+
+TEST_CASE(
+    "canonically unchanged incremental Delta candidates still advance the fair cursor",
+    "[pipeline][incremental][delta][quantized]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental
+        | simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::Quantization;
+    pipeline.incremental.max_entities_per_update = 1U;
+    pipeline.quantization.position_bounds = simnet::make_centered_bounds(10.0F);
+    auto source = make_linear_snapshot(1U, 2U);
+    auto state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto const full = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &source});
+
+    source.tick = 2U;
+    source.positions[0].x = 0.0001F;
+    source.positions[1].x = 2.0F;
+    auto const unchanged = simnet::encode_snapshot(
+        pipeline,
+        state,
+        scratch,
+        {
+            .snapshot = &source,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    CHECK(unchanged.report.delta.candidate_count == 1U);
+    CHECK(unchanged.report.delta.unchanged_count == 1U);
+    CHECK(unchanged.report.upsert_count == 0U);
+    CHECK(state.incremental_cursor == 1U);
+
+    source.tick = 3U;
+    auto const changed = simnet::encode_snapshot(
+        pipeline,
+        state,
+        scratch,
+        {
+            .snapshot = &source,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    CHECK(changed.report.delta.candidate_count == 1U);
+    CHECK(changed.report.delta.changed_existing_count == 1U);
+    CHECK(changed.report.upsert_count == 1U);
+    CHECK(scratch.logical_update.upserts[0].id == 2U);
+    CHECK(state.incremental_cursor == 0U);
 }
 
 TEST_CASE(
@@ -1377,4 +1742,62 @@ TEST_CASE(
     );
     CHECK(delta.resulting_snapshot.positions[0].x == reconstructed_delta.positions[0].x);
     CHECK(delta.resulting_snapshot.headings[0].x == reconstructed_delta.headings[0].x);
+}
+
+TEST_CASE(
+    "every complete-record layout retains the exact decoded Delta result",
+    "[pipeline][delta][replication]"
+)
+{
+    auto pipelines = std::array<simnet::PipelineDefinition, 4>{};
+    pipelines[0].techniques = simnet::PipelineTechniqueFlags::Delta;
+    pipelines[1].techniques
+        = simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::Quantization;
+    pipelines[2] = pipelines[1];
+    pipelines[2].techniques |= simnet::PipelineTechniqueFlags::OctHeading;
+    pipelines[3] = pipelines[2];
+    pipelines[3].techniques |= simnet::PipelineTechniqueFlags::BitPacking;
+
+    for (auto& pipeline : pipelines) {
+        pipeline.quantization.position_bounds = simnet::make_centered_bounds(10.0F);
+        auto source = make_snapshot(
+            1U,
+            {{.id = 1U,
+              .classification = known_classification,
+              .position = {1.2345F, -2.3456F, 3.4567F},
+              .heading = simnet::normalize_or({1.0F, 2.0F, 3.0F}, {.x = 1.0F}),
+              .hue = 42U}}
+        );
+        auto encode_state = simnet::ClientReplicationState{};
+        auto scratch = simnet::PipelineScratch{};
+        auto const full
+            = simnet::encode_snapshot(pipeline, encode_state, scratch, {.snapshot = &source});
+        source.tick = 2U;
+        source.positions[0].x = -4.321F;
+        source.headings[0] = simnet::normalize_or({-2.0F, 1.0F, 0.5F}, {.x = 1.0F});
+        auto const delta = simnet::encode_snapshot(
+            pipeline,
+            encode_state,
+            scratch,
+            {
+                .snapshot = &source,
+                .baseline_snapshot = &full.resulting_snapshot,
+                .baseline_sequence = full.update.sequence,
+            }
+        );
+        auto decode_state = simnet::ClientReplicationState{};
+        auto const decoded
+            = simnet::decode_update(pipeline, decode_state, {.bytes = delta.update.bytes});
+        REQUIRE(decoded.report.valid);
+        auto reconstructed = simnet::WorldSnapshot{};
+        REQUIRE(
+            simnet::reconstruct_world_snapshot_unchecked(
+                &full.resulting_snapshot,
+                decoded.update,
+                reconstructed
+            )
+                .valid
+        );
+        CHECK(same_snapshot_bits(delta.resulting_snapshot, reconstructed));
+    }
 }

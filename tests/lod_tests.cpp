@@ -730,6 +730,55 @@ TEST_CASE(
     CHECK(same_snapshot(reconstructed, patch.resulting_snapshot));
 }
 
+TEST_CASE(
+    "LOD services a due candidate whose canonical Delta value is unchanged",
+    "[lod][delta][quantized]"
+)
+{
+    auto source = linear_snapshot(0U, 1U, 2.0F);
+    auto const candidates = all_candidates(source);
+    auto const interest = stationary_source();
+    auto pipeline = lod_pipeline();
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
+    pipeline.quantization.position_bounds = simnet::make_centered_bounds(20.0F);
+    auto state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto const full = simnet::encode_snapshot(
+        pipeline,
+        state,
+        scratch,
+        {.snapshot = &source, .interest_source = &interest, .candidate_indices = candidates}
+    );
+
+    source.tick = state.level_of_detail_schedule[0].next_due_tick;
+    source.positions[0].y = 0.0001F;
+    auto const patch = simnet::encode_snapshot(
+        pipeline,
+        state,
+        scratch,
+        {
+            .snapshot = &source,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+            .interest_source = &interest,
+            .candidate_indices = candidates,
+        }
+    );
+
+    CHECK(patch.report.delta.candidate_count == 1U);
+    CHECK(patch.report.delta.unchanged_count == 1U);
+    CHECK(patch.report.upsert_count == 0U);
+    CHECK(patch.report.level_of_detail.serviced.near == 1U);
+    CHECK(patch.report.level_of_detail.represented.near == 0U);
+    CHECK_FALSE(state.level_of_detail_schedule[0].pending_due);
+    CHECK(state.level_of_detail_schedule[0].next_due_tick > source.tick);
+    REQUIRE(patch.resulting_snapshot.positions.size() == 1U);
+    CHECK(patch.resulting_snapshot.positions[0].x == full.resulting_snapshot.positions[0].x);
+    CHECK(patch.resulting_snapshot.positions[0].y == full.resulting_snapshot.positions[0].y);
+    CHECK(patch.resulting_snapshot.positions[0].z == full.resulting_snapshot.positions[0].z);
+}
+
 TEST_CASE("distance LOD composes with FOV AOI", "[lod][aoi][fov]")
 {
     auto source = make_snapshot(

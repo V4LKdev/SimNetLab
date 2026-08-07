@@ -31,6 +31,7 @@ export namespace simnet
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
         std::uint32_t upsert_count{}; /// number of upserts in the payload
         std::uint32_t delete_count{}; /// number of deletes in the payload
+        DeltaReport delta{};
         AreaOfInterestReport area_of_interest{};
         LevelOfDetailReport level_of_detail{};
     };

@@ -154,6 +154,16 @@ export namespace simnet
         std::uint32_t culled_count{};
     };
 
+    /// Canonical complete-record Delta selection accounting.
+    struct DeltaReport
+    {
+        std::uint32_t candidate_count{};
+        std::uint32_t unchanged_count{};
+        std::uint32_t changed_existing_count{};
+        std::uint32_t spawned_count{};
+        std::uint32_t produced_upsert_count{};
+    };
+
     /// Counts grouped by deterministic distance band.
     struct LevelOfDetailBandCounts
     {
@@ -240,6 +250,8 @@ export namespace simnet
         std::vector<LevelOfDetailScheduleEntry> level_of_detail_schedule;
         /// Canonical logical update represented by the encoded bytes.
         SnapshotUpdate logical_update;
+        /// Prepared complete-record bytes retained between Delta comparison and final writing.
+        std::vector<Byte> prepared_record_bytes;
         /// Temporary buffer for encoding.
         std::vector<Byte> bytes;
     };

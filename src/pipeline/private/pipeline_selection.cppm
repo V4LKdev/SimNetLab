@@ -10,6 +10,7 @@ module;
 module simnet.pipeline:selection;
 
 import :types;
+import :records;
 import simnet.core;
 import simnet.snapshot;
 
@@ -150,35 +151,62 @@ namespace simnet::pipeline_selection
         return static_cast<std::uint32_t>(scratch.selected_indices.size() - previous_size);
     }
 
-    [[nodiscard]] bool same_vec3(Vec3f left, Vec3f right) noexcept
-    {
-        return left.x == right.x && left.y == right.y && left.z == right.z;
-    }
-
-    [[nodiscard]] bool same_entity_state(
-        WorldSnapshot const& current,
-        std::size_t current_index,
-        WorldSnapshot const& baseline,
-        std::size_t baseline_index
+    [[nodiscard]] pipeline_records::PreparedRecord prepare_snapshot_record(
+        pipeline_records::RecordLayout const& layout,
+        WorldSnapshot const& snapshot,
+        std::size_t index
     ) noexcept
     {
-        return current.classifications[current_index] == baseline.classifications[baseline_index]
-            && same_vec3(current.positions[current_index], baseline.positions[baseline_index])
-            && same_vec3(current.headings[current_index], baseline.headings[baseline_index])
-            && current.hues[current_index] == baseline.hues[baseline_index];
+        return pipeline_records::prepare_record(
+            layout,
+            snapshot.ids[index],
+            snapshot.classifications[index],
+            snapshot.positions[index],
+            snapshot.headings[index],
+            snapshot.hues[index]
+        );
+    }
+
+    void begin_delta_preparation(PipelineScratch& scratch, std::size_t maximum_upserts)
+    {
+        scratch.prepared_record_bytes.clear();
+        scratch.logical_update.upserts.clear();
+        scratch.logical_update.upserts.reserve(maximum_upserts);
+    }
+
+    void retain_prepared_record(
+        PipelineScratch& scratch,
+        pipeline_records::RecordLayout const& layout,
+        pipeline_records::PreparedRecord const& prepared
+    )
+    {
+        pipeline_records::write_prepared_record(scratch.prepared_record_bytes, layout, prepared);
+        scratch.logical_update.upserts.push_back(prepared.canonical);
     }
 
     /// Selects changed/new upserts and baseline-only deletes from two sorted snapshots.
-    void select_delta_records(
+    [[nodiscard]] DeltaReport select_delta_records(
         PipelineScratch& scratch,
         WorldSnapshot const& current,
-        WorldSnapshot const& baseline
+        WorldSnapshot const& baseline,
+        pipeline_records::RecordLayout const& layout
     )
     {
         scratch.selected_indices.clear();
         scratch.selected_delete_ids.clear();
         scratch.selected_indices.reserve(current.size());
         scratch.selected_delete_ids.reserve(baseline.size());
+        begin_delta_preparation(scratch, current.size());
+
+        auto report = DeltaReport{};
+        auto retain_spawn = [&](std::size_t current_index) {
+            auto const prepared = prepare_snapshot_record(layout, current, current_index);
+            scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+            retain_prepared_record(scratch, layout, prepared);
+            ++report.candidate_count;
+            ++report.spawned_count;
+            ++report.produced_upsert_count;
+        };
 
         auto current_index = std::size_t{};
         auto baseline_index = std::size_t{};
@@ -188,14 +216,25 @@ namespace simnet::pipeline_selection
             auto const baseline_id = baseline.ids[baseline_index];
 
             if (current_id < baseline_id) {
-                scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+                retain_spawn(current_index);
                 ++current_index;
             } else if (baseline_id < current_id) {
                 scratch.selected_delete_ids.push_back(baseline_id);
                 ++baseline_index;
             } else {
-                if (!same_entity_state(current, current_index, baseline, baseline_index)) {
+                auto const prepared = prepare_snapshot_record(layout, current, current_index);
+                ++report.candidate_count;
+                if (!pipeline_records::same_canonical_state(
+                        prepared.canonical,
+                        baseline,
+                        baseline_index
+                    )) {
                     scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+                    retain_prepared_record(scratch, layout, prepared);
+                    ++report.changed_existing_count;
+                    ++report.produced_upsert_count;
+                } else {
+                    ++report.unchanged_count;
                 }
                 ++current_index;
                 ++baseline_index;
@@ -203,13 +242,14 @@ namespace simnet::pipeline_selection
         }
 
         while (current_index < current.size()) {
-            scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+            retain_spawn(current_index);
             ++current_index;
         }
         while (baseline_index < baseline.size()) {
             scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);
             ++baseline_index;
         }
+        return report;
     }
 
     /**
@@ -219,25 +259,46 @@ namespace simnet::pipeline_selection
      * round-robin schedule. Including every truthful delete prevents a partial update from
      * retaining entities that no longer exist.
      */
-    void filter_scheduled_delta_records(
+    [[nodiscard]] DeltaReport filter_scheduled_delta_records(
         PipelineScratch& scratch,
         WorldSnapshot const& current,
-        WorldSnapshot const& baseline
+        WorldSnapshot const& baseline,
+        pipeline_records::RecordLayout const& layout
     )
     {
+        begin_delta_preparation(scratch, scratch.selected_indices.size());
+        auto report = DeltaReport{};
         auto baseline_index = std::size_t{};
         auto retained_count = std::size_t{};
         for (std::uint32_t const current_index : scratch.selected_indices) {
+            auto const prepared = prepare_snapshot_record(layout, current, current_index);
+            ++report.candidate_count;
             auto const current_id = current.ids[current_index];
             while (baseline_index < baseline.size() && baseline.ids[baseline_index] < current_id) {
                 ++baseline_index;
             }
 
-            bool const unchanged = baseline_index < baseline.size()
-                && baseline.ids[baseline_index] == current_id
-                && same_entity_state(current, current_index, baseline, baseline_index);
+            bool const existed
+                = baseline_index < baseline.size() && baseline.ids[baseline_index] == current_id;
+            auto unchanged = false;
+            if (existed) {
+                unchanged = pipeline_records::same_canonical_state(
+                    prepared.canonical,
+                    baseline,
+                    baseline_index
+                );
+            }
             if (!unchanged) {
                 scratch.selected_indices[retained_count++] = current_index;
+                retain_prepared_record(scratch, layout, prepared);
+                if (existed) {
+                    ++report.changed_existing_count;
+                } else {
+                    ++report.spawned_count;
+                }
+                ++report.produced_upsert_count;
+            } else {
+                ++report.unchanged_count;
             }
         }
         scratch.selected_indices.resize(retained_count);
@@ -263,6 +324,7 @@ namespace simnet::pipeline_selection
             scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);
             ++baseline_index;
         }
+        return report;
     }
 
     /// Selects every entity that disappeared from the latest exact non-Delta replica.

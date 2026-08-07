@@ -1,5 +1,7 @@
 module;
 
+#include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -26,6 +28,14 @@ namespace simnet::pipeline_records
         bool oct_heading{};
         std::uint32_t record_bytes{};
         Aabb3f bounds{};
+    };
+
+    /// Exact wire tokens and complete logical value prepared from one source entity.
+    struct PreparedRecord
+    {
+        EntityState canonical{};
+        std::array<std::uint32_t, 3> position_tokens{};
+        std::array<std::uint32_t, 3> heading_tokens{};
     };
 
     /// Resolves the record layout for a given pipeline definition.
@@ -56,37 +66,129 @@ namespace simnet::pipeline_records
         };
     }
 
-    /// Writes a 3D vector as three quantized 16-bit unsigned integers, given the specified bounds.
-    void write_quantized_vec3(std::vector<Byte>& bytes, Vec3f value, Aabb3f bounds)
+    /// Prepares the only representation used by comparison, writing, and exact reconstruction.
+    [[nodiscard]] PreparedRecord prepare_record(
+        RecordLayout const& layout,
+        EntityNetId id,
+        EntityClassification classification,
+        Vec3f position,
+        Vec3f heading,
+        std::uint8_t hue
+    ) noexcept
     {
-        pipeline_wire::write_u16(
-            bytes,
-            pipeline_quantize::quantize_unorm16(value.x, bounds.min.x, bounds.max.x)
-        );
-        pipeline_wire::write_u16(
-            bytes,
-            pipeline_quantize::quantize_unorm16(value.y, bounds.min.y, bounds.max.y)
-        );
-        pipeline_wire::write_u16(
-            bytes,
-            pipeline_quantize::quantize_unorm16(value.z, bounds.min.z, bounds.max.z)
-        );
+        auto prepared = PreparedRecord{};
+        prepared.canonical.id = id;
+        prepared.canonical.classification = classification;
+        prepared.canonical.hue = hue;
+
+        if (!layout.quantized) {
+            prepared.position_tokens = {
+                std::bit_cast<std::uint32_t>(position.x),
+                std::bit_cast<std::uint32_t>(position.y),
+                std::bit_cast<std::uint32_t>(position.z),
+            };
+            prepared.heading_tokens = {
+                std::bit_cast<std::uint32_t>(heading.x),
+                std::bit_cast<std::uint32_t>(heading.y),
+                std::bit_cast<std::uint32_t>(heading.z),
+            };
+            prepared.canonical.position = {
+                .x = std::bit_cast<float>(prepared.position_tokens[0]),
+                .y = std::bit_cast<float>(prepared.position_tokens[1]),
+                .z = std::bit_cast<float>(prepared.position_tokens[2]),
+            };
+            prepared.canonical.heading = {
+                .x = std::bit_cast<float>(prepared.heading_tokens[0]),
+                .y = std::bit_cast<float>(prepared.heading_tokens[1]),
+                .z = std::bit_cast<float>(prepared.heading_tokens[2]),
+            };
+            return prepared;
+        }
+
+        prepared.position_tokens = {
+            pipeline_quantize::quantize_unorm16(
+                position.x,
+                layout.bounds.min.x,
+                layout.bounds.max.x
+            ),
+            pipeline_quantize::quantize_unorm16(
+                position.y,
+                layout.bounds.min.y,
+                layout.bounds.max.y
+            ),
+            pipeline_quantize::quantize_unorm16(
+                position.z,
+                layout.bounds.min.z,
+                layout.bounds.max.z
+            ),
+        };
+        prepared.canonical.position = {
+            .x = pipeline_quantize::dequantize_unorm16(
+                static_cast<std::uint16_t>(prepared.position_tokens[0]),
+                layout.bounds.min.x,
+                layout.bounds.max.x
+            ),
+            .y = pipeline_quantize::dequantize_unorm16(
+                static_cast<std::uint16_t>(prepared.position_tokens[1]),
+                layout.bounds.min.y,
+                layout.bounds.max.y
+            ),
+            .z = pipeline_quantize::dequantize_unorm16(
+                static_cast<std::uint16_t>(prepared.position_tokens[2]),
+                layout.bounds.min.z,
+                layout.bounds.max.z
+            ),
+        };
+
+        if (layout.oct_heading) {
+            auto const [x, y] = pipeline_quantize::encode_oct_heading(heading);
+            prepared.heading_tokens = {x, y, 0U};
+            prepared.canonical.heading = pipeline_quantize::decode_oct_heading(x, y);
+        } else {
+            prepared.heading_tokens = {
+                pipeline_quantize::quantize_snorm16(heading.x),
+                pipeline_quantize::quantize_snorm16(heading.y),
+                pipeline_quantize::quantize_snorm16(heading.z),
+            };
+            prepared.canonical.heading = normalize_or(
+                {
+                    .x = pipeline_quantize::dequantize_snorm16(
+                        static_cast<std::uint16_t>(prepared.heading_tokens[0])
+                    ),
+                    .y = pipeline_quantize::dequantize_snorm16(
+                        static_cast<std::uint16_t>(prepared.heading_tokens[1])
+                    ),
+                    .z = pipeline_quantize::dequantize_snorm16(
+                        static_cast<std::uint16_t>(prepared.heading_tokens[2])
+                    ),
+                },
+                {.x = 1.0F}
+            );
+        }
+        return prepared;
     }
 
-    /// Writes a 3D heading vector as three quantized 16-bit signed integers in the range [-1, 1].
-    void write_quantized_heading(std::vector<Byte>& bytes, Vec3f value)
+    [[nodiscard]] bool same_binary32(float left, float right) noexcept
     {
-        pipeline_wire::write_u16(bytes, pipeline_quantize::quantize_snorm16(value.x));
-        pipeline_wire::write_u16(bytes, pipeline_quantize::quantize_snorm16(value.y));
-        pipeline_wire::write_u16(bytes, pipeline_quantize::quantize_snorm16(value.z));
+        return std::bit_cast<std::uint32_t>(left) == std::bit_cast<std::uint32_t>(right);
     }
 
-    /// Writes a 3D heading vector as two octant-encoded 16-bit unsigned integers.
-    void write_oct_heading(std::vector<Byte>& bytes, Vec3f value)
+    /// Compares a prepared logical value with an already canonical retained baseline value.
+    [[nodiscard]] bool same_canonical_state(
+        EntityState const& current,
+        WorldSnapshot const& baseline,
+        std::size_t baseline_index
+    ) noexcept
     {
-        auto const [x, y] = pipeline_quantize::encode_oct_heading(value);
-        pipeline_wire::write_u16(bytes, x);
-        pipeline_wire::write_u16(bytes, y);
+        return current.id == baseline.ids[baseline_index]
+            && current.classification == baseline.classifications[baseline_index]
+            && same_binary32(current.position.x, baseline.positions[baseline_index].x)
+            && same_binary32(current.position.y, baseline.positions[baseline_index].y)
+            && same_binary32(current.position.z, baseline.positions[baseline_index].z)
+            && same_binary32(current.heading.x, baseline.headings[baseline_index].x)
+            && same_binary32(current.heading.y, baseline.headings[baseline_index].y)
+            && same_binary32(current.heading.z, baseline.headings[baseline_index].z)
+            && current.hue == baseline.hues[baseline_index];
     }
 
     /// Reads a 3D vector from three quantized 16-bit unsigned integers, given the specified bounds.
@@ -148,39 +250,18 @@ namespace simnet::pipeline_records
         return true;
     }
 
-    /// Writes one entity record in the bit-packed layout.
-    void write_bitpacked_record(
-        std::vector<Byte>& bytes,
-        EntityNetId id,
-        EntityClassification classification,
-        Vec3f position,
-        Vec3f heading,
-        std::uint8_t hue,
-        Aabb3f bounds
-    )
+    /// Writes one prepared entity record in the bit-packed layout.
+    void write_bitpacked_record(std::vector<Byte>& bytes, PreparedRecord const& prepared)
     {
         auto writer = pipeline_bitpack::BitWriter{.bytes = bytes};
-        auto const [oct_x, oct_y] = pipeline_quantize::encode_oct_heading(heading);
-        pipeline_bitpack::write_bits(writer, id, 32);
-        pipeline_bitpack::write_bits(writer, classification.value(), 8);
-        pipeline_bitpack::write_bits(
-            writer,
-            pipeline_quantize::quantize_unorm16(position.x, bounds.min.x, bounds.max.x),
-            16
-        );
-        pipeline_bitpack::write_bits(
-            writer,
-            pipeline_quantize::quantize_unorm16(position.y, bounds.min.y, bounds.max.y),
-            16
-        );
-        pipeline_bitpack::write_bits(
-            writer,
-            pipeline_quantize::quantize_unorm16(position.z, bounds.min.z, bounds.max.z),
-            16
-        );
-        pipeline_bitpack::write_bits(writer, oct_x, 16);
-        pipeline_bitpack::write_bits(writer, oct_y, 16);
-        pipeline_bitpack::write_bits(writer, hue, 8);
+        pipeline_bitpack::write_bits(writer, prepared.canonical.id, 32);
+        pipeline_bitpack::write_bits(writer, prepared.canonical.classification.value(), 8);
+        pipeline_bitpack::write_bits(writer, prepared.position_tokens[0], 16);
+        pipeline_bitpack::write_bits(writer, prepared.position_tokens[1], 16);
+        pipeline_bitpack::write_bits(writer, prepared.position_tokens[2], 16);
+        pipeline_bitpack::write_bits(writer, prepared.heading_tokens[0], 16);
+        pipeline_bitpack::write_bits(writer, prepared.heading_tokens[1], 16);
+        pipeline_bitpack::write_bits(writer, prepared.canonical.hue, 8);
         pipeline_bitpack::flush_bits(writer);
     }
 
@@ -234,44 +315,65 @@ namespace simnet::pipeline_records
         return true;
     }
 
-    /// Writes one entity record in the resolved layout.
-    void write_record(
+    /// Writes the exact tokens from one prepared record.
+    void write_prepared_record(
         std::vector<Byte>& bytes,
         RecordLayout const& layout,
-        EntityNetId id,
-        EntityClassification classification,
-        Vec3f position,
-        Vec3f heading,
-        std::uint8_t hue
+        PreparedRecord const& prepared
     )
     {
         if (layout.bitpacked) {
-            write_bitpacked_record(
-                bytes,
-                id,
-                classification,
-                position,
-                heading,
-                hue,
-                layout.bounds
-            );
+            write_bitpacked_record(bytes, prepared);
             return;
         }
 
-        pipeline_wire::write_u32(bytes, id);
-        pipeline_wire::write_u8(bytes, classification.value());
+        pipeline_wire::write_u32(bytes, prepared.canonical.id);
+        pipeline_wire::write_u8(bytes, prepared.canonical.classification.value());
         if (layout.quantized) {
-            write_quantized_vec3(bytes, position, layout.bounds);
+            pipeline_wire::write_u16(
+                bytes,
+                static_cast<std::uint16_t>(prepared.position_tokens[0])
+            );
+            pipeline_wire::write_u16(
+                bytes,
+                static_cast<std::uint16_t>(prepared.position_tokens[1])
+            );
+            pipeline_wire::write_u16(
+                bytes,
+                static_cast<std::uint16_t>(prepared.position_tokens[2])
+            );
             if (layout.oct_heading) {
-                write_oct_heading(bytes, heading);
+                pipeline_wire::write_u16(
+                    bytes,
+                    static_cast<std::uint16_t>(prepared.heading_tokens[0])
+                );
+                pipeline_wire::write_u16(
+                    bytes,
+                    static_cast<std::uint16_t>(prepared.heading_tokens[1])
+                );
             } else {
-                write_quantized_heading(bytes, heading);
+                pipeline_wire::write_u16(
+                    bytes,
+                    static_cast<std::uint16_t>(prepared.heading_tokens[0])
+                );
+                pipeline_wire::write_u16(
+                    bytes,
+                    static_cast<std::uint16_t>(prepared.heading_tokens[1])
+                );
+                pipeline_wire::write_u16(
+                    bytes,
+                    static_cast<std::uint16_t>(prepared.heading_tokens[2])
+                );
             }
         } else {
-            pipeline_wire::write_vec3(bytes, position);
-            pipeline_wire::write_vec3(bytes, heading);
+            pipeline_wire::write_u32(bytes, prepared.position_tokens[0]);
+            pipeline_wire::write_u32(bytes, prepared.position_tokens[1]);
+            pipeline_wire::write_u32(bytes, prepared.position_tokens[2]);
+            pipeline_wire::write_u32(bytes, prepared.heading_tokens[0]);
+            pipeline_wire::write_u32(bytes, prepared.heading_tokens[1]);
+            pipeline_wire::write_u32(bytes, prepared.heading_tokens[2]);
         }
-        pipeline_wire::write_u8(bytes, hue);
+        pipeline_wire::write_u8(bytes, prepared.canonical.hue);
     }
 
     /// Reads one entity record in the resolved layout, advancing offset. Returns false on truncation.
@@ -321,77 +423,5 @@ namespace simnet::pipeline_records
             return false;
         }
         return pipeline_wire::read_u8(bytes, offset, boid.hue);
-    }
-
-    /// Returns the exact logical entity state reconstructed from this record layout.
-    [[nodiscard]] EntityState canonicalize_record(
-        RecordLayout const& layout,
-        EntityNetId id,
-        EntityClassification classification,
-        Vec3f position,
-        Vec3f heading,
-        std::uint8_t hue
-    ) noexcept
-    {
-        auto result = EntityState{
-            .id = id,
-            .classification = classification,
-            .position = position,
-            .heading = heading,
-            .hue = hue,
-        };
-        if (!layout.quantized) {
-            return result;
-        }
-
-        result.position = {
-            .x = pipeline_quantize::dequantize_unorm16(
-                pipeline_quantize::quantize_unorm16(
-                    position.x,
-                    layout.bounds.min.x,
-                    layout.bounds.max.x
-                ),
-                layout.bounds.min.x,
-                layout.bounds.max.x
-            ),
-            .y = pipeline_quantize::dequantize_unorm16(
-                pipeline_quantize::quantize_unorm16(
-                    position.y,
-                    layout.bounds.min.y,
-                    layout.bounds.max.y
-                ),
-                layout.bounds.min.y,
-                layout.bounds.max.y
-            ),
-            .z = pipeline_quantize::dequantize_unorm16(
-                pipeline_quantize::quantize_unorm16(
-                    position.z,
-                    layout.bounds.min.z,
-                    layout.bounds.max.z
-                ),
-                layout.bounds.min.z,
-                layout.bounds.max.z
-            ),
-        };
-        if (layout.oct_heading) {
-            auto const [x, y] = pipeline_quantize::encode_oct_heading(heading);
-            result.heading = pipeline_quantize::decode_oct_heading(x, y);
-        } else {
-            result.heading = normalize_or(
-                {
-                    .x = pipeline_quantize::dequantize_snorm16(
-                        pipeline_quantize::quantize_snorm16(heading.x)
-                    ),
-                    .y = pipeline_quantize::dequantize_snorm16(
-                        pipeline_quantize::quantize_snorm16(heading.y)
-                    ),
-                    .z = pipeline_quantize::dequantize_snorm16(
-                        pipeline_quantize::quantize_snorm16(heading.z)
-                    ),
-                },
-                {.x = 1.0F}
-            );
-        }
-        return result;
     }
 }
