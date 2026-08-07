@@ -14,6 +14,27 @@ import simnet.snapshot;
 
 export namespace simnet
 {
+    /// Complete per-entity record layout selected for one encoded update.
+    enum class EntityRecordLayout : std::uint8_t
+    {
+        Raw,
+        Quantized,
+        QuantizedOctHeading,
+        BitPackedQuantizedOctHeading,
+    };
+
+    /// Optional source-to-canonical quality accounting for produced complete records.
+    struct RepresentationReport
+    {
+        EntityRecordLayout layout{EntityRecordLayout::Raw};
+        std::uint32_t record_bytes{};
+        std::uint32_t quality_sample_count{};
+        double position_error_sum{};
+        double position_error_maximum{};
+        double heading_angular_error_degrees_sum{};
+        double heading_angular_error_degrees_maximum{};
+    };
+
     /// Fully encoded update ready for compression or opaque byte-group packetization.
     struct EncodedUpdate
     {
@@ -25,12 +46,12 @@ export namespace simnet
     struct EncodeReport
     {
         Tick tick{};
-        EncodeSkipReason skip_reason{EncodeSkipReason::None};
         SequenceId sequence{};
         SequenceId baseline_sequence{};
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
         std::uint32_t upsert_count{}; /// number of upserts in the payload
         std::uint32_t delete_count{}; /// number of deletes in the payload
+        RepresentationReport representation{};
         DeltaReport delta{};
         AreaOfInterestReport area_of_interest{};
         LevelOfDetailReport level_of_detail{};
@@ -62,6 +83,8 @@ export namespace simnet
         std::span<EntityNetId const> recovery_upsert_ids{};
         /// Emits a complete current population without advancing the Incremental cursor.
         bool force_full_replace{};
+        /// Collect source-to-canonical quality only for produced upserts.
+        bool collect_representation_quality{};
         /// Authoritative AOI pose. Required only when AOI is enabled and cadence emits.
         InterestSource const* interest_source{};
         /// Sorted source indices returned by the Server-owned coarse spatial query.

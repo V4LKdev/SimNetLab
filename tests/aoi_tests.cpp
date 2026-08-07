@@ -243,7 +243,7 @@ TEST_CASE("none AOI is equivalent to the complete source population", "[aoi][non
 }
 
 TEST_CASE(
-    "missing AOI source skips transactionally while healthy peers continue",
+    "missing AOI source rejects transactionally without affecting a later encode",
     "[aoi][cadence][peer]"
 )
 {
@@ -269,11 +269,7 @@ TEST_CASE(
     scratch.selected_indices = {9U};
     scratch.selected_delete_ids = {8U};
     scratch.bytes = {simnet::Byte{7U}};
-    auto const skipped = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &snapshot});
-
-    CHECK(skipped.kind == simnet::EncodeResultKind::Skipped);
-    CHECK(skipped.report.skip_reason == simnet::EncodeSkipReason::InterestSourceUnavailable);
-    CHECK_FALSE(skipped.report.area_of_interest.source_available);
+    CHECK_THROWS(simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &snapshot}));
     CHECK(state.next_sequence == 7U);
     CHECK(state.incremental_cursor == 3U);
     CHECK_FALSE(state.incremental_seeded);

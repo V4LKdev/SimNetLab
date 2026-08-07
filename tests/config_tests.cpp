@@ -2,9 +2,14 @@
 
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string_view>
 
+import simnet.app_common;
 import simnet.config;
+import simnet.core;
+import simnet.pipeline;
+import simnet.snapshot;
 
 namespace
 {
@@ -45,6 +50,25 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
 
     changed = baseline;
     changed.pipeline.enable_delta = !changed.pipeline.enable_delta;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    ++changed.pipeline.send_interval_ticks;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.pipeline.enable_quantization = true;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.pipeline.enable_quantization = true;
+    changed.pipeline.enable_oct_heading = true;
+    CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+
+    changed = baseline;
+    changed.pipeline.enable_quantization = true;
+    changed.pipeline.enable_oct_heading = true;
+    changed.pipeline.enable_bit_packing = true;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
 
     changed = baseline;
@@ -106,6 +130,243 @@ TEST_CASE("network compatibility fingerprint covers shared configuration", "[con
     changed = baseline;
     ++changed.snapshot_delivery.full_replace_after_unacknowledged_updates;
     CHECK(simnet::fingerprint_network_compatibility(changed).value != fingerprint.value);
+}
+
+TEST_CASE(
+    "pipeline representation configuration is strict and maps through the application",
+    "[config][pipeline]"
+)
+{
+    auto const defaults = simnet::default_shared_config();
+    CHECK(defaults.pipeline.send_interval_ticks == 1U);
+    CHECK_FALSE(defaults.pipeline.enable_quantization);
+    CHECK_FALSE(defaults.pipeline.enable_oct_heading);
+    CHECK_FALSE(defaults.pipeline.enable_bit_packing);
+
+    auto const accepted = TemporaryConfig{
+        "simnet_pipeline_representation_accepted.json",
+        R"({
+            "simulation": { "world_half": 70.0 },
+            "pipeline": {
+                "send_interval_ticks": 4,
+                "enable_quantization": true,
+                "enable_oct_heading": true,
+                "enable_bit_packing": true
+            }
+        })"
+    };
+    auto const loaded = simnet::load_shared_config(accepted.path());
+    CHECK(loaded.pipeline.send_interval_ticks == 4U);
+    CHECK(loaded.pipeline.enable_quantization);
+    CHECK(loaded.pipeline.enable_oct_heading);
+    CHECK(loaded.pipeline.enable_bit_packing);
+
+    auto const pipeline = simnet::app::make_snapshot_pipeline(loaded);
+    CHECK(simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::SendInterval));
+    CHECK(simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::Quantization));
+    CHECK(simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::OctHeading));
+    CHECK(simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::BitPacking));
+    CHECK(pipeline.send_interval.interval_ticks == 4U);
+    CHECK(pipeline.quantization.position_bounds.min.x == -70.0F);
+    CHECK(pipeline.quantization.position_bounds.max.x == 70.0F);
+
+    auto every_tick = loaded;
+    every_tick.pipeline.send_interval_ticks = 1U;
+    auto const every_tick_pipeline = simnet::app::make_snapshot_pipeline(every_tick);
+    CHECK_FALSE(
+        simnet::has_all_flags(
+            every_tick_pipeline.techniques,
+            simnet::PipelineTechniqueFlags::SendInterval
+        )
+    );
+    CHECK(every_tick_pipeline.send_interval.interval_ticks == 1U);
+    CHECK(
+        simnet::pipeline_decode_signature(every_tick_pipeline)
+        == simnet::pipeline_decode_signature(pipeline)
+    );
+
+    auto raw = defaults;
+    auto quantized = defaults;
+    quantized.pipeline.enable_quantization = true;
+    auto oct = quantized;
+    oct.pipeline.enable_oct_heading = true;
+    auto bit_packed = oct;
+    bit_packed.pipeline.enable_bit_packing = true;
+    auto const raw_pipeline = simnet::app::make_snapshot_pipeline(raw);
+    auto const quantized_pipeline = simnet::app::make_snapshot_pipeline(quantized);
+    auto const oct_pipeline = simnet::app::make_snapshot_pipeline(oct);
+    auto const bit_packed_pipeline = simnet::app::make_snapshot_pipeline(bit_packed);
+    CHECK(
+        simnet::pipeline_decode_signature(raw_pipeline)
+        != simnet::pipeline_decode_signature(quantized_pipeline)
+    );
+    CHECK(
+        simnet::pipeline_decode_signature(quantized_pipeline)
+        != simnet::pipeline_decode_signature(oct_pipeline)
+    );
+    CHECK(
+        simnet::pipeline_decode_signature(oct_pipeline)
+        != simnet::pipeline_decode_signature(bit_packed_pipeline)
+    );
+
+    auto snapshot = simnet::WorldSnapshot{};
+    snapshot.tick = 4U;
+    snapshot.ids.push_back(1U);
+    snapshot.classifications.push_back(simnet::EntityClassification{1U});
+    snapshot.positions.push_back({1.25F, -2.5F, 3.75F});
+    snapshot.headings.push_back(simnet::normalize_or({1.0F, 2.0F, 3.0F}, {.x = 1.0F}));
+    snapshot.hues.push_back(42U);
+    auto check_round_trip = [&](simnet::PipelineDefinition const& definition) {
+        auto encode_state = simnet::ClientReplicationState{};
+        auto decode_state = simnet::ClientReplicationState{};
+        auto scratch = simnet::PipelineScratch{};
+        auto const encoded
+            = simnet::encode_snapshot(definition, encode_state, scratch, {.snapshot = &snapshot});
+        REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
+        auto const decoded
+            = simnet::decode_update(definition, decode_state, {.bytes = encoded.update.bytes});
+        REQUIRE(decoded.report.valid);
+        REQUIRE(decoded.update.upserts.size() == 1U);
+        CHECK(decoded.update.upserts.front().id == 1U);
+    };
+    check_round_trip(raw_pipeline);
+    check_round_trip(quantized_pipeline);
+    check_round_trip(oct_pipeline);
+    check_round_trip(bit_packed_pipeline);
+
+    auto const runtime_fingerprint
+        = simnet::fingerprint_runtime_config(defaults, simnet::default_server_config());
+    for (auto changed : {loaded, quantized, oct, bit_packed}) {
+        CHECK(
+            simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value
+            != runtime_fingerprint.value
+        );
+    }
+
+    for (auto const contents : {
+             R"({ "pipeline": { "send_interval_ticks": 0 } })",
+             R"({ "pipeline": { "send_interval_ticks": -1 } })",
+             R"({ "pipeline": { "send_interval_ticks": 1.5 } })",
+             R"({ "pipeline": { "send_interval_ticks": 4294967296 } })",
+             R"({ "pipeline": { "send_interval_ticks": "4" } })",
+             R"({ "pipeline": { "enable_oct_heading": true } })",
+             R"({ "pipeline": { "enable_bit_packing": true } })",
+             R"({ "pipeline": { "enable_quantization": true, "enable_bit_packing": true } })",
+             R"({ "pipeline": { "enable_quantization": "true" } })",
+             R"({ "pipeline": { "enable_oct_heading": 1 } })",
+             R"({ "pipeline": { "enable_bit_packing": 1 } })",
+             R"({ "pipeline": { "representation": "quantized" } })",
+         }) {
+        auto const invalid
+            = TemporaryConfig{"simnet_pipeline_representation_invalid.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+
+    auto const maximum_interval = TemporaryConfig{
+        "simnet_pipeline_maximum_interval.json",
+        R"({ "pipeline": { "send_interval_ticks": 4294967295 } })"
+    };
+    CHECK(
+        simnet::load_shared_config(maximum_interval.path()).pipeline.send_interval_ticks
+        == std::numeric_limits<std::uint32_t>::max()
+    );
+}
+
+TEST_CASE("maintained representation and cadence profiles are matched", "[config][pipeline]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    auto raw = simnet::load_shared_config(
+        directory / "shared_representation_raw_aoi_radius_visual.json"
+    );
+    auto quantized = simnet::load_shared_config(
+        directory / "shared_representation_quantized_aoi_radius_visual.json"
+    );
+    auto oct = simnet::load_shared_config(
+        directory / "shared_representation_oct_heading_aoi_radius_visual.json"
+    );
+    auto bit_packed = simnet::load_shared_config(
+        directory / "shared_representation_bit_packed_aoi_radius_visual.json"
+    );
+    auto cadence
+        = simnet::load_shared_config(directory / "shared_cadence_reduced_aoi_radius_visual.json");
+
+    CHECK(raw.simulation.initial_boid_count == 1500U);
+    CHECK(raw.pipeline.area_of_interest.mode == "radius");
+    CHECK(raw.pipeline.area_of_interest.radius == 80.0F);
+    CHECK(raw.packetization.max_payload_bytes == 1200U);
+    CHECK(raw.pipeline.send_interval_ticks == 1U);
+    CHECK_FALSE(raw.pipeline.enable_quantization);
+    CHECK(quantized.pipeline.enable_quantization);
+    CHECK_FALSE(quantized.pipeline.enable_oct_heading);
+    CHECK(oct.pipeline.enable_quantization);
+    CHECK(oct.pipeline.enable_oct_heading);
+    CHECK_FALSE(oct.pipeline.enable_bit_packing);
+    CHECK(bit_packed.pipeline.enable_bit_packing);
+    CHECK(cadence.pipeline.send_interval_ticks == 4U);
+    CHECK_FALSE(cadence.pipeline.enable_quantization);
+
+    auto quantized_control = quantized;
+    quantized_control.pipeline.enable_quantization = false;
+    CHECK(
+        simnet::fingerprint_network_compatibility(quantized_control).value
+        == simnet::fingerprint_network_compatibility(raw).value
+    );
+    auto oct_control = oct;
+    oct_control.pipeline.enable_oct_heading = false;
+    CHECK(
+        simnet::fingerprint_network_compatibility(oct_control).value
+        == simnet::fingerprint_network_compatibility(quantized).value
+    );
+    auto bit_packed_control = bit_packed;
+    bit_packed_control.pipeline.enable_bit_packing = false;
+    CHECK(
+        simnet::fingerprint_network_compatibility(bit_packed_control).value
+        == simnet::fingerprint_network_compatibility(oct).value
+    );
+    auto cadence_control = cadence;
+    cadence_control.pipeline.send_interval_ticks = 1U;
+    CHECK(
+        simnet::fingerprint_network_compatibility(cadence_control).value
+        == simnet::fingerprint_network_compatibility(raw).value
+    );
+
+    auto normalize = [](simnet::SharedConfig& config) {
+        config.pipeline.send_interval_ticks = 1U;
+        config.pipeline.enable_quantization = false;
+        config.pipeline.enable_oct_heading = false;
+        config.pipeline.enable_bit_packing = false;
+    };
+    normalize(raw);
+    normalize(quantized);
+    normalize(oct);
+    normalize(bit_packed);
+    normalize(cadence);
+    auto const expected = simnet::fingerprint_network_compatibility(raw).value;
+    CHECK(simnet::fingerprint_network_compatibility(quantized).value == expected);
+    CHECK(simnet::fingerprint_network_compatibility(oct).value == expected);
+    CHECK(simnet::fingerprint_network_compatibility(bit_packed).value == expected);
+    CHECK(simnet::fingerprint_network_compatibility(cadence).value == expected);
+}
+
+TEST_CASE("every maintained JSON profile parses through its production loader", "[config]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    for (auto const& entry : std::filesystem::directory_iterator{directory}) {
+        auto const path = entry.path();
+        if (!entry.is_regular_file() || path.extension() != ".json") {
+            continue;
+        }
+        auto const name = path.filename().string();
+        if (name.starts_with("shared_")) {
+            REQUIRE_NOTHROW(simnet::load_shared_config(path));
+        } else if (name.starts_with("server_")) {
+            REQUIRE_NOTHROW(simnet::load_server_config(path));
+        } else if (name.starts_with("client_")) {
+            REQUIRE_NOTHROW(simnet::load_client_config(path));
+        } else {
+            FAIL("unowned maintained JSON profile: " << name);
+        }
+    }
 }
 
 TEST_CASE("snapshot delivery configuration is strict shared treatment", "[config][delivery]")

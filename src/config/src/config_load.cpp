@@ -100,6 +100,26 @@ namespace
         }
     }
 
+    void read_optional_u32(Json const& object, char const* key, std::uint32_t& value)
+    {
+        auto const found = object.find(key);
+        if (found == object.end()) {
+            return;
+        }
+        if (!found->is_number_unsigned()) {
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + key + "': expected unsigned integer"
+            );
+        }
+        auto const parsed = found->get<std::uint64_t>();
+        if (parsed > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + key + "': value exceeds uint32 range"
+            );
+        }
+        value = static_cast<std::uint32_t>(parsed);
+    }
+
     Json const* optional_object(Json const& object, char const* key)
     {
         auto const found = object.find(key);
@@ -533,16 +553,33 @@ namespace
     {
         for (auto const& [key, value] : json.items()) {
             static_cast<void>(value);
-            if (key != "enable_incremental" && key != "enable_quantization" && key != "enable_delta"
-                && key != "area_of_interest" && key != "level_of_detail") {
+            if (key != "send_interval_ticks" && key != "enable_incremental"
+                && key != "enable_quantization" && key != "enable_oct_heading"
+                && key != "enable_delta" && key != "enable_bit_packing" && key != "area_of_interest"
+                && key != "level_of_detail") {
                 throw std::runtime_error(
                     "invalid config field 'pipeline." + key + "': unknown field"
                 );
             }
         }
+        read_optional_u32(json, "send_interval_ticks", config.send_interval_ticks);
         read_optional(json, "enable_incremental", config.enable_incremental);
         read_optional(json, "enable_quantization", config.enable_quantization);
+        read_optional(json, "enable_oct_heading", config.enable_oct_heading);
         read_optional(json, "enable_delta", config.enable_delta);
+        read_optional(json, "enable_bit_packing", config.enable_bit_packing);
+        validate_non_zero("pipeline.send_interval_ticks", config.send_interval_ticks);
+        if (config.enable_oct_heading && !config.enable_quantization) {
+            throw std::runtime_error(
+                "invalid pipeline configuration: oct heading requires quantization"
+            );
+        }
+        if (config.enable_bit_packing
+            && (!config.enable_quantization || !config.enable_oct_heading)) {
+            throw std::runtime_error(
+                "invalid pipeline configuration: bit packing requires quantization and oct heading"
+            );
+        }
         if (auto const* section = optional_object(json, "area_of_interest")) {
             apply_area_of_interest(*section, config.area_of_interest);
         }
@@ -946,9 +983,12 @@ namespace
         hash_bytes(hash, config.player.max_yaw_rate_degrees);
         hash_bytes(hash, config.player.max_pitch_rate_degrees);
         hash_bytes(hash, config.player.pitch_limit_degrees);
+        hash_bytes(hash, config.pipeline.send_interval_ticks);
         hash_bytes(hash, config.pipeline.enable_incremental);
         hash_bytes(hash, config.pipeline.enable_quantization);
+        hash_bytes(hash, config.pipeline.enable_oct_heading);
         hash_bytes(hash, config.pipeline.enable_delta);
+        hash_bytes(hash, config.pipeline.enable_bit_packing);
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_bytes(hash, config.pipeline.area_of_interest.radius);
         hash_bytes(hash, config.pipeline.area_of_interest.fov_degrees);
@@ -1024,9 +1064,12 @@ namespace
         hash_canonical_float(hash, config.player.max_yaw_rate_degrees);
         hash_canonical_float(hash, config.player.max_pitch_rate_degrees);
         hash_canonical_float(hash, config.player.pitch_limit_degrees);
+        hash_canonical_u32(hash, config.pipeline.send_interval_ticks);
         hash_canonical_bool(hash, config.pipeline.enable_incremental);
         hash_canonical_bool(hash, config.pipeline.enable_quantization);
+        hash_canonical_bool(hash, config.pipeline.enable_oct_heading);
         hash_canonical_bool(hash, config.pipeline.enable_delta);
+        hash_canonical_bool(hash, config.pipeline.enable_bit_packing);
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_canonical_float(hash, config.pipeline.area_of_interest.radius);
         hash_canonical_float(hash, config.pipeline.area_of_interest.fov_degrees);

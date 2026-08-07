@@ -237,13 +237,23 @@ namespace simnet::app
     PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared)
     {
         auto pipeline = PipelineDefinition{};
-        if (shared.pipeline.enable_incremental) {
-            pipeline.techniques |= PipelineTechniqueFlags::Incremental;
+        if (shared.pipeline.send_interval_ticks > 1U) {
+            pipeline.techniques |= PipelineTechniqueFlags::SendInterval;
+            pipeline.send_interval.interval_ticks = shared.pipeline.send_interval_ticks;
         }
         if (shared.pipeline.enable_quantization) {
             pipeline.techniques |= PipelineTechniqueFlags::Quantization;
             pipeline.quantization.position_bounds
                 = make_centered_bounds(shared.simulation.world_half);
+        }
+        if (shared.pipeline.enable_oct_heading) {
+            pipeline.techniques |= PipelineTechniqueFlags::OctHeading;
+        }
+        if (shared.pipeline.enable_bit_packing) {
+            pipeline.techniques |= PipelineTechniqueFlags::BitPacking;
+        }
+        if (shared.pipeline.enable_incremental) {
+            pipeline.techniques |= PipelineTechniqueFlags::Incremental;
         }
         if (shared.pipeline.enable_delta) {
             pipeline.techniques |= PipelineTechniqueFlags::Delta;

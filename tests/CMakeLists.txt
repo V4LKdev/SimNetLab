@@ -30,6 +30,7 @@ target_sources(SimNetTests
         BASE_DIRS ${PROJECT_SOURCE_DIR}
         FILES
             ${PROJECT_SOURCE_DIR}/app/app_camera.cppm
+            ${PROJECT_SOURCE_DIR}/app/app_common.cppm
             ${PROJECT_SOURCE_DIR}/app/app_evidence.cppm
             ${PROJECT_SOURCE_DIR}/app/app_protocol.cppm
             ${PROJECT_SOURCE_DIR}/app/app_snapshot_delivery.cppm

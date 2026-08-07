@@ -40,7 +40,7 @@ export namespace simnet
      * - Mutates 'client_state'.
      * - Reuses 'scratch' internal buffers.
      * - Returns the exact complete Client result represented by every emitted update.
-     * - Returns 'EncodeOutput' with either an encoded update or skipped result.
+     * - Returns a skipped result only when SendInterval rejects the current tick.
      */
     [[nodiscard]] EncodeOutput encode_snapshot(
         PipelineDefinition const& pipeline,

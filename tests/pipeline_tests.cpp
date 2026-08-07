@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
+#include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -672,6 +674,195 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "representation quality is opt-in and leaves encoded state unchanged",
+    "[pipeline][representation][delta][incremental][recovery]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental
+        | simnet::PipelineTechniqueFlags::Quantization | simnet::PipelineTechniqueFlags::OctHeading
+        | simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::BitPacking;
+    pipeline.incremental.max_entities_per_update = 2U;
+    pipeline.quantization.position_bounds = simnet::make_centered_bounds(10.0F);
+
+    auto baseline = make_snapshot(
+        1U,
+        {
+            {.id = 1U,
+             .classification = known_classification,
+             .position = {1.2345F, -2.3456F, 3.4567F},
+             .heading = simnet::normalize_or({1.0F, 2.0F, 3.0F}, {.x = 1.0F}),
+             .hue = 10U},
+            {.id = 2U,
+             .classification = known_classification,
+             .position = {-2.3456F, 3.4567F, -4.5678F},
+             .heading = simnet::normalize_or({-2.0F, 1.0F, 0.5F}, {.x = 1.0F}),
+             .hue = 20U},
+            {.id = 3U,
+             .classification = known_classification,
+             .position = {3.4567F, 4.5678F, -5.6789F},
+             .heading = simnet::normalize_or({0.5F, -1.0F, 2.0F}, {.x = 1.0F}),
+             .hue = 30U},
+        }
+    );
+    auto state_without = simnet::ClientReplicationState{};
+    auto state_with = simnet::ClientReplicationState{};
+    auto scratch_without = simnet::PipelineScratch{};
+    auto scratch_with = simnet::PipelineScratch{};
+    auto const full_without = simnet::encode_snapshot(
+        pipeline,
+        state_without,
+        scratch_without,
+        {.snapshot = &baseline}
+    );
+    auto const full_with = simnet::encode_snapshot(
+        pipeline,
+        state_with,
+        scratch_with,
+        {.snapshot = &baseline, .collect_representation_quality = true}
+    );
+    REQUIRE(full_without.update.bytes == full_with.update.bytes);
+    REQUIRE(same_snapshot_bits(full_without.resulting_snapshot, full_with.resulting_snapshot));
+    CHECK(full_without.report.representation.quality_sample_count == 0U);
+    CHECK(full_with.report.representation.quality_sample_count == baseline.size());
+
+    auto current = baseline;
+    current.tick = 2U;
+    current.positions[1].x += 0.75F;
+    current.headings[2] = simnet::normalize_or({-1.0F, 3.0F, 0.25F}, {.x = 1.0F});
+    auto const recovery_ids = std::array<simnet::EntityNetId, 1U>{3U};
+    auto const patch_without = simnet::encode_snapshot(
+        pipeline,
+        state_without,
+        scratch_without,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &full_without.resulting_snapshot,
+            .baseline_sequence = full_without.update.sequence,
+            .recovery_upsert_ids = recovery_ids,
+        }
+    );
+    auto const patch_with = simnet::encode_snapshot(
+        pipeline,
+        state_with,
+        scratch_with,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &full_with.resulting_snapshot,
+            .baseline_sequence = full_with.update.sequence,
+            .recovery_upsert_ids = recovery_ids,
+            .collect_representation_quality = true,
+        }
+    );
+
+    CHECK(patch_without.kind == patch_with.kind);
+    CHECK(patch_without.update.sequence == patch_with.update.sequence);
+    CHECK(patch_without.update.bytes == patch_with.update.bytes);
+    CHECK(same_snapshot_bits(patch_without.resulting_snapshot, patch_with.resulting_snapshot));
+    CHECK(state_without.next_sequence == state_with.next_sequence);
+    CHECK(state_without.incremental_cursor == state_with.incremental_cursor);
+    CHECK(state_without.incremental_seeded == state_with.incremental_seeded);
+    CHECK(state_without.level_of_detail_seeded == state_with.level_of_detail_seeded);
+    CHECK(scratch_without.selected_indices == scratch_with.selected_indices);
+    CHECK(scratch_without.selected_delete_ids == scratch_with.selected_delete_ids);
+    CHECK(scratch_without.prepared_record_bytes == scratch_with.prepared_record_bytes);
+    CHECK(scratch_without.bytes == scratch_with.bytes);
+    CHECK(
+        scratch_without.logical_update.upserts.size() == scratch_with.logical_update.upserts.size()
+    );
+    CHECK(patch_without.report.representation.quality_sample_count == 0U);
+    CHECK(patch_with.report.representation.quality_sample_count == patch_with.report.upsert_count);
+}
+
+TEST_CASE(
+    "representation reports exact widths and truthful canonical quality",
+    "[pipeline][representation][quality]"
+)
+{
+    auto const snapshot = make_snapshot(
+        1U,
+        {
+            {.id = 1U,
+             .classification = known_classification,
+             .position = {1.2345F, -2.3456F, 3.4567F},
+             .heading = simnet::normalize_or({1.0F, 2.0F, 3.0F}, {.x = 1.0F}),
+             .hue = 42U},
+            {.id = 2U,
+             .classification = unknown_classification,
+             .position = {-4.5678F, 5.6789F, -6.7891F},
+             .heading = simnet::normalize_or({-3.0F, 0.5F, 1.0F}, {.x = 1.0F}),
+             .hue = 84U},
+        }
+    );
+
+    auto pipelines = std::array<simnet::PipelineDefinition, 4U>{};
+    pipelines[1].techniques = simnet::PipelineTechniqueFlags::Quantization;
+    pipelines[2] = pipelines[1];
+    pipelines[2].techniques |= simnet::PipelineTechniqueFlags::OctHeading;
+    pipelines[3] = pipelines[2];
+    pipelines[3].techniques |= simnet::PipelineTechniqueFlags::BitPacking;
+    for (auto& pipeline : pipelines) {
+        pipeline.quantization.position_bounds = simnet::make_centered_bounds(10.0F);
+    }
+    auto constexpr expected_widths = std::array<std::uint32_t, 4U>{30U, 18U, 16U, 16U};
+    auto outputs = std::array<simnet::EncodeOutput, 4U>{};
+    for (auto index = std::size_t{}; index < pipelines.size(); ++index) {
+        auto state = simnet::ClientReplicationState{};
+        auto scratch = simnet::PipelineScratch{};
+        outputs[index] = simnet::encode_snapshot(
+            pipelines[index],
+            state,
+            scratch,
+            {.snapshot = &snapshot, .collect_representation_quality = true}
+        );
+        auto const& report = outputs[index].report.representation;
+        CHECK(report.record_bytes == expected_widths[index]);
+        CHECK(report.quality_sample_count == snapshot.size());
+        CHECK(std::isfinite(report.position_error_sum));
+        CHECK(std::isfinite(report.position_error_maximum));
+        CHECK(std::isfinite(report.heading_angular_error_degrees_sum));
+        CHECK(std::isfinite(report.heading_angular_error_degrees_maximum));
+    }
+
+    auto const& raw = outputs[0].report.representation;
+    CHECK(raw.layout == simnet::EntityRecordLayout::Raw);
+    CHECK(raw.position_error_sum == 0.0);
+    CHECK(raw.position_error_maximum == 0.0);
+    CHECK(raw.heading_angular_error_degrees_sum == 0.0);
+    CHECK(raw.heading_angular_error_degrees_maximum == 0.0);
+
+    auto const& quantized = outputs[1].report.representation;
+    CHECK(quantized.layout == simnet::EntityRecordLayout::Quantized);
+    CHECK(quantized.position_error_sum > 0.0);
+    CHECK(quantized.position_error_maximum < 0.001);
+
+    auto const& oct = outputs[2].report.representation;
+    auto const& bit_packed = outputs[3].report.representation;
+    CHECK(oct.layout == simnet::EntityRecordLayout::QuantizedOctHeading);
+    CHECK(bit_packed.layout == simnet::EntityRecordLayout::BitPackedQuantizedOctHeading);
+    CHECK(oct.record_bytes == 16U);
+    CHECK(bit_packed.record_bytes == 16U);
+    CHECK(oct.position_error_sum == bit_packed.position_error_sum);
+    CHECK(oct.position_error_maximum == bit_packed.position_error_maximum);
+    CHECK(oct.heading_angular_error_degrees_sum == bit_packed.heading_angular_error_degrees_sum);
+    CHECK(
+        oct.heading_angular_error_degrees_maximum
+        == bit_packed.heading_angular_error_degrees_maximum
+    );
+    REQUIRE(outputs[2].update.bytes.size() == outputs[3].update.bytes.size());
+    CHECK(
+        std::equal(
+            outputs[2].update.bytes.begin()
+                + static_cast<std::ptrdiff_t>(encoded_update_header_bytes),
+            outputs[2].update.bytes.end(),
+            outputs[3].update.bytes.begin()
+                + static_cast<std::ptrdiff_t>(encoded_update_header_bytes)
+        )
+    );
+    CHECK(same_snapshot_bits(outputs[2].resulting_snapshot, outputs[3].resulting_snapshot));
+}
+
+TEST_CASE(
     "reference FullReplace codec has a deterministic fixed-width wire layout",
     "[pipeline][reference][fullreplace]"
 )
@@ -1305,6 +1496,20 @@ TEST_CASE(
 
 TEST_CASE("send interval emits the documented deterministic tick sequence", "[pipeline][cadence]")
 {
+    auto cadence_disabled = simnet::PipelineDefinition{};
+    auto cadence_disabled_state = simnet::ClientReplicationState{};
+    auto cadence_disabled_scratch = simnet::PipelineScratch{};
+    for (simnet::Tick tick = 0; tick < 6U; ++tick) {
+        auto const snapshot = make_linear_snapshot(tick, 1U);
+        auto const encoded = simnet::encode_snapshot(
+            cadence_disabled,
+            cadence_disabled_state,
+            cadence_disabled_scratch,
+            {.snapshot = &snapshot}
+        );
+        CHECK(encoded.kind == simnet::EncodeResultKind::Update);
+    }
+
     auto every_tick = simnet::PipelineDefinition{};
     every_tick.techniques = simnet::PipelineTechniqueFlags::SendInterval;
     auto every_tick_state = simnet::ClientReplicationState{};
@@ -1319,7 +1524,6 @@ TEST_CASE("send interval emits the documented deterministic tick sequence", "[pi
         );
         CHECK(simnet::should_emit_snapshot(every_tick, tick));
         CHECK(encoded.kind == simnet::EncodeResultKind::Update);
-        CHECK(encoded.report.skip_reason == simnet::EncodeSkipReason::None);
     }
 
     auto every_third = simnet::PipelineDefinition{};
@@ -1352,10 +1556,7 @@ TEST_CASE("send interval emits the documented deterministic tick sequence", "[pi
         );
         CHECK(encoded.kind == expected_kinds[tick]);
         if (encoded.kind == simnet::EncodeResultKind::Skipped) {
-            CHECK(encoded.report.skip_reason == simnet::EncodeSkipReason::SendInterval);
             CHECK(encoded.update.bytes.empty());
-        } else {
-            CHECK(encoded.report.skip_reason == simnet::EncodeSkipReason::None);
         }
     }
     CHECK(every_third_state.next_sequence == 4U);
@@ -1405,7 +1606,6 @@ TEST_CASE(
             }
         );
         CHECK(skipped.kind == simnet::EncodeResultKind::Skipped);
-        CHECK(skipped.report.skip_reason == simnet::EncodeSkipReason::SendInterval);
         CHECK(skipped.update.bytes.empty());
         CHECK(encode_state.next_sequence == 7U);
         CHECK(encode_state.incremental_cursor == 1U);
@@ -1429,7 +1629,6 @@ TEST_CASE(
         }
     );
     REQUIRE(emitted.kind == simnet::EncodeResultKind::Update);
-    CHECK(emitted.report.skip_reason == simnet::EncodeSkipReason::None);
     CHECK(emitted.update.sequence == 7U);
     CHECK(emitted.report.baseline_sequence == 5U);
     CHECK(emitted.report.snapshot_kind == simnet::SnapshotKind::Patch);

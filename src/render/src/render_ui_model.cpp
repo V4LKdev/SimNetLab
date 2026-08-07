@@ -381,6 +381,46 @@ namespace simnet
             count("LOD deletes bypassed", value.lod_deletions_bypassing);
             count("Transmitted upserts", value.transmitted_upsert_count);
             count("Transmitted deletes", value.transmitted_delete_count);
+            text_value("Record layout", value.representation_layout);
+            count("Record width", value.entity_record_bytes);
+            count("Quality samples", value.representation_quality_samples);
+            if (value.mean_position_error.has_value()) {
+                add_row(
+                    panel_model_,
+                    "Mean position error",
+                    Normal,
+                    "%.6f units",
+                    *value.mean_position_error
+                );
+            }
+            if (value.maximum_position_error.has_value()) {
+                add_row(
+                    panel_model_,
+                    "Maximum position error",
+                    Normal,
+                    "%.6f units",
+                    *value.maximum_position_error
+                );
+            }
+            if (value.mean_heading_error_degrees.has_value()) {
+                add_row(
+                    panel_model_,
+                    "Mean heading error",
+                    Normal,
+                    "%.6f deg",
+                    *value.mean_heading_error_degrees
+                );
+            }
+            if (value.maximum_heading_error_degrees.has_value()) {
+                add_row(
+                    panel_model_,
+                    "Maximum heading error",
+                    Normal,
+                    "%.6f deg",
+                    *value.maximum_heading_error_degrees
+                );
+            }
+            count("Send interval", value.send_interval_ticks);
             count("Applied upserts", value.applied_upsert_count);
             count("Applied deletes", value.applied_delete_count);
             count("Reconstructed entities", value.reconstructed_entity_count);
@@ -416,6 +456,8 @@ namespace simnet
                 }
             };
             count64("LOD FullReplace overrides", value.lod_full_replace_overrides);
+            count64("Committed emissions", value.committed_emission_count);
+            count64("Cadence skips", value.cadence_skip_count);
             count64("Received chunks", value.received_packet_chunks);
             count64("Unique chunks", value.unique_packet_chunks);
             count64("Duplicate chunks", value.duplicate_packet_chunks);

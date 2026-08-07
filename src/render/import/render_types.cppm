@@ -143,6 +143,16 @@ export namespace simnet
         std::optional<std::uint64_t> lod_full_replace_overrides{};
         std::optional<std::uint32_t> transmitted_upsert_count{};
         std::optional<std::uint32_t> transmitted_delete_count{};
+        std::optional<std::string_view> representation_layout{};
+        std::optional<std::uint32_t> entity_record_bytes{};
+        std::optional<std::uint32_t> representation_quality_samples{};
+        std::optional<double> mean_position_error{};
+        std::optional<double> maximum_position_error{};
+        std::optional<double> mean_heading_error_degrees{};
+        std::optional<double> maximum_heading_error_degrees{};
+        std::optional<std::uint32_t> send_interval_ticks{};
+        std::optional<std::uint64_t> committed_emission_count{};
+        std::optional<std::uint64_t> cadence_skip_count{};
         std::optional<std::uint32_t> applied_upsert_count{};
         std::optional<std::uint32_t> applied_delete_count{};
         std::optional<std::uint32_t> reconstructed_entity_count{};

@@ -10,6 +10,7 @@ module;
 module simnet.pipeline:selection;
 
 import :types;
+import :messages;
 import :records;
 import simnet.core;
 import simnet.snapshot;
@@ -189,7 +190,9 @@ namespace simnet::pipeline_selection
         PipelineScratch& scratch,
         WorldSnapshot const& current,
         WorldSnapshot const& baseline,
-        pipeline_records::RecordLayout const& layout
+        pipeline_records::RecordLayout const& layout,
+        bool collect_representation_quality,
+        RepresentationReport& representation
     )
     {
         scratch.selected_indices.clear();
@@ -202,6 +205,14 @@ namespace simnet::pipeline_selection
         auto retain_spawn = [&](std::size_t current_index) {
             auto const prepared = prepare_snapshot_record(layout, current, current_index);
             scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+            if (collect_representation_quality) {
+                pipeline_records::observe_representation_quality(
+                    representation,
+                    current.positions[current_index],
+                    current.headings[current_index],
+                    prepared
+                );
+            }
             retain_prepared_record(scratch, layout, prepared);
             ++report.candidate_count;
             ++report.spawned_count;
@@ -230,6 +241,14 @@ namespace simnet::pipeline_selection
                         baseline_index
                     )) {
                     scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
+                    if (collect_representation_quality) {
+                        pipeline_records::observe_representation_quality(
+                            representation,
+                            current.positions[current_index],
+                            current.headings[current_index],
+                            prepared
+                        );
+                    }
                     retain_prepared_record(scratch, layout, prepared);
                     ++report.changed_existing_count;
                     ++report.produced_upsert_count;
@@ -263,7 +282,9 @@ namespace simnet::pipeline_selection
         PipelineScratch& scratch,
         WorldSnapshot const& current,
         WorldSnapshot const& baseline,
-        pipeline_records::RecordLayout const& layout
+        pipeline_records::RecordLayout const& layout,
+        bool collect_representation_quality,
+        RepresentationReport& representation
     )
     {
         begin_delta_preparation(scratch, scratch.selected_indices.size());
@@ -290,6 +311,14 @@ namespace simnet::pipeline_selection
             }
             if (!unchanged) {
                 scratch.selected_indices[retained_count++] = current_index;
+                if (collect_representation_quality) {
+                    pipeline_records::observe_representation_quality(
+                        representation,
+                        current.positions[current_index],
+                        current.headings[current_index],
+                        prepared
+                    );
+                }
                 retain_prepared_record(scratch, layout, prepared);
                 if (existed) {
                     ++report.changed_existing_count;

@@ -108,9 +108,12 @@ export namespace simnet
     /// Snapshot processing pipeline settings.
     struct PipelineConfig
     {
+        std::uint32_t send_interval_ticks{1U};
         bool enable_incremental{false};
         bool enable_quantization{false};
+        bool enable_oct_heading{false};
         bool enable_delta{false};
+        bool enable_bit_packing{false};
         AreaOfInterestConfig area_of_interest{};
         LevelOfDetailConfig level_of_detail{};
     };

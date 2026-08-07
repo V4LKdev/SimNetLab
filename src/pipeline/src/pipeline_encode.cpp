@@ -28,15 +28,17 @@ import simnet.snapshot;
 namespace
 {
     /// Builds a skipped EncodeOutput without touching client state.
-    [[nodiscard]] simnet::EncodeOutput
-    skipped_encode(simnet::WorldSnapshot const& snapshot, simnet::EncodeSkipReason reason)
+    [[nodiscard]] simnet::EncodeOutput skipped_encode(
+        simnet::WorldSnapshot const& snapshot,
+        simnet::RepresentationReport representation
+    )
     {
         simnet::EncodeReport report{};
         report.tick = snapshot.tick;
-        report.skip_reason = reason;
         report.sequence = 0;
         report.baseline_sequence = 0;
         report.snapshot_kind = simnet::SnapshotKind::FullReplace;
+        report.representation = representation;
         // remaining fields stay zero
 
         return {
@@ -140,23 +142,20 @@ namespace simnet
 
         WorldSnapshot const& snapshot = *input.snapshot;
         pipeline_validate::require_u32_count(snapshot.size(), "snapshot entity count");
+        pipeline_records::RecordLayout const layout
+            = pipeline_records::resolve_record_layout(pipeline);
+        auto representation = pipeline_records::make_representation_report(layout);
 
         // --- Send interval ---
 
         if (!should_emit_snapshot(pipeline, snapshot.tick)) {
-            return skipped_encode(snapshot, EncodeSkipReason::SendInterval);
+            return skipped_encode(snapshot, representation);
         }
 
         bool const area_of_interest_enabled
             = pipeline.area_of_interest.mode != AreaOfInterestMode::None;
         if (area_of_interest_enabled && input.interest_source == nullptr) {
-            auto skipped = skipped_encode(snapshot, EncodeSkipReason::InterestSourceUnavailable);
-            skipped.report.area_of_interest.source_available = false;
-            skipped.report.area_of_interest.source_entity_count
-                = static_cast<std::uint32_t>(snapshot.size());
-            skipped.report.area_of_interest.culled_count
-                = static_cast<std::uint32_t>(snapshot.size());
-            return skipped;
+            throw std::runtime_error("area of interest requires an interest source");
         }
         if (area_of_interest_enabled) {
             pipeline_validate::require_interest_source(*input.interest_source);
@@ -239,9 +238,6 @@ namespace simnet
         bool const emit_patch = schedule_level_of_detail || emit_delta || schedule_incremental;
         auto incremental_selection_count = std::size_t{};
         auto level_of_detail_cursor = client_state.incremental_cursor;
-        pipeline_records::RecordLayout const layout
-            = pipeline_records::resolve_record_layout(pipeline);
-
         if (input.replica_snapshot != nullptr
             && (!incremental_enabled || delta_enabled || level_of_detail_enabled)) {
             throw std::runtime_error(
@@ -340,14 +336,18 @@ namespace simnet
                     scratch,
                     *selected_snapshot,
                     *input.baseline_snapshot,
-                    layout
+                    layout,
+                    input.collect_representation_quality,
+                    representation
                 );
             } else {
                 delta = pipeline_selection::select_delta_records(
                     scratch,
                     *selected_snapshot,
                     *input.baseline_snapshot,
-                    layout
+                    layout,
+                    input.collect_representation_quality,
+                    representation
                 );
             }
         } else {
@@ -436,6 +436,14 @@ namespace simnet
                 selected_snapshot->headings[source_index],
                 selected_snapshot->hues[source_index]
             );
+            if (input.collect_representation_quality) {
+                pipeline_records::observe_representation_quality(
+                    representation,
+                    selected_snapshot->positions[source_index],
+                    selected_snapshot->headings[source_index],
+                    prepared
+                );
+            }
             pipeline_records::write_prepared_record(scratch.bytes, layout, prepared);
             scratch.logical_update.upserts.push_back(prepared.canonical);
         };
@@ -488,6 +496,7 @@ namespace simnet
         report.snapshot_kind = snapshot_kind;
         report.upsert_count = static_cast<std::uint32_t>(selected_count);
         report.delete_count = static_cast<std::uint32_t>(delete_count);
+        report.representation = representation;
         report.delta = delta;
         report.area_of_interest = area_of_interest;
         if (level_of_detail_enabled) {

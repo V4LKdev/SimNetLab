@@ -1,7 +1,9 @@
 module;
 
+#include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -14,6 +16,7 @@ module simnet.pipeline:records;
 import :wire;
 import :quantize;
 import :bitpack;
+import :messages;
 import :types;
 import simnet.core;
 import simnet.snapshot;
@@ -23,6 +26,7 @@ namespace simnet::pipeline_records
     /// Record format resolved once per encode/decode call, out of the entity loop.
     struct RecordLayout
     {
+        EntityRecordLayout name{EntityRecordLayout::Raw};
         bool bitpacked{};
         bool quantized{};
         bool oct_heading{};
@@ -49,20 +53,34 @@ namespace simnet::pipeline_records
             = has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading);
 
         auto record_bytes = pipeline_wire::raw_record_bytes;
+        auto name = EntityRecordLayout::Raw;
         if (bitpacked) {
             record_bytes = pipeline_wire::bitpacked_quantized_oct_record_bytes;
+            name = EntityRecordLayout::BitPackedQuantizedOctHeading;
         } else if (oct_heading) {
             record_bytes = pipeline_wire::quantized_oct_record_bytes;
+            name = EntityRecordLayout::QuantizedOctHeading;
         } else if (quantized) {
             record_bytes = pipeline_wire::quantized_record_bytes;
+            name = EntityRecordLayout::Quantized;
         }
 
         return {
+            .name = name,
             .bitpacked = bitpacked,
             .quantized = quantized,
             .oct_heading = oct_heading,
             .record_bytes = record_bytes,
             .bounds = pipeline.quantization.position_bounds,
+        };
+    }
+
+    [[nodiscard]] RepresentationReport
+    make_representation_report(RecordLayout const& layout) noexcept
+    {
+        return {
+            .layout = layout.name,
+            .record_bytes = layout.record_bytes,
         };
     }
 
@@ -166,6 +184,45 @@ namespace simnet::pipeline_records
             );
         }
         return prepared;
+    }
+
+    /// Adds one produced record's source-to-canonical error without re-preparing its values.
+    void observe_representation_quality(
+        RepresentationReport& report,
+        Vec3f source_position,
+        Vec3f source_heading,
+        PreparedRecord const& prepared
+    ) noexcept
+    {
+        ++report.quality_sample_count;
+        if (report.layout == EntityRecordLayout::Raw) {
+            return;
+        }
+
+        auto const position_x
+            = static_cast<double>(source_position.x) - prepared.canonical.position.x;
+        auto const position_y
+            = static_cast<double>(source_position.y) - prepared.canonical.position.y;
+        auto const position_z
+            = static_cast<double>(source_position.z) - prepared.canonical.position.z;
+        auto const position_error = std::sqrt(
+            position_x * position_x + position_y * position_y + position_z * position_z
+        );
+        report.position_error_sum += position_error;
+        report.position_error_maximum = std::max(report.position_error_maximum, position_error);
+
+        auto const normalized_source = normalize_or(source_heading, {.x = 1.0F});
+        auto const normalized_canonical = normalize_or(prepared.canonical.heading, {.x = 1.0F});
+        auto const cosine = std::clamp(
+            static_cast<double>(dot(normalized_source, normalized_canonical)),
+            -1.0,
+            1.0
+        );
+        auto constexpr radians_to_degrees = 57.295779513082320876;
+        auto const heading_error = std::acos(cosine) * radians_to_degrees;
+        report.heading_angular_error_degrees_sum += heading_error;
+        report.heading_angular_error_degrees_maximum
+            = std::max(report.heading_angular_error_degrees_maximum, heading_error);
     }
 
     [[nodiscard]] bool same_binary32(float left, float right) noexcept

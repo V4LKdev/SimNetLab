@@ -237,6 +237,22 @@ namespace
         return mode == simnet::LevelOfDetailMode::DistanceBands ? "distance_bands" : "none";
     }
 
+    [[nodiscard]] constexpr std::string_view
+    entity_record_layout_name(simnet::EntityRecordLayout layout) noexcept
+    {
+        switch (layout) {
+            case simnet::EntityRecordLayout::Raw:
+                return "raw";
+            case simnet::EntityRecordLayout::Quantized:
+                return "quantized";
+            case simnet::EntityRecordLayout::QuantizedOctHeading:
+                return "quantized_oct_heading";
+            case simnet::EntityRecordLayout::BitPackedQuantizedOctHeading:
+                return "bit_packed_quantized_oct_heading";
+        }
+        return "unknown";
+    }
+
     struct PeerRuntimeState
     {
         simnet::PeerId peer{};
@@ -248,7 +264,9 @@ namespace
         simnet::app::StationaryObserverInterestState stationary_observer_interest{};
         simnet::AreaOfInterestReport latest_area_of_interest{};
         simnet::LevelOfDetailReport latest_level_of_detail{};
+        simnet::RepresentationReport latest_representation{};
         bool has_area_of_interest_report{};
+        bool has_representation_report{};
         std::uint32_t latest_upsert_count{};
         std::uint32_t latest_delete_count{};
         simnet::app::SnapshotAck latest_ack{};
@@ -272,6 +290,8 @@ namespace
         std::uint64_t repeated_recovery_upserts{};
         std::uint64_t repeated_recovery_deletes{};
         std::uint64_t level_of_detail_full_replace_override_count{};
+        std::uint64_t committed_emission_count{};
+        std::uint64_t cadence_skip_count{};
     };
 
     using PeerRuntimeStates = std::vector<PeerRuntimeState>;
@@ -302,6 +322,14 @@ namespace
         auto const acknowledged_fingerprint = delivery_state.acknowledged.has_value()
             ? simnet::app::snapshot_diagnostic_fingerprint(delivery_state.acknowledged->snapshot)
             : 0U;
+        auto const quality_samples
+            = static_cast<double>(peer.latest_representation.quality_sample_count);
+        auto const mean_position_error = quality_samples == 0.0
+            ? 0.0
+            : peer.latest_representation.position_error_sum / quality_samples;
+        auto const mean_heading_error_degrees = quality_samples == 0.0
+            ? 0.0
+            : peer.latest_representation.heading_angular_error_degrees_sum / quality_samples;
         simnet::log(
             simnet::LogCategory::Transport,
             simnet::LogLevel::Info,
@@ -332,6 +360,19 @@ namespace
                 + std::to_string(peer.latest_level_of_detail.pending_due_count)
                 + " lod_full_replace_overrides="
                 + std::to_string(peer.level_of_detail_full_replace_override_count)
+                + " record_layout="
+                + std::string{entity_record_layout_name(peer.latest_representation.layout)}
+                + " record_bytes=" + std::to_string(peer.latest_representation.record_bytes)
+                + " quality_samples="
+                + std::to_string(peer.latest_representation.quality_sample_count)
+                + " mean_position_error=" + std::to_string(mean_position_error)
+                + " maximum_position_error="
+                + std::to_string(peer.latest_representation.position_error_maximum)
+                + " mean_heading_error_degrees=" + std::to_string(mean_heading_error_degrees)
+                + " maximum_heading_error_degrees="
+                + std::to_string(peer.latest_representation.heading_angular_error_degrees_maximum)
+                + " committed_emissions=" + std::to_string(peer.committed_emission_count)
+                + " cadence_skips=" + std::to_string(peer.cadence_skip_count)
         );
         for (auto const& retained : delivery_state.submitted) {
             simnet::log(
@@ -627,6 +668,9 @@ namespace
             details.repeated_recovery_deletes = peer->repeated_recovery_deletes;
             details.area_of_interest_mode = config.pipeline.area_of_interest.mode;
             details.level_of_detail_mode = config.pipeline.level_of_detail.mode;
+            details.send_interval_ticks = config.pipeline.send_interval_ticks;
+            details.committed_emission_count = peer->committed_emission_count;
+            details.cadence_skip_count = peer->cadence_skip_count;
             details.packetization_enabled = config.packetization.enabled;
             if (config.pipeline.area_of_interest.mode == "none") {
                 details.interest_source_status = "not required";
@@ -671,6 +715,22 @@ namespace
             if (peer->snapshot_delivery.latest_submitted_sequence != 0U) {
                 details.transmitted_upsert_count = peer->latest_upsert_count;
                 details.transmitted_delete_count = peer->latest_delete_count;
+            }
+            if (peer->has_representation_report) {
+                auto const& representation = peer->latest_representation;
+                details.representation_layout = entity_record_layout_name(representation.layout);
+                details.entity_record_bytes = representation.record_bytes;
+                details.representation_quality_samples = representation.quality_sample_count;
+                if (representation.quality_sample_count != 0U) {
+                    auto const sample_count
+                        = static_cast<double>(representation.quality_sample_count);
+                    details.mean_position_error = representation.position_error_sum / sample_count;
+                    details.maximum_position_error = representation.position_error_maximum;
+                    details.mean_heading_error_degrees
+                        = representation.heading_angular_error_degrees_sum / sample_count;
+                    details.maximum_heading_error_degrees
+                        = representation.heading_angular_error_degrees_maximum;
+                }
             }
             if (peer->latest_packetization.group_id != 0U) {
                 details.packet_group_id = peer->latest_packetization.group_id;
@@ -1815,6 +1875,7 @@ namespace
         simnet::Tick tick,
         simnet::Nanoseconds fixed_dt,
         simnet::PipelineDefinition const& pipeline,
+        bool collect_representation_quality,
         simnet::app::CompressionSettings compression,
         simnet::PacketizationSettings const& packetization,
         simnet::SnapshotDeliveryConfig const& delivery_config,
@@ -1904,8 +1965,7 @@ namespace
                 = pipeline.level_of_detail.mode == simnet::LevelOfDetailMode::DistanceBands;
             auto const partial_selection_enabled = incremental_enabled || level_of_detail_enabled;
             auto interest_source = std::optional<simnet::InterestSource>{};
-            if (cadence_emits
-                && pipeline.area_of_interest.mode != simnet::AreaOfInterestMode::None) {
+            if (pipeline.area_of_interest.mode != simnet::AreaOfInterestMode::None) {
                 interest_source = resolve_interest_source(*peer, snapshot_state.snapshot);
                 if (!interest_source.has_value()) {
                     if (peer->role == simnet::app::ClientRole::Player) {
@@ -1919,13 +1979,15 @@ namespace
                     observe_server_measurement(measurements, csv, measurement);
                     return true;
                 }
-                query_area_of_interest_candidates(
-                    *peer,
-                    snapshot_state,
-                    area_of_interest_grid_settings,
-                    *interest_source,
-                    pipeline.area_of_interest.radius
-                );
+                if (cadence_emits) {
+                    query_area_of_interest_candidates(
+                        *peer,
+                        snapshot_state,
+                        area_of_interest_grid_settings,
+                        *interest_source,
+                        pipeline.area_of_interest.radius
+                    );
+                }
             }
             if (cadence_emits) {
                 simnet::app::expire_retained_snapshots(
@@ -2036,6 +2098,7 @@ namespace
                         .replica_sequence = replica_sequence,
                         .recovery_upsert_ids = peer->recovery_upsert_ids,
                         .force_full_replace = peer->snapshot_delivery.recovery_active,
+                        .collect_representation_quality = collect_representation_quality,
                         .interest_source
                         = interest_source.has_value() ? &*interest_source : nullptr,
                         .candidate_indices = peer->area_of_interest_candidates,
@@ -2054,11 +2117,7 @@ namespace
             measurement.encoded_update_bytes
                 = static_cast<std::uint32_t>(encoded.update.bytes.size());
             if (encoded.kind == simnet::EncodeResultKind::Skipped) {
-                if (encoded.report.skip_reason
-                    == simnet::EncodeSkipReason::InterestSourceUnavailable) {
-                    peer->latest_area_of_interest = encoded.report.area_of_interest;
-                    peer->has_area_of_interest_report = true;
-                }
+                ++peer->cadence_skip_count;
                 measurement.outcome = simnet::ServerReplicationOutcome::Skipped;
                 measurement.total_replication_cpu_time = simnet::steady_now_ns() - total_start;
                 observe_server_measurement(measurements, csv, measurement);
@@ -2326,12 +2385,15 @@ namespace
             }
             peer->latest_area_of_interest = encoded.report.area_of_interest;
             peer->latest_level_of_detail = encoded.report.level_of_detail;
+            peer->latest_representation = encoded.report.representation;
+            peer->has_representation_report = true;
             peer->level_of_detail_full_replace_override_count
                 += encoded.report.level_of_detail.full_replace_override_count;
             peer->has_area_of_interest_report = true;
             peer->latest_upsert_count = encoded.report.upsert_count;
             peer->latest_delete_count = encoded.report.delete_count;
             peer->latest_submission_outcome = PacketSubmissionOutcome::Committed;
+            ++peer->committed_emission_count;
             SIMNET_TRACE_PLOT(
                 "server.retained_snapshot_count",
                 static_cast<double>(peer->snapshot_delivery.submitted.size())
@@ -2446,6 +2508,11 @@ namespace simnet::app
 #endif
             auto signals = SignalHandlers{};
             auto const pipeline = make_snapshot_pipeline(shared);
+#if defined(SIMNET_ENABLE_RENDER)
+            auto const collect_representation_quality = local.visualization.enabled;
+#else
+            auto constexpr collect_representation_quality = false;
+#endif
             auto const compression = make_compression_settings(shared);
             auto const packetization = make_packetization_settings(shared);
             if (packetization.max_payload_bytes > local.transport.max_payload_bytes
@@ -2661,6 +2728,7 @@ namespace simnet::app
                             tick,
                             clock.fixed_dt,
                             pipeline,
+                            collect_representation_quality,
                             compression,
                             packetization,
                             shared.snapshot_delivery,

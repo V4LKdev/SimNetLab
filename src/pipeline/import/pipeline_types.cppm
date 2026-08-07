@@ -31,14 +31,6 @@ export namespace simnet
         Skipped /// no encoded update was emitted by this call.
     };
 
-    /// Active reason why an encode call emitted no update.
-    enum class EncodeSkipReason : std::uint8_t
-    {
-        None,
-        SendInterval,
-        InterestSourceUnavailable,
-    };
-
     /// Server-side population selection mode applied before update scheduling.
     enum class AreaOfInterestMode : std::uint8_t
     {
