@@ -14,6 +14,9 @@
 - `shared_delivery_unreliable_aoi_radius_visual.json`: matched unreliable sequenced delivery treatment.
 - `shared_lod_none_aoi_radius_visual.json`: matched distance-LOD control with Incremental disabled.
 - `shared_lod_distance_bands_aoi_radius_visual.json`: temporal distance-LOD treatment with 40, 100, 4, and 16 band values.
+- `shared_player_influence_control_visual.json`: matched Player influence control with lure and predator disabled.
+- `shared_player_lure_visual.json`: authoritative Player lure treatment using a 35-unit radius and 5-unit acceleration limit.
+- `shared_player_predator_visual.json`: authoritative Player predator treatment using a 24-unit radius and 10-unit acceleration limit.
 - `shared_stress_50k.json`: local high-count stress and visual-inspection profile. Use it only with the Server. Do not present it as realistic current network replication.
 - `shared_default.json`: conservative fallback baseline.
 

@@ -1,0 +1,86 @@
+{
+  "run": {
+    "seed": 12345
+  },
+  "snapshot_delivery": {
+    "mode": "reliable_sequenced",
+    "full_replace_after_unacknowledged_updates": 32
+  },
+  "simulation": {
+    "tick_rate_hz": 60,
+    "world_half": 60,
+    "initial_boid_count": 300
+  },
+  "spatial": {
+    "cell_size": 10,
+    "max_neighbors": 64
+  },
+  "boids": {
+    "enable_separation": true,
+    "enable_alignment": true,
+    "enable_cohesion": true,
+    "enable_containment": true,
+    "enable_wander": true,
+    "enable_hue_assimilation": true,
+    "enable_hue_drift": true,
+    "min_speed": 6.0,
+    "cruise_speed": 8.0,
+    "max_speed": 10.0,
+    "max_acceleration": 12.0,
+    "separation_radius": 3.6,
+    "alignment_radius": 12.0,
+    "cohesion_radius": 20.0,
+    "field_of_view_degrees": 240.0,
+    "containment_prediction_seconds": 0.75,
+    "containment_margin": 12.0,
+    "separation_acceleration": 10.0,
+    "containment_acceleration": 9.0,
+    "alignment_acceleration": 1.2,
+    "cohesion_acceleration": 2.0,
+    "wander_acceleration": 0.55,
+    "wander_frequency_hz": 0.35,
+    "hue_assimilation_rate": 0.05,
+    "hue_drift_rate": 0.008,
+    "player_lure": {
+      "enabled": false
+    },
+    "player_predator": {
+      "enabled": true,
+      "radius": 24.0,
+      "max_acceleration": 10.0
+    }
+  },
+  "player": {
+    "cruise_speed": 8.0,
+    "boost_speed": 14.0,
+    "slow_speed": 3.0,
+    "speed_change_rate": 12.0,
+    "yaw_acceleration_degrees": 360.0,
+    "pitch_acceleration_degrees": 300.0,
+    "yaw_damping": 8.0,
+    "pitch_damping": 8.0,
+    "max_yaw_rate_degrees": 120.0,
+    "max_pitch_rate_degrees": 90.0,
+    "pitch_limit_degrees": 80.0
+  },
+  "pipeline": {
+    "enable_incremental": false,
+    "enable_quantization": false,
+    "enable_delta": false,
+    "area_of_interest": {
+      "mode": "none"
+    }
+  },
+  "compression": {
+    "mode": "none"
+  },
+  "packetization": {
+    "enabled": true,
+    "max_payload_bytes": 1200,
+    "max_update_bytes": 4194304,
+    "max_chunks_per_update": 4096,
+    "max_in_flight_updates": 4,
+    "max_incomplete_bytes": 8388608,
+    "reassembly_timeout_ms": 5000
+  }
+}
