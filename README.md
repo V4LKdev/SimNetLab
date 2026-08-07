@@ -11,14 +11,14 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Configurable hard application packetization with bounded complete-group Client reassembly
 - Toggleable bounded Zstd compression for complete updates or individual application packets
 - Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
-- One authoritative server peer and one client peer
+- Bounded multi-client Server coordination with isolated Player and stationary observer sessions
 - Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
 - Application configuration for full replacement, incremental selection, quantization, exact-baseline delta reconstruction, radius or conical-FOV AOI, and packetization
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
 - 1,000-entity Server to Client replication in the bounded runtime path
 - Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local stationary observer views, and authoritative remote pause
-- Stationary observer and authoritative player join roles with one Server-owned player fish and a locked third-person Client chase camera
+- Stationary observer and authoritative Player join roles with per-session Player ownership and a locked third-person Client chase camera
 
 ## Planned work
 

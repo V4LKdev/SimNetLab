@@ -2,6 +2,7 @@ module;
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 /// @brief Active typed replication measurement contracts.
 export module simnet.telemetry:metrics;
@@ -24,6 +25,9 @@ export namespace simnet
     /// One Server replication attempt measured by the application runtime.
     struct ServerReplicationMeasurement
     {
+        PeerId peer_id{};
+        // The application supplies stable role vocabulary that outlives buffered CSV records.
+        std::string_view accepted_gameplay_role{};
         Tick tick{};
         SequenceId sequence{};
         SequenceId baseline_sequence{};

@@ -38,13 +38,13 @@ preparation and sink application. Full-system treatments include both and report
 separately. A failed attempt never enters `latest_applied` and never increments `applied_count`.
 
 The current runtime consumer keeps the latest attempt, latest successful result, and counts for
-the shutdown summary. Each application also submits every attempt to its role-specific v1 CSV
+the shutdown summary. Each application also submits every attempt to its role-specific CSV
 writer after the measured stage ends.
 
 ### simnet.telemetry:csv
 
 - `EvidenceRunContext` - immutable process role, process-start clocks, and validated run ID.
-- `ServerReplicationCsvWriter` - bounded typed Server rows and the Server v1 schema.
+- `ServerReplicationCsvWriter` - bounded peer-attributed Server rows and the Server v2 schema.
 - `ClientReplicationCsvWriter` - bounded typed Client rows and the Client v1 schema.
 - `EvidenceCsvFile` - exclusive creation and checked write, flush, and close operations.
 
@@ -57,8 +57,8 @@ processes belong to the same experiment.
 The application captures each record envelope after its TEL-001 measured stage. `record_order` is
 the authoritative order within one file. `recorded_at_unix_ns` supports approximate cross-process
 alignment. `elapsed_since_process_start_ns` is monotonic within the process. The role and
-process-start timestamp identify the producing process. Client rows also store the authoritative
-role from `JoinAccepted`.
+process-start timestamp identify the producing process. Server rows store the Server-assigned peer
+ID and accepted gameplay role. Client rows also store the authoritative role from `JoinAccepted`.
 
 Replication writers reserve 256 typed records at startup and request a drain at 128. Submission
 copies only the measurement and envelope. Formatting and file I/O occur during explicit
@@ -71,7 +71,7 @@ capacity, and drain threshold. It retains its existing sample cadence of one agg
 simulated second plus the last unsampled tick. The boid schema remains separate from replication
 because it describes simulation diagnostics and phase timings rather than a replication attempt.
 
-Enabled files are named `server_replication_v1_<process_started_unix_ns>.csv`,
+Enabled files are named `server_replication_v2_<process_started_unix_ns>.csv`,
 `client_replication_v1_<process_started_unix_ns>.csv`, and
 `server_boids_v1_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
 version.

@@ -1,6 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
+#include <vector>
+
+#include "../app/server_peer_iteration.hpp"
 
 import simnet.app_snapshot_delivery;
+import simnet.app_protocol;
 import simnet.core;
 import simnet.pipeline;
 import simnet.snapshot;
@@ -20,6 +24,63 @@ namespace
         }
         return value;
     }
+}
+
+TEST_CASE("sorted peer iteration remains complete across erasure", "[peer][delivery]")
+{
+    struct Peer
+    {
+        simnet::PeerId id{};
+        bool joined{true};
+    };
+
+    auto peers = std::vector<Peer>{{1U}, {2U}, {3U}, {4U, false}};
+    auto processed = std::vector<simnet::PeerId>{};
+    auto erased = std::vector<simnet::PeerId>{};
+    simnet::app::detail::process_sorted_peer_states(
+        peers,
+        [](Peer const& peer) {
+            return peer.joined;
+        },
+        [&](Peer const& peer) {
+            processed.push_back(peer.id);
+            return peer.id != 2U;
+        },
+        [&](Peer const& peer) {
+            erased.push_back(peer.id);
+        }
+    );
+
+    CHECK(processed == std::vector<simnet::PeerId>{1U, 2U, 3U});
+    CHECK(erased == std::vector<simnet::PeerId>{2U});
+    REQUIRE(peers.size() == 3U);
+    CHECK(peers[0].id == 1U);
+    CHECK(peers[1].id == 3U);
+    CHECK(peers[2].id == 4U);
+}
+
+TEST_CASE("peer admission rejects overflow without touching existing state", "[peer][protocol]")
+{
+    struct Peer
+    {
+        simnet::PeerId id{};
+        simnet::SequenceId next_sequence{1U};
+    };
+
+    auto const peers = std::vector<Peer>{{1U, 7U}, {2U, 11U}};
+    CHECK(
+        simnet::app::detail::peer_admission(peers, 3U, 2U, &Peer::id)
+        == simnet::app::detail::PeerAdmission::Full
+    );
+    CHECK(
+        simnet::app::detail::peer_admission(peers, 2U, 2U, &Peer::id)
+        == simnet::app::detail::PeerAdmission::Duplicate
+    );
+    REQUIRE(peers.size() == 2U);
+    CHECK(peers[0].id == 1U);
+    CHECK(peers[0].next_sequence == 7U);
+    CHECK(peers[1].id == 2U);
+    CHECK(peers[1].next_sequence == 11U);
 }
 
 TEST_CASE("submitted snapshots remain distinct from the acknowledged replica", "[delivery]")
@@ -51,6 +112,137 @@ TEST_CASE("submitted snapshots remain distinct from the acknowledged replica", "
         simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{3U})
         == simnet::app::AckPromotionOutcome::Duplicate
     );
+}
+
+TEST_CASE("peer ACK and recovery state remain independent", "[peer][delivery][recovery]")
+{
+    auto first = simnet::app::SnapshotDeliveryState{};
+    auto second = simnet::app::SnapshotDeliveryState{};
+    auto first_result = snapshot({1U, 2U});
+    auto second_result = snapshot({7U});
+    auto const first_plan = simnet::app::plan_snapshot_retention(first, first_result);
+    auto const second_plan = simnet::app::plan_snapshot_retention(second, second_result);
+    REQUIRE(first_plan.valid);
+    REQUIRE(second_plan.valid);
+    simnet::app::commit_submitted_snapshot(
+        first,
+        1U,
+        std::move(first_result),
+        simnet::SnapshotKind::FullReplace,
+        simnet::Nanoseconds{1U},
+        first_plan
+    );
+    simnet::app::commit_submitted_snapshot(
+        second,
+        1U,
+        std::move(second_result),
+        simnet::SnapshotKind::FullReplace,
+        simnet::Nanoseconds{1U},
+        second_plan
+    );
+
+    REQUIRE(
+        simnet::app::promote_snapshot_ack(first, 1U, simnet::Nanoseconds{2U})
+        == simnet::app::AckPromotionOutcome::Promoted
+    );
+    CHECK(first.latest_acknowledged_sequence == 1U);
+    CHECK_FALSE(first.recovery_active);
+    CHECK(second.latest_acknowledged_sequence == 0U);
+    CHECK(second.recovery_active);
+    REQUIRE(second.submitted.size() == 1U);
+
+    auto recovery = simnet::SnapshotUpdate{
+        .kind = simnet::SnapshotKind::Patch,
+        .upserts = {{
+            .id = 7U,
+            .classification = simnet::EntityClassification{1U},
+            .position = {.x = 9.0F},
+            .heading = {.z = 1.0F},
+            .hue = 7U,
+        }},
+        .deletes = {},
+    };
+    REQUIRE(simnet::app::merge_recovery_upserts(second, recovery));
+    CHECK(second.recovery_upserts.size() == 1U);
+    CHECK(first.recovery_upserts.empty());
+}
+
+TEST_CASE("reconnected peer authority starts completely fresh", "[peer][delivery][aoi][lod]")
+{
+    auto const former_identity = simnet::app::encode_app_message({
+        .kind = simnet::app::AppMessageKind::JoinAccepted,
+        .role = simnet::app::ClientRole::Player,
+        .peer_id = 8U,
+        .player_id = 100U,
+    });
+    auto const reconnected_identity = simnet::app::encode_app_message({
+        .kind = simnet::app::AppMessageKind::JoinAccepted,
+        .role = simnet::app::ClientRole::Player,
+        .peer_id = 9U,
+        .player_id = 101U,
+    });
+    auto former = simnet::app::AppMessage{};
+    auto reconnected = simnet::app::AppMessage{};
+    REQUIRE(simnet::app::decode_app_message(former_identity, former));
+    REQUIRE(simnet::app::decode_app_message(reconnected_identity, reconnected));
+    CHECK(reconnected.peer_id > former.peer_id);
+    CHECK(reconnected.player_id > former.player_id);
+
+    auto state = simnet::ClientReplicationState{};
+    auto delivery = simnet::app::SnapshotDeliveryState{};
+    auto observer = simnet::app::StationaryObserverInterestState{};
+    CHECK(state.next_sequence == 1U);
+    CHECK(state.incremental_cursor == 0U);
+    CHECK_FALSE(state.incremental_seeded);
+    CHECK_FALSE(state.level_of_detail_seeded);
+    CHECK(state.level_of_detail_schedule.empty());
+    CHECK(delivery.latest_submitted_sequence == 0U);
+    CHECK(delivery.latest_acknowledged_sequence == 0U);
+    CHECK_FALSE(delivery.acknowledged.has_value());
+    CHECK(delivery.submitted.empty());
+    CHECK(delivery.recovery_upserts.empty());
+    CHECK(delivery.recovery_active);
+    CHECK(delivery.recovery_reason == simnet::app::SnapshotRecoveryReason::NoAcknowledgedBaseline);
+    CHECK(delivery.forced_full_replace_count == 0U);
+    CHECK_FALSE(observer.initialized);
+
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental;
+    pipeline.incremental.max_entities_per_update = 1U;
+    pipeline.area_of_interest = {
+        .mode = simnet::AreaOfInterestMode::Radius,
+        .radius = 10.0F,
+    };
+    pipeline.level_of_detail = {
+        .mode = simnet::LevelOfDetailMode::DistanceBands,
+        .near_distance = 2.0F,
+        .medium_distance = 5.0F,
+        .medium_interval_ticks = 2U,
+        .far_interval_ticks = 4U,
+    };
+    auto source = snapshot({1U, 2U});
+    source.tick = 1U;
+    auto const interest = simnet::InterestSource{
+        .position = {},
+        .forward = {.z = 1.0F},
+    };
+    auto const candidates = std::vector<std::uint32_t>{0U, 1U};
+    auto scratch = simnet::PipelineScratch{};
+    auto const initial = simnet::encode_snapshot(
+        pipeline,
+        state,
+        scratch,
+        {
+            .snapshot = &source,
+            .force_full_replace = true,
+            .interest_source = &interest,
+            .candidate_indices = candidates,
+        }
+    );
+    REQUIRE(initial.kind == simnet::EncodeResultKind::Update);
+    CHECK(initial.update.sequence == 1U);
+    CHECK(initial.report.baseline_sequence == 0U);
+    CHECK(initial.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
 }
 
 TEST_CASE("canonical recovery upserts persist until an ACK proves their result", "[delivery]")

@@ -917,6 +917,7 @@ namespace
         bool& simulation_paused,
         bool& pause_state_received,
         bool& join_accepted,
+        simnet::PeerId& assigned_peer_id,
         simnet::EntityNetId& player_id,
         simnet::ClientReplicationCsvWriter& csv
     )
@@ -942,6 +943,7 @@ namespace
                 );
             }
             join_accepted = true;
+            assigned_peer_id = message.peer_id;
             player_id = message.player_id;
             simnet::log(
                 simnet::LogCategory::Simulation,
@@ -949,6 +951,7 @@ namespace
                 "client join accepted role="
                     + std::
                         string{requested_role == simnet::app::ClientRole::Player ? "player" : "stationary_observer"}
+                    + " peer_id=" + std::to_string(assigned_peer_id)
                     + " player_id=" + std::to_string(player_id)
             );
             return true;
@@ -1112,6 +1115,7 @@ namespace simnet::app
             auto authoritative_pause_state = false;
             auto pause_state_received = false;
             auto join_accepted = false;
+            auto assigned_peer_id = PeerId{};
             auto player_id = EntityNetId{};
             auto last_observer_interest_send_time = std::optional<Nanoseconds>{};
             auto last_observer_interest_forward = Vec3f{};
@@ -1160,6 +1164,7 @@ namespace simnet::app
                         server_peer = ready->peer;
                         pause_state_received = false;
                         join_accepted = false;
+                        assigned_peer_id = 0U;
                         player_id = 0U;
                         last_observer_interest_send_time.reset();
                         last_observer_interest_forward = {};
@@ -1201,6 +1206,7 @@ namespace simnet::app
                                         authoritative_pause_state,
                                         pause_state_received,
                                         join_accepted,
+                                        assigned_peer_id,
                                         player_id,
                                         *replication_csv
                                 );
@@ -1543,7 +1549,8 @@ namespace simnet::app
                                     : std::optional<bool>{},
                                 interpolation,
                                 connection_state,
-                                server_peer,
+                                join_accepted ? std::optional<PeerId>{assigned_peer_id}
+                                              : server_peer,
                                 ack_tracker.value,
                                 effective_snapshot_delivery,
                                 sequence_gap_count,
@@ -1690,7 +1697,8 @@ namespace simnet::app
                 "client snapshot delivery mode=" + shared.snapshot_delivery.mode + " effective="
                     + std::
                         string{effective_snapshot_delivery.has_value() ? app::transport_delivery_name(*effective_snapshot_delivery) : "unavailable"}
-                    + " applied_sequence=" + std::to_string(latest_applied_sequence)
+                    + " applied_sequence=" + std::to_string(latest_applied_sequence) + " peer_id="
+                    + std::to_string(assigned_peer_id) + " player_id=" + std::to_string(player_id)
                     + " ack_sequence=" + std::to_string(ack_tracker.value.newest_applied_snapshot)
                     + " canonical_entities=" + std::to_string(canonical_entities)
                     + " canonical_fingerprint=" + std::to_string(canonical_fingerprint)

@@ -682,6 +682,86 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "equal group IDs remain isolated across peer compression and reassembly state",
+    "[peer][compression][packetization]"
+)
+{
+    auto const config = settings();
+    auto const first_source = std::vector<simnet::Byte>(100U, simnet::Byte{0x11U});
+    auto const second_source = std::vector<simnet::Byte>(100U, simnet::Byte{0x22U});
+    auto first_compressor = simnet::ZstdCompressor{};
+    auto second_compressor = simnet::ZstdCompressor{};
+    auto first_encoded = std::vector<simnet::Byte>{};
+    auto second_encoded = std::vector<simnet::Byte>{};
+    auto const compression_limits = simnet::CompressionLimits{
+        .max_uncompressed_bytes = config.max_group_bytes,
+        .max_output_bytes = config.max_group_bytes,
+    };
+    REQUIRE(
+        simnet::compress_bytes(
+            first_compressor,
+            first_source,
+            1,
+            compression_limits,
+            simnet::CompressionEnvelopePolicy::Always,
+            first_encoded
+        )
+            .valid
+    );
+    REQUIRE(
+        simnet::compress_bytes(
+            second_compressor,
+            second_source,
+            1,
+            compression_limits,
+            simnet::CompressionEnvelopePolicy::Always,
+            second_encoded
+        )
+            .valid
+    );
+
+    auto const first_packets = packets(config, 1U, first_encoded);
+    auto const second_packets = packets(config, 1U, second_encoded);
+    auto first_order = std::vector<std::size_t>(first_packets.size());
+    auto second_order = std::vector<std::size_t>(second_packets.size());
+    std::iota(first_order.begin(), first_order.end(), 0U);
+    std::iota(second_order.begin(), second_order.end(), 0U);
+    auto first_reassembly = simnet::ReassemblyState{};
+    auto second_reassembly = simnet::ReassemblyState{};
+    auto const first_complete = deliver(config, first_reassembly, first_packets, first_order);
+    auto const second_complete = deliver(config, second_reassembly, second_packets, second_order);
+    REQUIRE(first_complete.kind == simnet::ReassemblyResultKind::Complete);
+    REQUIRE(second_complete.kind == simnet::ReassemblyResultKind::Complete);
+    CHECK(first_complete.completed.group_id == second_complete.completed.group_id);
+    CHECK(first_complete.completed.bytes != second_complete.completed.bytes);
+
+    auto first_decompressor = simnet::ZstdDecompressor{};
+    auto second_decompressor = simnet::ZstdDecompressor{};
+    auto first_decoded = std::vector<simnet::Byte>{};
+    auto second_decoded = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::decompress_bytes(
+            first_decompressor,
+            first_complete.completed.bytes,
+            compression_limits,
+            first_decoded
+        )
+            .valid
+    );
+    REQUIRE(
+        simnet::decompress_bytes(
+            second_decompressor,
+            second_complete.completed.bytes,
+            compression_limits,
+            second_decoded
+        )
+            .valid
+    );
+    CHECK(first_decoded == first_source);
+    CHECK(second_decoded == second_source);
+}
+
+TEST_CASE(
     "invalid compressed packets never enter reassembly and later traffic succeeds",
     "[compression][packetization][transaction]"
 )

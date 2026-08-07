@@ -351,10 +351,41 @@ TEST_CASE(
     auto const second_player_id = simnet::spawn_authoritative_player(world);
     REQUIRE(second_player_id == 4U);
     CHECK(snapshot(world, 2U).size() == 4U);
+    REQUIRE(simnet::set_authoritative_player_input(world, player_id, {}));
+    REQUIRE(
+        simnet::set_authoritative_player_input(
+            world,
+            second_player_id,
+            {
+                .yaw_left = true,
+                .decelerate = true,
+            }
+        )
+    );
+    step(world, runtime, 0.25F);
+    auto const independently_moved = snapshot(world, 3U);
+    auto const first_position = std::ranges::find(independently_moved.ids, player_id);
+    auto const second_position = std::ranges::find(independently_moved.ids, second_player_id);
+    REQUIRE(first_position != independently_moved.ids.end());
+    REQUIRE(second_position != independently_moved.ids.end());
+    auto const first_offset
+        = static_cast<std::size_t>(std::distance(independently_moved.ids.begin(), first_position));
+    auto const second_offset
+        = static_cast<std::size_t>(std::distance(independently_moved.ids.begin(), second_position));
+    CHECK(independently_moved.headings[first_offset].x < 0.0F);
+    CHECK(independently_moved.headings[second_offset].x > 0.0F);
     REQUIRE(simnet::delete_authoritative_player(world, player_id));
+    auto const after_first_disconnect = snapshot(world, 4U);
+    CHECK(
+        std::ranges::find(after_first_disconnect.ids, player_id) == after_first_disconnect.ids.end()
+    );
+    CHECK(
+        std::ranges::find(after_first_disconnect.ids, second_player_id)
+        != after_first_disconnect.ids.end()
+    );
     REQUIRE(simnet::delete_authoritative_player(world, second_player_id));
     CHECK_FALSE(simnet::set_authoritative_player_input(world, player_id, {}));
-    CHECK(snapshot(world, 3U).size() == 2U);
+    CHECK(snapshot(world, 5U).size() == 2U);
     CHECK(simnet::authoritative_boid_count(world) == 2U);
 }
 
@@ -395,9 +426,10 @@ TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
     REQUIRE(state.size() == 1U);
     CHECK(state.headings.front().x < 0.0F);
 
-    REQUIRE(simnet::delete_authoritative_player(world, player_id));
+    auto const former_player_id = player_id;
+    REQUIRE(simnet::delete_authoritative_player(world, former_player_id));
     player_id = simnet::spawn_authoritative_player(world);
-    REQUIRE(player_id != 0U);
+    REQUIRE(player_id > former_player_id);
     REQUIRE(
         simnet::set_authoritative_player_input(
             world,

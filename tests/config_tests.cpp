@@ -172,6 +172,38 @@ TEST_CASE("visual interpolation is local runtime configuration", "[config]")
     );
 }
 
+TEST_CASE("transport client capacity is strictly bounded", "[config][peer]")
+{
+    for (auto const capacity : {1U, 64U}) {
+        auto const accepted = TemporaryConfig{
+            "simnet_client_capacity_accepted_" + std::to_string(capacity) + ".json",
+            "{ \"transport\": { \"max_clients\": " + std::to_string(capacity) + " } }"
+        };
+        CHECK(simnet::load_server_config(accepted.path()).transport.max_clients == capacity);
+    }
+    for (auto const capacity : {0U, 65U}) {
+        auto const rejected = TemporaryConfig{
+            "simnet_client_capacity_rejected_" + std::to_string(capacity) + ".json",
+            "{ \"transport\": { \"max_clients\": " + std::to_string(capacity) + " } }"
+        };
+        CHECK_THROWS(simnet::load_server_config(rejected.path()));
+    }
+}
+
+TEST_CASE("multi-client visual profile changes only Server capacity", "[config][peer]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    auto control = simnet::load_server_config(directory / "server_visual.json");
+    auto treatment = simnet::load_server_config(directory / "server_multi_client_visual.json");
+    CHECK(control.transport.max_clients == 1U);
+    CHECK(treatment.transport.max_clients == 2U);
+    treatment.transport.max_clients = control.transport.max_clients;
+    CHECK(
+        simnet::fingerprint_runtime_config(simnet::default_shared_config(), treatment).value
+        == simnet::fingerprint_runtime_config(simnet::default_shared_config(), control).value
+    );
+}
+
 TEST_CASE("client gameplay role is local runtime configuration", "[config][player]")
 {
     auto const shared = simnet::default_shared_config();

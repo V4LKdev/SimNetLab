@@ -16,17 +16,19 @@ import :metrics;
 
 export namespace simnet
 {
-    inline constexpr std::uint32_t replication_csv_schema_version = 1;
+    inline constexpr std::uint32_t server_replication_csv_schema_version = 2;
+    inline constexpr std::uint32_t client_replication_csv_schema_version = 1;
     inline constexpr std::size_t replication_csv_buffer_capacity = 256;
     inline constexpr std::size_t replication_csv_drain_threshold = 128;
 
-    inline constexpr std::string_view server_replication_csv_header_v1
+    inline constexpr std::string_view server_replication_csv_header_v2
         = "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
-          "elapsed_since_process_start_ns,record_order,tick,sequence,baseline_sequence,"
-          "snapshot_kind,outcome,source_entity_count,selected_entity_count,upsert_count,"
-          "delete_count,encoded_update_bytes,application_payload_bytes,transport_payload_bytes,"
-          "snapshot_extraction_cpu_ns,baseline_resolution_cpu_ns,encode_cpu_ns,"
-          "transport_send_cpu_ns,snapshot_retention_cpu_ns,total_replication_cpu_ns";
+          "elapsed_since_process_start_ns,record_order,peer_id,accepted_gameplay_role,tick,"
+          "sequence,baseline_sequence,snapshot_kind,outcome,source_entity_count,"
+          "selected_entity_count,upsert_count,delete_count,encoded_update_bytes,"
+          "application_payload_bytes,transport_payload_bytes,snapshot_extraction_cpu_ns,"
+          "baseline_resolution_cpu_ns,encode_cpu_ns,transport_send_cpu_ns,"
+          "snapshot_retention_cpu_ns,total_replication_cpu_ns";
 
     inline constexpr std::string_view client_replication_csv_header_v1
         = "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"

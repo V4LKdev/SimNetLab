@@ -12,7 +12,9 @@ Shared configuration controls deterministic seed, world and population settings,
 
 Server-local `flecs.thread_count` selects `1..64` persistent Flecs worker threads. The default value of one preserves serial system execution. It is included in the Server runtime fingerprint but not in network compatibility.
 
-The current application runtime supports one server peer and one client peer. Server configuration values above one client are rejected during startup.
+Server-local `transport.max_clients` accepts `1..64` simultaneous sessions. Maintained one-client
+profiles remain capped at one. `server_multi_client_visual.json` is the two-client visual profile.
+The capacity is included in the local runtime fingerprint but not network compatibility.
 
 Visualization is local-only configuration shared by Server and Client. It controls optional window creation and does not affect network compatibility. `interpolation_enabled` makes the Server render between adjacent authoritative ticks and the Client render between retained reconstructed snapshots. Disabling it renders the latest exact state. `entity_mesh_path` is an optional local OBJ path. An empty path uses the built-in directional wedge. A load failure logs one warning and uses the same instanced wedge fallback. Stationary observer radius, vertical FOV, and the maximum displayed spatial cells are local viewer settings. The authoritative spatial cell size remains in shared spatial configuration.
 

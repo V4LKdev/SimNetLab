@@ -25,6 +25,7 @@ TEST_CASE("application role and pause messages round-trip exactly", "[app_protoc
              simnet::app::AppMessage{
                  .kind = simnet::app::AppMessageKind::JoinAccepted,
                  .role = simnet::app::ClientRole::Player,
+                 .peer_id = 7U,
                  .player_id = 42U,
              },
          }) {
@@ -33,6 +34,7 @@ TEST_CASE("application role and pause messages round-trip exactly", "[app_protoc
         REQUIRE(simnet::app::decode_app_message(bytes, decoded));
         CHECK(decoded.kind == message.kind);
         CHECK(decoded.role == message.role);
+        CHECK(decoded.peer_id == message.peer_id);
         CHECK(decoded.player_id == message.player_id);
         CHECK(decoded.paused == message.paused);
     }
@@ -64,9 +66,34 @@ TEST_CASE("application protocol rejects malformed roles and versions", "[app_pro
     auto invalid_stationary_observer = simnet::app::encode_app_message({
         .kind = simnet::app::AppMessageKind::JoinAccepted,
         .role = simnet::app::ClientRole::StationaryObserver,
+        .peer_id = 1U,
         .player_id = 1U,
     });
     CHECK_FALSE(simnet::app::decode_app_message(invalid_stationary_observer, decoded));
+
+    auto missing_peer_identity = simnet::app::encode_app_message({
+        .kind = simnet::app::AppMessageKind::JoinAccepted,
+        .role = simnet::app::ClientRole::StationaryObserver,
+    });
+    CHECK_FALSE(simnet::app::decode_app_message(missing_peer_identity, decoded));
+
+    auto const first_observer = simnet::app::encode_app_message({
+        .kind = simnet::app::AppMessageKind::JoinAccepted,
+        .role = simnet::app::ClientRole::StationaryObserver,
+        .peer_id = 1U,
+    });
+    auto const second_observer = simnet::app::encode_app_message({
+        .kind = simnet::app::AppMessageKind::JoinAccepted,
+        .role = simnet::app::ClientRole::StationaryObserver,
+        .peer_id = 2U,
+    });
+    CHECK(first_observer != second_observer);
+    REQUIRE(simnet::app::decode_app_message(first_observer, decoded));
+    CHECK(decoded.peer_id == 1U);
+
+    auto truncated_join = first_observer;
+    truncated_join.pop_back();
+    CHECK_FALSE(simnet::app::decode_app_message(truncated_join, decoded));
 
     auto const stationary_observer = simnet::app::encode_app_message({
         .kind = simnet::app::AppMessageKind::JoinRequest,
@@ -74,6 +101,33 @@ TEST_CASE("application protocol rejects malformed roles and versions", "[app_pro
     });
     REQUIRE(stationary_observer.size() == 3U);
     CHECK(stationary_observer[2] == simnet::Byte{0U});
+}
+
+TEST_CASE(
+    "JoinAccepted encodes peer and Player identities in network order",
+    "[app_protocol][peer]"
+)
+{
+    auto const bytes = simnet::app::encode_app_message({
+        .kind = simnet::app::AppMessageKind::JoinAccepted,
+        .role = simnet::app::ClientRole::Player,
+        .peer_id = 0x1234U,
+        .player_id = 0x10203040U,
+    });
+    CHECK(
+        bytes
+        == std::vector<simnet::Byte>{
+            static_cast<simnet::Byte>(simnet::app::AppMessageKind::JoinAccepted),
+            simnet::Byte{2U},
+            simnet::Byte{1U},
+            simnet::Byte{0x12U},
+            simnet::Byte{0x34U},
+            simnet::Byte{0x10U},
+            simnet::Byte{0x20U},
+            simnet::Byte{0x30U},
+            simnet::Byte{0x40U},
+        }
+    );
 }
 
 TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
@@ -94,7 +148,7 @@ TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
     CHECK_FALSE(simnet::app::button_down(decoded, simnet::app::PlayerButton::S));
 
     auto invalid = bytes;
-    invalid[1] = simnet::Byte{2U};
+    invalid[1] = simnet::Byte{1U};
     CHECK_FALSE(simnet::app::decode_player_input(invalid, decoded));
 }
 
@@ -185,7 +239,7 @@ TEST_CASE(
     trailing.push_back(simnet::Byte{});
     reject(std::move(trailing));
     auto incompatible = bytes;
-    incompatible[1] = simnet::Byte{2U};
+    incompatible[1] = simnet::Byte{1U};
     reject(std::move(incompatible));
     reject(
         simnet::app::encode_stationary_observer_interest({

@@ -1,0 +1,41 @@
+{
+  "transport": {
+    "host": "127.0.0.1",
+    "port": 7777,
+    "max_clients": 2,
+    "max_payload_bytes": 1200,
+    "send_size_policy": "enforce_limit"
+  },
+  "flecs": {
+    "thread_count": 8
+  },
+  "visualization": {
+    "enabled": true,
+    "interpolation_enabled": true,
+    "window_width": 1800,
+    "window_height": 1080,
+    "panel_width": 420,
+    "target_fps": 60,
+    "entity_scale": 1.0,
+    "picking_radius": 1.0,
+    "max_visible_spatial_cells": 2048,
+    "entity_mesh_path": "assets/render/boid.obj"
+  },
+  "telemetry": {
+    "console_log_enabled": true,
+    "file_log_enabled": true,
+    "log_directory": "logs",
+    "min_level": "info",
+    "metrics_csv_enabled": true
+  },
+  "benchmark": {
+    "enabled": false,
+    "repetitions": 10,
+    "load_ramp": {
+      "enabled": false,
+      "add_boids_per_step": 500,
+      "step_interval_seconds": 30.0,
+      "max_boids": 1000000
+    }
+  }
+}

@@ -242,7 +242,10 @@ TEST_CASE("none AOI is equivalent to the complete source population", "[aoi][non
     CHECK(encoded.report.area_of_interest.retained_count == snapshot.size());
 }
 
-TEST_CASE("missing AOI source skips without mutating scheduling or scratch", "[aoi][cadence]")
+TEST_CASE(
+    "missing AOI source skips transactionally while healthy peers continue",
+    "[aoi][cadence][peer]"
+)
 {
     auto const snapshot = make_snapshot(
         4U,
@@ -277,6 +280,42 @@ TEST_CASE("missing AOI source skips without mutating scheduling or scratch", "[a
     CHECK(scratch.selected_indices == std::vector<std::uint32_t>{9U});
     CHECK(scratch.selected_delete_ids == std::vector<simnet::EntityNetId>{8U});
     CHECK(scratch.bytes == std::vector<simnet::Byte>{simnet::Byte{7U}});
+
+    auto const source = simnet::InterestSource{
+        .position = {},
+        .forward = {.z = 1.0F},
+    };
+    auto const candidates = std::vector<std::uint32_t>{0U};
+    auto later_peer_state = simnet::ClientReplicationState{};
+    auto later_peer_scratch = simnet::PipelineScratch{};
+    auto const later_peer = simnet::encode_snapshot(
+        pipeline,
+        later_peer_state,
+        later_peer_scratch,
+        {
+            .snapshot = &snapshot,
+            .interest_source = &source,
+            .candidate_indices = candidates,
+        }
+    );
+    REQUIRE(later_peer.kind == simnet::EncodeResultKind::Update);
+    CHECK(later_peer.update.sequence == 1U);
+    CHECK(later_peer.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+
+    auto const observer_ready = simnet::encode_snapshot(
+        pipeline,
+        state,
+        scratch,
+        {
+            .snapshot = &snapshot,
+            .interest_source = &source,
+            .candidate_indices = candidates,
+        }
+    );
+    REQUIRE(observer_ready.kind == simnet::EncodeResultKind::Update);
+    CHECK(observer_ready.update.sequence == 7U);
+    CHECK(observer_ready.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+    CHECK(state.next_sequence == 8U);
 }
 
 TEST_CASE("incremental AOI converges leave and re-entry", "[aoi][incremental][replication]")

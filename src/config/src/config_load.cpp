@@ -608,6 +608,11 @@ namespace
             );
         }
         validate_non_zero("transport.max_clients", config.max_clients);
+        if (config.max_clients > 64U) {
+            throw std::runtime_error(
+                "invalid config field 'transport.max_clients': expected 1..64"
+            );
+        }
         validate_non_zero("transport.max_payload_bytes", config.max_payload_bytes);
         validate_one_of(
             "transport.send_size_policy",

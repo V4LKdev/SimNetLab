@@ -17,7 +17,7 @@ import simnet.transport;
 
 export namespace simnet::app
 {
-    inline constexpr std::uint8_t app_message_version = 1U;
+    inline constexpr std::uint8_t app_message_version = 2U;
     inline constexpr Nanoseconds stationary_observer_interest_min_interval{50'000'000};
     inline constexpr Nanoseconds stationary_observer_interest_heartbeat_interval{500'000'000};
     inline constexpr TransportLane control_lane{TransportLane::Lane0};
@@ -46,6 +46,7 @@ export namespace simnet::app
     {
         AppMessageKind kind{};
         ClientRole role{ClientRole::StationaryObserver};
+        PeerId peer_id{};
         EntityNetId player_id{};
         bool paused{};
     };
@@ -124,6 +125,12 @@ export namespace simnet::app
         bytes.push_back(static_cast<Byte>(value & 0xFFU));
     }
 
+    inline void write_u16(std::vector<Byte>& bytes, std::uint16_t value)
+    {
+        bytes.push_back(static_cast<Byte>((value >> 8U) & 0xFFU));
+        bytes.push_back(static_cast<Byte>(value & 0xFFU));
+    }
+
     inline void write_f32(std::vector<Byte>& bytes, float value)
     {
         static_assert(
@@ -142,6 +149,19 @@ export namespace simnet::app
             | (static_cast<std::uint32_t>(bytes[offset + 1U]) << 16U)
             | (static_cast<std::uint32_t>(bytes[offset + 2U]) << 8U)
             | static_cast<std::uint32_t>(bytes[offset + 3U]);
+        return true;
+    }
+
+    [[nodiscard]] inline bool
+    read_u16(std::span<Byte const> bytes, std::size_t offset, std::uint16_t& value) noexcept
+    {
+        if (offset + 2U > bytes.size()) {
+            return false;
+        }
+        value = static_cast<std::uint16_t>(
+            (static_cast<std::uint16_t>(bytes[offset]) << 8U)
+            | static_cast<std::uint16_t>(bytes[offset + 1U])
+        );
         return true;
     }
 
@@ -193,6 +213,7 @@ export namespace simnet::app
                 break;
             case AppMessageKind::JoinAccepted:
                 bytes.push_back(static_cast<Byte>(message.role));
+                write_u16(bytes, message.peer_id);
                 write_u32(bytes, message.player_id);
                 break;
             case AppMessageKind::SnapshotAck:
@@ -231,16 +252,19 @@ export namespace simnet::app
                 }
                 break;
             case AppMessageKind::JoinAccepted: {
+                auto peer_id = std::uint16_t{};
                 auto player_id = std::uint32_t{};
-                if (bytes.size() != 7U || !read_u32(bytes, 3U, player_id)) {
+                if (bytes.size() != 9U || !read_u16(bytes, 3U, peer_id)
+                    || !read_u32(bytes, 5U, player_id)) {
                     return false;
                 }
                 decoded.role = static_cast<ClientRole>(bytes[2]);
-                if (!valid_role(decoded.role)
+                if (!valid_role(decoded.role) || peer_id == 0U
                     || (decoded.role == ClientRole::StationaryObserver && player_id != 0U)
                     || (decoded.role == ClientRole::Player && player_id == 0U)) {
                     return false;
                 }
+                decoded.peer_id = peer_id;
                 decoded.player_id = player_id;
                 break;
             }

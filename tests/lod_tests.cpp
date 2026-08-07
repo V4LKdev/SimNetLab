@@ -152,6 +152,94 @@ TEST_CASE("none level of detail preserves existing pipeline bytes and state", "[
 }
 
 TEST_CASE(
+    "two peer pipeline states keep AOI LOD cursor and candidate commits independent",
+    "[peer][pipeline][aoi][lod][incremental]"
+)
+{
+    auto pipeline = lod_pipeline(true);
+    pipeline.incremental.max_entities_per_update = 1U;
+    pipeline.area_of_interest.radius = 5.0F;
+    pipeline.level_of_detail.near_distance = 2.0F;
+    pipeline.level_of_detail.medium_distance = 4.0F;
+    auto const source = linear_snapshot(1U, 12U);
+    auto const candidates = all_candidates(source);
+    auto const first_interest = simnet::InterestSource{.position = {}};
+    auto const second_interest = simnet::InterestSource{.position = {.x = 10.0F}};
+    auto first_state = simnet::ClientReplicationState{};
+    auto second_state = simnet::ClientReplicationState{};
+    auto first_scratch = simnet::PipelineScratch{};
+    auto second_scratch = simnet::PipelineScratch{};
+
+    auto const first_initial = simnet::encode_snapshot(
+        pipeline,
+        first_state,
+        first_scratch,
+        {
+            .snapshot = &source,
+            .interest_source = &first_interest,
+            .candidate_indices = candidates,
+        }
+    );
+    auto const second_initial = simnet::encode_snapshot(
+        pipeline,
+        second_state,
+        second_scratch,
+        {
+            .snapshot = &source,
+            .interest_source = &second_interest,
+            .candidate_indices = candidates,
+        }
+    );
+    REQUIRE(first_initial.update.sequence == 1U);
+    REQUIRE(second_initial.update.sequence == 1U);
+    CHECK(first_initial.resulting_snapshot.ids != second_initial.resulting_snapshot.ids);
+    CHECK(first_initial.resulting_snapshot.size() == 6U);
+    CHECK(second_initial.resulting_snapshot.size() == 7U);
+    CHECK(
+        first_state.level_of_detail_schedule.size() != second_state.level_of_detail_schedule.size()
+    );
+
+    auto next = linear_snapshot(2U, 12U);
+    auto abandoned_first = first_state;
+    auto const first_candidate = simnet::encode_snapshot(
+        pipeline,
+        abandoned_first,
+        first_scratch,
+        {
+            .snapshot = &next,
+            .baseline_snapshot = &first_initial.resulting_snapshot,
+            .baseline_sequence = first_initial.update.sequence,
+            .interest_source = &first_interest,
+            .candidate_indices = candidates,
+        }
+    );
+    REQUIRE(first_candidate.kind == simnet::EncodeResultKind::Update);
+    CHECK(first_candidate.update.sequence == 2U);
+    CHECK(first_state.next_sequence == 2U);
+    CHECK(first_state.incremental_cursor == 0U);
+
+    auto const second_committed = simnet::encode_snapshot(
+        pipeline,
+        second_state,
+        second_scratch,
+        {
+            .snapshot = &next,
+            .baseline_snapshot = &second_initial.resulting_snapshot,
+            .baseline_sequence = second_initial.update.sequence,
+            .interest_source = &second_interest,
+            .candidate_indices = candidates,
+        }
+    );
+    REQUIRE(second_committed.kind == simnet::EncodeResultKind::Update);
+    CHECK(second_committed.update.sequence == 2U);
+    CHECK(second_state.next_sequence == 3U);
+    CHECK(second_state.incremental_cursor != first_state.incremental_cursor);
+    CHECK(
+        first_state.level_of_detail_schedule.size() != second_state.level_of_detail_schedule.size()
+    );
+}
+
+TEST_CASE(
     "distance LOD classifies inclusive bands and preserves classifications",
     "[lod][classification]"
 )

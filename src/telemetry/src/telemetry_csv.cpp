@@ -271,10 +271,11 @@ namespace
         CsvRow& row,
         EvidenceRunContext const& run,
         EvidenceRecordTimestamp timestamp,
-        std::uint64_t record_order
+        std::uint64_t record_order,
+        std::uint32_t schema_version
     )
     {
-        row.integer(replication_csv_schema_version);
+        row.integer(schema_version);
         row.text(run.run_id);
         row.text(process_role_name(run.process_role));
         row.integer(run.process_started_unix_ns);
@@ -290,8 +291,16 @@ namespace
     )
     {
         auto row = CsvRow{output};
-        add_envelope(row, run, entry.timestamp, entry.record_order);
+        add_envelope(
+            row,
+            run,
+            entry.timestamp,
+            entry.record_order,
+            server_replication_csv_schema_version
+        );
         auto const& value = entry.value;
+        row.integer(value.peer_id);
+        row.text(value.accepted_gameplay_role);
         row.integer(value.tick);
         row.integer(value.sequence);
         row.integer(value.baseline_sequence);
@@ -320,7 +329,13 @@ namespace
     )
     {
         auto row = CsvRow{output};
-        add_envelope(row, run, entry.timestamp, entry.record_order);
+        add_envelope(
+            row,
+            run,
+            entry.timestamp,
+            entry.record_order,
+            client_replication_csv_schema_version
+        );
         row.text(accepted_gameplay_role);
         auto const& value = entry.value;
         row.integer(value.tick);
@@ -549,8 +564,8 @@ namespace simnet
             : state(
                   std::move(config),
                   EvidenceProcessRole::Server,
-                  "server_replication_v1_",
-                  server_replication_csv_header_v1
+                  "server_replication_v2_",
+                  server_replication_csv_header_v2
               )
         {
         }

@@ -146,16 +146,17 @@ TEST_CASE("evidence CSV flush and post-close failures are observable", "[telemet
     CHECK_FALSE(file.close());
 }
 
-TEST_CASE("Server replication CSV has an exact v1 schema and stable order", "[telemetry][csv]")
+TEST_CASE("Server replication CSV has peer-attributed v2 rows", "[telemetry][csv][peer]")
 {
     CHECK(
-        simnet::server_replication_csv_header_v1
+        simnet::server_replication_csv_header_v2
         == "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
-           "elapsed_since_process_start_ns,record_order,tick,sequence,baseline_sequence,"
-           "snapshot_kind,outcome,source_entity_count,selected_entity_count,upsert_count,"
-           "delete_count,encoded_update_bytes,application_payload_bytes,transport_payload_bytes,"
-           "snapshot_extraction_cpu_ns,baseline_resolution_cpu_ns,encode_cpu_ns,"
-           "transport_send_cpu_ns,snapshot_retention_cpu_ns,total_replication_cpu_ns"
+           "elapsed_since_process_start_ns,record_order,peer_id,accepted_gameplay_role,tick,"
+           "sequence,baseline_sequence,snapshot_kind,outcome,source_entity_count,"
+           "selected_entity_count,upsert_count,delete_count,encoded_update_bytes,"
+           "application_payload_bytes,transport_payload_bytes,snapshot_extraction_cpu_ns,"
+           "baseline_resolution_cpu_ns,encode_cpu_ns,transport_send_cpu_ns,"
+           "snapshot_retention_cpu_ns,total_replication_cpu_ns"
     );
     auto temporary = TemporaryDirectory{};
     auto writer = simnet::ServerReplicationCsvWriter{{
@@ -167,9 +168,11 @@ TEST_CASE("Server replication CSV has an exact v1 schema and stable order", "[te
             .process_started_unix_ns = 100,
         },
     }};
-    CHECK(writer.path().filename() == "server_replication_v1_100.csv");
+    CHECK(writer.path().filename() == "server_replication_v2_100.csv");
 
     auto first = simnet::ServerReplicationMeasurement{
+        .peer_id = 3U,
+        .accepted_gameplay_role = "player",
         .tick = 7,
         .sequence = 3,
         .baseline_sequence = 2,
@@ -208,14 +211,14 @@ TEST_CASE("Server replication CSV has an exact v1 schema and stable order", "[te
 
     auto const lines = read_lines(writer.path());
     REQUIRE(lines.size() == 3);
-    CHECK(lines[0] == simnet::server_replication_csv_header_v1);
+    CHECK(lines[0] == simnet::server_replication_csv_header_v2);
     CHECK(
         lines[1]
-        == "1,paired-run,server,100,110,9,0,7,3,2,patch,sent,10,8,6,2,101,101,101,11,12,13,14,15,65"
+        == "2,paired-run,server,100,110,9,0,3,player,7,3,2,patch,sent,10,8,6,2,101,101,101,11,12,13,14,15,65"
     );
     CHECK(
         lines[2]
-        == "1,paired-run,server,100,120,19,1,8,4,2,patch,sent,10,8,6,2,101,101,101,11,12,13,14,15,65"
+        == "2,paired-run,server,100,120,19,1,3,player,8,4,2,patch,sent,10,8,6,2,101,101,101,11,12,13,14,15,65"
     );
 }
 
@@ -245,7 +248,7 @@ TEST_CASE(
             .process_started_unix_ns = 200,
         },
     }};
-    CHECK(simnet::client_replication_csv_header_v1 != simnet::server_replication_csv_header_v1);
+    CHECK(simnet::client_replication_csv_header_v1 != simnet::server_replication_csv_header_v2);
     CHECK(writer.path().filename() == "client_replication_v1_200.csv");
 
     auto const measurement = simnet::ClientReplicationMeasurement{
@@ -480,6 +483,8 @@ TEST_CASE("Server replication measurements preserve byte ownership", "[telemetry
 {
     auto measurements = simnet::ServerReplicationMeasurements{};
     auto const skipped = simnet::ServerReplicationMeasurement{
+        .peer_id = 4U,
+        .accepted_gameplay_role = "stationary_observer",
         .tick = 7,
         .outcome = simnet::ServerReplicationOutcome::Skipped,
         .source_entity_count = 4,
@@ -489,9 +494,13 @@ TEST_CASE("Server replication measurements preserve byte ownership", "[telemetry
     CHECK(measurements.attempt_count == 1);
     CHECK(measurements.sent_count == 0);
     CHECK(measurements.latest_attempt->tick == 7);
+    CHECK(measurements.latest_attempt->peer_id == 4U);
+    CHECK(measurements.latest_attempt->accepted_gameplay_role == "stationary_observer");
     CHECK_FALSE(measurements.latest_sent.has_value());
 
     auto const sent = simnet::ServerReplicationMeasurement{
+        .peer_id = 9U,
+        .accepted_gameplay_role = "player",
         .tick = 8,
         .sequence = 3,
         .outcome = simnet::ServerReplicationOutcome::Sent,
@@ -508,6 +517,8 @@ TEST_CASE("Server replication measurements preserve byte ownership", "[telemetry
     CHECK(measurements.attempt_count == 2);
     CHECK(measurements.sent_count == 1);
     CHECK(measurements.latest_sent->sequence == 3);
+    CHECK(measurements.latest_sent->peer_id == 9U);
+    CHECK(measurements.latest_sent->accepted_gameplay_role == "player");
     CHECK(measurements.latest_sent->selected_entity_count == 3);
     CHECK(measurements.latest_sent->encoded_update_bytes == 96);
     CHECK(measurements.latest_sent->application_payload_bytes == 96);

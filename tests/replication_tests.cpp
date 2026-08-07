@@ -11,6 +11,7 @@
 import simnet.core;
 import simnet.compression;
 import simnet.app_protocol;
+import simnet.app_snapshot_delivery;
 import simnet.game_client;
 import simnet.game_server;
 import simnet.game_shared;
@@ -303,7 +304,8 @@ TEST_CASE(
         }
     );
 
-    auto const pipeline = simnet::PipelineDefinition{};
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Delta;
     auto encode_state = simnet::ClientReplicationState{};
     auto decode_state = simnet::ClientReplicationState{};
     auto encode_scratch = simnet::PipelineScratch{};
@@ -316,6 +318,27 @@ TEST_CASE(
     auto const decoded
         = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
     REQUIRE(decoded.report.valid);
+
+    auto delivery = simnet::app::SnapshotDeliveryState{};
+    auto retained_initial = encoded.resulting_snapshot;
+    auto const initial_retention = simnet::app::plan_snapshot_retention(delivery, retained_initial);
+    REQUIRE(initial_retention.valid);
+    simnet::app::commit_submitted_snapshot(
+        delivery,
+        encoded.update.sequence,
+        std::move(retained_initial),
+        encoded.report.snapshot_kind,
+        simnet::Nanoseconds{1U},
+        initial_retention
+    );
+    REQUIRE(
+        simnet::app::promote_snapshot_ack(
+            delivery,
+            encoded.update.sequence,
+            simnet::Nanoseconds{2U}
+        )
+        == simnet::app::AckPromotionOutcome::Promoted
+    );
 
     auto reconstructed = simnet::WorldSnapshot{};
     REQUIRE(
@@ -335,6 +358,75 @@ TEST_CASE(
     auto client_snapshot = simnet::WorldSnapshot{};
     REQUIRE(simnet::extract_client_world_snapshot(client_world, 7U, client_snapshot).valid);
     CHECK(client_snapshot.classifications == authoritative.classifications);
+
+    REQUIRE(simnet::delete_authoritative_player(server_world, first_player));
+    auto after_disconnect = simnet::WorldSnapshot{};
+    REQUIRE(simnet::extract_world_snapshot(server_world, 8U, after_disconnect).valid);
+    CHECK(std::ranges::find(after_disconnect.ids, first_player) == after_disconnect.ids.end());
+    CHECK(std::ranges::find(after_disconnect.ids, 1U) != after_disconnect.ids.end());
+    CHECK(std::ranges::find(after_disconnect.ids, second_player) != after_disconnect.ids.end());
+
+    REQUIRE(delivery.acknowledged.has_value());
+    auto const deletion = simnet::encode_snapshot_unchecked(
+        pipeline,
+        encode_state,
+        encode_scratch,
+        {
+            .snapshot = &after_disconnect,
+            .baseline_snapshot = &delivery.acknowledged->snapshot,
+            .baseline_sequence = delivery.latest_acknowledged_sequence,
+        }
+    );
+    REQUIRE(deletion.kind == simnet::EncodeResultKind::Update);
+    CHECK(deletion.update.sequence == 2U);
+    CHECK(deletion.report.baseline_sequence == 1U);
+    CHECK(deletion.report.snapshot_kind == simnet::SnapshotKind::Patch);
+    CHECK(deletion.report.delete_count == 1U);
+
+    auto const decoded_deletion
+        = simnet::decode_update(pipeline, decode_state, {.bytes = deletion.update.bytes});
+    REQUIRE(decoded_deletion.report.valid);
+    CHECK(decoded_deletion.update.deletes == std::vector<simnet::EntityNetId>{first_player});
+    auto observer_canonical = simnet::WorldSnapshot{};
+    REQUIRE(
+        simnet::reconstruct_world_snapshot_unchecked(
+            &delivery.acknowledged->snapshot,
+            decoded_deletion.update,
+            observer_canonical
+        )
+            .valid
+    );
+    CHECK(std::ranges::find(observer_canonical.ids, first_player) == observer_canonical.ids.end());
+    CHECK(std::ranges::find(observer_canonical.ids, 1U) != observer_canonical.ids.end());
+    CHECK(std::ranges::find(observer_canonical.ids, second_player) != observer_canonical.ids.end());
+    CHECK(observer_canonical.ids == deletion.resulting_snapshot.ids);
+
+    auto const applied_deletion
+        = simnet::apply_client_snapshot_patch_unchecked(client_world, decoded_deletion.update);
+    REQUIRE(applied_deletion.valid);
+    CHECK_FALSE(simnet::client_entity_kind(client_world, first_player).has_value());
+    CHECK(simnet::client_entity_kind(client_world, 1U) == simnet::EntityKind::Boid);
+    CHECK(simnet::client_entity_kind(client_world, second_player) == simnet::EntityKind::Player);
+    auto sink_snapshot = simnet::WorldSnapshot{};
+    REQUIRE(simnet::extract_client_world_snapshot(client_world, 8U, sink_snapshot).valid);
+    CHECK(sink_snapshot.ids == observer_canonical.ids);
+    CHECK(sink_snapshot.classifications == observer_canonical.classifications);
+
+    auto retained_deletion = deletion.resulting_snapshot;
+    auto const deletion_retention
+        = simnet::app::plan_snapshot_retention(delivery, retained_deletion);
+    REQUIRE(deletion_retention.valid);
+    simnet::app::commit_submitted_snapshot(
+        delivery,
+        deletion.update.sequence,
+        std::move(retained_deletion),
+        deletion.report.snapshot_kind,
+        simnet::Nanoseconds{3U},
+        deletion_retention
+    );
+    REQUIRE(delivery.submitted.size() == 1U);
+    CHECK(delivery.submitted.front().sequence == 2U);
+    CHECK(delivery.submitted.front().snapshot.ids == observer_canonical.ids);
 }
 
 TEST_CASE("Patch reconstruction removes requested entities", "[replication][snapshot]")

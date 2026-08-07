@@ -405,6 +405,10 @@ namespace
             std::cerr << "second reconnect session did not become ready\n";
             return false;
         }
+        if (second.server_peer <= first.server_peer) {
+            std::cerr << "reconnected session did not receive a fresh peer identity\n";
+            return false;
+        }
 
         client.disconnect(simnet::DisconnectCode::None);
         server.stop();
@@ -555,7 +559,7 @@ TEST_CASE("ENet rejects incompatible session identities", "[transport][enet][int
     REQUIRE(mismatched_session_test(enet, signature_mismatch));
 }
 
-TEST_CASE("ENet disconnects and reconnects", "[transport][enet][integration]")
+TEST_CASE("ENet disconnects and reconnects", "[transport][enet][integration][peer]")
 {
     REQUIRE(reconnect_test(TransportTestSettings{}));
 }
