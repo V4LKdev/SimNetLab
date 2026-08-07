@@ -232,6 +232,121 @@ TEST_CASE("player pitch limit stays clear of the vertical camera singularity", "
     CHECK_THROWS(simnet::load_shared_config(rejected.path()));
 }
 
+TEST_CASE("Player influence configuration is strict bounded and fingerprinted", "[config][player]")
+{
+    auto const accepted = TemporaryConfig{
+        "simnet_player_influence_accepted.json",
+        R"({
+            "simulation": { "world_half": 20.0 },
+            "boids": {
+                "max_acceleration": 12.0,
+                "player_lure": {
+                    "enabled": true,
+                    "radius": 35.0,
+                    "max_acceleration": 5.0
+                },
+                "player_predator": {
+                    "enabled": true,
+                    "radius": 24.0,
+                    "max_acceleration": 10.0
+                }
+            }
+        })"
+    };
+    auto const loaded = simnet::load_shared_config(accepted.path());
+    CHECK(loaded.boids.player_lure.enabled);
+    CHECK(loaded.boids.player_lure.radius == 35.0F);
+    CHECK(loaded.boids.player_lure.max_acceleration == 5.0F);
+    CHECK(loaded.boids.player_predator.enabled);
+    CHECK(loaded.boids.player_predator.radius == 24.0F);
+    CHECK(loaded.boids.player_predator.max_acceleration == 10.0F);
+
+    for (
+        auto const contents : {
+            R"({ "boids": { "player_lure": {} } })",
+            R"({ "boids": { "player_lure": { "enabled": false, "radius": 1.0 } } })",
+            R"({ "boids": { "player_lure": { "enabled": true, "radius": 1.0 } } })",
+            R"({ "boids": { "player_lure": { "enabled": true, "radius": 0.0, "max_acceleration": 1.0 } } })",
+            R"({ "boids": { "player_lure": { "enabled": true, "radius": 1.0, "max_acceleration": -1.0 } } })",
+            R"({ "boids": { "player_lure": { "enabled": true, "radius": 1e999, "max_acceleration": 1.0 } } })",
+            R"({ "boids": { "player_lure": { "enabled": true, "radius": 801.0, "max_acceleration": 1.0 } } })",
+            R"({ "boids": { "player_predator": { "enabled": true, "radius": 1.0, "max_acceleration": 13.0 } } })",
+            R"({ "boids": { "player_predator": { "enabled": false, "extra": true } } })",
+        }) {
+        auto const invalid = TemporaryConfig{"simnet_player_influence_invalid.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+
+    auto const baseline = simnet::default_shared_config();
+    auto treatment = baseline;
+    treatment.boids.player_lure = {
+        .enabled = true,
+        .radius = 35.0F,
+        .max_acceleration = 5.0F,
+    };
+    treatment.boids.player_predator = {
+        .enabled = true,
+        .radius = 24.0F,
+        .max_acceleration = 10.0F,
+    };
+    auto const compatibility = simnet::fingerprint_network_compatibility(treatment);
+    auto const runtime
+        = simnet::fingerprint_runtime_config(treatment, simnet::default_server_config());
+    auto check_changed = [&](simnet::SharedConfig changed) {
+        CHECK(simnet::fingerprint_network_compatibility(changed).value != compatibility.value);
+        CHECK(
+            simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value
+            != runtime.value
+        );
+    };
+    auto changed = treatment;
+    changed.boids.player_lure.enabled = false;
+    check_changed(changed);
+    changed = treatment;
+    changed.boids.player_lure.radius += 1.0F;
+    check_changed(changed);
+    changed = treatment;
+    changed.boids.player_lure.max_acceleration += 1.0F;
+    check_changed(changed);
+    changed = treatment;
+    changed.boids.player_predator.enabled = false;
+    check_changed(changed);
+    changed = treatment;
+    changed.boids.player_predator.radius += 1.0F;
+    check_changed(changed);
+    changed = treatment;
+    changed.boids.player_predator.max_acceleration += 1.0F;
+    check_changed(changed);
+}
+
+TEST_CASE("maintained Player influence treatments match their control", "[config][player]")
+{
+    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    auto control
+        = simnet::load_shared_config(directory / "shared_player_influence_control_visual.json");
+    auto lure = simnet::load_shared_config(directory / "shared_player_lure_visual.json");
+    auto predator = simnet::load_shared_config(directory / "shared_player_predator_visual.json");
+    CHECK(control.simulation.initial_boid_count == 300U);
+    CHECK(control.simulation.world_half == 60.0F);
+    CHECK(control.spatial.cell_size == 10.0F);
+    CHECK_FALSE(control.boids.player_lure.enabled);
+    CHECK_FALSE(control.boids.player_predator.enabled);
+    CHECK(lure.boids.player_lure.radius == 35.0F);
+    CHECK(lure.boids.player_lure.max_acceleration == 5.0F);
+    CHECK(predator.boids.player_predator.radius == 24.0F);
+    CHECK(predator.boids.player_predator.max_acceleration == 10.0F);
+
+    control.boids.player_lure = {};
+    control.boids.player_predator = {};
+    lure.boids.player_lure = {};
+    lure.boids.player_predator = {};
+    predator.boids.player_lure = {};
+    predator.boids.player_predator = {};
+    auto const fingerprint = simnet::fingerprint_network_compatibility(control);
+    CHECK(simnet::fingerprint_network_compatibility(lure).value == fingerprint.value);
+    CHECK(simnet::fingerprint_network_compatibility(predator).value == fingerprint.value);
+}
+
 TEST_CASE("AOI configuration is mode-specific strict and fingerprinted", "[config][aoi]")
 {
     auto const radius = TemporaryConfig{

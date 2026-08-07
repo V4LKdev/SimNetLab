@@ -505,6 +505,16 @@ namespace
             .wander_frequency_hz = config.boids.wander_frequency_hz,
             .hue_assimilation_rate = config.boids.hue_assimilation_rate,
             .hue_drift_rate = config.boids.hue_drift_rate,
+            .player_lure = {
+                .enabled = config.boids.player_lure.enabled,
+                .radius = config.boids.player_lure.radius,
+                .max_acceleration = config.boids.player_lure.max_acceleration,
+            },
+            .player_predator = {
+                .enabled = config.boids.player_predator.enabled,
+                .radius = config.boids.player_predator.radius,
+                .max_acceleration = config.boids.player_predator.max_acceleration,
+            },
         };
     }
 
@@ -725,7 +735,10 @@ namespace
         debug_storage.boxes.clear();
         debug_storage.cones.clear();
         debug_storage.labels.clear();
-        debug_storage.labels.reserve(peers.size() * 3U);
+        auto const player_count = static_cast<std::size_t>(
+            std::ranges::count(snapshot.classifications, simnet::player_entity_classification)
+        );
+        debug_storage.labels.reserve(peers.size() * 3U + player_count * 2U);
         if (selected_debug.has_value()) {
             selected_details = simnet::SelectedEntityDetails {
                 .id = selected_debug->id,
@@ -801,17 +814,58 @@ namespace
                         .label = "cohesion",
                     },
                 };
-                debug_storage.vectors = {
-                    {position, selected_debug->separation, {230U, 94U, 94U, 255U}, "separation"},
-                    {position, selected_debug->alignment, {92U, 174U, 235U, 255U}, "alignment"},
-                    {position, selected_debug->cohesion, {124U, 214U, 156U, 255U}, "cohesion"},
-                    {position, selected_debug->containment, {247U, 184U, 74U, 255U}, "containment"},
-                    {position, selected_debug->wander, {198U, 126U, 255U, 255U}, "wander"},
-                    {position,
-                     selected_debug->acceleration,
-                     {245U, 245U, 245U, 255U},
-                     "acceleration"},
-                };
+                debug_storage.vectors = {{
+                    position,
+                    selected_debug->separation,
+                    {230U, 94U, 94U, 255U},
+                    "separation",
+                }};
+                if (config.boids.player_predator.enabled) {
+                    debug_storage.vectors.push_back({
+                        position,
+                        selected_debug->predator,
+                        {255U, 78U, 68U, 255U},
+                        "Player predator",
+                    });
+                }
+                debug_storage.vectors.push_back({
+                    position,
+                    selected_debug->containment,
+                    {247U, 184U, 74U, 255U},
+                    "containment",
+                });
+                debug_storage.vectors.push_back({
+                    position,
+                    selected_debug->alignment,
+                    {92U, 174U, 235U, 255U},
+                    "alignment",
+                });
+                debug_storage.vectors.push_back({
+                    position,
+                    selected_debug->cohesion,
+                    {124U, 214U, 156U, 255U},
+                    "cohesion",
+                });
+                if (config.boids.player_lure.enabled) {
+                    debug_storage.vectors.push_back({
+                        position,
+                        selected_debug->lure,
+                        {252U, 112U, 202U, 255U},
+                        "Player lure",
+                    });
+                }
+                debug_storage.vectors.push_back({
+                    position,
+                    selected_debug->wander,
+                    {198U, 126U, 255U, 255U},
+                    "wander",
+                });
+                debug_storage.vectors.push_back({
+                    position,
+                    selected_debug->acceleration,
+                    {245U, 245U, 245U, 255U},
+                    "acceleration",
+                });
                 debug_storage.boxes.reserve(selected_debug->queried_cell_bounds.size());
                 for (auto const bounds : selected_debug->queried_cell_bounds) {
                     debug_storage.boxes.push_back({
@@ -871,6 +925,33 @@ namespace
                     .half_angle_degrees = config.pipeline.area_of_interest.fov_degrees * 0.5F,
                     .color = {102U, 214U, 255U, 90U},
                     .label = label("AOI cone"),
+                });
+            }
+        }
+        for (std::size_t index = 0; index < snapshot.size(); ++index) {
+            if (snapshot.classifications[index] != simnet::player_entity_classification) {
+                continue;
+            }
+            auto label = [&](std::string_view suffix) -> std::string_view {
+                debug_storage.labels.push_back(
+                    "Player " + std::to_string(snapshot.ids[index]) + " " + std::string{suffix}
+                );
+                return debug_storage.labels.back();
+            };
+            if (config.boids.player_lure.enabled) {
+                debug_storage.spheres.push_back({
+                    .center = snapshot.positions[index],
+                    .radius = config.boids.player_lure.radius,
+                    .color = {252U, 112U, 202U, 72U},
+                    .label = label("lure"),
+                });
+            }
+            if (config.boids.player_predator.enabled) {
+                debug_storage.spheres.push_back({
+                    .center = snapshot.positions[index],
+                    .radius = config.boids.player_predator.radius,
+                    .color = {255U, 78U, 68U, 72U},
+                    .label = label("predator"),
                 });
             }
         }

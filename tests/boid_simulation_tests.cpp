@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
@@ -82,6 +83,61 @@ namespace
         REQUIRE(runtime.last_step_report().valid);
     }
 
+    [[nodiscard]] simnet::PlayerMovementSettings stationary_player_settings()
+    {
+        return {
+            .world_half = 100.0F,
+            .cruise_speed = 0.0F,
+            .boost_speed = 1.0F,
+            .slow_speed = 0.0F,
+            .speed_change_rate = 1.0F,
+            .yaw_acceleration_degrees = 360.0F,
+            .pitch_acceleration_degrees = 300.0F,
+            .yaw_damping = 8.0F,
+            .pitch_damping = 8.0F,
+            .max_yaw_rate_degrees = 120.0F,
+            .max_pitch_rate_degrees = 90.0F,
+            .pitch_limit_degrees = 80.0F,
+        };
+    }
+
+    [[nodiscard]] simnet::BoidSimulationSettings isolated_influence_settings()
+    {
+        auto settings = test_settings();
+        settings.enable_separation = false;
+        settings.enable_alignment = false;
+        settings.enable_cohesion = false;
+        settings.enable_containment = false;
+        settings.enable_wander = false;
+        settings.enable_hue_assimilation = false;
+        settings.enable_hue_drift = false;
+        settings.min_speed = 0.0F;
+        settings.cruise_speed = 0.0F;
+        settings.max_speed = 20.0F;
+        settings.max_acceleration = 12.0F;
+        return settings;
+    }
+
+    void set_player_position(flecs::world& world, simnet::EntityNetId id, simnet::Vec3f position)
+    {
+        auto found = false;
+        auto query = world
+                         .query_builder<
+                             const simnet::EntityKindComponent,
+                             const simnet::NetIdentity,
+                             simnet::Position>()
+                         .build();
+        query.each([&](simnet::EntityKindComponent const& kind,
+                       simnet::NetIdentity const& identity,
+                       simnet::Position& current) {
+            if (kind.value == simnet::EntityKind::Player && identity.id == id) {
+                current.value = position;
+                found = true;
+            }
+        });
+        REQUIRE(found);
+    }
+
     [[nodiscard]] simnet::WorldSnapshot snapshot(flecs::world const& world, simnet::Tick tick)
     {
         auto result = simnet::WorldSnapshot{};
@@ -119,7 +175,28 @@ namespace
         return hash;
     }
 
-    [[nodiscard]] std::uint64_t run_determinism_case(std::uint32_t thread_count)
+    [[nodiscard]] std::uint64_t canonical_boid_hash(simnet::WorldSnapshot const& value)
+    {
+        auto copy = simnet::WorldSnapshot{};
+        copy.tick = value.tick;
+        for (std::size_t index = 0; index < value.size(); ++index) {
+            if (value.classifications[index] != simnet::boid_entity_classification) {
+                continue;
+            }
+            copy.ids.push_back(value.ids[index]);
+            copy.classifications.push_back(value.classifications[index]);
+            copy.positions.push_back(value.positions[index]);
+            copy.headings.push_back(value.headings[index]);
+            copy.hues.push_back(value.hues[index]);
+        }
+        return canonical_hash(copy);
+    }
+
+    [[nodiscard]] std::uint64_t run_determinism_case(
+        std::uint32_t thread_count,
+        bool lure_enabled = false,
+        bool predator_enabled = false
+    )
     {
         auto settings = test_settings();
         settings.world_half = 30.0F;
@@ -131,7 +208,17 @@ namespace
         settings.enable_wander = true;
         settings.enable_hue_assimilation = true;
         settings.enable_hue_drift = true;
-        auto runtime = simnet::ServerGameRuntime{settings};
+        settings.player_lure = {
+            .enabled = lure_enabled,
+            .radius = lure_enabled ? 20.0F : 0.0F,
+            .max_acceleration = lure_enabled ? 4.0F : 0.0F,
+        };
+        settings.player_predator = {
+            .enabled = predator_enabled,
+            .radius = predator_enabled ? 12.0F : 0.0F,
+            .max_acceleration = predator_enabled ? 8.0F : 0.0F,
+        };
+        auto runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
         auto world = flecs::world{};
         simnet::register_server_game(world, runtime);
 
@@ -150,6 +237,14 @@ namespace
             boids.push_back(boid(index + 1U, {x, y, z}, headings[index % headings.size()]));
         }
         REQUIRE(simnet::append_authoritative_boids(world, boids).success());
+        if (lure_enabled || predator_enabled) {
+            auto const first_player = simnet::spawn_authoritative_player(world);
+            auto const second_player = simnet::spawn_authoritative_player(world);
+            REQUIRE(first_player != 0U);
+            REQUIRE(second_player > first_player);
+            set_player_position(world, first_player, {-8.0F, 3.0F, 4.0F});
+            set_player_position(world, second_player, {9.0F, -2.0F, -5.0F});
+        }
         if (thread_count > 1U) {
             world.set_threads(static_cast<std::int32_t>(thread_count));
         }
@@ -387,6 +482,225 @@ TEST_CASE(
     CHECK_FALSE(simnet::set_authoritative_player_input(world, player_id, {}));
     CHECK(snapshot(world, 5U).size() == 2U);
     CHECK(simnet::authoritative_boid_count(world) == 2U);
+}
+
+TEST_CASE("disabled Player influence preserves exact Boid results", "[boids][player]")
+{
+    auto settings = test_settings();
+    auto control_runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
+    auto player_runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
+    auto control_world = flecs::world{};
+    auto player_world = flecs::world{};
+    simnet::register_server_game(control_world, control_runtime);
+    simnet::register_server_game(player_world, player_runtime);
+    auto const initial = std::vector{
+        boid(1U, {-2.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}),
+        boid(2U, {2.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}),
+    };
+    REQUIRE(simnet::append_authoritative_boids(control_world, initial).success());
+    REQUIRE(simnet::append_authoritative_boids(player_world, initial).success());
+    REQUIRE(simnet::spawn_authoritative_player(player_world) == 3U);
+
+    for (auto tick = 0U; tick < 30U; ++tick) {
+        step(control_world, control_runtime);
+        step(player_world, player_runtime);
+    }
+    CHECK(
+        canonical_boid_hash(snapshot(player_world, 30U))
+        == canonical_boid_hash(snapshot(control_world, 30U))
+    );
+}
+
+TEST_CASE("Player lure and predator steer in their authoritative directions", "[boids][player]")
+{
+    SECTION("lure points toward the Player")
+    {
+        auto settings = isolated_influence_settings();
+        settings.player_lure = {.enabled = true, .radius = 10.0F, .max_acceleration = 5.0F};
+        auto runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
+        auto world = flecs::world{};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {boid(1U, {}, {0.0F, 1.0F, 0.0F})}).success());
+        auto const player = simnet::spawn_authoritative_player(world);
+        REQUIRE(player == 2U);
+        set_player_position(world, player, {5.0F, 0.0F, 0.0F});
+        runtime.select_boid(1U);
+        step(world, runtime, 0.1F);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->lure_source_count == 1U);
+        CHECK(debug->predator_source_count == 0U);
+        CHECK(debug->lure.x > 0.0F);
+        CHECK(debug->acceleration.x > 0.0F);
+        CHECK(simnet::length(debug->lure) <= 5.0F);
+    }
+
+    SECTION("predator points away from the Player")
+    {
+        auto settings = isolated_influence_settings();
+        settings.player_predator = {
+            .enabled = true,
+            .radius = 10.0F,
+            .max_acceleration = 8.0F,
+        };
+        auto runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
+        auto world = flecs::world{};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {boid(1U, {}, {0.0F, 1.0F, 0.0F})}).success());
+        auto const player = simnet::spawn_authoritative_player(world);
+        REQUIRE(player == 2U);
+        set_player_position(world, player, {5.0F, 0.0F, 0.0F});
+        runtime.select_boid(1U);
+        step(world, runtime, 0.1F);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        CHECK(debug->predator_source_count == 1U);
+        CHECK(debug->predator.x < 0.0F);
+        CHECK(debug->acceleration.x < 0.0F);
+        CHECK(simnet::length(debug->predator) <= 8.0F);
+    }
+}
+
+TEST_CASE("Player influence has smooth compact support and finite overlap", "[boids][player]")
+{
+    auto lure_at = [](simnet::Vec3f player_position) {
+        auto settings = isolated_influence_settings();
+        settings.player_lure = {.enabled = true, .radius = 10.0F, .max_acceleration = 5.0F};
+        auto runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
+        auto world = flecs::world{};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {boid(1U, {}, {0.0F, 1.0F, 0.0F})}).success());
+        auto const player = simnet::spawn_authoritative_player(world);
+        REQUIRE(player == 2U);
+        set_player_position(world, player, player_position);
+        runtime.select_boid(1U);
+        step(world, runtime, 0.1F);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        return *debug;
+    };
+
+    auto const overlap = lure_at({});
+    CHECK(overlap.lure_source_count == 1U);
+    CHECK(simnet::is_finite(overlap.lure));
+    CHECK(simnet::length_squared(overlap.lure) == 0.0F);
+    auto const near = lure_at({2.0F, 0.0F, 0.0F});
+    auto const far = lure_at({8.0F, 0.0F, 0.0F});
+    CHECK(simnet::length(near.lure) > simnet::length(far.lure));
+    auto const boundary = lure_at({10.0F, 0.0F, 0.0F});
+    CHECK(boundary.lure_source_count == 1U);
+    CHECK(simnet::length_squared(boundary.lure) == 0.0F);
+    auto const outside = lure_at({10.01F, 0.0F, 0.0F});
+    CHECK(outside.lure_source_count == 0U);
+    CHECK(simnet::length_squared(outside.lure) == 0.0F);
+
+    auto predator_at = [](simnet::Vec3f player_position) {
+        auto settings = isolated_influence_settings();
+        settings.player_predator = {
+            .enabled = true,
+            .radius = 10.0F,
+            .max_acceleration = 8.0F,
+        };
+        auto runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
+        auto world = flecs::world{};
+        simnet::register_server_game(world, runtime);
+        REQUIRE(append_boids(world, {boid(1U, {}, {0.0F, 1.0F, 0.0F})}).success());
+        auto const player = simnet::spawn_authoritative_player(world);
+        REQUIRE(player == 2U);
+        set_player_position(world, player, player_position);
+        runtime.select_boid(1U);
+        step(world, runtime, 0.1F);
+        auto const debug = runtime.selected_boid_debug();
+        REQUIRE(debug.has_value());
+        return *debug;
+    };
+    auto const first = predator_at({});
+    auto const second = predator_at({});
+    CHECK(first.predator_source_count == 1U);
+    CHECK(simnet::is_finite(first.predator));
+    CHECK(simnet::length(first.predator) == Catch::Approx(8.0F));
+    CHECK(first.predator.x == second.predator.x);
+    CHECK(first.predator.y == second.predator.y);
+    CHECK(first.predator.z == second.predator.z);
+    auto const predator_boundary = predator_at({10.0F, 0.0F, 0.0F});
+    CHECK(predator_boundary.predator_source_count == 1U);
+    CHECK(simnet::length_squared(predator_boundary.predator) == 0.0F);
+    auto const predator_outside = predator_at({10.01F, 0.0F, 0.0F});
+    CHECK(predator_outside.predator_source_count == 0U);
+}
+
+TEST_CASE(
+    "multiple Players accumulate by stable identity and deletion removes influence",
+    "[boids][player]"
+)
+{
+    auto settings = isolated_influence_settings();
+    settings.player_lure = {.enabled = true, .radius = 10.0F, .max_acceleration = 5.0F};
+    auto runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
+    auto world = flecs::world{};
+    simnet::register_server_game(world, runtime);
+    REQUIRE(append_boids(world, {boid(1U, {}, {0.0F, 0.0F, 1.0F})}).success());
+    auto const first = simnet::spawn_authoritative_player(world);
+    auto const second = simnet::spawn_authoritative_player(world);
+    auto const third = simnet::spawn_authoritative_player(world);
+    REQUIRE(first == 2U);
+    REQUIRE(second == 3U);
+    REQUIRE(third == 4U);
+    set_player_position(world, third, {-4.0F, 0.0F, 0.0F});
+    set_player_position(world, first, {2.0F, 0.0F, 0.0F});
+    set_player_position(world, second, {0.0F, 3.0F, 0.0F});
+    runtime.select_boid(1U);
+    step(world, runtime, 0.1F);
+    auto debug = runtime.selected_boid_debug();
+    REQUIRE(debug.has_value());
+    CHECK(debug->lure_source_count == 3U);
+    auto const expected_x = (0.96F - 0.84F) * 5.0F;
+    auto const expected_y = 0.91F * 5.0F;
+    CHECK(debug->lure.x == Catch::Approx(expected_x));
+    CHECK(debug->lure.y == Catch::Approx(expected_y));
+
+    REQUIRE(simnet::delete_authoritative_player(world, first));
+    REQUIRE(simnet::delete_authoritative_player(world, second));
+    REQUIRE(simnet::delete_authoritative_player(world, third));
+    step(world, runtime, 0.1F);
+    debug = runtime.selected_boid_debug();
+    REQUIRE(debug.has_value());
+    CHECK(debug->lure_source_count == 0U);
+    CHECK(simnet::length_squared(debug->lure) == 0.0F);
+}
+
+TEST_CASE("predator safety has priority over lure social acceleration", "[boids][player]")
+{
+    auto settings = isolated_influence_settings();
+    settings.max_acceleration = 12.0F;
+    settings.player_lure = {.enabled = true, .radius = 10.0F, .max_acceleration = 5.0F};
+    settings.player_predator = {
+        .enabled = true,
+        .radius = 1.0F,
+        .max_acceleration = 12.0F,
+    };
+    auto runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
+    auto world = flecs::world{};
+    simnet::register_server_game(world, runtime);
+    REQUIRE(append_boids(world, {boid(1U, {}, {0.0F, 0.0F, 1.0F})}).success());
+    auto const overlapping = simnet::spawn_authoritative_player(world);
+    auto const attracting = simnet::spawn_authoritative_player(world);
+    REQUIRE(overlapping == 2U);
+    REQUIRE(attracting == 3U);
+    set_player_position(world, attracting, {5.0F, 0.0F, 0.0F});
+    runtime.select_boid(1U);
+    step(world, runtime, 0.1F);
+    auto const debug = runtime.selected_boid_debug();
+    REQUIRE(debug.has_value());
+    CHECK(debug->lure_source_count == 2U);
+    CHECK(debug->predator_source_count == 1U);
+    CHECK(debug->lure.x > 0.0F);
+    CHECK(simnet::length(debug->predator) == Catch::Approx(12.0F));
+    CHECK(debug->acceleration.x == Catch::Approx(debug->predator.x));
+    CHECK(debug->acceleration.y == Catch::Approx(debug->predator.y));
+    CHECK(debug->acceleration.z == Catch::Approx(debug->predator.z));
+    CHECK(simnet::length(debug->acceleration) <= 12.0001F);
+    CHECK(debug->speed <= settings.max_speed);
 }
 
 TEST_CASE("player yaw follows the right-handed chase convention", "[player]")
@@ -780,6 +1094,18 @@ TEST_CASE("boid snapshots are identical across Flecs worker counts", "[boids][de
     auto const serial = run_determinism_case(1U);
     CHECK(run_determinism_case(4U) == serial);
     CHECK(run_determinism_case(8U) == serial);
+
+    auto const lure_serial = run_determinism_case(1U, true, false);
+    CHECK(run_determinism_case(4U, true, false) == lure_serial);
+    CHECK(run_determinism_case(8U, true, false) == lure_serial);
+
+    auto const predator_serial = run_determinism_case(1U, false, true);
+    CHECK(run_determinism_case(4U, false, true) == predator_serial);
+    CHECK(run_determinism_case(8U, false, true) == predator_serial);
+
+    auto const combined_serial = run_determinism_case(1U, true, true);
+    CHECK(run_determinism_case(4U, true, true) == combined_serial);
+    CHECK(run_determinism_case(8U, true, true) == combined_serial);
 }
 
 TEST_CASE("selected boid details are available without another simulation tick", "[boids][debug]")

@@ -31,6 +31,14 @@ export namespace simnet
         std::uint32_t max_neighbors{64};
     };
 
+    /// One bounded authoritative Player influence on Boid acceleration.
+    struct PlayerInfluenceForceConfig
+    {
+        bool enabled{};
+        float radius{};
+        float max_acceleration{};
+    };
+
     /// Deterministic authoritative flocking parameters.
     struct BoidsConfig
     {
@@ -59,6 +67,8 @@ export namespace simnet
         float wander_frequency_hz{0.35F};
         float hue_assimilation_rate{0.25F};
         float hue_drift_rate{0.02F};
+        PlayerInfluenceForceConfig player_lure{};
+        PlayerInfluenceForceConfig player_predator{};
     };
 
     /// Deterministic authoritative player movement parameters.

@@ -15,6 +15,13 @@ import simnet.spatial;
 
 export namespace simnet
 {
+    struct PlayerInfluenceForceSettings
+    {
+        bool enabled{};
+        float radius{};
+        float max_acceleration{};
+    };
+
     struct BoidSimulationSettings
     {
         std::uint64_t seed{12345};
@@ -46,6 +53,8 @@ export namespace simnet
         float wander_frequency_hz{0.35F};
         float hue_assimilation_rate{0.25F};
         float hue_drift_rate{0.02F};
+        PlayerInfluenceForceSettings player_lure{};
+        PlayerInfluenceForceSettings player_predator{};
     };
 
     struct PlayerMovementSettings
@@ -96,6 +105,10 @@ export namespace simnet
         Vec3f cohesion{};
         Vec3f containment{};
         Vec3f wander{};
+        Vec3f lure{};
+        Vec3f predator{};
+        std::uint32_t lure_source_count{};
+        std::uint32_t predator_source_count{};
         float current_hue{};
         float hue_target{};
         float hue_delta{};

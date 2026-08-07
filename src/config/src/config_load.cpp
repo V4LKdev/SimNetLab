@@ -204,6 +204,58 @@ namespace
         validate_non_zero("spatial.max_neighbors", config.max_neighbors);
     }
 
+    void apply_player_influence_force(
+        Json const& json,
+        char const* field_name,
+        simnet::PlayerInfluenceForceConfig& config
+    )
+    {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "enabled" && key != "radius" && key != "max_acceleration") {
+                throw std::runtime_error(
+                    "invalid config field 'boids." + std::string{field_name} + "." + key
+                    + "': unknown field"
+                );
+            }
+        }
+        if (!json.contains("enabled")) {
+            throw std::runtime_error(
+                "invalid config field 'boids." + std::string{field_name}
+                + ".enabled': field is required"
+            );
+        }
+        read_optional(json, "enabled", config.enabled);
+        auto const has_radius = json.contains("radius");
+        auto const has_max_acceleration = json.contains("max_acceleration");
+        if (!config.enabled) {
+            if (has_radius || has_max_acceleration) {
+                throw std::runtime_error(
+                    "invalid config section 'boids." + std::string{field_name}
+                    + "': disabled influence rejects active fields"
+                );
+            }
+            config.radius = 0.0F;
+            config.max_acceleration = 0.0F;
+            return;
+        }
+        if (!has_radius || !has_max_acceleration) {
+            throw std::runtime_error(
+                "invalid config section 'boids." + std::string{field_name}
+                + "': enabled influence requires radius and max_acceleration"
+            );
+        }
+        read_optional(json, "radius", config.radius);
+        read_optional(json, "max_acceleration", config.max_acceleration);
+        if (!std::isfinite(config.radius) || config.radius <= 0.0F
+            || !std::isfinite(config.max_acceleration) || config.max_acceleration <= 0.0F) {
+            throw std::runtime_error(
+                "invalid config section 'boids." + std::string{field_name}
+                + "': active values must be finite and positive"
+            );
+        }
+    }
+
     void apply_boids(Json const& json, simnet::BoidsConfig& config)
     {
         read_optional(json, "enable_separation", config.enable_separation);
@@ -239,6 +291,12 @@ namespace
         read_optional(json, "wander_frequency_hz", config.wander_frequency_hz);
         read_optional(json, "hue_assimilation_rate", config.hue_assimilation_rate);
         read_optional(json, "hue_drift_rate", config.hue_drift_rate);
+        if (auto const* section = optional_object(json, "player_lure")) {
+            apply_player_influence_force(*section, "player_lure", config.player_lure);
+        }
+        if (auto const* section = optional_object(json, "player_predator")) {
+            apply_player_influence_force(*section, "player_predator", config.player_predator);
+        }
 
         if (config.min_speed < 0.0F || config.min_speed > config.cruise_speed
             || config.cruise_speed > config.max_speed) {
@@ -271,6 +329,30 @@ namespace
         validate_positive("boids.wander_frequency_hz", config.wander_frequency_hz);
         validate_positive("boids.hue_assimilation_rate", config.hue_assimilation_rate);
         validate_positive("boids.hue_drift_rate", config.hue_drift_rate);
+    }
+
+    void validate_player_influence_forces(simnet::SharedConfig const& config)
+    {
+        auto validate
+            = [&](char const* field_name, simnet::PlayerInfluenceForceConfig const& force) {
+                  if (!force.enabled) {
+                      return;
+                  }
+                  if (force.radius > config.simulation.world_half * 2.0F) {
+                      throw std::runtime_error(
+                          "invalid config field 'boids." + std::string{field_name}
+                          + ".radius': expected no greater than twice simulation.world_half"
+                      );
+                  }
+                  if (force.max_acceleration > config.boids.max_acceleration) {
+                      throw std::runtime_error(
+                          "invalid config field 'boids." + std::string{field_name}
+                          + ".max_acceleration': expected no greater than boids.max_acceleration"
+                      );
+                  }
+              };
+        validate("player_lure", config.boids.player_lure);
+        validate("player_predator", config.boids.player_predator);
     }
 
     void apply_player(Json const& json, simnet::PlayerConfig& config)
@@ -759,6 +841,8 @@ namespace
             apply_packetization(*section, config.packetization);
         }
 
+        validate_player_influence_forces(config);
+
         return config;
     }
 
@@ -845,6 +929,12 @@ namespace
         hash_bytes(hash, config.boids.wander_frequency_hz);
         hash_bytes(hash, config.boids.hue_assimilation_rate);
         hash_bytes(hash, config.boids.hue_drift_rate);
+        hash_bytes(hash, config.boids.player_lure.enabled);
+        hash_bytes(hash, config.boids.player_lure.radius);
+        hash_bytes(hash, config.boids.player_lure.max_acceleration);
+        hash_bytes(hash, config.boids.player_predator.enabled);
+        hash_bytes(hash, config.boids.player_predator.radius);
+        hash_bytes(hash, config.boids.player_predator.max_acceleration);
         hash_bytes(hash, config.player.cruise_speed);
         hash_bytes(hash, config.player.boost_speed);
         hash_bytes(hash, config.player.slow_speed);
@@ -917,6 +1007,12 @@ namespace
         hash_canonical_float(hash, config.boids.wander_frequency_hz);
         hash_canonical_float(hash, config.boids.hue_assimilation_rate);
         hash_canonical_float(hash, config.boids.hue_drift_rate);
+        hash_canonical_bool(hash, config.boids.player_lure.enabled);
+        hash_canonical_float(hash, config.boids.player_lure.radius);
+        hash_canonical_float(hash, config.boids.player_lure.max_acceleration);
+        hash_canonical_bool(hash, config.boids.player_predator.enabled);
+        hash_canonical_float(hash, config.boids.player_predator.radius);
+        hash_canonical_float(hash, config.boids.player_predator.max_acceleration);
         hash_canonical_float(hash, config.player.cruise_speed);
         hash_canonical_float(hash, config.player.boost_speed);
         hash_canonical_float(hash, config.player.slow_speed);

@@ -44,6 +44,13 @@ Speed continues to approach the configured slow, cruise, or boost target at
 `speed_change_rate`. These are deterministic simulation settings and therefore
 participate in network compatibility.
 
+Optional shared `boids.player_lure` and `boids.player_predator` objects make authoritative
+Players influence nearby Boids. Disabled objects contain only `enabled: false`. Enabled objects
+require a positive finite `radius` and `max_acceleration`. Radius is capped at twice the world half
+extent. Force acceleration is capped by the ordinary Boid maximum acceleration. Predator force is
+part of the safety budget and lure force is part of the remaining social budget. Both treatments
+are Server-authoritative, disabled by default, and included in network compatibility.
+
 `telemetry.log_directory` owns enabled log files and CSV evidence files. Logging remains controlled
 independently by `console_log_enabled`, `file_log_enabled`, and `min_level`.
 `metrics_csv_enabled` controls the Server replication CSV and sampled boid CSV on Server. It

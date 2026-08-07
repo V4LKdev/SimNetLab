@@ -211,6 +211,12 @@ namespace simnet
             float distance_squared{};
         };
 
+        struct PlayerInfluenceSource
+        {
+            EntityNetId id{};
+            Vec3f position{};
+        };
+
         struct WorkerScratch
         {
             std::vector<Neighbor> neighbors{};
@@ -249,6 +255,7 @@ namespace simnet
         NextState next{};
         SpatialGrid grid{};
         SpatialGridScratch grid_scratch{};
+        std::vector<PlayerInfluenceSource> player_influence_sources{};
         std::vector<WorkerScratch> workers{};
         WorkerScratch inspection{};
         std::vector<std::uint8_t> capture_seen{};
@@ -286,6 +293,8 @@ namespace
         simnet::Vec3f cohesion{};
         simnet::Vec3f containment{};
         simnet::Vec3f wander{};
+        simnet::Vec3f lure{};
+        simnet::Vec3f predator{};
         float next_hue{};
         float hue_target{};
         float hue_delta{};
@@ -297,6 +306,8 @@ namespace
         std::uint32_t alignment_neighbor_count{};
         std::uint32_t cohesion_neighbor_count{};
         std::uint32_t hue_neighbor_count{};
+        std::uint32_t lure_source_count{};
+        std::uint32_t predator_source_count{};
         bool neighbor_cap_hit{};
         bool overlap_recovery{};
         bool acceleration_saturated{};
@@ -571,6 +582,70 @@ namespace
         return false;
     }
 
+    struct PlayerInfluenceEvaluation
+    {
+        simnet::Vec3f lure{};
+        simnet::Vec3f predator{};
+        std::uint32_t lure_source_count{};
+        std::uint32_t predator_source_count{};
+    };
+
+    [[nodiscard]] PlayerInfluenceEvaluation evaluate_player_influence(
+        simnet::ServerGameRuntime::Impl const& runtime,
+        simnet::EntityNetId boid_id,
+        simnet::Vec3f boid_position
+    ) noexcept
+    {
+        auto result = PlayerInfluenceEvaluation{};
+        auto lure_direction_sum = simnet::Vec3f{};
+        auto predator_direction_sum = simnet::Vec3f{};
+        auto const lure_radius_squared
+            = runtime.settings.player_lure.radius * runtime.settings.player_lure.radius;
+        auto const predator_radius_squared
+            = runtime.settings.player_predator.radius * runtime.settings.player_predator.radius;
+
+        for (auto const& source : runtime.player_influence_sources) {
+            auto const toward_player = source.position - boid_position;
+            auto const distance_squared = simnet::length_squared(toward_player);
+            if (runtime.settings.player_lure.enabled && distance_squared <= lure_radius_squared) {
+                ++result.lure_source_count;
+                if (distance_squared > 0.0F) {
+                    auto const weight
+                        = std::clamp(1.0F - distance_squared / lure_radius_squared, 0.0F, 1.0F);
+                    lure_direction_sum = lure_direction_sum
+                        + toward_player * (weight / std::sqrt(distance_squared));
+                }
+            }
+            if (runtime.settings.player_predator.enabled
+                && distance_squared <= predator_radius_squared) {
+                ++result.predator_source_count;
+                auto const weight
+                    = std::clamp(1.0F - distance_squared / predator_radius_squared, 0.0F, 1.0F);
+                if (distance_squared == 0.0F) {
+                    predator_direction_sum
+                        = predator_direction_sum + overlap_direction(boid_id, source.id) * weight;
+                } else {
+                    predator_direction_sum = predator_direction_sum
+                        - toward_player * (weight / std::sqrt(distance_squared));
+                }
+            }
+        }
+
+        if (runtime.settings.player_lure.enabled) {
+            result.lure = clamp_length(
+                lure_direction_sum * runtime.settings.player_lure.max_acceleration,
+                runtime.settings.player_lure.max_acceleration
+            );
+        }
+        if (runtime.settings.player_predator.enabled) {
+            result.predator = clamp_length(
+                predator_direction_sum * runtime.settings.player_predator.max_acceleration,
+                runtime.settings.player_predator.max_acceleration
+            );
+        }
+        return result;
+    }
+
     [[nodiscard]] BoidEvaluation evaluate_boid_row(
         simnet::ServerGameRuntime::Impl const& runtime,
         simnet::ServerGameRuntime::Impl::WorkerScratch& scratch,
@@ -695,10 +770,26 @@ namespace
         auto const wander = settings.enable_wander && settings.wander_acceleration > 0.0F
             ? deterministic_wander(settings, id, heading, tick, delta_time)
             : simnet::Vec3f{};
-        auto const safety = clamp_length(separation + containment, settings.max_acceleration);
-        auto const remaining = std::max(0.0F, settings.max_acceleration - simnet::length(safety));
-        auto const social = clamp_length(alignment + cohesion + wander, remaining);
-        auto const acceleration = safety + social;
+        auto player_influence = PlayerInfluenceEvaluation{};
+        auto acceleration = simnet::Vec3f{};
+        if (!settings.player_lure.enabled && !settings.player_predator.enabled) {
+            auto const safety = clamp_length(separation + containment, settings.max_acceleration);
+            auto const remaining
+                = std::max(0.0F, settings.max_acceleration - simnet::length(safety));
+            auto const social = clamp_length(alignment + cohesion + wander, remaining);
+            acceleration = safety + social;
+        } else {
+            player_influence = evaluate_player_influence(runtime, id, position);
+            auto const safety = clamp_length(
+                separation + player_influence.predator + containment,
+                settings.max_acceleration
+            );
+            auto const remaining
+                = std::max(0.0F, settings.max_acceleration - simnet::length(safety));
+            auto const social
+                = clamp_length(alignment + cohesion + player_influence.lure + wander, remaining);
+            acceleration = safety + social;
+        }
 
         auto next_hue = current_hue;
         auto hue_target = current_hue;
@@ -753,6 +844,8 @@ namespace
             .cohesion = cohesion,
             .containment = containment,
             .wander = wander,
+            .lure = player_influence.lure,
+            .predator = player_influence.predator,
             .next_hue = next_hue,
             .hue_target = hue_target,
             .hue_delta = hue_delta(current_hue, hue_target),
@@ -764,6 +857,8 @@ namespace
             .alignment_neighbor_count = alignment_count,
             .cohesion_neighbor_count = cohesion_count,
             .hue_neighbor_count = hue_count,
+            .lure_source_count = player_influence.lure_source_count,
+            .predator_source_count = player_influence.predator_source_count,
             .neighbor_cap_hit = raw_candidate_count > settings.max_neighbors,
             .overlap_recovery = overlap_recovery,
             .acceleration_saturated
@@ -823,6 +918,10 @@ namespace
             .cohesion = evaluation.cohesion,
             .containment = evaluation.containment,
             .wander = evaluation.wander,
+            .lure = evaluation.lure,
+            .predator = evaluation.predator,
+            .lure_source_count = evaluation.lure_source_count,
+            .predator_source_count = evaluation.predator_source_count,
             .current_hue = runtime.current.hues[row],
             .hue_target = evaluation.hue_target,
             .hue_delta = evaluation.hue_delta,
@@ -878,6 +977,15 @@ namespace
 
     [[nodiscard]] bool valid_settings(simnet::BoidSimulationSettings const& settings) noexcept
     {
+        auto const valid_player_influence = [&](simnet::PlayerInfluenceForceSettings const& force) {
+            if (!force.enabled) {
+                return force.radius == 0.0F && force.max_acceleration == 0.0F;
+            }
+            return std::isfinite(force.radius) && force.radius > 0.0F
+                && force.radius <= settings.world_half * 2.0F
+                && std::isfinite(force.max_acceleration) && force.max_acceleration > 0.0F
+                && force.max_acceleration <= settings.max_acceleration;
+        };
         return std::isfinite(settings.world_half) && settings.world_half > 0.0F
             && std::isfinite(settings.cell_size) && settings.cell_size > 0.0F
             && settings.max_neighbors > 0U && std::isfinite(settings.min_speed)
@@ -905,7 +1013,8 @@ namespace
             && settings.wander_acceleration >= 0.0F && std::isfinite(settings.wander_frequency_hz)
             && settings.wander_frequency_hz > 0.0F && std::isfinite(settings.hue_assimilation_rate)
             && settings.hue_assimilation_rate > 0.0F && std::isfinite(settings.hue_drift_rate)
-            && settings.hue_drift_rate > 0.0F;
+            && settings.hue_drift_rate > 0.0F && valid_player_influence(settings.player_lure)
+            && valid_player_influence(settings.player_predator);
     }
 
     [[nodiscard]] bool
@@ -1041,6 +1150,10 @@ namespace simnet
         impl.current.resize(entity_count);
         impl.next.resize(entity_count);
         impl.capture_seen.resize(entity_count);
+        impl.player_influence_sources.clear();
+        if (impl.settings.player_lure.enabled || impl.settings.player_predator.enabled) {
+            impl.player_influence_sources.reserve(index.ids.size() - index.boid_count);
+        }
         impl.workers.resize(worker_count);
         for (auto& worker : impl.workers) {
             worker.neighbors.reserve(impl.settings.max_neighbors);
@@ -1247,6 +1360,45 @@ namespace simnet
 
                     std::ranges::fill(impl->capture_seen, std::uint8_t{});
                     auto const query_world = system_iterator.world();
+                    impl->player_influence_sources.clear();
+                    if (impl->settings.player_lure.enabled
+                        || impl->settings.player_predator.enabled) {
+                        auto const& index = query_world.get<AuthoritativeReplicationIndex>();
+                        auto previous_player_id = EntityNetId{};
+                        for (std::size_t offset = 0; offset < index.ids.size(); ++offset) {
+                            auto entity = flecs::entity{query_world, index.entities[offset]};
+                            if (!entity.is_alive() || !entity.has<EntityKindComponent>()) {
+                                impl->phase_valid = false;
+                                impl->report.error
+                                    = "authoritative Player influence index contains invalid state";
+                                break;
+                            }
+                            if (entity.get<EntityKindComponent>().value != EntityKind::Player) {
+                                continue;
+                            }
+                            if (!entity.has<NetIdentity>() || !entity.has<Position>()) {
+                                impl->phase_valid = false;
+                                impl->report.error
+                                    = "authoritative Player influence source is incomplete";
+                                break;
+                            }
+                            auto const id = entity.get<NetIdentity>().id;
+                            auto const position = entity.get<Position>().value;
+                            if (id == 0U || id != index.ids[offset]
+                                || (previous_player_id != 0U && id <= previous_player_id)
+                                || !is_finite(position)) {
+                                impl->phase_valid = false;
+                                impl->report.error
+                                    = "authoritative Player influence source is invalid";
+                                break;
+                            }
+                            impl->player_influence_sources.push_back({
+                                .id = id,
+                                .position = position,
+                            });
+                            previous_player_id = id;
+                        }
+                    }
                     auto const capture_query
                         = query_world.query(query_world.entity(impl->capture_query_entity));
                     capture_query.run([&](flecs::iter& query_iterator) {
