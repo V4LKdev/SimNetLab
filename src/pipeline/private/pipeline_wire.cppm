@@ -25,6 +25,15 @@ namespace simnet::pipeline_wire
     inline constexpr std::uint32_t encoded_update_magic = 0x534E504Cu; // S N P L
     inline constexpr std::uint16_t protocol_version = 1;
     inline constexpr std::uint16_t schema_version = 5;
+    inline constexpr std::uint16_t field_mask_schema_version = 6;
+
+    inline constexpr std::uint8_t classification_field_mask = 0x01U;
+    inline constexpr std::uint8_t position_field_mask = 0x02U;
+    inline constexpr std::uint8_t heading_field_mask = 0x04U;
+    inline constexpr std::uint8_t hue_field_mask = 0x08U;
+    inline constexpr std::uint8_t existing_field_mask
+        = classification_field_mask | position_field_mask | heading_field_mask | hue_field_mask;
+    inline constexpr std::uint8_t spawn_record_selector = 0x80U;
 
     // Field sizes
     inline constexpr std::uint32_t u8_bytes = 1;
@@ -68,6 +77,7 @@ namespace simnet::pipeline_wire
     // 16
 
     inline constexpr std::uint32_t delete_record_bytes = u32_bytes; // 4
+    inline constexpr std::uint32_t masked_upsert_minimum_bytes = u32_bytes + u8_bytes + u8_bytes;
 
     inline constexpr std::uint32_t header_bytes = u32_bytes //  magic
         + u16_bytes //  protocol
@@ -88,6 +98,9 @@ namespace simnet::pipeline_wire
     static_assert(bitpacked_quantized_oct_record_bits == 128);
     static_assert(bitpacked_quantized_oct_record_bytes == 16);
     static_assert(delete_record_bytes == 4);
+    static_assert(masked_upsert_minimum_bytes == 6);
+    static_assert(existing_field_mask == 0x0FU);
+    static_assert((spawn_record_selector & existing_field_mask) == 0U);
     static_assert(header_bytes == 45);
     static_assert(sizeof(float) == f32_bytes);
     static_assert(std::numeric_limits<float>::is_iec559);
@@ -109,6 +122,17 @@ namespace simnet::pipeline_wire
         std::uint32_t delete_count{};
         std::uint32_t payload_bytes{};
     };
+
+    [[nodiscard]] constexpr bool field_mask_enabled(PipelineDefinition const& pipeline) noexcept
+    {
+        return has_all_flags(pipeline.techniques, PipelineTechniqueFlags::DeltaFieldMask);
+    }
+
+    [[nodiscard]] constexpr std::uint16_t
+    encoded_update_schema(PipelineDefinition const& pipeline) noexcept
+    {
+        return field_mask_enabled(pipeline) ? field_mask_schema_version : schema_version;
+    }
 
     // --- Writers ---
 

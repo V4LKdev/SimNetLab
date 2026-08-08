@@ -69,6 +69,46 @@ export namespace simnet
         std::string error{}; /// error message when !valid
     };
 
+    /// Nonallocating first-error result for encoded update header inspection.
+    enum class EncodedUpdateHeaderError : std::uint8_t
+    {
+        None,
+        UnsupportedPipeline,
+        ByteCountOutOfRange,
+        Truncated,
+        InvalidMagic,
+        UnsupportedVersion,
+        SignatureMismatch,
+        UnsupportedSnapshotKind,
+        ReservedSequence,
+        StaleSequence,
+        InvalidPayloadSize,
+        FullReplaceHasBaseline,
+        PatchUnsupported,
+        PatchHasReservedBaseline,
+        PatchBaselineNotEarlier,
+        InvalidPayloadBounds,
+    };
+
+    /**
+     * Validated fixed-header facts. Variable masked records are validated only by full decode.
+     *
+     * This value owns no byte storage and inspection never advances replication state.
+     */
+    struct EncodedUpdateHeaderInspection
+    {
+        EncodedUpdateHeaderError error{EncodedUpdateHeaderError::None};
+        Tick tick{};
+        SequenceId sequence{};
+        SequenceId baseline_sequence{};
+        SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
+
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return error == EncodedUpdateHeaderError::None;
+        }
+    };
+
     /// Input to `encode_snapshot`.
     struct EncodeInput
     {
@@ -95,6 +135,10 @@ export namespace simnet
     struct DecodeInput
     {
         ByteSpan bytes{}; /// raw encoded update bytes
+        /// Exact retained baseline used to complete masked existing Patch records.
+        WorldSnapshot const* baseline_snapshot{};
+        /// Must match the encoded Patch baseline when baseline_snapshot is supplied.
+        SequenceId baseline_sequence{};
     };
 
     /// Result of `encode_snapshot`.

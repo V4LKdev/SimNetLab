@@ -104,6 +104,7 @@ namespace simnet
         pipeline_validate::require_snapshot_pointer(input.snapshot, "encode input snapshot");
 
         bool const delta_enabled = pipeline_validate::is_delta(pipeline);
+        bool const delta_field_mask_enabled = pipeline_wire::field_mask_enabled(pipeline);
         bool const level_of_detail_enabled = pipeline_validate::is_level_of_detail(pipeline);
         if (input.baseline_snapshot == nullptr) {
             if (input.baseline_sequence != 0U) {
@@ -337,6 +338,7 @@ namespace simnet
                     *selected_snapshot,
                     *input.baseline_snapshot,
                     layout,
+                    delta_field_mask_enabled,
                     input.collect_representation_quality,
                     representation
                 );
@@ -346,6 +348,7 @@ namespace simnet
                     *selected_snapshot,
                     *input.baseline_snapshot,
                     layout,
+                    delta_field_mask_enabled,
                     input.collect_representation_quality,
                     representation
                 );
@@ -381,9 +384,12 @@ namespace simnet
 
         std::uint32_t const record_bytes = layout.record_bytes;
 
+        auto const upsert_byte_count = emit_delta
+            ? scratch.prepared_record_bytes.size()
+            : selected_count * static_cast<std::size_t>(record_bytes);
         std::size_t const payload_byte_count
             = delete_count * static_cast<std::size_t>(pipeline_wire::delete_record_bytes)
-            + selected_count * static_cast<std::size_t>(record_bytes);
+            + upsert_byte_count;
 
         if (payload_byte_count > std::numeric_limits<std::uint32_t>::max()
             || payload_byte_count + pipeline_wire::header_bytes
@@ -395,7 +401,7 @@ namespace simnet
         pipeline_wire::EncodedUpdateHeader const header{
             .magic = pipeline_wire::encoded_update_magic,
             .protocol = pipeline_wire::protocol_version,
-            .schema = pipeline_wire::schema_version,
+            .schema = pipeline_wire::encoded_update_schema(pipeline),
             .decode_signature = pipeline_signature::make_pipeline_decode_signature(pipeline),
             .snapshot_kind = snapshot_kind,
             .tick = snapshot.tick,

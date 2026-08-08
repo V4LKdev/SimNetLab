@@ -258,6 +258,9 @@ namespace simnet::app
         if (shared.pipeline.enable_delta) {
             pipeline.techniques |= PipelineTechniqueFlags::Delta;
         }
+        if (shared.pipeline.enable_delta_field_mask) {
+            pipeline.techniques |= PipelineTechniqueFlags::DeltaFieldMask;
+        }
         auto const& area_of_interest = shared.pipeline.area_of_interest;
         if (area_of_interest.mode == "none") {
             pipeline.area_of_interest.mode = AreaOfInterestMode::None;

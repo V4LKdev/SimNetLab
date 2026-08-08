@@ -21,6 +21,7 @@ export namespace simnet
         Quantization = 1U << 2U, /// position and heading quantization.
         OctHeading = 1U << 3U, /// octahedral heading quantization.
         Delta = 1U << 4U, /// baseline-relative patch selection.
+        DeltaFieldMask = 1U << 5U, /// transmit only changed fields for existing Delta upserts.
         BitPacking = 1U << 8U, /// bit-packed record layout.
     };
 
@@ -154,6 +155,14 @@ export namespace simnet
         std::uint32_t changed_existing_count{};
         std::uint32_t spawned_count{};
         std::uint32_t produced_upsert_count{};
+        std::uint32_t whole_record_existing_upsert_count{};
+        std::uint32_t masked_existing_upsert_count{};
+        std::uint32_t classification_inclusion_count{};
+        std::uint32_t position_inclusion_count{};
+        std::uint32_t heading_inclusion_count{};
+        std::uint32_t hue_inclusion_count{};
+        std::uint64_t complete_record_equivalent_bytes{};
+        std::uint64_t actual_upsert_representation_bytes{};
     };
 
     /// Counts grouped by deterministic distance band.

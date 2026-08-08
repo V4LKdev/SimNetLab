@@ -113,6 +113,7 @@ export namespace simnet
         bool enable_quantization{false};
         bool enable_oct_heading{false};
         bool enable_delta{false};
+        bool enable_delta_field_mask{false};
         bool enable_bit_packing{false};
         AreaOfInterestConfig area_of_interest{};
         LevelOfDetailConfig level_of_detail{};

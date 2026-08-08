@@ -2373,6 +2373,32 @@ namespace
                         )
                 );
             }
+            if (simnet::has_all_flags(
+                    pipeline.techniques,
+                    simnet::PipelineTechniqueFlags::DeltaFieldMask
+                )
+                && encoded.report.snapshot_kind == simnet::SnapshotKind::Patch) {
+                auto const& delta = encoded.report.delta;
+                simnet::log(
+                    simnet::LogCategory::Pipeline,
+                    simnet::LogLevel::Debug,
+                    "server Delta field mask peer_id=" + std::to_string(peer->peer)
+                        + " tick=" + std::to_string(encoded.report.tick)
+                        + " sequence=" + std::to_string(encoded.report.sequence)
+                        + " candidates=" + std::to_string(delta.candidate_count) + " unchanged="
+                        + std::to_string(delta.unchanged_count) + " masked_existing="
+                        + std::to_string(delta.masked_existing_upsert_count) + " spawns="
+                        + std::to_string(delta.spawned_count) + " classification_fields="
+                        + std::to_string(delta.classification_inclusion_count)
+                        + " position_fields=" + std::to_string(delta.position_inclusion_count)
+                        + " heading_fields=" + std::to_string(delta.heading_inclusion_count)
+                        + " hue_fields=" + std::to_string(delta.hue_inclusion_count)
+                        + " complete_record_equivalent_bytes="
+                        + std::to_string(delta.complete_record_equivalent_bytes)
+                        + " actual_upsert_representation_bytes="
+                        + std::to_string(delta.actual_upsert_representation_bytes)
+                );
+            }
             if (!peer->snapshot_delivery.recovery_active
                 && simnet::app::ack_progress_stalled(
                     peer->snapshot_delivery,

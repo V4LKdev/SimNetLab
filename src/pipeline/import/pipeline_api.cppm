@@ -31,6 +31,19 @@ export namespace simnet
     pipeline_decode_signature(PipelineDefinition const& definition) noexcept;
 
     /**
+     * Inspects and validates the fixed encoded update header without allocation or mutation.
+     *
+     * This validates schema, signature, sequence admissibility, declared payload size, snapshot
+     * and baseline relationships, and safe widened payload bounds. Variable field-mask records
+     * remain subject to complete validation by decode_update or decode_update_unchecked.
+     */
+    [[nodiscard]] EncodedUpdateHeaderInspection inspect_encoded_update_header(
+        PipelineDefinition const& pipeline,
+        ClientReplicationState const& client_state,
+        ByteSpan bytes
+    ) noexcept;
+
+    /**
      * Encodes an authoritative snapshot into a pipeline-owned encoded update.
      *
      * This is the normal entry point for arbitrary snapshot values. It validates the current and
@@ -75,6 +88,20 @@ export namespace simnet
      * - Returns a 'DecodeOutput' with either a valid update or error report.
      */
     [[nodiscard]] DecodeOutput decode_update(
+        PipelineDefinition const& pipeline,
+        ClientReplicationState& client_state,
+        DecodeInput const& input
+    );
+
+    /**
+     * Decodes external bytes while trusting only the supplied retained baseline invariant.
+     *
+     * The baseline must come from successful reconstruction and application, remain under
+     * invariant-preserving ownership, and not mutate between that proof and this call. All wire
+     * bytes, masks, records, ordering, and update semantics are validated exactly as in
+     * decode_update. Arbitrary caller-provided baselines must use decode_update.
+     */
+    [[nodiscard]] DecodeOutput decode_update_unchecked(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
         DecodeInput const& input

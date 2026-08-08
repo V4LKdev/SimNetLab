@@ -678,44 +678,107 @@ namespace
             .transport_payload_bytes = transport_payload_bytes,
         };
         auto const total_start = simnet::steady_now_ns();
-        auto decoded = simnet::DecodeOutput{};
-        auto candidate_decode_state = decode_state;
         auto const decode_start = simnet::steady_now_ns();
-        {
-            SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_decode", simnet::LogCategory::Pipeline);
-            decoded = simnet::decode_update(
-                pipeline,
-                candidate_decode_state,
-                {
-                    .bytes = encoded_bytes,
-                }
-            );
-        }
+        auto const inspected
+            = simnet::inspect_encoded_update_header(pipeline, decode_state, encoded_bytes);
         measurement.decode_cpu_time = simnet::steady_now_ns() - decode_start;
-        measurement.tick = decoded.report.tick;
-        measurement.sequence = decoded.report.sequence;
-        measurement.baseline_sequence = decoded.report.baseline_sequence;
-        measurement.snapshot_kind = decoded.report.snapshot_kind;
+        measurement.tick = inspected.tick;
+        measurement.sequence = inspected.sequence;
+        measurement.baseline_sequence = inspected.baseline_sequence;
+        measurement.snapshot_kind = inspected.snapshot_kind;
         measurement.encoded_update_bytes = static_cast<std::uint32_t>(encoded_bytes.size());
-        measurement.upsert_count = static_cast<std::uint32_t>(decoded.update.upserts.size());
-        measurement.delete_count = static_cast<std::uint32_t>(decoded.update.deletes.size());
-        if (packetization_enabled && decoded.report.sequence != group.group_id) {
+        if (!inspected.valid()) {
+            if (inspected.error == simnet::EncodedUpdateHeaderError::StaleSequence) {
+                measurement.outcome = simnet::ClientReplicationOutcome::StaleSequenceIgnored;
+                observe_client_measurement(measurements, csv, measurement);
+                return ApplyPacketOutcome::Ignored;
+            }
             measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
             observe_client_measurement(measurements, csv, measurement);
             simnet::log(
                 simnet::LogCategory::Pipeline,
                 simnet::LogLevel::Error,
-                "client packet group id does not match decoded sequence"
+                "client snapshot header inspection failed error="
+                    + std::to_string(static_cast<unsigned>(inspected.error))
             );
             return ApplyPacketOutcome::Fatal;
         }
-        if (!decoded.report.valid) {
-            if (decoded.report.sequence != 0U
-                && decoded.report.sequence <= decode_state.latest_remote_sequence) {
-                measurement.outcome = simnet::ClientReplicationOutcome::StaleSequenceIgnored;
+        if (packetization_enabled && inspected.sequence != group.group_id) {
+            measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
+            observe_client_measurement(measurements, csv, measurement);
+            simnet::log(
+                simnet::LogCategory::Pipeline,
+                simnet::LogLevel::Error,
+                "client packet group id does not match inspected sequence"
+            );
+            return ApplyPacketOutcome::Fatal;
+        }
+
+        auto const baseline_start = simnet::steady_now_ns();
+        auto const* baseline = static_cast<simnet::WorldSnapshot const*>(nullptr);
+        if (inspected.baseline_sequence != 0U) {
+            baseline = find_retained_snapshot(snapshot_history, inspected.baseline_sequence);
+            if (baseline == nullptr) {
+                measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
+                measurement.outcome = simnet::ClientReplicationOutcome::BaselineUnavailable;
                 observe_client_measurement(measurements, csv, measurement);
-                return ApplyPacketOutcome::Ignored;
+                simnet::log(
+                    simnet::LogCategory::Snapshot,
+                    simnet::LogLevel::Warn,
+                    "client Patch baseline is not retained sequence="
+                        + std::to_string(inspected.baseline_sequence)
+                );
+                simnet::app::record_missing_baseline_rejection(recovery_request_state);
+                if (simnet::app::recovery_request_needed(
+                        recovery_request_state,
+                        inspected.baseline_sequence
+                    )) {
+                    auto const request = simnet::app::encode_snapshot_recovery_request({
+                        .rejected_update_sequence = inspected.sequence,
+                        .missing_baseline_sequence = inspected.baseline_sequence,
+                    });
+                    auto const sent = transport.send(
+                        simnet::app::input_lane,
+                        simnet::TransportDelivery::ReliableSequenced,
+                        request
+                    );
+                    if (!sent.ok) {
+                        simnet::log(
+                            simnet::LogCategory::Transport,
+                            simnet::LogLevel::Error,
+                            "client recovery request send failed: " + sent.error.message
+                        );
+                        return ApplyPacketOutcome::Fatal;
+                    }
+                    simnet::app::record_recovery_request(
+                        recovery_request_state,
+                        inspected.baseline_sequence
+                    );
+                }
+                return ApplyPacketOutcome::RecoveryRequested;
             }
+        }
+        measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
+
+        auto decoded = simnet::DecodeOutput{};
+        auto candidate_decode_state = decode_state;
+        auto const full_decode_start = simnet::steady_now_ns();
+        {
+            SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_decode", simnet::LogCategory::Pipeline);
+            decoded = simnet::decode_update_unchecked(
+                pipeline,
+                candidate_decode_state,
+                {
+                    .bytes = encoded_bytes,
+                    .baseline_snapshot = baseline,
+                    .baseline_sequence = inspected.baseline_sequence,
+                }
+            );
+        }
+        measurement.decode_cpu_time += simnet::steady_now_ns() - full_decode_start;
+        measurement.upsert_count = static_cast<std::uint32_t>(decoded.update.upserts.size());
+        measurement.delete_count = static_cast<std::uint32_t>(decoded.update.deletes.size());
+        if (!decoded.report.valid) {
             measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
             observe_client_measurement(measurements, csv, measurement);
             simnet::log(
@@ -736,57 +799,10 @@ namespace
             );
             return ApplyPacketOutcome::Ignored;
         }
-
         if (latest_applied_sequence != 0U
             && decoded.report.sequence > latest_applied_sequence + 1U) {
             ++sequence_gap_count;
         }
-
-        auto const baseline_start = simnet::steady_now_ns();
-        auto const* baseline = static_cast<simnet::WorldSnapshot const*>(nullptr);
-        if (decoded.report.baseline_sequence != 0U) {
-            baseline = find_retained_snapshot(snapshot_history, decoded.report.baseline_sequence);
-            if (baseline == nullptr) {
-                measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
-                measurement.outcome = simnet::ClientReplicationOutcome::BaselineUnavailable;
-                observe_client_measurement(measurements, csv, measurement);
-                simnet::log(
-                    simnet::LogCategory::Snapshot,
-                    simnet::LogLevel::Warn,
-                    "client Patch baseline is not retained sequence="
-                        + std::to_string(decoded.report.baseline_sequence)
-                );
-                simnet::app::record_missing_baseline_rejection(recovery_request_state);
-                if (simnet::app::recovery_request_needed(
-                        recovery_request_state,
-                        decoded.report.baseline_sequence
-                    )) {
-                    auto const request = simnet::app::encode_snapshot_recovery_request({
-                        .rejected_update_sequence = decoded.report.sequence,
-                        .missing_baseline_sequence = decoded.report.baseline_sequence,
-                    });
-                    auto const sent = transport.send(
-                        simnet::app::input_lane,
-                        simnet::TransportDelivery::ReliableSequenced,
-                        request
-                    );
-                    if (!sent.ok) {
-                        simnet::log(
-                            simnet::LogCategory::Transport,
-                            simnet::LogLevel::Error,
-                            "client recovery request send failed: " + sent.error.message
-                        );
-                        return ApplyPacketOutcome::Fatal;
-                    }
-                    simnet::app::record_recovery_request(
-                        recovery_request_state,
-                        decoded.report.baseline_sequence
-                    );
-                }
-                return ApplyPacketOutcome::RecoveryRequested;
-            }
-        }
-        measurement.baseline_resolution_cpu_time = simnet::steady_now_ns() - baseline_start;
 
         auto reconstructed = simnet::WorldSnapshot{};
         // Decode validated the update. The baseline is locally empty or a retained reconstruction.

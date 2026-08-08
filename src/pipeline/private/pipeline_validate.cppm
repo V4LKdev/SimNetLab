@@ -23,7 +23,8 @@ namespace simnet::pipeline_validate
         auto constexpr supported_techniques = static_cast<std::uint32_t>(
             PipelineTechniqueFlags::SendInterval | PipelineTechniqueFlags::Incremental
             | PipelineTechniqueFlags::Quantization | PipelineTechniqueFlags::OctHeading
-            | PipelineTechniqueFlags::Delta | PipelineTechniqueFlags::BitPacking
+            | PipelineTechniqueFlags::Delta | PipelineTechniqueFlags::DeltaFieldMask
+            | PipelineTechniqueFlags::BitPacking
         );
         auto const requested = static_cast<std::uint32_t>(pipeline.techniques);
         auto const unsupported = requested & ~supported_techniques;
@@ -39,6 +40,10 @@ namespace simnet::pipeline_validate
             && (!has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)
                 || !has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading))) {
             throw std::runtime_error("bit packing requires quantization and oct heading");
+        }
+        if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::DeltaFieldMask)
+            && !has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta)) {
+            throw std::runtime_error("delta field mask requires Delta");
         }
     }
 

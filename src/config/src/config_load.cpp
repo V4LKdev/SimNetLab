@@ -555,7 +555,8 @@ namespace
             static_cast<void>(value);
             if (key != "send_interval_ticks" && key != "enable_incremental"
                 && key != "enable_quantization" && key != "enable_oct_heading"
-                && key != "enable_delta" && key != "enable_bit_packing" && key != "area_of_interest"
+                && key != "enable_delta" && key != "enable_delta_field_mask"
+                && key != "enable_bit_packing" && key != "area_of_interest"
                 && key != "level_of_detail") {
                 throw std::runtime_error(
                     "invalid config field 'pipeline." + key + "': unknown field"
@@ -567,6 +568,7 @@ namespace
         read_optional(json, "enable_quantization", config.enable_quantization);
         read_optional(json, "enable_oct_heading", config.enable_oct_heading);
         read_optional(json, "enable_delta", config.enable_delta);
+        read_optional(json, "enable_delta_field_mask", config.enable_delta_field_mask);
         read_optional(json, "enable_bit_packing", config.enable_bit_packing);
         validate_non_zero("pipeline.send_interval_ticks", config.send_interval_ticks);
         if (config.enable_oct_heading && !config.enable_quantization) {
@@ -578,6 +580,11 @@ namespace
             && (!config.enable_quantization || !config.enable_oct_heading)) {
             throw std::runtime_error(
                 "invalid pipeline configuration: bit packing requires quantization and oct heading"
+            );
+        }
+        if (config.enable_delta_field_mask && !config.enable_delta) {
+            throw std::runtime_error(
+                "invalid pipeline configuration: delta field mask requires Delta"
             );
         }
         if (auto const* section = optional_object(json, "area_of_interest")) {
@@ -988,6 +995,10 @@ namespace
         hash_bytes(hash, config.pipeline.enable_quantization);
         hash_bytes(hash, config.pipeline.enable_oct_heading);
         hash_bytes(hash, config.pipeline.enable_delta);
+        if (config.pipeline.enable_delta_field_mask) {
+            hash_string(hash, "delta_field_mask");
+            hash_bytes(hash, config.pipeline.enable_delta_field_mask);
+        }
         hash_bytes(hash, config.pipeline.enable_bit_packing);
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_bytes(hash, config.pipeline.area_of_interest.radius);
@@ -1069,6 +1080,10 @@ namespace
         hash_canonical_bool(hash, config.pipeline.enable_quantization);
         hash_canonical_bool(hash, config.pipeline.enable_oct_heading);
         hash_canonical_bool(hash, config.pipeline.enable_delta);
+        if (config.pipeline.enable_delta_field_mask) {
+            hash_string(hash, "delta_field_mask");
+            hash_canonical_bool(hash, config.pipeline.enable_delta_field_mask);
+        }
         hash_canonical_bool(hash, config.pipeline.enable_bit_packing);
         hash_string(hash, config.pipeline.area_of_interest.mode);
         hash_canonical_float(hash, config.pipeline.area_of_interest.radius);

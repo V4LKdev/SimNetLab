@@ -248,6 +248,69 @@ namespace simnet::pipeline_records
             && current.hue == baseline.hues[baseline_index];
     }
 
+    /// Returns the semantic fields that differ from one exact retained canonical entity.
+    [[nodiscard]] std::uint8_t canonical_field_mask(
+        EntityState const& current,
+        WorldSnapshot const& baseline,
+        std::size_t baseline_index
+    ) noexcept
+    {
+        auto mask = std::uint8_t{};
+        if (current.classification != baseline.classifications[baseline_index]) {
+            mask |= pipeline_wire::classification_field_mask;
+        }
+        if (!same_binary32(current.position.x, baseline.positions[baseline_index].x)
+            || !same_binary32(current.position.y, baseline.positions[baseline_index].y)
+            || !same_binary32(current.position.z, baseline.positions[baseline_index].z)) {
+            mask |= pipeline_wire::position_field_mask;
+        }
+        if (!same_binary32(current.heading.x, baseline.headings[baseline_index].x)
+            || !same_binary32(current.heading.y, baseline.headings[baseline_index].y)
+            || !same_binary32(current.heading.z, baseline.headings[baseline_index].z)) {
+            mask |= pipeline_wire::heading_field_mask;
+        }
+        if (current.hue != baseline.hues[baseline_index]) {
+            mask |= pipeline_wire::hue_field_mask;
+        }
+        return mask;
+    }
+
+    [[nodiscard]] std::uint32_t
+    selected_field_bytes(RecordLayout const& layout, std::uint8_t mask) noexcept
+    {
+        auto bytes = std::uint32_t{};
+        if ((mask & pipeline_wire::classification_field_mask) != 0U) {
+            bytes += pipeline_wire::u8_bytes;
+        }
+        if ((mask & pipeline_wire::position_field_mask) != 0U) {
+            bytes += layout.quantized ? 3U * pipeline_wire::u16_bytes : pipeline_wire::vec3_bytes;
+        }
+        if ((mask & pipeline_wire::heading_field_mask) != 0U) {
+            bytes += layout.quantized ? (layout.oct_heading ? 2U : 3U) * pipeline_wire::u16_bytes
+                                      : pipeline_wire::vec3_bytes;
+        }
+        if ((mask & pipeline_wire::hue_field_mask) != 0U) {
+            bytes += pipeline_wire::u8_bytes;
+        }
+        return bytes;
+    }
+
+    void observe_field_mask(DeltaReport& report, std::uint8_t mask) noexcept
+    {
+        if ((mask & pipeline_wire::classification_field_mask) != 0U) {
+            ++report.classification_inclusion_count;
+        }
+        if ((mask & pipeline_wire::position_field_mask) != 0U) {
+            ++report.position_inclusion_count;
+        }
+        if ((mask & pipeline_wire::heading_field_mask) != 0U) {
+            ++report.heading_inclusion_count;
+        }
+        if ((mask & pipeline_wire::hue_field_mask) != 0U) {
+            ++report.hue_inclusion_count;
+        }
+    }
+
     /// Reads a 3D vector from three quantized 16-bit unsigned integers, given the specified bounds.
     /// Returns false on truncation.
     [[nodiscard]] bool
@@ -431,6 +494,107 @@ namespace simnet::pipeline_records
             pipeline_wire::write_u32(bytes, prepared.heading_tokens[2]);
         }
         pipeline_wire::write_u8(bytes, prepared.canonical.hue);
+    }
+
+    /// Writes selected prepared canonical fields without an entity ID.
+    void write_prepared_fields(
+        std::vector<Byte>& bytes,
+        RecordLayout const& layout,
+        PreparedRecord const& prepared,
+        std::uint8_t mask
+    )
+    {
+        if ((mask & pipeline_wire::classification_field_mask) != 0U) {
+            pipeline_wire::write_u8(bytes, prepared.canonical.classification.value());
+        }
+        if ((mask & pipeline_wire::position_field_mask) != 0U) {
+            if (layout.quantized) {
+                for (auto const token : prepared.position_tokens) {
+                    pipeline_wire::write_u16(bytes, static_cast<std::uint16_t>(token));
+                }
+            } else {
+                for (auto const token : prepared.position_tokens) {
+                    pipeline_wire::write_u32(bytes, token);
+                }
+            }
+        }
+        if ((mask & pipeline_wire::heading_field_mask) != 0U) {
+            if (layout.quantized) {
+                auto const token_count = layout.oct_heading ? 2U : 3U;
+                for (auto index = std::size_t{}; index < token_count; ++index) {
+                    pipeline_wire::write_u16(
+                        bytes,
+                        static_cast<std::uint16_t>(prepared.heading_tokens[index])
+                    );
+                }
+            } else {
+                for (auto const token : prepared.heading_tokens) {
+                    pipeline_wire::write_u32(bytes, token);
+                }
+            }
+        }
+        if ((mask & pipeline_wire::hue_field_mask) != 0U) {
+            pipeline_wire::write_u8(bytes, prepared.canonical.hue);
+        }
+    }
+
+    void write_masked_record(
+        std::vector<Byte>& bytes,
+        RecordLayout const& layout,
+        PreparedRecord const& prepared,
+        std::uint8_t selector
+    )
+    {
+        pipeline_wire::write_u32(bytes, prepared.canonical.id);
+        pipeline_wire::write_u8(bytes, selector);
+        auto const fields = selector == pipeline_wire::spawn_record_selector
+            ? pipeline_wire::existing_field_mask
+            : selector;
+        write_prepared_fields(bytes, layout, prepared, fields);
+    }
+
+    /// Reads selected canonical fields into a complete caller-initialized entity.
+    [[nodiscard]] bool read_selected_fields(
+        ByteSpan bytes,
+        std::size_t& offset,
+        RecordLayout const& layout,
+        std::uint8_t mask,
+        EntityState& entity
+    )
+    {
+        if ((mask & pipeline_wire::classification_field_mask) != 0U) {
+            auto classification = std::uint8_t{};
+            if (!pipeline_wire::read_u8(bytes, offset, classification)) {
+                return false;
+            }
+            entity.classification = EntityClassification{classification};
+        }
+        if ((mask & pipeline_wire::position_field_mask) != 0U) {
+            if (layout.quantized) {
+                if (!read_quantized_vec3(bytes, offset, layout.bounds, entity.position)) {
+                    return false;
+                }
+            } else if (!pipeline_wire::read_vec3(bytes, offset, entity.position)) {
+                return false;
+            }
+        }
+        if ((mask & pipeline_wire::heading_field_mask) != 0U) {
+            if (layout.quantized) {
+                if (layout.oct_heading) {
+                    if (!read_oct_heading(bytes, offset, entity.heading)) {
+                        return false;
+                    }
+                } else if (!read_quantized_heading(bytes, offset, entity.heading)) {
+                    return false;
+                }
+            } else if (!pipeline_wire::read_vec3(bytes, offset, entity.heading)) {
+                return false;
+            }
+        }
+        if ((mask & pipeline_wire::hue_field_mask) != 0U) {
+            return pipeline_wire::read_u8(bytes, offset, entity.hue);
+        }
+        return true;
     }
 
     /// Reads one entity record in the resolved layout, advancing offset. Returns false on truncation.

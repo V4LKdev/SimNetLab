@@ -54,7 +54,7 @@ namespace simnet::pipeline_signature
         auto constexpr mask = static_cast<std::uint32_t>(
             PipelineTechniqueFlags::Incremental | PipelineTechniqueFlags::Quantization
             | PipelineTechniqueFlags::OctHeading | PipelineTechniqueFlags::Delta
-            | PipelineTechniqueFlags::BitPacking
+            | PipelineTechniqueFlags::DeltaFieldMask | PipelineTechniqueFlags::BitPacking
         );
         return static_cast<std::uint32_t>(pipeline.techniques) & mask;
     }
@@ -66,7 +66,7 @@ namespace simnet::pipeline_signature
         auto signature = DecodeSignatureBuilder{};
 
         update_signature_u16(signature, pipeline_wire::protocol_version);
-        update_signature_u16(signature, pipeline_wire::schema_version);
+        update_signature_u16(signature, pipeline_wire::encoded_update_schema(pipeline));
         update_signature_u32(signature, decode_relevant_technique_mask(pipeline));
 
         if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {

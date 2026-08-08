@@ -12,6 +12,7 @@ module simnet.pipeline:selection;
 import :types;
 import :messages;
 import :records;
+import :wire;
 import simnet.core;
 import simnet.snapshot;
 
@@ -178,10 +179,43 @@ namespace simnet::pipeline_selection
     void retain_prepared_record(
         PipelineScratch& scratch,
         pipeline_records::RecordLayout const& layout,
-        pipeline_records::PreparedRecord const& prepared
+        pipeline_records::PreparedRecord const& prepared,
+        bool field_mask_enabled,
+        bool existing,
+        std::uint8_t field_mask,
+        DeltaReport& report
     )
     {
-        pipeline_records::write_prepared_record(scratch.prepared_record_bytes, layout, prepared);
+        report.complete_record_equivalent_bytes += layout.record_bytes;
+        if (field_mask_enabled) {
+            auto const selector = existing ? field_mask : pipeline_wire::spawn_record_selector;
+            pipeline_records::write_masked_record(
+                scratch.prepared_record_bytes,
+                layout,
+                prepared,
+                selector
+            );
+            report.actual_upsert_representation_bytes += pipeline_wire::u32_bytes
+                + pipeline_wire::u8_bytes
+                + pipeline_records::selected_field_bytes(layout,
+                                                         existing
+                                                             ? field_mask
+                                                             : pipeline_wire::existing_field_mask);
+            if (existing) {
+                ++report.masked_existing_upsert_count;
+                pipeline_records::observe_field_mask(report, field_mask);
+            }
+        } else {
+            pipeline_records::write_prepared_record(
+                scratch.prepared_record_bytes,
+                layout,
+                prepared
+            );
+            report.actual_upsert_representation_bytes += layout.record_bytes;
+            if (existing) {
+                ++report.whole_record_existing_upsert_count;
+            }
+        }
         scratch.logical_update.upserts.push_back(prepared.canonical);
     }
 
@@ -191,6 +225,7 @@ namespace simnet::pipeline_selection
         WorldSnapshot const& current,
         WorldSnapshot const& baseline,
         pipeline_records::RecordLayout const& layout,
+        bool field_mask_enabled,
         bool collect_representation_quality,
         RepresentationReport& representation
     )
@@ -213,7 +248,15 @@ namespace simnet::pipeline_selection
                     prepared
                 );
             }
-            retain_prepared_record(scratch, layout, prepared);
+            retain_prepared_record(
+                scratch,
+                layout,
+                prepared,
+                field_mask_enabled,
+                false,
+                {},
+                report
+            );
             ++report.candidate_count;
             ++report.spawned_count;
             ++report.produced_upsert_count;
@@ -235,11 +278,19 @@ namespace simnet::pipeline_selection
             } else {
                 auto const prepared = prepare_snapshot_record(layout, current, current_index);
                 ++report.candidate_count;
-                if (!pipeline_records::same_canonical_state(
-                        prepared.canonical,
-                        baseline,
-                        baseline_index
-                    )) {
+                auto const field_mask = field_mask_enabled ? pipeline_records::canonical_field_mask(
+                                                                 prepared.canonical,
+                                                                 baseline,
+                                                                 baseline_index
+                                                             )
+                                                           : std::uint8_t{};
+                auto const unchanged = field_mask_enabled ? field_mask == 0U
+                                                          : pipeline_records::same_canonical_state(
+                                                                prepared.canonical,
+                                                                baseline,
+                                                                baseline_index
+                                                            );
+                if (!unchanged) {
                     scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
                     if (collect_representation_quality) {
                         pipeline_records::observe_representation_quality(
@@ -249,7 +300,15 @@ namespace simnet::pipeline_selection
                             prepared
                         );
                     }
-                    retain_prepared_record(scratch, layout, prepared);
+                    retain_prepared_record(
+                        scratch,
+                        layout,
+                        prepared,
+                        field_mask_enabled,
+                        true,
+                        field_mask,
+                        report
+                    );
                     ++report.changed_existing_count;
                     ++report.produced_upsert_count;
                 } else {
@@ -283,6 +342,7 @@ namespace simnet::pipeline_selection
         WorldSnapshot const& current,
         WorldSnapshot const& baseline,
         pipeline_records::RecordLayout const& layout,
+        bool field_mask_enabled,
         bool collect_representation_quality,
         RepresentationReport& representation
     )
@@ -302,12 +362,22 @@ namespace simnet::pipeline_selection
             bool const existed
                 = baseline_index < baseline.size() && baseline.ids[baseline_index] == current_id;
             auto unchanged = false;
+            auto field_mask = std::uint8_t{};
             if (existed) {
-                unchanged = pipeline_records::same_canonical_state(
-                    prepared.canonical,
-                    baseline,
-                    baseline_index
-                );
+                if (field_mask_enabled) {
+                    field_mask = pipeline_records::canonical_field_mask(
+                        prepared.canonical,
+                        baseline,
+                        baseline_index
+                    );
+                    unchanged = field_mask == 0U;
+                } else {
+                    unchanged = pipeline_records::same_canonical_state(
+                        prepared.canonical,
+                        baseline,
+                        baseline_index
+                    );
+                }
             }
             if (!unchanged) {
                 scratch.selected_indices[retained_count++] = current_index;
@@ -319,7 +389,15 @@ namespace simnet::pipeline_selection
                         prepared
                     );
                 }
-                retain_prepared_record(scratch, layout, prepared);
+                retain_prepared_record(
+                    scratch,
+                    layout,
+                    prepared,
+                    field_mask_enabled,
+                    existed,
+                    field_mask,
+                    report
+                );
                 if (existed) {
                     ++report.changed_existing_count;
                 } else {
