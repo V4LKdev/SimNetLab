@@ -8,6 +8,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 import simnet.app_protocol;
+import simnet.app_common;
+import simnet.app_compression_dictionary;
 import simnet.compression;
 import simnet.core;
 import simnet.packetization;
@@ -857,6 +859,81 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "failed dictionary decompression leaves reassembly uncommitted for recovery",
+    "[compression][dictionary][packetization][recovery][transaction]"
+)
+{
+    auto config = settings();
+    config.max_group_bytes = 4096U;
+    config.max_chunks_per_group = 128U;
+    config.max_incomplete_bytes = 8192U;
+    auto dictionary = simnet::app::load_compression_dictionary({
+        .mode = simnet::app::CompressionMode::WholeUpdate,
+        .level = 1,
+        .dictionary = "pipeline_v1",
+    });
+    REQUIRE(dictionary.has_value());
+
+    auto source = std::vector<simnet::Byte>(1024U, simnet::Byte{0x2aU});
+    auto compressor = simnet::ZstdCompressor{};
+    auto valid = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::compress_bytes_with_dictionary(
+            compressor,
+            dictionary->dictionary,
+            source,
+            {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
+            valid
+        )
+            .valid
+    );
+    auto malformed = valid;
+    malformed.pop_back();
+
+    auto reassembly = simnet::ReassemblyState{};
+    auto const malformed_packets = packets(config, 41U, malformed);
+    auto malformed_order = std::vector<std::size_t>(malformed_packets.size());
+    std::iota(malformed_order.begin(), malformed_order.end(), 0U);
+    auto completed = deliver(config, reassembly, malformed_packets, malformed_order);
+    REQUIRE(completed.kind == simnet::ReassemblyResultKind::Complete);
+
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto restored = bytes(3U, 9U);
+    auto const unchanged = restored;
+    CHECK_FALSE(
+        simnet::decompress_bytes_with_dictionary(
+            decompressor,
+            dictionary->dictionary,
+            completed.completed.bytes,
+            {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
+            restored
+        )
+            .valid
+    );
+    CHECK(restored == unchanged);
+    CHECK(reassembly.latest_committed_group == 0U);
+
+    auto const recovery_packets = packets(config, 41U, valid);
+    auto recovery_order = std::vector<std::size_t>(recovery_packets.size());
+    std::iota(recovery_order.begin(), recovery_order.end(), 0U);
+    completed = deliver(config, reassembly, recovery_packets, recovery_order);
+    REQUIRE(completed.kind == simnet::ReassemblyResultKind::Complete);
+    REQUIRE(
+        simnet::decompress_bytes_with_dictionary(
+            decompressor,
+            dictionary->dictionary,
+            completed.completed.bytes,
+            {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
+            restored
+        )
+            .valid
+    );
+    CHECK(restored == source);
+    simnet::commit_reassembled_group(reassembly, completed.completed.group_id);
+    CHECK(reassembly.latest_committed_group == 41U);
+}
+
+TEST_CASE(
     "compression and packetization preserve an exact FOV LOD Patch",
     "[compression][packetization][pipeline][aoi][lod][transaction]"
 )
@@ -923,20 +1000,39 @@ TEST_CASE(
     config.max_group_bytes = 4096U;
     config.max_chunks_per_group = 128U;
     config.max_incomplete_bytes = 8192U;
-    for (auto const whole_update : {false, true}) {
+    auto dictionary = simnet::app::load_compression_dictionary({
+        .mode = simnet::app::CompressionMode::WholeUpdate,
+        .level = 1,
+        .dictionary = "pipeline_v1",
+    });
+    REQUIRE(dictionary.has_value());
+    for (auto const treatment : {0, 1, 2}) {
+        auto const whole_update = treatment != 0;
+        auto const use_dictionary = treatment == 2;
         auto compressor = simnet::ZstdCompressor{};
         auto decompressor = simnet::ZstdDecompressor{};
         auto compressed_group = std::vector<simnet::Byte>{};
         auto group_source = encoded.update.bytes;
         if (whole_update) {
-            auto const report = simnet::compress_bytes(
-                compressor,
-                group_source,
-                1,
-                {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
-                simnet::CompressionEnvelopePolicy::Always,
-                compressed_group
-            );
+            auto const limits = simnet::CompressionLimits{
+                .max_uncompressed_bytes = 4096U,
+                .max_output_bytes = 4096U,
+            };
+            auto const report = use_dictionary ? simnet::compress_bytes_with_dictionary(
+                                                     compressor,
+                                                     dictionary->dictionary,
+                                                     group_source,
+                                                     limits,
+                                                     compressed_group
+                                                 )
+                                               : simnet::compress_bytes(
+                                                     compressor,
+                                                     group_source,
+                                                     1,
+                                                     limits,
+                                                     simnet::CompressionEnvelopePolicy::Always,
+                                                     compressed_group
+                                                 );
             REQUIRE(report.valid);
             group_source = compressed_group;
         }
@@ -991,12 +1087,19 @@ TEST_CASE(
         auto decoded_group = simnet::ByteSpan{completed.completed.bytes};
         auto decoded_scratch = std::vector<simnet::Byte>{};
         if (whole_update) {
-            auto const report = simnet::decompress_bytes(
-                decompressor,
-                decoded_group,
-                {.max_uncompressed_bytes = 4096U, .max_output_bytes = 4096U},
-                decoded_scratch
-            );
+            auto const limits = simnet::CompressionLimits{
+                .max_uncompressed_bytes = 4096U,
+                .max_output_bytes = 4096U,
+            };
+            auto const report = use_dictionary
+                ? simnet::decompress_bytes_with_dictionary(
+                      decompressor,
+                      dictionary->dictionary,
+                      decoded_group,
+                      limits,
+                      decoded_scratch
+                  )
+                : simnet::decompress_bytes(decompressor, decoded_group, limits, decoded_scratch);
             REQUIRE(report.valid);
             decoded_group = decoded_scratch;
         }

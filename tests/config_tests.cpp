@@ -8,6 +8,8 @@
 #include <string_view>
 
 import simnet.app_common;
+import simnet.app_compression_dictionary;
+import simnet.compression;
 import simnet.config;
 import simnet.core;
 import simnet.pipeline;
@@ -181,6 +183,7 @@ namespace
         );
         CHECK(left.compression.mode == right.compression.mode);
         CHECK(left.compression.level == right.compression.level);
+        CHECK(left.compression.dictionary == right.compression.dictionary);
         CHECK(left.packetization.enabled == right.packetization.enabled);
         CHECK(left.packetization.max_payload_bytes == right.packetization.max_payload_bytes);
         CHECK(left.packetization.max_update_bytes == right.packetization.max_update_bytes);
@@ -689,6 +692,14 @@ TEST_CASE("maintained profile fingerprints preserve normalized semantics", "[con
             13258101794867737506ULL
         },
         SharedFingerprint{
+            "shared_compression_zstd_delta_field_mask_aoi_radius_visual.json",
+            11761613649863971200ULL
+        },
+        SharedFingerprint{
+            "shared_compression_zstd_pipeline_v1_delta_field_mask_aoi_radius_visual.json",
+            16930381709287303858ULL
+        },
+        SharedFingerprint{
             "shared_delivery_reliable_aoi_radius_visual.json",
             11683916058568800636ULL
         },
@@ -729,6 +740,29 @@ TEST_CASE("maintained profile fingerprints preserve normalized semantics", "[con
         auto const config = simnet::load_shared_config(directory / expected.name);
         CHECK(simnet::fingerprint_network_compatibility(config).value == expected.network);
     }
+}
+
+TEST_CASE("every maintained JSON file loads through its production loader", "[config][profiles]")
+{
+    auto loaded_count = std::size_t{};
+    for (auto const& entry : std::filesystem::directory_iterator{maintained_config_directory()}) {
+        if (!entry.is_regular_file() || entry.path().extension() != ".json") {
+            continue;
+        }
+        auto const name = entry.path().filename().string();
+        CAPTURE(name);
+        if (name.starts_with("shared_")) {
+            static_cast<void>(simnet::load_shared_config(entry.path()));
+        } else if (name.starts_with("server_")) {
+            static_cast<void>(simnet::load_server_config(entry.path()));
+        } else if (name.starts_with("client_")) {
+            static_cast<void>(simnet::load_client_config(entry.path()));
+        } else {
+            FAIL("maintained JSON filename has no production loader owner");
+        }
+        ++loaded_count;
+    }
+    CHECK(loaded_count == 32U);
 }
 
 TEST_CASE("default alignment preserves inherited treatment tuning", "[config][defaults]")
@@ -1212,25 +1246,135 @@ TEST_CASE("maintained forced packetization treatment loads", "[config][packetiza
 
 TEST_CASE("compression configuration is strict and fingerprinted", "[config][compression]")
 {
-    auto const accepted = TemporaryConfig{
-        "simnet_compression_accepted.json",
+    auto const omitted_dictionary = TemporaryConfig{
+        "simnet_compression_omitted_dictionary.json",
         R"({ "compression": { "mode": "whole_update", "level": 1 } })"
     };
-    auto const loaded = simnet::load_shared_config(accepted.path());
+    auto const loaded = simnet::load_shared_config(omitted_dictionary.path());
     CHECK(loaded.compression.mode == "whole_update");
     CHECK(loaded.compression.level == 1);
+    CHECK(loaded.compression.dictionary == "none");
 
-    for (auto const contents : {
-             R"({ "compression": { "mode": "none", "level": 1 } })",
-             R"({ "compression": { "mode": "whole_update" } })",
-             R"({ "compression": { "mode": "per_packet", "level": 0 } })",
-             R"({ "compression": { "mode": "per_packet", "level": 20 } })",
-             R"({ "compression": { "mode": "unknown", "level": 1 } })",
-             R"({ "compression": { "mode": "whole_update", "level": 1, "extra": true } })",
-         }) {
+    auto const explicit_none = TemporaryConfig{
+        "simnet_compression_explicit_none.json",
+        R"({ "compression": { "mode": "whole_update", "level": 1, "dictionary": "none" } })"
+    };
+    auto const ordinary = simnet::load_shared_config(explicit_none.path());
+    CHECK(ordinary.compression.dictionary == "none");
+    CHECK(
+        simnet::fingerprint_network_compatibility(ordinary).value
+        == simnet::fingerprint_network_compatibility(loaded).value
+    );
+
+    auto const selected_dictionary = TemporaryConfig{
+        "simnet_compression_pipeline_v1.json",
+        R"({ "compression": { "mode": "whole_update", "level": 1, "dictionary": "pipeline_v1" } })"
+    };
+    auto const dictionary = simnet::load_shared_config(selected_dictionary.path());
+    CHECK(dictionary.compression.dictionary == "pipeline_v1");
+    CHECK(
+        simnet::fingerprint_network_compatibility(dictionary).value
+        != simnet::fingerprint_network_compatibility(ordinary).value
+    );
+
+    for (
+        auto const contents : {
+            R"({ "compression": { "mode": "none", "level": 1 } })",
+            R"({ "compression": { "mode": "none", "dictionary": "none" } })",
+            R"({ "compression": { "mode": "none", "dictionary": "pipeline_v1" } })",
+            R"({ "compression": { "mode": "whole_update" } })",
+            R"({ "compression": { "mode": "per_packet", "level": 0 } })",
+            R"({ "compression": { "mode": "per_packet", "level": 20 } })",
+            R"({ "compression": { "mode": "per_packet", "level": 1, "dictionary": "pipeline_v1" } })",
+            R"({ "compression": { "mode": "whole_update", "level": 1, "dictionary": "unknown" } })",
+            R"({ "compression": { "mode": "unknown", "level": 1 } })",
+            R"({ "compression": { "mode": "whole_update", "level": 1, "extra": true } })",
+        }) {
         auto const invalid = TemporaryConfig{"simnet_compression_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
+}
+
+TEST_CASE(
+    "pipeline_v1 loading and session identity are fixed before transport",
+    "[config][compression][dictionary][transport]"
+)
+{
+    auto const directory = maintained_config_directory();
+    auto const ordinary = simnet::load_shared_config(
+        directory / "shared_compression_zstd_delta_field_mask_aoi_radius_visual.json"
+    );
+    auto const selected = simnet::load_shared_config(
+        directory / "shared_compression_zstd_pipeline_v1_delta_field_mask_aoi_radius_visual.json"
+    );
+    auto const ordinary_settings = simnet::app::make_compression_settings(ordinary);
+    auto const selected_settings = simnet::app::make_compression_settings(selected);
+    CHECK_FALSE(simnet::app::load_compression_dictionary(ordinary_settings).has_value());
+    CHECK_THROWS(
+        simnet::app::load_compression_dictionary({
+            .mode = simnet::app::CompressionMode::WholeUpdate,
+            .level = 1,
+            .dictionary = "unknown",
+        })
+    );
+    CHECK_THROWS(
+        simnet::app::load_compression_dictionary({
+            .mode = simnet::app::CompressionMode::PerPacket,
+            .level = 1,
+            .dictionary = "pipeline_v1",
+        })
+    );
+    auto loaded = simnet::app::load_compression_dictionary(selected_settings);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->name == "pipeline_v1");
+    CHECK(loaded->dictionary.identity().dictionary_id == 0x534E0001U);
+    CHECK(loaded->dictionary.identity().byte_count == 16384U);
+    CHECK(loaded->dictionary.identity().content_fingerprint == 0x5fe43e7c3e7804a1ULL);
+
+    auto const pipeline = simnet::app::make_snapshot_pipeline(selected);
+    CHECK_THROWS(simnet::app::make_session_identity(selected, pipeline));
+    CHECK_THROWS(
+        simnet::app::make_session_identity(ordinary, pipeline, &loaded->dictionary.identity())
+    );
+    auto const ordinary_identity = simnet::app::make_session_identity(ordinary, pipeline);
+    auto const selected_identity
+        = simnet::app::make_session_identity(selected, pipeline, &loaded->dictionary.identity());
+    auto mismatched = loaded->dictionary.identity();
+    ++mismatched.content_fingerprint;
+    auto const mismatched_identity
+        = simnet::app::make_session_identity(selected, pipeline, &mismatched);
+    CHECK(
+        selected_identity.compatibility_fingerprint != ordinary_identity.compatibility_fingerprint
+    );
+    CHECK(
+        selected_identity.compatibility_fingerprint != mismatched_identity.compatibility_fingerprint
+    );
+    CHECK(
+        selected_identity.application_wire_fingerprint
+        == ordinary_identity.application_wire_fingerprint
+    );
+    CHECK(
+        selected_identity.application_wire_fingerprint
+        == simnet::pipeline_decode_signature(pipeline)
+    );
+}
+
+TEST_CASE(
+    "matched dictionary profiles differ only by dictionary selection",
+    "[config][compression][dictionary][profile]"
+)
+{
+    auto const directory = maintained_config_directory();
+    auto const control = simnet::load_shared_config(
+        directory / "shared_compression_zstd_delta_field_mask_aoi_radius_visual.json"
+    );
+    auto treatment = simnet::load_shared_config(
+        directory / "shared_compression_zstd_pipeline_v1_delta_field_mask_aoi_radius_visual.json"
+    );
+    CHECK(control.compression.dictionary == "none");
+    CHECK(treatment.compression.dictionary == "pipeline_v1");
+    treatment.compression.dictionary = control.compression.dictionary;
+    check_shared_equal(control, treatment);
 }
 
 TEST_CASE("maintained compression treatments load with matching controls", "[config][compression]")

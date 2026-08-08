@@ -25,6 +25,7 @@ add_executable(SimNetTests
     telemetry_tests.cpp
     transport_tests.cpp
     ${PROJECT_SOURCE_DIR}/app/app_compression_corpus.cpp
+    ${PROJECT_SOURCE_DIR}/app/app_compression_dictionary.cpp
     ${PROJECT_SOURCE_DIR}/app/app_evidence.cpp
 )
 target_sources(SimNetTests
@@ -35,6 +36,7 @@ target_sources(SimNetTests
             ${PROJECT_SOURCE_DIR}/app/app_camera.cppm
             ${PROJECT_SOURCE_DIR}/app/app_common.cppm
             ${PROJECT_SOURCE_DIR}/app/app_compression_corpus.cppm
+            ${PROJECT_SOURCE_DIR}/app/app_compression_dictionary.cppm
             ${PROJECT_SOURCE_DIR}/app/app_evidence.cppm
             ${PROJECT_SOURCE_DIR}/app/app_player_input.cppm
             ${PROJECT_SOURCE_DIR}/app/app_protocol.cppm
@@ -74,6 +76,10 @@ endif ()
 if (SIMNET_ENABLE_SYNTHETIC)
     target_link_libraries(SimNetTests PRIVATE simnet_synthetic)
 endif ()
+
+target_compile_definitions(
+    SimNetTests PRIVATE SIMNET_COMPRESSION_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets/compression"
+)
 
 simnet_configure_target(SimNetTests)
 

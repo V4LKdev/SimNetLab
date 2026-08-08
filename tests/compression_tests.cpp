@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include <zstd.h>
 
@@ -56,6 +59,53 @@ namespace
             value = static_cast<simnet::Byte>(state >> 24U);
         }
         return result;
+    }
+
+    [[nodiscard]] std::vector<simnet::Byte> dictionary_bytes()
+    {
+        auto const path = std::filesystem::path{__FILE__}.parent_path().parent_path()
+            / "assets/compression/pipeline_v1.zdict";
+        auto input = std::ifstream{path, std::ios::binary | std::ios::ate};
+        if (!input) {
+            return {};
+        }
+        auto const size = input.tellg();
+        if (size <= 0) {
+            return {};
+        }
+        auto result = std::vector<simnet::Byte>(static_cast<std::size_t>(size));
+        input.seekg(0);
+        input.read(
+            reinterpret_cast<char*>(result.data()),
+            static_cast<std::streamsize>(result.size())
+        );
+        return input ? result : std::vector<simnet::Byte>{};
+    }
+
+    [[nodiscard]] std::uint64_t dictionary_fingerprint(simnet::ByteSpan bytes)
+    {
+        auto hash = std::uint64_t{14695981039346656037ULL};
+        for (auto const byte : bytes) {
+            hash ^= static_cast<std::uint8_t>(byte);
+            hash *= 1099511628211ULL;
+        }
+        return hash;
+    }
+
+    [[nodiscard]] simnet::ZstdDictionaryExpectations dictionary_expectations(simnet::ByteSpan data)
+    {
+        return {
+            .dictionary_id = ZSTD_getDictID_fromDict(data.data(), data.size()),
+            .byte_count = static_cast<std::uint32_t>(data.size()),
+            .content_fingerprint = dictionary_fingerprint(data),
+        };
+    }
+
+    [[nodiscard]] simnet::ZstdDictionary pipeline_dictionary()
+    {
+        auto data = dictionary_bytes();
+        auto const expectations = dictionary_expectations(data);
+        return simnet::ZstdDictionary{std::move(data), 1, expectations};
     }
 }
 
@@ -362,4 +412,302 @@ TEST_CASE("unknown Zstd frame sizes are rejected without poisoning later input",
     );
     REQUIRE(simnet::decompress_bytes(decompressor, valid, limits(), output).valid);
     CHECK(output == input);
+}
+
+TEST_CASE(
+    "pipeline_v1 dictionary identity and prepared state are reusable",
+    "[compression][dictionary]"
+)
+{
+    auto dictionary = pipeline_dictionary();
+    CHECK(dictionary.identity().dictionary_id == 0x534E0001U);
+    CHECK(dictionary.identity().byte_count == 16384U);
+    CHECK(dictionary.identity().content_fingerprint == 0x5fe43e7c3e7804a1ULL);
+
+    auto compressor = simnet::ZstdCompressor{};
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto const input = compressible_bytes();
+    auto first = std::vector<simnet::Byte>{};
+    auto second = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), first).valid
+    );
+    REQUIRE(
+        simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), second)
+            .valid
+    );
+    CHECK(second == first);
+
+    auto restored = std::vector<simnet::Byte>{};
+    for (auto iteration = 0; iteration < 3; ++iteration) {
+        auto const report = simnet::decompress_bytes_with_dictionary(
+            decompressor,
+            dictionary,
+            first,
+            limits(),
+            restored
+        );
+        REQUIRE(report.valid);
+        CHECK(report.encoding == simnet::CompressionEncoding::ZstdDictionary);
+        CHECK(restored == input);
+    }
+}
+
+TEST_CASE(
+    "dictionary compression is encoding 2 with an embedded nonzero dictionary ID",
+    "[compression][dictionary][wire]"
+)
+{
+    auto dictionary = pipeline_dictionary();
+    auto compressor = simnet::ZstdCompressor{};
+    auto const input = compressible_bytes();
+    auto envelope = std::vector<simnet::Byte>{};
+    auto const report
+        = simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), envelope);
+    REQUIRE(report.valid);
+    REQUIRE(report.encoding == simnet::CompressionEncoding::ZstdDictionary);
+    REQUIRE(envelope.size() > simnet::compression_envelope_bytes);
+    CHECK(envelope[8] == simnet::Byte{2U});
+    auto const payload = simnet::ByteSpan{envelope}.subspan(simnet::compression_envelope_bytes);
+    CHECK(ZSTD_getDictID_fromFrame(payload.data(), payload.size()) == 0x534E0001U);
+}
+
+TEST_CASE("dictionary mode has a truthful Raw envelope fallback", "[compression][dictionary]")
+{
+    auto dictionary = pipeline_dictionary();
+    auto compressor = simnet::ZstdCompressor{};
+    auto const input = bytes("x");
+    auto envelope = std::vector<simnet::Byte>{};
+    auto const report
+        = simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), envelope);
+    REQUIRE(report.valid);
+    CHECK(report.encoding == simnet::CompressionEncoding::Raw);
+    CHECK(report.envelope_bytes == simnet::compression_envelope_bytes);
+    CHECK(report.encoded_payload_bytes == input.size());
+    CHECK(report.output_bytes == input.size() + simnet::compression_envelope_bytes);
+
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto restored = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::decompress_bytes_with_dictionary(
+            decompressor,
+            dictionary,
+            envelope,
+            limits(),
+            restored
+        )
+            .valid
+    );
+    CHECK(restored == input);
+}
+
+TEST_CASE(
+    "dictionary compression and decompression enforce exact bounds transactionally",
+    "[compression][dictionary][bounds][transaction]"
+)
+{
+    auto dictionary = pipeline_dictionary();
+    auto compressor = simnet::ZstdCompressor{};
+    auto const input = compressible_bytes();
+    auto envelope = bytes("unchanged");
+    auto const unchanged = envelope;
+    CHECK_FALSE(
+        simnet::compress_bytes_with_dictionary(
+            compressor,
+            dictionary,
+            input,
+            {
+                .max_uncompressed_bytes = static_cast<std::uint32_t>(input.size()),
+                .max_output_bytes = 1U,
+            },
+            envelope
+        )
+            .valid
+    );
+    CHECK(envelope == unchanged);
+
+    REQUIRE(
+        simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), envelope)
+            .valid
+    );
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto restored = bytes("unchanged");
+    auto const restored_unchanged = restored;
+    CHECK_FALSE(
+        simnet::decompress_bytes_with_dictionary(
+            decompressor,
+            dictionary,
+            envelope,
+            {
+                .max_uncompressed_bytes = static_cast<std::uint32_t>(input.size() - 1U),
+                .max_output_bytes = static_cast<std::uint32_t>(envelope.size()),
+            },
+            restored
+        )
+            .valid
+    );
+    CHECK(restored == restored_unchanged);
+}
+
+TEST_CASE(
+    "ordinary and dictionary Zstd decode to deterministic identical bytes",
+    "[compression][dictionary][determinism]"
+)
+{
+    auto dictionary = pipeline_dictionary();
+    auto compressor = simnet::ZstdCompressor{};
+    auto const input = compressible_bytes();
+    auto ordinary = std::vector<simnet::Byte>{};
+    auto dictionary_encoded = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::compress_bytes(
+            compressor,
+            input,
+            1,
+            limits(),
+            simnet::CompressionEnvelopePolicy::Always,
+            ordinary
+        )
+            .valid
+    );
+    REQUIRE(
+        simnet::compress_bytes_with_dictionary(
+            compressor,
+            dictionary,
+            input,
+            limits(),
+            dictionary_encoded
+        )
+            .valid
+    );
+
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto ordinary_result = std::vector<simnet::Byte>{};
+    auto dictionary_result = std::vector<simnet::Byte>{};
+    REQUIRE(simnet::decompress_bytes(decompressor, ordinary, limits(), ordinary_result).valid);
+    REQUIRE(
+        simnet::decompress_bytes_with_dictionary(
+            decompressor,
+            dictionary,
+            dictionary_encoded,
+            limits(),
+            dictionary_result
+        )
+            .valid
+    );
+    CHECK(dictionary_result == ordinary_result);
+    CHECK(dictionary_result == input);
+}
+
+TEST_CASE(
+    "dictionary construction rejects missing corrupt oversized and mismatched assets",
+    "[compression][dictionary][failure]"
+)
+{
+    auto valid = dictionary_bytes();
+    REQUIRE(valid.size() == 16384U);
+    auto const expected = dictionary_expectations(valid);
+
+    CHECK_THROWS(simnet::ZstdDictionary({}, 1, expected));
+    CHECK_THROWS(
+        simnet::ZstdDictionary(
+            std::vector<simnet::Byte>(simnet::maximum_zstd_dictionary_bytes + 1U),
+            1,
+            expected
+        )
+    );
+    auto truncated = valid;
+    truncated.pop_back();
+    CHECK_THROWS(simnet::ZstdDictionary(std::move(truncated), 1, expected));
+    auto corrupt = valid;
+    corrupt[32] ^= simnet::Byte{0x80U};
+    CHECK_THROWS(simnet::ZstdDictionary(std::move(corrupt), 1, expected));
+    auto wrong_id = expected;
+    ++wrong_id.dictionary_id;
+    CHECK_THROWS(simnet::ZstdDictionary(valid, 1, wrong_id));
+    auto wrong_hash = expected;
+    ++wrong_hash.content_fingerprint;
+    CHECK_THROWS(simnet::ZstdDictionary(valid, 1, wrong_hash));
+    CHECK_THROWS(simnet::ZstdDictionary(valid, 0, expected));
+}
+
+TEST_CASE(
+    "dictionary frames reject absent wrong corrupt truncated and trailing input transactionally",
+    "[compression][dictionary][malformed][transaction]"
+)
+{
+    auto dictionary = pipeline_dictionary();
+    auto compressor = simnet::ZstdCompressor{};
+    auto const input = compressible_bytes();
+    auto valid = std::vector<simnet::Byte>{};
+    REQUIRE(
+        simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), valid).valid
+    );
+
+    auto decompressor = simnet::ZstdDecompressor{};
+    auto output = bytes("unchanged");
+    auto const original = output;
+    CHECK_FALSE(simnet::decompress_bytes(decompressor, valid, limits(), output).valid);
+    CHECK(output == original);
+
+    auto wrong_bytes = dictionary_bytes();
+    wrong_bytes[4] ^= simnet::Byte{0x01U};
+    auto wrong_dictionary = simnet::ZstdDictionary{
+        wrong_bytes,
+        1,
+        dictionary_expectations(wrong_bytes),
+    };
+    CHECK_FALSE(
+        simnet::decompress_bytes_with_dictionary(
+            decompressor,
+            wrong_dictionary,
+            valid,
+            limits(),
+            output
+        )
+            .valid
+    );
+    CHECK(output == original);
+
+    auto reject = [&](std::vector<simnet::Byte> malformed, std::uint32_t maximum = 8192U) {
+        CHECK_FALSE(
+            simnet::decompress_bytes_with_dictionary(
+                decompressor,
+                dictionary,
+                malformed,
+                limits(maximum),
+                output
+            )
+                .valid
+        );
+        CHECK(output == original);
+    };
+    auto corrupt = valid;
+    corrupt.back() ^= simnet::Byte{0x80U};
+    reject(std::move(corrupt));
+    auto truncated = valid;
+    truncated.pop_back();
+    reject(std::move(truncated));
+    auto trailing = valid;
+    trailing.push_back(simnet::Byte{});
+    write_u32(trailing, 13U, static_cast<std::uint32_t>(trailing.size() - 17U));
+    reject(std::move(trailing));
+    auto concatenated = valid;
+    concatenated.insert(
+        concatenated.end(),
+        valid.begin() + static_cast<std::ptrdiff_t>(simnet::compression_envelope_bytes),
+        valid.end()
+    );
+    write_u32(
+        concatenated,
+        13U,
+        static_cast<std::uint32_t>(concatenated.size() - simnet::compression_envelope_bytes)
+    );
+    reject(std::move(concatenated), 16384U);
+    auto wrong_size = valid;
+    write_u32(wrong_size, 9U, static_cast<std::uint32_t>(input.size() - 1U));
+    reject(std::move(wrong_size));
+    auto ordinary_encoding = valid;
+    ordinary_encoding[8] = simnet::Byte{1U};
+    reject(std::move(ordinary_encoding));
 }
