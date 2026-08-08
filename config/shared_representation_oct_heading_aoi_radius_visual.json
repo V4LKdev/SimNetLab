@@ -1,20 +1,15 @@
 {
-  "run": {
-    "seed": 12345
-  },
+  "run": { "seed": 12345 },
   "snapshot_delivery": {
     "mode": "reliable_sequenced",
     "full_replace_after_unacknowledged_updates": 32
   },
   "simulation": {
     "tick_rate_hz": 60,
-    "world_half": 220,
-    "initial_boid_count": 1000
+    "world_half": 170,
+    "initial_boid_count": 1500
   },
-  "spatial": {
-    "cell_size": 18,
-    "max_neighbors": 64
-  },
+  "spatial": { "cell_size": 18, "max_neighbors": 64 },
   "boids": {
     "enable_separation": true,
     "enable_alignment": true,
@@ -35,12 +30,12 @@
     "containment_margin": 22.5,
     "separation_acceleration": 10,
     "containment_acceleration": 9,
-    "alignment_acceleration": 1.2,
-    "cohesion_acceleration": 2.0,
-    "wander_acceleration": 0.55,
+    "alignment_acceleration": 1.1,
+    "cohesion_acceleration": 2.2,
+    "wander_acceleration": 0.75,
     "wander_frequency_hz": 0.35,
-    "hue_assimilation_rate": 0.05,
-    "hue_drift_rate": 0.008
+    "hue_assimilation_rate": 0.04,
+    "hue_drift_rate": 0.006
   },
   "player": {
     "cruise_speed": 8.0,
@@ -58,17 +53,14 @@
   "pipeline": {
     "send_interval_ticks": 1,
     "enable_incremental": false,
-    "enable_quantization": false,
-    "enable_oct_heading": false,
+    "enable_quantization": true,
+    "enable_oct_heading": true,
     "enable_delta": false,
     "enable_bit_packing": false,
-    "area_of_interest": {
-      "mode": "none"
-    }
+    "area_of_interest": { "mode": "radius", "radius": 80.0 },
+    "level_of_detail": { "mode": "none" }
   },
-  "compression": {
-    "mode": "none"
-  },
+  "compression": { "mode": "none" },
   "packetization": {
     "enabled": true,
     "max_payload_bytes": 1200,

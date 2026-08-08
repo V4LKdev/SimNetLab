@@ -56,9 +56,12 @@
     "pitch_limit_degrees": 80.0
   },
   "pipeline": {
+    "send_interval_ticks": 1,
     "enable_incremental": false,
     "enable_quantization": false,
+    "enable_oct_heading": false,
     "enable_delta": false,
+    "enable_bit_packing": false,
     "area_of_interest": {
       "mode": "none"
     }

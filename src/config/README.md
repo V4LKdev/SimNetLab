@@ -31,6 +31,25 @@ interval of at least two ticks, and a larger Far interval no greater than 65,535
 cadence is fixed at every tick. These values participate in runtime and network compatibility but
 do not change the pipeline decode signature.
 
+Shared `pipeline.send_interval_ticks` is an unsigned integer from 1 through `UINT32_MAX`. One
+preserves the every-tick control. Larger values enable deterministic emission only on divisible
+authoritative ticks. Cadence participates in runtime and network compatibility fingerprints but
+does not change the pipeline decode signature.
+
+Shared `pipeline.enable_quantization`, `enable_oct_heading`, and `enable_bit_packing` select the
+fixed production record layouts. Octahedral heading requires quantization. Bit packing requires
+both quantization and octahedral heading. Position bounds remain derived from the shared world
+extent. The complete record widths are 30 bytes for Raw, 18 bytes for Quantized, and 16 bytes for
+both Quantized Oct Heading and Bit Packed Quantized Oct Heading. The two 16-byte layouts preserve
+identical canonical precision. Bit packing is retained as an honest neutral-size treatment.
+
+The matched radius-AOI visual profiles are `shared_representation_raw_aoi_radius_visual.json`,
+`shared_representation_quantized_aoi_radius_visual.json`,
+`shared_representation_oct_heading_aoi_radius_visual.json`,
+`shared_representation_bit_packed_aoi_radius_visual.json`, and
+`shared_cadence_reduced_aoi_radius_visual.json`. The Raw profile is also the every-tick cadence
+control. The cadence treatment emits every four authoritative ticks.
+
 Shared `compression` selects `none`, `whole_update`, or `per_packet`. Active modes require an
 explicit Zstd level from 1 through 19. Whole-update mode compresses the complete encoded update
 before packetization. Per-packet mode independently compresses complete application packets after

@@ -16,9 +16,12 @@
     "max_neighbors": 64
   },
   "pipeline": {
+    "send_interval_ticks": 1,
     "enable_incremental": false,
     "enable_quantization": false,
+    "enable_oct_heading": false,
     "enable_delta": true,
+    "enable_bit_packing": false,
     "area_of_interest": {
       "mode": "radius",
       "radius": 160.0

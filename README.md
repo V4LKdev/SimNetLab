@@ -13,7 +13,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
 - Bounded multi-client Server coordination with isolated Player and stationary observer sessions
 - Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
-- Application configuration for full replacement, incremental selection, quantization, exact-baseline delta reconstruction, radius or conical-FOV AOI, and packetization
+- Application configuration for cadence, full replacement, incremental selection, quantization, octahedral headings, bit packing, exact-baseline delta reconstruction, radius or conical-FOV AOI, and packetization
 - Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
 - Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
 - 1,000-entity Server to Client replication in the bounded runtime path
@@ -95,6 +95,21 @@ neutral input state. There is no
 client prediction yet.
 
 The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set the local `visualization.entity_mesh_path` to another OBJ file to replace it. An empty or unavailable path keeps the instanced wedge fallback.
+
+For the matched radius-AOI representation control, start both processes with the same shared
+profile:
+
+```sh
+build/debug/app/Server --config config/server_visual.json --shared-config config/shared_representation_raw_aoi_radius_visual.json
+build/debug/app/Client --config config/client_visual.json --shared-config config/shared_representation_raw_aoi_radius_visual.json
+```
+
+Replace the shared profile with `shared_representation_quantized_aoi_radius_visual.json`,
+`shared_representation_oct_heading_aoi_radius_visual.json`,
+`shared_representation_bit_packed_aoi_radius_visual.json`, or
+`shared_cadence_reduced_aoi_radius_visual.json` for each matched treatment. The bit-packed and
+byte-aligned octahedral records are both 16 bytes. The reduced-cadence treatment emits every four
+authoritative ticks.
 
 ## Project structure
 

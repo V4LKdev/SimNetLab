@@ -11,6 +11,9 @@
 - `should_emit_snapshot` provides the pure cadence preflight used before baseline resolution.
 - `encode_snapshot` produces an encoded update or a skipped result. Emitted output includes the
   exact complete logical Client snapshot represented by its canonical encoded values.
+- Optional representation quality accounting compares only produced source upserts with their
+  already prepared canonical records. Position error uses world units. Heading angular error uses
+  degrees. Disabled collection adds no per-record quality math.
 - `decode_update` validates encoded update bytes and returns a state update or an error report.
 - `pipeline_decode_signature` identifies the receiver-side representation.
 
@@ -19,8 +22,8 @@ Each concurrent caller needs its own `ClientReplicationState` and `PipelineScrat
 ## Supported techniques
 
 `SendInterval` uses the authoritative snapshot tick. Interval `1` emits every tick. Interval `N > 1`
-emits only when `tick % N == 0`. Other ticks return `Skipped` with reason `SendInterval` and do
-not change sequence, selection, scratch, or baseline state. `Incremental` without `Delta`
+emits only when `tick % N == 0`. Other ticks return `Skipped` and do not change sequence,
+selection, scratch, or baseline state. `Incremental` without `Delta`
 schedules round-robin candidate upserts. `Delta` filters scheduled candidates against a retained
 explicit baseline, while retaining every baseline-only delete. The first non-Delta
 `Incremental` emission is a complete `FullReplace` and does not advance the cursor. Later
@@ -39,6 +42,12 @@ positions within configured bounds. `OctHeading` requires quantization and encod
 octahedral components.
 
 `BitPacking` requires quantization and octahedral headings. The current record layout totals 128 bits, which is also 16 bytes in the byte-aligned representation. It is retained for technique evaluation even though it currently does not reduce record size.
+
+Every representation report identifies the active complete-record layout and width. When quality
+collection is requested, it reports Euclidean position error and normalized heading angular error
+for produced upserts only. Delta-suppressed candidates and deletes are not quality samples. Raw
+records report exact zero error. Byte-aligned and bit-packed octahedral records report identical
+canonical precision.
 
 ## Stage order and compatibility
 
