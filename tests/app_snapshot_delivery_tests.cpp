@@ -444,8 +444,8 @@ TEST_CASE(
 )
 {
     auto pipeline = simnet::PipelineDefinition{};
-    pipeline.techniques
-        = simnet::PipelineTechniqueFlags::Incremental | simnet::PipelineTechniqueFlags::Delta;
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental
+        | simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::DeltaFieldMask;
     pipeline.incremental.max_entities_per_update = 1U;
     auto encode_state = simnet::ClientReplicationState{};
     auto decode_state = simnet::ClientReplicationState{};
@@ -487,22 +487,30 @@ TEST_CASE(
             }
         );
     };
-    auto decode_and_reconstruct
-        = [&](simnet::EncodeOutput const& encoded, simnet::WorldSnapshot const& baseline) {
-              auto decoded
-                  = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
-              REQUIRE(decoded.report.valid);
-              auto reconstructed = simnet::WorldSnapshot{};
-              REQUIRE(
-                  simnet::reconstruct_world_snapshot_unchecked(
-                      decoded.update.kind == simnet::SnapshotKind::Patch ? &baseline : nullptr,
-                      decoded.update,
-                      reconstructed
-                  )
-                      .valid
-              );
-              return reconstructed;
-          };
+    auto decode_and_reconstruct = [&](simnet::EncodeOutput const& encoded,
+                                      simnet::WorldSnapshot const& baseline) {
+        auto decoded = simnet::decode_update(
+            pipeline,
+            decode_state,
+            {
+                .bytes = encoded.update.bytes,
+                .baseline_snapshot
+                = encoded.report.snapshot_kind == simnet::SnapshotKind::Patch ? &baseline : nullptr,
+                .baseline_sequence = encoded.report.baseline_sequence,
+            }
+        );
+        REQUIRE(decoded.report.valid);
+        auto reconstructed = simnet::WorldSnapshot{};
+        REQUIRE(
+            simnet::reconstruct_world_snapshot_unchecked(
+                decoded.update.kind == simnet::SnapshotKind::Patch ? &baseline : nullptr,
+                decoded.update,
+                reconstructed
+            )
+                .valid
+        );
+        return reconstructed;
+    };
 
     auto initial = snapshot({1U, 7U});
     initial.tick = 1U;

@@ -76,6 +76,14 @@ namespace
         }
         return true;
     }
+
+    void write_u32(std::vector<simnet::Byte>& bytes, std::size_t offset, std::uint32_t value)
+    {
+        bytes[offset] = static_cast<simnet::Byte>((value >> 24U) & 0xFFU);
+        bytes[offset + 1U] = static_cast<simnet::Byte>((value >> 16U) & 0xFFU);
+        bytes[offset + 2U] = static_cast<simnet::Byte>((value >> 8U) & 0xFFU);
+        bytes[offset + 3U] = static_cast<simnet::Byte>(value & 0xFFU);
+    }
 }
 
 TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][delta]")
@@ -159,6 +167,10 @@ TEST_CASE("delta pipeline preserves baseline and patch semantics", "[pipeline][d
     CHECK(delta.report.delta.changed_existing_count == 1U);
     CHECK(delta.report.delta.spawned_count == 1U);
     CHECK(delta.report.delta.produced_upsert_count == delta.report.upsert_count);
+    CHECK(delta.report.delta.whole_record_existing_upsert_count == 1U);
+    CHECK(delta.report.delta.masked_existing_upsert_count == 0U);
+    CHECK(delta.report.delta.complete_record_equivalent_bytes == 60U);
+    CHECK(delta.report.delta.actual_upsert_representation_bytes == 60U);
 
     auto const decoded
         = simnet::decode_update(pipeline, decode_state, {.bytes = delta.update.bytes});
@@ -1668,7 +1680,8 @@ TEST_CASE(
     auto pipeline = simnet::PipelineDefinition{};
     pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental
         | simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::Quantization
-        | simnet::PipelineTechniqueFlags::OctHeading | simnet::PipelineTechniqueFlags::BitPacking;
+        | simnet::PipelineTechniqueFlags::OctHeading | simnet::PipelineTechniqueFlags::BitPacking
+        | simnet::PipelineTechniqueFlags::DeltaFieldMask;
     pipeline.incremental.max_entities_per_update = 3;
     pipeline.quantization.position_bounds = simnet::make_centered_bounds(100.0F);
 
@@ -1715,8 +1728,15 @@ TEST_CASE(
         );
         REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
         REQUIRE(encoded.report.baseline_sequence != 0U);
-        auto const decoded
-            = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
+        auto const decoded = simnet::decode_update(
+            pipeline,
+            decode_state,
+            {
+                .bytes = encoded.update.bytes,
+                .baseline_snapshot = &baseline_less.resulting_snapshot,
+                .baseline_sequence = baseline_less.update.sequence,
+            }
+        );
         REQUIRE(decoded.report.valid);
         return decoded.update;
     };
@@ -1999,4 +2019,410 @@ TEST_CASE(
         );
         CHECK(same_snapshot_bits(delta.resulting_snapshot, reconstructed));
     }
+}
+
+TEST_CASE(
+    "field-mask Delta uses semantic masks and writes spawn IDs once",
+    "[pipeline][delta][field-mask][wire]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques
+        = simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::DeltaFieldMask;
+    auto const baseline = make_snapshot(
+        1U,
+        {
+            {.id = 1U,
+             .classification = known_classification,
+             .position = {1.0F, 2.0F, 3.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 10U},
+            {.id = 2U,
+             .classification = known_classification,
+             .position = {2.0F, 3.0F, 4.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 20U},
+            {.id = 3U,
+             .classification = known_classification,
+             .position = {3.0F, 4.0F, 5.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 30U},
+            {.id = 4U,
+             .classification = known_classification,
+             .position = {4.0F, 5.0F, 6.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 40U},
+            {.id = 5U,
+             .classification = known_classification,
+             .position = {5.0F, 6.0F, 7.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 50U},
+            {.id = 7U,
+             .classification = known_classification,
+             .position = {7.0F, 8.0F, 9.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 70U},
+        }
+    );
+    auto current = baseline;
+    current.tick = 2U;
+    current.classifications[0] = unknown_classification;
+    current.positions[1] = {20.0F, 21.0F, 22.0F};
+    current.headings[2] = {0.0F, 1.0F, 0.0F};
+    current.hues[3] = 44U;
+    current.ids[5] = 6U;
+    current.positions[5] = {6.0F, 7.0F, 8.0F};
+    current.hues[5] = 60U;
+
+    auto encode_state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto const full
+        = simnet::encode_snapshot(pipeline, encode_state, scratch, {.snapshot = &baseline});
+    REQUIRE(full.kind == simnet::EncodeResultKind::Update);
+    CHECK(full.update.bytes.size() == encoded_update_header_bytes + baseline.size() * 30U);
+
+    auto const delta = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        scratch,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    REQUIRE(delta.kind == simnet::EncodeResultKind::Update);
+    REQUIRE(delta.report.snapshot_kind == simnet::SnapshotKind::Patch);
+    CHECK(delta.report.delta.candidate_count == 6U);
+    CHECK(delta.report.delta.unchanged_count == 1U);
+    CHECK(delta.report.delta.changed_existing_count == 4U);
+    CHECK(delta.report.delta.spawned_count == 1U);
+    CHECK(delta.report.delta.masked_existing_upsert_count == 4U);
+    CHECK(delta.report.delta.whole_record_existing_upsert_count == 0U);
+    CHECK(delta.report.delta.classification_inclusion_count == 1U);
+    CHECK(delta.report.delta.position_inclusion_count == 1U);
+    CHECK(delta.report.delta.heading_inclusion_count == 1U);
+    CHECK(delta.report.delta.hue_inclusion_count == 1U);
+    CHECK(delta.report.delta.complete_record_equivalent_bytes == 150U);
+    CHECK(delta.report.delta.actual_upsert_representation_bytes == 77U);
+    CHECK(delta.update.bytes.size() == encoded_update_header_bytes + 4U + 77U);
+
+    auto constexpr first_upsert = encoded_update_header_bytes + 4U;
+    CHECK(std::to_integer<std::uint8_t>(delta.update.bytes[first_upsert + 4U]) == 0x01U);
+    CHECK(std::to_integer<std::uint8_t>(delta.update.bytes[first_upsert + 10U]) == 0x02U);
+    CHECK(std::to_integer<std::uint8_t>(delta.update.bytes[first_upsert + 27U]) == 0x04U);
+    CHECK(std::to_integer<std::uint8_t>(delta.update.bytes[first_upsert + 44U]) == 0x08U);
+    CHECK(std::to_integer<std::uint8_t>(delta.update.bytes[first_upsert + 50U]) == 0x80U);
+
+    auto decode_state = simnet::ClientReplicationState{};
+    auto const inspected
+        = simnet::inspect_encoded_update_header(pipeline, decode_state, delta.update.bytes);
+    REQUIRE(inspected.valid());
+    CHECK(inspected.sequence == delta.update.sequence);
+    CHECK(inspected.baseline_sequence == full.update.sequence);
+    CHECK(decode_state.latest_remote_sequence == 0U);
+    auto const decoded = simnet::decode_update(
+        pipeline,
+        decode_state,
+        {
+            .bytes = delta.update.bytes,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    REQUIRE(decoded.report.valid);
+    REQUIRE(decoded.update.upserts.size() == 5U);
+    auto reconstructed = simnet::WorldSnapshot{};
+    REQUIRE(
+        simnet::reconstruct_world_snapshot_unchecked(
+            &full.resulting_snapshot,
+            decoded.update,
+            reconstructed
+        )
+            .valid
+    );
+    CHECK(same_snapshot_bits(delta.resulting_snapshot, reconstructed));
+}
+
+TEST_CASE(
+    "field-mask Delta matches whole-record Delta for every representation",
+    "[pipeline][delta][field-mask][representation]"
+)
+{
+    auto pipelines = std::array<simnet::PipelineDefinition, 4>{};
+    pipelines[0].techniques = simnet::PipelineTechniqueFlags::Delta;
+    pipelines[1].techniques
+        = simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::Quantization;
+    pipelines[2] = pipelines[1];
+    pipelines[2].techniques |= simnet::PipelineTechniqueFlags::OctHeading;
+    pipelines[3] = pipelines[2];
+    pipelines[3].techniques |= simnet::PipelineTechniqueFlags::BitPacking;
+
+    for (auto pipeline : pipelines) {
+        pipeline.quantization.position_bounds = simnet::make_centered_bounds(100.0F);
+        auto const baseline = make_snapshot(
+            1U,
+            {{.id = 1U,
+              .classification = known_classification,
+              .position = {1.0F, 2.0F, 3.0F},
+              .heading = simnet::normalize_or({1.0F, 2.0F, 3.0F}, {.x = 1.0F}),
+              .hue = 42U}}
+        );
+        auto current = baseline;
+        current.tick = 2U;
+        current.hues[0] = 43U;
+
+        auto whole_state = simnet::ClientReplicationState{};
+        auto whole_scratch = simnet::PipelineScratch{};
+        auto const whole_full = simnet::encode_snapshot(
+            pipeline,
+            whole_state,
+            whole_scratch,
+            {.snapshot = &baseline}
+        );
+        auto const whole_patch = simnet::encode_snapshot(
+            pipeline,
+            whole_state,
+            whole_scratch,
+            {
+                .snapshot = &current,
+                .baseline_snapshot = &whole_full.resulting_snapshot,
+                .baseline_sequence = whole_full.update.sequence,
+            }
+        );
+
+        pipeline.techniques |= simnet::PipelineTechniqueFlags::DeltaFieldMask;
+        auto masked_state = simnet::ClientReplicationState{};
+        auto masked_scratch = simnet::PipelineScratch{};
+        auto const masked_full = simnet::encode_snapshot(
+            pipeline,
+            masked_state,
+            masked_scratch,
+            {.snapshot = &baseline}
+        );
+        auto const masked_patch = simnet::encode_snapshot(
+            pipeline,
+            masked_state,
+            masked_scratch,
+            {
+                .snapshot = &current,
+                .baseline_snapshot = &masked_full.resulting_snapshot,
+                .baseline_sequence = masked_full.update.sequence,
+            }
+        );
+        CHECK(same_snapshot_bits(whole_patch.resulting_snapshot, masked_patch.resulting_snapshot));
+        CHECK(masked_patch.update.bytes.size() < whole_patch.update.bytes.size());
+        CHECK(
+            whole_patch.report.delta.actual_upsert_representation_bytes
+            == whole_patch.report.delta.complete_record_equivalent_bytes
+        );
+        CHECK(masked_patch.report.delta.actual_upsert_representation_bytes == 6U);
+        CHECK(
+            masked_patch.report.delta.complete_record_equivalent_bytes
+            == masked_patch.report.representation.record_bytes
+        );
+
+        auto decode_state = simnet::ClientReplicationState{};
+        auto const decoded = simnet::decode_update_unchecked(
+            pipeline,
+            decode_state,
+            {
+                .bytes = masked_patch.update.bytes,
+                .baseline_snapshot = &masked_full.resulting_snapshot,
+                .baseline_sequence = masked_full.update.sequence,
+            }
+        );
+        REQUIRE(decoded.report.valid);
+        CHECK(decoded.update.upserts.front().hue == 43U);
+
+        auto all_fields = baseline;
+        all_fields.tick = 3U;
+        all_fields.classifications[0] = unknown_classification;
+        all_fields.positions[0] = {-9.0F, 8.0F, -7.0F};
+        all_fields.headings[0] = {0.0F, 1.0F, 0.0F};
+        all_fields.hues[0] = 99U;
+        auto const all_fields_patch = simnet::encode_snapshot(
+            pipeline,
+            masked_state,
+            masked_scratch,
+            {
+                .snapshot = &all_fields,
+                .baseline_snapshot = &masked_full.resulting_snapshot,
+                .baseline_sequence = masked_full.update.sequence,
+            }
+        );
+        CHECK(
+            all_fields_patch.report.delta.actual_upsert_representation_bytes
+            == all_fields_patch.report.delta.complete_record_equivalent_bytes + 1U
+        );
+    }
+}
+
+TEST_CASE(
+    "field-mask decode rejects malformed records without state advancement",
+    "[pipeline][delta][field-mask][malformed]"
+)
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques
+        = simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::DeltaFieldMask;
+    auto const baseline = make_snapshot(
+        1U,
+        {
+            {.id = 1U,
+             .classification = known_classification,
+             .position = {1.0F, 2.0F, 3.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 10U},
+            {.id = 2U,
+             .classification = known_classification,
+             .position = {2.0F, 3.0F, 4.0F},
+             .heading = {1.0F, 0.0F, 0.0F},
+             .hue = 20U},
+        }
+    );
+    auto current = baseline;
+    current.tick = 2U;
+    current.positions[0].x = 9.0F;
+    current.hues[1] = 21U;
+    auto encode_state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto const full
+        = simnet::encode_snapshot(pipeline, encode_state, scratch, {.snapshot = &baseline});
+    auto const patch = simnet::encode_snapshot(
+        pipeline,
+        encode_state,
+        scratch,
+        {
+            .snapshot = &current,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    REQUIRE(patch.update.bytes.size() == encoded_update_header_bytes + 23U);
+
+    auto invalid_baseline = full.resulting_snapshot;
+    invalid_baseline.headings[0] = {};
+    auto checked_state = simnet::ClientReplicationState{};
+    auto const checked = simnet::decode_update(
+        pipeline,
+        checked_state,
+        {
+            .bytes = patch.update.bytes,
+            .baseline_snapshot = &invalid_baseline,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    CHECK_FALSE(checked.report.valid);
+    CHECK(checked.report.error.find("decode baseline is invalid") != std::string::npos);
+    CHECK(checked_state.latest_remote_sequence == 0U);
+    CHECK(checked.update.empty());
+
+    auto missing_state = simnet::ClientReplicationState{};
+    auto const missing
+        = simnet::decode_update_unchecked(pipeline, missing_state, {.bytes = patch.update.bytes});
+    CHECK_FALSE(missing.report.valid);
+    CHECK(missing.report.error.find("exact retained baseline") != std::string::npos);
+    CHECK(missing_state.latest_remote_sequence == 0U);
+
+    auto cases = std::vector<std::vector<simnet::Byte>>{};
+    auto malformed = patch.update.bytes;
+    malformed[encoded_update_header_bytes + 4U] = simnet::Byte{};
+    cases.push_back(malformed);
+    malformed = patch.update.bytes;
+    malformed[encoded_update_header_bytes + 4U] = static_cast<simnet::Byte>(0x10U);
+    cases.push_back(malformed);
+    malformed = patch.update.bytes;
+    write_u32(malformed, encoded_update_header_bytes, 99U);
+    cases.push_back(malformed);
+    malformed = patch.update.bytes;
+    malformed[encoded_update_header_bytes + 4U] = static_cast<simnet::Byte>(0x80U);
+    cases.push_back(malformed);
+    malformed = patch.update.bytes;
+    write_u32(malformed, encoded_update_header_bytes + 17U, 1U);
+    cases.push_back(malformed);
+    malformed = patch.update.bytes;
+    malformed.pop_back();
+    write_u32(malformed, 41U, 22U);
+    cases.push_back(malformed);
+    malformed = patch.update.bytes;
+    malformed.push_back(simnet::Byte{0xFFU});
+    write_u32(malformed, 41U, 24U);
+    cases.push_back(malformed);
+
+    for (auto const& bytes : cases) {
+        auto state = simnet::ClientReplicationState{};
+        auto const decoded = simnet::decode_update_unchecked(
+            pipeline,
+            state,
+            {
+                .bytes = bytes,
+                .baseline_snapshot = &full.resulting_snapshot,
+                .baseline_sequence = full.update.sequence,
+            }
+        );
+        CHECK_FALSE(decoded.report.valid);
+        CHECK(decoded.update.empty());
+        CHECK(state.latest_remote_sequence == 0U);
+    }
+
+    auto delete_current = baseline;
+    delete_current.tick = 3U;
+    delete_current.ids.pop_back();
+    delete_current.classifications.pop_back();
+    delete_current.positions.pop_back();
+    delete_current.headings.pop_back();
+    delete_current.hues.pop_back();
+    delete_current.hues[0] = 11U;
+    auto overlap_state = simnet::ClientReplicationState{};
+    overlap_state.next_sequence = patch.update.sequence + 1U;
+    auto overlap_scratch = simnet::PipelineScratch{};
+    auto overlap = simnet::encode_snapshot(
+        pipeline,
+        overlap_state,
+        overlap_scratch,
+        {
+            .snapshot = &delete_current,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    REQUIRE(overlap.report.delete_count == 1U);
+    REQUIRE(overlap.report.upsert_count == 1U);
+    write_u32(overlap.update.bytes, encoded_update_header_bytes, 1U);
+    auto overlap_decode_state = simnet::ClientReplicationState{};
+    auto const overlap_decoded = simnet::decode_update_unchecked(
+        pipeline,
+        overlap_decode_state,
+        {
+            .bytes = overlap.update.bytes,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
+    CHECK_FALSE(overlap_decoded.report.valid);
+    CHECK(overlap_decoded.update.empty());
+    CHECK(overlap_decode_state.latest_remote_sequence == 0U);
+
+    auto whole_pipeline = pipeline;
+    whole_pipeline.techniques = simnet::PipelineTechniqueFlags::Delta;
+    auto incompatible_state = simnet::ClientReplicationState{};
+    auto const incompatible = simnet::inspect_encoded_update_header(
+        whole_pipeline,
+        incompatible_state,
+        patch.update.bytes
+    );
+    CHECK_FALSE(incompatible.valid());
+    CHECK(
+        (incompatible.error == simnet::EncodedUpdateHeaderError::UnsupportedVersion
+         || incompatible.error == simnet::EncodedUpdateHeaderError::SignatureMismatch)
+    );
+    CHECK(incompatible_state.latest_remote_sequence == 0U);
+
+    auto stale_state = simnet::ClientReplicationState{};
+    stale_state.latest_remote_sequence = patch.update.sequence;
+    auto const stale
+        = simnet::inspect_encoded_update_header(pipeline, stale_state, patch.update.bytes);
+    CHECK(stale.error == simnet::EncodedUpdateHeaderError::StaleSequence);
+    CHECK(stale_state.latest_remote_sequence == patch.update.sequence);
 }

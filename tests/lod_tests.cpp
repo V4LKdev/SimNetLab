@@ -771,6 +771,7 @@ TEST_CASE(
     auto const interest = stationary_source();
     auto pipeline = lod_pipeline(true);
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::DeltaFieldMask;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Quantization;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::BitPacking;
@@ -803,8 +804,15 @@ TEST_CASE(
             .candidate_indices = candidates,
         }
     );
-    auto decoded_patch
-        = simnet::decode_update(pipeline, decode_state, {.bytes = patch.update.bytes});
+    auto decoded_patch = simnet::decode_update(
+        pipeline,
+        decode_state,
+        {
+            .bytes = patch.update.bytes,
+            .baseline_snapshot = &full.resulting_snapshot,
+            .baseline_sequence = full.update.sequence,
+        }
+    );
     REQUIRE(decoded_patch.report.valid);
     auto reconstructed = simnet::WorldSnapshot{};
     REQUIRE(

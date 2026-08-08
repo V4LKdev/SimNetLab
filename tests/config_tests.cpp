@@ -149,6 +149,7 @@ namespace
         CHECK(left.pipeline.enable_quantization == right.pipeline.enable_quantization);
         CHECK(left.pipeline.enable_oct_heading == right.pipeline.enable_oct_heading);
         CHECK(left.pipeline.enable_delta == right.pipeline.enable_delta);
+        CHECK(left.pipeline.enable_delta_field_mask == right.pipeline.enable_delta_field_mask);
         CHECK(left.pipeline.enable_bit_packing == right.pipeline.enable_bit_packing);
         CHECK(left.pipeline.area_of_interest.mode == right.pipeline.area_of_interest.mode);
         CHECK(left.pipeline.area_of_interest.radius == right.pipeline.area_of_interest.radius);
@@ -331,6 +332,7 @@ TEST_CASE(
     CHECK_FALSE(defaults.pipeline.enable_quantization);
     CHECK_FALSE(defaults.pipeline.enable_oct_heading);
     CHECK_FALSE(defaults.pipeline.enable_bit_packing);
+    CHECK_FALSE(defaults.pipeline.enable_delta_field_mask);
 
     auto const accepted = TemporaryConfig{
         "simnet_pipeline_representation_accepted.json",
@@ -461,6 +463,49 @@ TEST_CASE(
     );
 }
 
+TEST_CASE("field-mask Delta configuration is strict and fingerprinted", "[config][pipeline]")
+{
+    auto const accepted = TemporaryConfig{
+        "simnet_pipeline_delta_field_mask_accepted.json",
+        R"({ "pipeline": { "enable_delta": true, "enable_delta_field_mask": true } })"
+    };
+    auto const loaded = simnet::load_shared_config(accepted.path());
+    CHECK(loaded.pipeline.enable_delta);
+    CHECK(loaded.pipeline.enable_delta_field_mask);
+    auto const pipeline = simnet::app::make_snapshot_pipeline(loaded);
+    CHECK(simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::Delta));
+    CHECK(
+        simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::DeltaFieldMask)
+    );
+
+    auto control = loaded;
+    control.pipeline.enable_delta_field_mask = false;
+    CHECK(
+        simnet::fingerprint_network_compatibility(loaded).value
+        != simnet::fingerprint_network_compatibility(control).value
+    );
+    CHECK(
+        simnet::fingerprint_runtime_config(loaded, simnet::default_server_config()).value
+        != simnet::fingerprint_runtime_config(control, simnet::default_server_config()).value
+    );
+    CHECK(
+        simnet::pipeline_decode_signature(pipeline)
+        != simnet::pipeline_decode_signature(simnet::app::make_snapshot_pipeline(control))
+    );
+
+    for (auto const contents : {
+             R"({ "pipeline": { "enable_delta_field_mask": true } })",
+             R"({ "pipeline": { "enable_delta_field_mask": 1 } })",
+             R"({ "pipeline": { "enable_delta_field_mask": "true" } })",
+         }) {
+        auto const invalid = TemporaryConfig{
+            "simnet_pipeline_delta_field_mask_invalid.json",
+            contents,
+        };
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+}
+
 TEST_CASE("maintained representation and cadence profiles are matched", "[config][pipeline]")
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
@@ -556,6 +601,30 @@ TEST_CASE("every maintained JSON profile parses through its production loader", 
             FAIL("unowned maintained JSON profile: " << name);
         }
     }
+}
+
+TEST_CASE("field-mask Delta profiles are a matched pair", "[config][pipeline][profile]")
+{
+    auto const directory = maintained_config_directory();
+    auto control = simnet::load_shared_config(
+        directory / "shared_delta_whole_record_aoi_radius_visual.json"
+    );
+    auto treatment
+        = simnet::load_shared_config(directory / "shared_delta_field_mask_aoi_radius_visual.json");
+    CHECK_FALSE(control.pipeline.enable_delta_field_mask);
+    CHECK(treatment.pipeline.enable_delta_field_mask);
+    CHECK(control.pipeline.enable_delta);
+    CHECK(treatment.pipeline.enable_delta);
+    CHECK_FALSE(control.pipeline.enable_incremental);
+    CHECK(control.pipeline.level_of_detail.mode == "none");
+    CHECK_FALSE(control.pipeline.enable_quantization);
+    CHECK_FALSE(control.pipeline.enable_oct_heading);
+    CHECK_FALSE(control.pipeline.enable_bit_packing);
+    CHECK(control.compression.mode == "none");
+    CHECK(control.snapshot_delivery.mode == "reliable_sequenced");
+    CHECK(control.pipeline.area_of_interest.mode == "radius");
+    treatment.pipeline.enable_delta_field_mask = false;
+    check_shared_equal(control, treatment);
 }
 
 TEST_CASE("typed defaults equal shipped default profiles", "[config][defaults]")

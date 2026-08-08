@@ -507,7 +507,8 @@ TEST_CASE("Delta AOI uses the selected acknowledged population", "[aoi][delta]")
         .source_entity_id = 1U,
     };
     auto pipeline = simnet::PipelineDefinition{};
-    pipeline.techniques = simnet::PipelineTechniqueFlags::Delta;
+    pipeline.techniques
+        = simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::DeltaFieldMask;
     pipeline.area_of_interest = {
         .mode = simnet::AreaOfInterestMode::Radius,
         .radius = 5.0F,

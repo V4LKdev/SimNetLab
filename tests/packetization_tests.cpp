@@ -869,6 +869,7 @@ TEST_CASE(
     pipeline.techniques |= simnet::PipelineTechniqueFlags::OctHeading;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::BitPacking;
     pipeline.techniques |= simnet::PipelineTechniqueFlags::Delta;
+    pipeline.techniques |= simnet::PipelineTechniqueFlags::DeltaFieldMask;
     pipeline.quantization.position_bounds = simnet::make_centered_bounds(100.0F);
     pipeline.area_of_interest = {
         .mode = simnet::AreaOfInterestMode::Fov,
@@ -1003,8 +1004,15 @@ TEST_CASE(
         REQUIRE(
             simnet::decode_update(pipeline, decode_state, {.bytes = full.update.bytes}).report.valid
         );
-        auto const decoded
-            = simnet::decode_update(pipeline, decode_state, {.bytes = decoded_group});
+        auto const decoded = simnet::decode_update(
+            pipeline,
+            decode_state,
+            {
+                .bytes = decoded_group,
+                .baseline_snapshot = &full.resulting_snapshot,
+                .baseline_sequence = full.update.sequence,
+            }
+        );
         REQUIRE(decoded.report.valid);
         REQUIRE(decoded.report.sequence == completed.completed.group_id);
         auto reconstructed = simnet::WorldSnapshot{};
