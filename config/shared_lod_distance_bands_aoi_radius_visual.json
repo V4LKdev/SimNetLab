@@ -15,6 +15,14 @@
     "cell_size": 18,
     "max_neighbors": 64
   },
+  "boids": {
+    "alignment_radius": 18,
+    "cohesion_radius": 18,
+    "alignment_acceleration": 3.0,
+    "wander_acceleration": 0.35,
+    "hue_assimilation_rate": 0.25,
+    "hue_drift_rate": 0.02
+  },
   "pipeline": {
     "send_interval_ticks": 1,
     "enable_incremental": false,

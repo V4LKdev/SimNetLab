@@ -8,6 +8,9 @@ import simnet.config
 
 It exports shared, client, and server config structs, defaults, JSON loading, and fingerprints. It does not own CLI parsing, live state, logging setup, or compile-time feature switches.
 
+The typed defaults match `shared_default.json`, `server_default.json`, and `client_default.json`
+after semantic loading. Named visual, stress, and treatment profiles remain explicit deviations.
+
 Shared configuration controls deterministic seed, world and population settings, spatial acceleration, authoritative boid and player movement, and supported pipeline selections. Boid settings cover independent separation/alignment/cohesion radii, FOV, speed and acceleration limits, containment, deterministic wander, circular hue behavior, and a direct toggle for each rule. The runtime derives its spatial query radius from the largest configured rule radius. Older local profiles may still use `perception_radius` as a compatibility alias for both social radii. Maintained profiles should use the explicit fields.
 
 Server-local `flecs.thread_count` selects `1..64` persistent Flecs worker threads. The default value of one preserves serial system execution. It is included in the Server runtime fingerprint but not in network compatibility.

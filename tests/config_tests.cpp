@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -37,6 +39,193 @@ namespace
     private:
         std::filesystem::path path_;
     };
+
+    [[nodiscard]] std::filesystem::path maintained_config_directory()
+    {
+        return std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
+    }
+
+    void
+    check_transport_equal(simnet::TransportConfig const& left, simnet::TransportConfig const& right)
+    {
+        CHECK(left.host == right.host);
+        CHECK(left.port == right.port);
+        CHECK(left.max_clients == right.max_clients);
+        CHECK(left.max_payload_bytes == right.max_payload_bytes);
+        CHECK(left.send_size_policy == right.send_size_policy);
+    }
+
+    void check_visualization_equal(
+        simnet::VisualizationConfig const& left,
+        simnet::VisualizationConfig const& right
+    )
+    {
+        CHECK(left.enabled == right.enabled);
+        CHECK(left.interpolation_enabled == right.interpolation_enabled);
+        CHECK(left.window_width == right.window_width);
+        CHECK(left.window_height == right.window_height);
+        CHECK(left.panel_width == right.panel_width);
+        CHECK(left.target_fps == right.target_fps);
+        CHECK(left.entity_scale == right.entity_scale);
+        CHECK(left.picking_radius == right.picking_radius);
+        CHECK(
+            left.stationary_observer_interest_radius == right.stationary_observer_interest_radius
+        );
+        CHECK(
+            left.stationary_observer_vertical_fov_degrees
+            == right.stationary_observer_vertical_fov_degrees
+        );
+        CHECK(left.max_visible_spatial_cells == right.max_visible_spatial_cells);
+        CHECK(left.entity_mesh_path == right.entity_mesh_path);
+    }
+
+    void
+    check_telemetry_equal(simnet::TelemetryConfig const& left, simnet::TelemetryConfig const& right)
+    {
+        CHECK(left.console_log_enabled == right.console_log_enabled);
+        CHECK(left.file_log_enabled == right.file_log_enabled);
+        CHECK(left.log_directory == right.log_directory);
+        CHECK(left.min_level == right.min_level);
+        CHECK(left.metrics_csv_enabled == right.metrics_csv_enabled);
+    }
+
+    void check_shared_equal(simnet::SharedConfig const& left, simnet::SharedConfig const& right)
+    {
+        CHECK(left.run.seed == right.run.seed);
+        CHECK(left.simulation.tick_rate_hz == right.simulation.tick_rate_hz);
+        CHECK(left.simulation.world_half == right.simulation.world_half);
+        CHECK(left.simulation.initial_boid_count == right.simulation.initial_boid_count);
+        CHECK(left.spatial.cell_size == right.spatial.cell_size);
+        CHECK(left.spatial.max_neighbors == right.spatial.max_neighbors);
+        CHECK(left.boids.enable_separation == right.boids.enable_separation);
+        CHECK(left.boids.enable_alignment == right.boids.enable_alignment);
+        CHECK(left.boids.enable_cohesion == right.boids.enable_cohesion);
+        CHECK(left.boids.enable_containment == right.boids.enable_containment);
+        CHECK(left.boids.enable_wander == right.boids.enable_wander);
+        CHECK(left.boids.enable_hue_assimilation == right.boids.enable_hue_assimilation);
+        CHECK(left.boids.enable_hue_drift == right.boids.enable_hue_drift);
+        CHECK(left.boids.min_speed == right.boids.min_speed);
+        CHECK(left.boids.cruise_speed == right.boids.cruise_speed);
+        CHECK(left.boids.max_speed == right.boids.max_speed);
+        CHECK(left.boids.max_acceleration == right.boids.max_acceleration);
+        CHECK(left.boids.separation_radius == right.boids.separation_radius);
+        CHECK(left.boids.alignment_radius == right.boids.alignment_radius);
+        CHECK(left.boids.cohesion_radius == right.boids.cohesion_radius);
+        CHECK(left.boids.field_of_view_degrees == right.boids.field_of_view_degrees);
+        CHECK(
+            left.boids.containment_prediction_seconds == right.boids.containment_prediction_seconds
+        );
+        CHECK(left.boids.containment_margin == right.boids.containment_margin);
+        CHECK(left.boids.separation_acceleration == right.boids.separation_acceleration);
+        CHECK(left.boids.containment_acceleration == right.boids.containment_acceleration);
+        CHECK(left.boids.alignment_acceleration == right.boids.alignment_acceleration);
+        CHECK(left.boids.cohesion_acceleration == right.boids.cohesion_acceleration);
+        CHECK(left.boids.wander_acceleration == right.boids.wander_acceleration);
+        CHECK(left.boids.wander_frequency_hz == right.boids.wander_frequency_hz);
+        CHECK(left.boids.hue_assimilation_rate == right.boids.hue_assimilation_rate);
+        CHECK(left.boids.hue_drift_rate == right.boids.hue_drift_rate);
+        CHECK(left.boids.player_lure.enabled == right.boids.player_lure.enabled);
+        CHECK(left.boids.player_lure.radius == right.boids.player_lure.radius);
+        CHECK(left.boids.player_lure.max_acceleration == right.boids.player_lure.max_acceleration);
+        CHECK(left.boids.player_predator.enabled == right.boids.player_predator.enabled);
+        CHECK(left.boids.player_predator.radius == right.boids.player_predator.radius);
+        CHECK(
+            left.boids.player_predator.max_acceleration
+            == right.boids.player_predator.max_acceleration
+        );
+        CHECK(left.player.cruise_speed == right.player.cruise_speed);
+        CHECK(left.player.boost_speed == right.player.boost_speed);
+        CHECK(left.player.slow_speed == right.player.slow_speed);
+        CHECK(left.player.speed_change_rate == right.player.speed_change_rate);
+        CHECK(left.player.yaw_acceleration_degrees == right.player.yaw_acceleration_degrees);
+        CHECK(left.player.pitch_acceleration_degrees == right.player.pitch_acceleration_degrees);
+        CHECK(left.player.yaw_damping == right.player.yaw_damping);
+        CHECK(left.player.pitch_damping == right.player.pitch_damping);
+        CHECK(left.player.max_yaw_rate_degrees == right.player.max_yaw_rate_degrees);
+        CHECK(left.player.max_pitch_rate_degrees == right.player.max_pitch_rate_degrees);
+        CHECK(left.player.pitch_limit_degrees == right.player.pitch_limit_degrees);
+        CHECK(left.pipeline.send_interval_ticks == right.pipeline.send_interval_ticks);
+        CHECK(left.pipeline.enable_incremental == right.pipeline.enable_incremental);
+        CHECK(left.pipeline.enable_quantization == right.pipeline.enable_quantization);
+        CHECK(left.pipeline.enable_oct_heading == right.pipeline.enable_oct_heading);
+        CHECK(left.pipeline.enable_delta == right.pipeline.enable_delta);
+        CHECK(left.pipeline.enable_bit_packing == right.pipeline.enable_bit_packing);
+        CHECK(left.pipeline.area_of_interest.mode == right.pipeline.area_of_interest.mode);
+        CHECK(left.pipeline.area_of_interest.radius == right.pipeline.area_of_interest.radius);
+        CHECK(
+            left.pipeline.area_of_interest.fov_degrees
+            == right.pipeline.area_of_interest.fov_degrees
+        );
+        CHECK(left.pipeline.level_of_detail.mode == right.pipeline.level_of_detail.mode);
+        CHECK(
+            left.pipeline.level_of_detail.near_distance
+            == right.pipeline.level_of_detail.near_distance
+        );
+        CHECK(
+            left.pipeline.level_of_detail.medium_distance
+            == right.pipeline.level_of_detail.medium_distance
+        );
+        CHECK(
+            left.pipeline.level_of_detail.medium_interval_ticks
+            == right.pipeline.level_of_detail.medium_interval_ticks
+        );
+        CHECK(
+            left.pipeline.level_of_detail.far_interval_ticks
+            == right.pipeline.level_of_detail.far_interval_ticks
+        );
+        CHECK(left.snapshot_delivery.mode == right.snapshot_delivery.mode);
+        CHECK(
+            left.snapshot_delivery.full_replace_after_unacknowledged_updates
+            == right.snapshot_delivery.full_replace_after_unacknowledged_updates
+        );
+        CHECK(left.compression.mode == right.compression.mode);
+        CHECK(left.compression.level == right.compression.level);
+        CHECK(left.packetization.enabled == right.packetization.enabled);
+        CHECK(left.packetization.max_payload_bytes == right.packetization.max_payload_bytes);
+        CHECK(left.packetization.max_update_bytes == right.packetization.max_update_bytes);
+        CHECK(
+            left.packetization.max_chunks_per_update == right.packetization.max_chunks_per_update
+        );
+        CHECK(
+            left.packetization.max_in_flight_updates == right.packetization.max_in_flight_updates
+        );
+        CHECK(left.packetization.max_incomplete_bytes == right.packetization.max_incomplete_bytes);
+        CHECK(
+            left.packetization.reassembly_timeout_ms == right.packetization.reassembly_timeout_ms
+        );
+    }
+
+    void check_server_equal(simnet::ServerConfig const& left, simnet::ServerConfig const& right)
+    {
+        check_transport_equal(left.transport, right.transport);
+        CHECK(left.flecs.thread_count == right.flecs.thread_count);
+        check_visualization_equal(left.visualization, right.visualization);
+        check_telemetry_equal(left.telemetry, right.telemetry);
+        CHECK(left.benchmark.enabled == right.benchmark.enabled);
+        CHECK(left.benchmark.repetitions == right.benchmark.repetitions);
+        CHECK(left.benchmark.load_ramp.enabled == right.benchmark.load_ramp.enabled);
+        CHECK(
+            left.benchmark.load_ramp.add_boids_per_step
+            == right.benchmark.load_ramp.add_boids_per_step
+        );
+        CHECK(
+            left.benchmark.load_ramp.step_interval_seconds
+            == right.benchmark.load_ramp.step_interval_seconds
+        );
+        CHECK(left.benchmark.load_ramp.max_boids == right.benchmark.load_ramp.max_boids);
+    }
+
+    void check_client_equal(simnet::ClientConfig const& left, simnet::ClientConfig const& right)
+    {
+        check_transport_equal(left.transport, right.transport);
+        CHECK(left.gameplay.role == right.gameplay.role);
+        CHECK(
+            left.gameplay.stationary_observer_position
+            == right.gameplay.stationary_observer_position
+        );
+        check_visualization_equal(left.visualization, right.visualization);
+        check_telemetry_equal(left.telemetry, right.telemetry);
+    }
 }
 
 TEST_CASE("network compatibility fingerprint covers shared configuration", "[config]")
@@ -369,6 +558,148 @@ TEST_CASE("every maintained JSON profile parses through its production loader", 
     }
 }
 
+TEST_CASE("typed defaults equal shipped default profiles", "[config][defaults]")
+{
+    auto const directory = maintained_config_directory();
+    auto const typed_shared = simnet::default_shared_config();
+    auto const typed_server = simnet::default_server_config();
+    auto const typed_client = simnet::default_client_config();
+    auto const shipped_shared = simnet::load_shared_config(directory / "shared_default.json");
+    auto const shipped_server = simnet::load_server_config(directory / "server_default.json");
+    auto const shipped_client = simnet::load_client_config(directory / "client_default.json");
+
+    check_shared_equal(typed_shared, shipped_shared);
+    check_server_equal(typed_server, shipped_server);
+    check_client_equal(typed_client, shipped_client);
+    CHECK(
+        simnet::fingerprint_network_compatibility(typed_shared).value
+        == simnet::fingerprint_network_compatibility(shipped_shared).value
+    );
+    CHECK(
+        simnet::fingerprint_runtime_config(typed_shared, typed_server).value
+        == simnet::fingerprint_runtime_config(shipped_shared, shipped_server).value
+    );
+    CHECK(
+        simnet::fingerprint_runtime_config(typed_shared, typed_client).value
+        == simnet::fingerprint_runtime_config(shipped_shared, shipped_client).value
+    );
+
+    auto const reloaded_shared = simnet::load_shared_config(directory / "shared_default.json");
+    auto const reloaded_server = simnet::load_server_config(directory / "server_default.json");
+    auto const reloaded_client = simnet::load_client_config(directory / "client_default.json");
+    check_shared_equal(shipped_shared, reloaded_shared);
+    check_server_equal(shipped_server, reloaded_server);
+    check_client_equal(shipped_client, reloaded_client);
+}
+
+TEST_CASE("maintained profile fingerprints preserve normalized semantics", "[config][defaults]")
+{
+    struct SharedFingerprint
+    {
+        std::string_view name;
+        std::uint64_t network;
+    };
+    constexpr auto shared_fingerprints = std::array{
+        SharedFingerprint{"shared_default.json", 14551407725952482035ULL},
+        SharedFingerprint{"shared_demo_network.json", 14688557305349597786ULL},
+        SharedFingerprint{"shared_demo_visual.json", 10153676311785215047ULL},
+        SharedFingerprint{"shared_stress_50k.json", 2148465817834599327ULL},
+        SharedFingerprint{"shared_aoi_radius_visual.json", 147685930129622393ULL},
+        SharedFingerprint{"shared_aoi_fov_visual.json", 16733286516763073780ULL},
+        SharedFingerprint{"shared_packetization_aoi_radius_visual.json", 5820348207436308927ULL},
+        SharedFingerprint{
+            "shared_compression_whole_aoi_radius_visual.json",
+            5775175471029376935ULL
+        },
+        SharedFingerprint{
+            "shared_compression_per_packet_aoi_radius_visual.json",
+            12403191858096298200ULL
+        },
+        SharedFingerprint{
+            "shared_compression_none_aoi_radius_visual.json",
+            13258101794867737506ULL
+        },
+        SharedFingerprint{
+            "shared_delivery_reliable_aoi_radius_visual.json",
+            11683916058568800636ULL
+        },
+        SharedFingerprint{
+            "shared_delivery_unreliable_aoi_radius_visual.json",
+            11634272762312594509ULL
+        },
+        SharedFingerprint{"shared_lod_none_aoi_radius_visual.json", 13872606770787437061ULL},
+        SharedFingerprint{
+            "shared_lod_distance_bands_aoi_radius_visual.json",
+            14877914366436949275ULL
+        },
+        SharedFingerprint{"shared_player_influence_control_visual.json", 1319605066963474642ULL},
+        SharedFingerprint{"shared_player_lure_visual.json", 15773174323224214929ULL},
+        SharedFingerprint{"shared_player_predator_visual.json", 6162015880269545229ULL},
+        SharedFingerprint{
+            "shared_representation_raw_aoi_radius_visual.json",
+            147685930129622393ULL
+        },
+        SharedFingerprint{
+            "shared_representation_quantized_aoi_radius_visual.json",
+            17808255628541615226ULL
+        },
+        SharedFingerprint{
+            "shared_representation_oct_heading_aoi_radius_visual.json",
+            11104672302595821387ULL
+        },
+        SharedFingerprint{
+            "shared_representation_bit_packed_aoi_radius_visual.json",
+            14776041096246557698ULL
+        },
+        SharedFingerprint{"shared_cadence_reduced_aoi_radius_visual.json", 666291167247402478ULL},
+    };
+
+    auto const directory = maintained_config_directory();
+    for (auto const& expected : shared_fingerprints) {
+        CAPTURE(expected.name);
+        auto const config = simnet::load_shared_config(directory / expected.name);
+        CHECK(simnet::fingerprint_network_compatibility(config).value == expected.network);
+    }
+}
+
+TEST_CASE("default alignment preserves inherited treatment tuning", "[config][defaults]")
+{
+    auto const directory = maintained_config_directory();
+    for (auto const name : {
+             "shared_delivery_reliable_aoi_radius_visual.json",
+             "shared_delivery_unreliable_aoi_radius_visual.json",
+             "shared_lod_none_aoi_radius_visual.json",
+             "shared_lod_distance_bands_aoi_radius_visual.json",
+         }) {
+        CAPTURE(name);
+        auto const config = simnet::load_shared_config(directory / name);
+        CHECK(config.boids.alignment_radius == 18.0F);
+        CHECK(config.boids.cohesion_radius == 18.0F);
+        CHECK(config.boids.alignment_acceleration == 3.0F);
+        CHECK(config.boids.wander_acceleration == 0.35F);
+        CHECK(config.boids.hue_assimilation_rate == 0.25F);
+        CHECK(config.boids.hue_drift_rate == 0.02F);
+    }
+
+    CHECK(simnet::load_server_config(directory / "server_visual.json").transport.max_clients == 1U);
+    CHECK(
+        simnet::load_server_config(directory / "server_multi_client_visual.json")
+            .transport.max_clients
+        == 2U
+    );
+    auto observer = simnet::load_client_config(directory / "client_visual.json");
+    auto player = simnet::load_client_config(directory / "client_player_visual.json");
+    CHECK(observer.transport.max_clients == 1U);
+    CHECK(player.transport.max_clients == 1U);
+    CHECK(observer.gameplay.role == "stationary_observer");
+    CHECK(player.gameplay.role == "player");
+    player.gameplay = observer.gameplay;
+    CHECK(
+        simnet::fingerprint_runtime_config(simnet::default_shared_config(), player).value
+        == simnet::fingerprint_runtime_config(simnet::default_shared_config(), observer).value
+    );
+}
+
 TEST_CASE("snapshot delivery configuration is strict shared treatment", "[config][delivery]")
 {
     auto const accepted = TemporaryConfig{
@@ -648,12 +979,17 @@ TEST_CASE("maintained AOI visual profiles load as distinct treatments", "[config
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
     auto const radius = simnet::load_shared_config(directory / "shared_aoi_radius_visual.json");
-    auto const fov = simnet::load_shared_config(directory / "shared_aoi_fov_visual.json");
+    auto fov = simnet::load_shared_config(directory / "shared_aoi_fov_visual.json");
     CHECK(radius.pipeline.area_of_interest.mode == "radius");
     CHECK(radius.pipeline.area_of_interest.radius == 80.0F);
     CHECK(fov.pipeline.area_of_interest.mode == "fov");
     CHECK(fov.pipeline.area_of_interest.radius == 80.0F);
     CHECK(fov.pipeline.area_of_interest.fov_degrees == 120.0F);
+    fov.pipeline.area_of_interest = radius.pipeline.area_of_interest;
+    CHECK(
+        simnet::fingerprint_network_compatibility(fov).value
+        == simnet::fingerprint_network_compatibility(radius).value
+    );
 }
 
 TEST_CASE("level-of-detail configuration is strict shared treatment", "[config][lod]")

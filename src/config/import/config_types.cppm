@@ -19,7 +19,7 @@ export namespace simnet
     struct SimulationConfig
     {
         double tick_rate_hz{60.0};
-        float world_half{400.0F};
+        float world_half{220.0F};
         /// Initial boid count. Zero is valid for empty-world and edge-case runs.
         std::uint32_t initial_boid_count{1000};
     };
@@ -27,7 +27,7 @@ export namespace simnet
     /// Spatial acceleration settings.
     struct SpatialConfig
     {
-        float cell_size{20.0F};
+        float cell_size{18.0F};
         std::uint32_t max_neighbors{64};
     };
 
@@ -54,19 +54,19 @@ export namespace simnet
         float max_speed{10.0F};
         float max_acceleration{12.0F};
         float separation_radius{3.6F};
-        float alignment_radius{18.0F};
-        float cohesion_radius{18.0F};
+        float alignment_radius{12.0F};
+        float cohesion_radius{24.0F};
         float field_of_view_degrees{240.0F};
         float containment_prediction_seconds{0.75F};
         float containment_margin{22.5F};
         float separation_acceleration{10.0F};
         float containment_acceleration{9.0F};
-        float alignment_acceleration{3.0F};
+        float alignment_acceleration{1.2F};
         float cohesion_acceleration{2.0F};
-        float wander_acceleration{0.35F};
+        float wander_acceleration{0.55F};
         float wander_frequency_hz{0.35F};
-        float hue_assimilation_rate{0.25F};
-        float hue_drift_rate{0.02F};
+        float hue_assimilation_rate{0.05F};
+        float hue_drift_rate{0.008F};
         PlayerInfluenceForceConfig player_lure{};
         PlayerInfluenceForceConfig player_predator{};
     };
@@ -149,7 +149,7 @@ export namespace simnet
     {
         std::string host{"127.0.0.1"};
         std::uint16_t port{7777};
-        std::uint32_t max_clients{8};
+        std::uint32_t max_clients{1};
         std::uint32_t max_payload_bytes{1200};
         std::string send_size_policy{"enforce_limit"};
     };
