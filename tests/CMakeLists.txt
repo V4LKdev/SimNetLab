@@ -3,6 +3,7 @@ find_package(Catch2 CONFIG REQUIRED)
 find_package(zstd CONFIG REQUIRED)
 
 add_executable(SimNetTests
+    app_compression_corpus_tests.cpp
     app_camera_tests.cpp
     app_evidence_tests.cpp
     app_player_input_tests.cpp
@@ -23,6 +24,7 @@ add_executable(SimNetTests
     spatial_tests.cpp
     telemetry_tests.cpp
     transport_tests.cpp
+    ${PROJECT_SOURCE_DIR}/app/app_compression_corpus.cpp
     ${PROJECT_SOURCE_DIR}/app/app_evidence.cpp
 )
 target_sources(SimNetTests
@@ -32,6 +34,7 @@ target_sources(SimNetTests
         FILES
             ${PROJECT_SOURCE_DIR}/app/app_camera.cppm
             ${PROJECT_SOURCE_DIR}/app/app_common.cppm
+            ${PROJECT_SOURCE_DIR}/app/app_compression_corpus.cppm
             ${PROJECT_SOURCE_DIR}/app/app_evidence.cppm
             ${PROJECT_SOURCE_DIR}/app/app_player_input.cppm
             ${PROJECT_SOURCE_DIR}/app/app_protocol.cppm

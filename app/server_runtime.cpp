@@ -23,6 +23,7 @@
 #include "server_peer_iteration.hpp"
 
 import simnet.config;
+import simnet.app_compression_corpus;
 import simnet.app_evidence;
 import simnet.app_common;
 import simnet.app_protocol;
@@ -76,6 +77,7 @@ namespace
     {
         std::optional<std::filesystem::path> config_path{};
         std::optional<std::filesystem::path> shared_config_path{};
+        std::optional<std::filesystem::path> compression_corpus_directory{};
         std::optional<std::string> run_id{};
         std::uint64_t max_frames{};
         simnet::Tick max_ticks{};
@@ -487,6 +489,10 @@ namespace
                 };
             } else if (option == "--run-id") {
                 options.run_id = simnet::app::next_option_value(index, argc, argv, option);
+            } else if (option == "--compression-corpus-dir") {
+                options.compression_corpus_directory = std::filesystem::path{
+                    simnet::app::next_option_value(index, argc, argv, option)
+                };
             } else if (option == "--max-frames") {
                 options.max_frames = simnet::app::parse_unsigned<std::uint64_t>(
                     simnet::app::next_option_value(index, argc, argv, option),
@@ -1885,7 +1891,8 @@ namespace
         PeerRuntimeStates& peers,
         CurrentSnapshotState& snapshot_state,
         simnet::ServerReplicationMeasurements& measurements,
-        simnet::ServerReplicationCsvWriter& csv
+        simnet::ServerReplicationCsvWriter& csv,
+        simnet::app::CompressionCorpusWriter& compression_corpus
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
@@ -2172,6 +2179,13 @@ namespace
             peer->latest_attempted_submissions = 0U;
             peer->latest_accepted_submissions = 0U;
             peer->latest_submission_error.clear();
+            if (compression_corpus.enabled()
+                && !compression_corpus
+                        .capture(peer->peer, pipeline, extraction.entity_count, encoded)) {
+                throw std::runtime_error(
+                    "compression corpus capture failed: " + std::string{compression_corpus.error()}
+                );
+            }
             auto group_bytes = std::move(encoded.update.bytes);
             if (compression.mode == simnet::app::CompressionMode::WholeUpdate) {
                 auto const compressed = simnet::compress_bytes(
@@ -2513,6 +2527,7 @@ namespace simnet::app
     {
         auto replication_csv = std::optional<ServerReplicationCsvWriter>{};
         auto boid_csv = std::optional<ServerBoidCsvWriter>{};
+        auto compression_corpus = std::optional<CompressionCorpusWriter>{};
         try {
             auto const options = parse_options(argc, argv);
             auto const run_context = make_evidence_run_context(
@@ -2540,6 +2555,25 @@ namespace simnet::app
             auto constexpr collect_representation_quality = false;
 #endif
             auto const compression = make_compression_settings(shared);
+            if (options.compression_corpus_directory.has_value()
+                && compression.mode != CompressionMode::WholeUpdate) {
+                throw std::runtime_error(
+                    "--compression-corpus-dir requires whole_update compression"
+                );
+            }
+            compression_corpus.emplace(
+                CompressionCorpusWriterConfig{
+                    .output_directory = options.compression_corpus_directory,
+                    .run = run_context,
+                    .seed = shared.run.seed,
+                }
+            );
+            if (compression_corpus->enabled()) {
+                log(LogCategory::Pipeline,
+                    LogLevel::Info,
+                    "compression corpus manifest path="
+                        + compression_corpus->manifest_path().string());
+            }
             auto const packetization = make_packetization_settings(shared);
             if (packetization.max_payload_bytes > local.transport.max_payload_bytes
                 || (packetization.enabled && local.transport.send_size_policy != "enforce_limit")) {
@@ -2764,7 +2798,8 @@ namespace simnet::app
                             peers,
                             current_snapshot,
                             replication_measurements,
-                            *replication_csv
+                            *replication_csv,
+                            *compression_corpus
                         )) {
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;
@@ -2925,6 +2960,11 @@ namespace simnet::app
             }
             disconnect_before_stop(transport, peers);
             transport.stop();
+            if (!compression_corpus->close()) {
+                throw std::runtime_error(
+                    "compression corpus close failed: " + std::string{compression_corpus->error()}
+                );
+            }
             if (!replication_csv->close()) {
                 throw std::runtime_error(
                     "server replication CSV close failed: " + std::string{replication_csv->error()}
@@ -2945,8 +2985,14 @@ namespace simnet::app
             return stop.reason() == ShutdownReason::FatalError ? 1 : 0;
         } catch (std::exception const& error) {
             auto close_error = std::string{};
+            if (compression_corpus.has_value() && !compression_corpus->close()) {
+                close_error = std::string{compression_corpus->error()};
+            }
             if (replication_csv.has_value() && !replication_csv->close()) {
-                close_error = std::string{replication_csv->error()};
+                if (!close_error.empty()) {
+                    close_error += ". ";
+                }
+                close_error += std::string{replication_csv->error()};
             }
             if (boid_csv.has_value() && !boid_csv->close()) {
                 if (!close_error.empty()) {

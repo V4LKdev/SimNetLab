@@ -18,3 +18,19 @@ useful result was that whole-buffer compression was smaller and cheaper than ind
 compressed packet-sized ranges. Current pipeline layouts, AOI populations, packet headers, and
 Delta semantics require fresh production benchmarking. The old probe did not record enough build
 and dependency provenance for its numerical results to serve as final evidence.
+
+## Dictionary training corpus capture
+
+The Server developer option `--compression-corpus-dir PATH` captures each complete production
+`EncodedUpdate` immediately before whole-update compression. The option requires `whole_update`
+compression and is disabled by default. The destination may be absent or empty. An existing
+nonempty destination is rejected. Each sample is written as an exclusive binary file.
+`manifest.csv` records the run, tick, sequence, snapshot kind, representation, active pipeline
+techniques, seed, entity counts, byte count, and SHA-256 of that exact sample.
+
+The destination belongs outside the repository. The production collector does not select a
+training matrix or train a dictionary. A temporary external harness owns profile generation,
+matrix completion, corpus validation, and the later Zstd training command.
+
+Capture performs synchronous hashing and file IO outside the compression timer. Corpus capture
+runs collect training data and are not performance evidence.

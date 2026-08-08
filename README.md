@@ -71,6 +71,9 @@ Both applications accept `--config PATH`, `--shared-config PATH`, `--run-id TEXT
 `--max-steps-per-frame`. A zero limit is disabled. A supplied run ID correlates Server and Client
 CSV evidence. Without it, each process generates an independent process-local ID.
 
+The developer-only Server option `--compression-corpus-dir PATH` captures whole-update compression
+inputs for offline dictionary training.
+
 The default profiles are headless. To start the visual development profiles from the repository root:
 
 ```sh
