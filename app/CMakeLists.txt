@@ -34,7 +34,12 @@ add_executable(Client client_main.cpp client_runtime.cpp)
 target_sources(Client
     PRIVATE
         FILE_SET CXX_MODULES
-        FILES app_camera.cppm app_common.cppm app_protocol.cppm app_snapshot_delivery.cppm
+        FILES
+            app_camera.cppm
+            app_common.cppm
+            app_player_input.cppm
+            app_protocol.cppm
+            app_snapshot_delivery.cppm
 )
 target_link_libraries(Client
     PRIVATE

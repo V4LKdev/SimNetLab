@@ -511,6 +511,73 @@ TEST_CASE("disabled Player influence preserves exact Boid results", "[boids][pla
     );
 }
 
+TEST_CASE(
+    "duplicate Player heartbeats are idempotent and a neutral heartbeat recovers loss",
+    "[boids][player][delivery][peer]"
+)
+{
+    auto recovered_runtime
+        = simnet::ServerGameRuntime{test_settings(), stationary_player_settings()};
+    auto stuck_runtime = simnet::ServerGameRuntime{test_settings(), stationary_player_settings()};
+    auto recovered_world = flecs::world{};
+    auto stuck_world = flecs::world{};
+    simnet::register_server_game(recovered_world, recovered_runtime);
+    simnet::register_server_game(stuck_world, stuck_runtime);
+
+    auto const recovered_player = simnet::spawn_authoritative_player(recovered_world);
+    auto const recovered_other = simnet::spawn_authoritative_player(recovered_world);
+    auto const stuck_player = simnet::spawn_authoritative_player(stuck_world);
+    auto const stuck_other = simnet::spawn_authoritative_player(stuck_world);
+    REQUIRE(recovered_player == stuck_player);
+    REQUIRE(recovered_other == stuck_other);
+
+    auto const active = simnet::PlayerControlState{
+        .yaw_right = true,
+        .accelerate = true,
+    };
+    auto const other = simnet::PlayerControlState{
+        .pitch_up = true,
+    };
+    REQUIRE(simnet::set_authoritative_player_input(recovered_world, recovered_player, active));
+    REQUIRE(simnet::set_authoritative_player_input(stuck_world, stuck_player, active));
+    REQUIRE(simnet::set_authoritative_player_input(stuck_world, stuck_player, active));
+    REQUIRE(simnet::set_authoritative_player_input(recovered_world, recovered_other, other));
+    REQUIRE(simnet::set_authoritative_player_input(stuck_world, stuck_other, other));
+    step(recovered_world, recovered_runtime, 0.1F);
+    step(stuck_world, stuck_runtime, 0.1F);
+    CHECK(
+        canonical_hash(snapshot(recovered_world, 1U)) == canonical_hash(snapshot(stuck_world, 1U))
+    );
+
+    step(recovered_world, recovered_runtime, 0.1F);
+    step(stuck_world, stuck_runtime, 0.1F);
+    CHECK(
+        canonical_hash(snapshot(recovered_world, 2U)) == canonical_hash(snapshot(stuck_world, 2U))
+    );
+
+    REQUIRE(simnet::set_authoritative_player_input(recovered_world, recovered_player, {}));
+    step(recovered_world, recovered_runtime, 0.1F);
+    step(stuck_world, stuck_runtime, 0.1F);
+    auto const recovered = snapshot(recovered_world, 3U);
+    auto const stuck = snapshot(stuck_world, 3U);
+    CHECK(canonical_hash(recovered) != canonical_hash(stuck));
+
+    auto const recovered_found = std::ranges::find(recovered.ids, recovered_other);
+    auto const stuck_found = std::ranges::find(stuck.ids, stuck_other);
+    REQUIRE(recovered_found != recovered.ids.end());
+    REQUIRE(stuck_found != stuck.ids.end());
+    auto const recovered_index
+        = static_cast<std::size_t>(std::distance(recovered.ids.begin(), recovered_found));
+    auto const stuck_index
+        = static_cast<std::size_t>(std::distance(stuck.ids.begin(), stuck_found));
+    CHECK(recovered.positions[recovered_index].x == stuck.positions[stuck_index].x);
+    CHECK(recovered.positions[recovered_index].y == stuck.positions[stuck_index].y);
+    CHECK(recovered.positions[recovered_index].z == stuck.positions[stuck_index].z);
+    CHECK(recovered.headings[recovered_index].x == stuck.headings[stuck_index].x);
+    CHECK(recovered.headings[recovered_index].y == stuck.headings[stuck_index].y);
+    CHECK(recovered.headings[recovered_index].z == stuck.headings[stuck_index].z);
+}
+
 TEST_CASE("Player lure and predator steer in their authoritative directions", "[boids][player]")
 {
     SECTION("lure points toward the Player")

@@ -91,7 +91,8 @@ Shift+Ctrl selects cruise speed.
 Input is latest-state unreliable-sequenced data, while join and pause remain
 reliable controls. `C` opens the cameras available to the current role and
 selection. `F4` opens the read-only Setup inspector. Leaving Game sends one
-neutral input state. There is no
+neutral input state immediately. The Client also repeats the latest active or
+neutral state every 100 ms, including when rendering is disabled. There is no
 client prediction yet.
 
 The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set the local `visualization.entity_mesh_path` to another OBJ file to replace it. An empty or unavailable path keeps the instanced wedge fallback.

@@ -23,6 +23,7 @@
 import simnet.config;
 import simnet.app_camera;
 import simnet.app_common;
+import simnet.app_player_input;
 import simnet.app_protocol;
 import simnet.app_snapshot_delivery;
 import simnet.compression;
@@ -1117,11 +1118,11 @@ namespace simnet::app
             auto join_accepted = false;
             auto assigned_peer_id = PeerId{};
             auto player_id = EntityNetId{};
+            auto player_input_delivery = app::PlayerInputDeliveryState{};
             auto last_observer_interest_send_time = std::optional<Nanoseconds>{};
             auto last_observer_interest_forward = Vec3f{};
 #if defined(SIMNET_ENABLE_RENDER)
             auto game_view_initialized = false;
-            auto player_input_was_active = false;
 #endif
 
             log(LogCategory::Simulation, LogLevel::Info, "client runtime started");
@@ -1166,6 +1167,7 @@ namespace simnet::app
                         join_accepted = false;
                         assigned_peer_id = 0U;
                         player_id = 0U;
+                        app::reset_player_input_delivery(player_input_delivery);
                         last_observer_interest_send_time.reset();
                         last_observer_interest_forward = {};
                         app::record_snapshot_progress(recovery_request_state);
@@ -1174,7 +1176,6 @@ namespace simnet::app
                         pending_compression_groups.clear();
 #if defined(SIMNET_ENABLE_RENDER)
                         game_view_initialized = false;
-                        player_input_was_active = false;
 #endif
                         log(LogCategory::Transport,
                             LogLevel::Info,
@@ -1424,6 +1425,7 @@ namespace simnet::app
                         auto const was_session_ready
                             = connection_state == ClientConnectionState::SessionReady;
                         connection_state = ClientConnectionState::Disconnected;
+                        app::reset_player_input_delivery(player_input_delivery);
                         clear_reassembly_state(reassembly_state);
                         pending_compression_groups.clear();
                         if (!was_session_ready && disconnected->code == DisconnectCode::Timeout) {
@@ -1608,32 +1610,51 @@ namespace simnet::app
                                 static_cast<void>(stop.request(ShutdownReason::FatalError));
                             }
                         }
-                        if (!stop.requested() && requested_role == app::ClientRole::Player
-                            && join_accepted) {
-                            auto const input_active = viewer_result.camera_mode == CameraMode::Game;
-                            auto const input = input_active
-                                ? player_input_message(viewer_result.player_input)
-                                : app::PlayerInputMessage{};
-                            if (input_active || player_input_was_active) {
-                                auto const bytes = app::encode_player_input(input);
-                                auto const sent = transport.send(
-                                    app::input_lane,
-                                    TransportDelivery::UnreliableSequenced,
-                                    bytes
-                                );
-                                if (!sent.ok) {
-                                    log(LogCategory::Transport,
-                                        LogLevel::Error,
-                                        "client player-input send failed: " + sent.error.message);
-                                    stop_cause = ClientStopCause::ProtocolError;
-                                    static_cast<void>(stop.request(ShutdownReason::FatalError));
-                                }
-                            }
-                            player_input_was_active = input_active;
+                        if (!stop.requested() && requested_role == app::ClientRole::Player) {
+                            auto const input_active
+                                = join_accepted && viewer_result.camera_mode == CameraMode::Game;
+                            app::set_desired_player_input(
+                                player_input_delivery,
+                                input_active ? player_input_message(viewer_result.player_input)
+                                             : app::PlayerInputMessage{}
+                            );
                         }
                     }
                 }
 #endif
+
+                if (!stop.requested()) {
+                    auto const accepted_player_session
+                        = connection_state == ClientConnectionState::SessionReady
+                        && requested_role == app::ClientRole::Player && join_accepted;
+                    auto const submission = app::plan_player_input_submission(
+                        player_input_delivery,
+                        accepted_player_session,
+                        stats.raw_time
+                    );
+                    if (submission.has_value()) {
+                        auto const bytes = app::encode_player_input(submission->input);
+                        auto const sent = transport.send(
+                            app::input_lane,
+                            TransportDelivery::UnreliableSequenced,
+                            bytes
+                        );
+                        if (!sent.ok) {
+                            app::record_player_input_submission_failure(player_input_delivery);
+                            log(LogCategory::Transport,
+                                LogLevel::Error,
+                                "client player-input send failed: " + sent.error.message);
+                            stop_cause = ClientStopCause::ProtocolError;
+                            static_cast<void>(stop.request(ShutdownReason::FatalError));
+                        } else {
+                            app::record_player_input_submission(
+                                player_input_delivery,
+                                *submission,
+                                stats.raw_time
+                            );
+                        }
+                    }
+                }
 
                 if (!stop.requested() && stationary_observer.has_value() && join_accepted
                     && pipeline.area_of_interest.mode != AreaOfInterestMode::None) {
@@ -1702,9 +1723,14 @@ namespace simnet::app
                     + " ack_sequence=" + std::to_string(ack_tracker.value.newest_applied_snapshot)
                     + " canonical_entities=" + std::to_string(canonical_entities)
                     + " canonical_fingerprint=" + std::to_string(canonical_fingerprint)
-                    + " sequence_gaps=" + std::to_string(sequence_gap_count)
-                    + " recovery_requests=" + std::to_string(recovery_request_state.sent_count)
-                    + " reliable_promotions=" + std::to_string(reliable_promotion_count));
+                    + " sequence_gaps=" + std::to_string(sequence_gap_count) + " recovery_requests="
+                    + std::to_string(recovery_request_state.sent_count) + " reliable_promotions="
+                    + std::to_string(reliable_promotion_count) + " player_input_state_changes="
+                    + std::to_string(player_input_delivery.state_change_submission_count)
+                    + " player_input_heartbeats="
+                    + std::to_string(player_input_delivery.heartbeat_submission_count)
+                    + " player_input_failures="
+                    + std::to_string(player_input_delivery.failed_submission_count));
             log(LogCategory::Simulation,
                 LogLevel::Info,
                 "client runtime stopped reason=" + std::string{shutdown_reason_name(stop.reason())}
