@@ -177,6 +177,8 @@ export namespace simnet
         std::optional<std::uint64_t> invalid_packet_groups{};
         std::optional<std::uint64_t> stale_packet_groups{};
         std::optional<std::string_view> compression_mode{};
+        std::optional<std::string_view> compression_dictionary{};
+        std::optional<std::uint32_t> compression_dictionary_id{};
         std::optional<std::string_view> compression_outcome{};
         std::optional<std::uint32_t> representation_bytes{};
         std::optional<std::uint32_t> compression_input_bytes{};

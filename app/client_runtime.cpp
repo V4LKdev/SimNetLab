@@ -23,6 +23,7 @@
 import simnet.config;
 import simnet.app_camera;
 import simnet.app_common;
+import simnet.app_compression_dictionary;
 import simnet.app_player_input;
 import simnet.app_protocol;
 import simnet.app_snapshot_delivery;
@@ -74,10 +75,13 @@ namespace
     struct ClientCompressionReport
     {
         simnet::app::CompressionMode mode{simnet::app::CompressionMode::None};
+        std::string_view dictionary_name{"none"};
+        std::uint32_t dictionary_id{};
         simnet::CompressionEncoding latest_encoding{simnet::CompressionEncoding::Raw};
         std::uint64_t raw_packet_count{};
         std::uint64_t compressed_packet_count{};
         std::uint64_t invalid_payload_count{};
+        std::uint64_t whole_update_raw_fallback_count{};
         std::uint32_t latest_input_bytes{};
         std::uint32_t latest_payload_bytes{};
         std::uint32_t latest_envelope_bytes{};
@@ -87,6 +91,20 @@ namespace
         std::uint32_t canonical_entity_count{};
         simnet::Nanoseconds decompression_cpu_time{};
     };
+
+    [[nodiscard]] constexpr std::string_view
+    compression_encoding_name(simnet::CompressionEncoding encoding) noexcept
+    {
+        switch (encoding) {
+            case simnet::CompressionEncoding::Raw:
+                return "Raw";
+            case simnet::CompressionEncoding::Zstd:
+                return "Zstd";
+            case simnet::CompressionEncoding::ZstdDictionary:
+                return "ZstdDictionary";
+        }
+        return "Unknown";
+    }
 
     constexpr std::size_t retained_snapshot_limit = 64;
 
@@ -458,12 +476,18 @@ namespace
                 .invalid_packet_groups = packet_report.invalid_groups,
                 .stale_packet_groups = packet_report.stale_groups,
                 .compression_mode = simnet::app::compression_mode_name(compression_report.mode),
+                .compression_dictionary = compression_report.dictionary_id == 0U
+                    ? std::optional<std::string_view>{}
+                    : std::optional<std::string_view>{compression_report.dictionary_name},
+                .compression_dictionary_id = compression_report.dictionary_id == 0U
+                    ? std::optional<std::uint32_t>{}
+                    : std::optional<std::uint32_t>{compression_report.dictionary_id},
                 .compression_outcome = compression_report.mode == simnet::app::CompressionMode::None
                     ? std::optional<std::string_view>{"Disabled"}
                     : compression_report.mode == simnet::app::CompressionMode::WholeUpdate
-                    ? std::optional<
-                          std::
-                              string_view>{compression_report.latest_encoding == simnet::CompressionEncoding::Zstd ? "Zstd" : "Raw"}
+                    ? std::optional<std::string_view>{compression_encoding_name(
+                          compression_report.latest_encoding
+                      )}
                     : compression_report.compressed_packet_count == 0U
                     ? std::optional<std::string_view>{"Raw fallback"}
                     : compression_report.raw_packet_count == 0U
@@ -1026,6 +1050,16 @@ namespace simnet::app
             auto signals = SignalHandlers{};
             auto const pipeline = make_snapshot_pipeline(shared);
             auto const compression = make_compression_settings(shared);
+            auto compression_dictionary = load_compression_dictionary(compression);
+            if (compression_dictionary.has_value()) {
+                auto const& identity = compression_dictionary->dictionary.identity();
+                log(LogCategory::Pipeline,
+                    LogLevel::Info,
+                    "compression dictionary name=" + std::string{compression_dictionary->name}
+                        + " id=" + std::to_string(identity.dictionary_id)
+                        + " bytes=" + std::to_string(identity.byte_count)
+                        + " fingerprint=" + std::to_string(identity.content_fingerprint));
+            }
             auto const packetization = make_packetization_settings(shared);
             auto const delivery = snapshot_transport_delivery(shared.snapshot_delivery);
             if (packetization.max_payload_bytes > local.transport.max_payload_bytes
@@ -1048,7 +1082,13 @@ namespace simnet::app
             auto const connected = transport.connect({
                 .server_address = local.transport.host,
                 .server_port = local.transport.port,
-                .identity = make_session_identity(shared, pipeline),
+                .identity = make_session_identity(
+                    shared,
+                    pipeline,
+                    compression_dictionary.has_value()
+                        ? &compression_dictionary->dictionary.identity()
+                        : nullptr
+                ),
                 .limits = {
                     .max_payload_bytes = local.transport.max_payload_bytes,
                     .size_policy = transport_send_size_policy(local.transport),
@@ -1121,7 +1161,13 @@ namespace simnet::app
             auto decompression_scratch = std::vector<Byte>{};
             auto pending_compression_groups = std::vector<PendingCompressionGroup>{};
             pending_compression_groups.reserve(packetization.max_in_flight_groups);
-            auto compression_report = ClientCompressionReport{.mode = compression.mode};
+            auto compression_report = ClientCompressionReport{
+                .mode = compression.mode,
+                .dictionary_name = compression.dictionary,
+                .dictionary_id = compression_dictionary.has_value()
+                    ? compression_dictionary->dictionary.identity().dictionary_id
+                    : 0U,
+            };
             auto snapshot_history = std::deque<RetainedClientSnapshot>{};
             auto logged_multi_packet_application = false;
             auto logged_compression_application = false;
@@ -1300,15 +1346,24 @@ namespace simnet::app
                             if (reassembled.kind == ReassemblyResultKind::Complete) {
                                 auto encoded_bytes = ByteSpan{reassembled.completed.bytes};
                                 if (compression.mode == app::CompressionMode::WholeUpdate) {
-                                    auto const decompressed = decompress_bytes(
-                                        decompressor,
-                                        encoded_bytes,
-                                        {
-                                            .max_uncompressed_bytes = packetization.max_group_bytes,
-                                            .max_output_bytes = packetization.max_group_bytes,
-                                        },
-                                        decompression_scratch
-                                    );
+                                    auto const limits = CompressionLimits{
+                                        .max_uncompressed_bytes = packetization.max_group_bytes,
+                                        .max_output_bytes = packetization.max_group_bytes,
+                                    };
+                                    auto const decompressed = compression_dictionary.has_value()
+                                        ? decompress_bytes_with_dictionary(
+                                              decompressor,
+                                              compression_dictionary->dictionary,
+                                              encoded_bytes,
+                                              limits,
+                                              decompression_scratch
+                                          )
+                                        : decompress_bytes(
+                                              decompressor,
+                                              encoded_bytes,
+                                              limits,
+                                              decompression_scratch
+                                          );
                                     compression_report.latest_input_bytes
                                         = decompressed.input_bytes;
                                     compression_report.latest_encoding = decompressed.encoding;
@@ -1327,6 +1382,9 @@ namespace simnet::app
                                             "client rejected compressed snapshot group: "
                                                 + decompressed.error);
                                         continue;
+                                    }
+                                    if (decompressed.encoding == CompressionEncoding::Raw) {
+                                        ++compression_report.whole_update_raw_fallback_count;
                                     }
                                     encoded_bytes = decompression_scratch;
                                 }
@@ -1729,6 +1787,26 @@ namespace simnet::app
             auto const canonical_fingerprint = snapshot_history.empty()
                 ? 0U
                 : app::snapshot_diagnostic_fingerprint(snapshot_history.back().snapshot);
+            if (compression.mode == CompressionMode::WholeUpdate) {
+                log(LogCategory::Pipeline,
+                    LogLevel::Info,
+                    "client whole-update compression dictionary="
+                        + std::string{compression_report.dictionary_name} + " dictionary_id="
+                        + std::to_string(compression_report.dictionary_id) + " sequence="
+                        + std::to_string(latest_applied_sequence) + " envelope_input_bytes="
+                        + std::to_string(compression_report.latest_input_bytes) + " payload_bytes="
+                        + std::to_string(compression_report.latest_payload_bytes)
+                        + " envelope_bytes="
+                        + std::to_string(compression_report.latest_envelope_bytes)
+                        + " output_bytes=" + std::to_string(compression_report.latest_output_bytes)
+                        + " raw_fallbacks="
+                        + std::to_string(compression_report.whole_update_raw_fallback_count)
+                        + " decompression_cpu_ns="
+                        + std::to_string(
+                            std::max(compression_report.decompression_cpu_time, Nanoseconds{})
+                                .count()
+                        ));
+            }
             log(LogCategory::Transport,
                 LogLevel::Info,
                 "client snapshot delivery mode=" + shared.snapshot_delivery.mode + " effective="

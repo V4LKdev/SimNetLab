@@ -24,6 +24,7 @@
 
 import simnet.config;
 import simnet.app_compression_corpus;
+import simnet.app_compression_dictionary;
 import simnet.app_evidence;
 import simnet.app_common;
 import simnet.app_protocol;
@@ -102,6 +103,8 @@ namespace
     struct ServerCompressionReport
     {
         simnet::app::CompressionMode mode{simnet::app::CompressionMode::None};
+        std::string_view dictionary_name{"none"};
+        std::uint32_t dictionary_id{};
         simnet::PacketGroupId group_id{};
         std::uint32_t representation_bytes{};
         std::uint32_t compression_input_bytes{};
@@ -230,7 +233,15 @@ namespace
     [[nodiscard]] constexpr std::string_view
     compression_encoding_name(simnet::CompressionEncoding encoding) noexcept
     {
-        return encoding == simnet::CompressionEncoding::Zstd ? "Zstd" : "Raw";
+        switch (encoding) {
+            case simnet::CompressionEncoding::Raw:
+                return "Raw";
+            case simnet::CompressionEncoding::Zstd:
+                return "Zstd";
+            case simnet::CompressionEncoding::ZstdDictionary:
+                return "ZstdDictionary";
+        }
+        return "Unknown";
     }
 
     [[nodiscard]] constexpr std::string_view
@@ -279,6 +290,8 @@ namespace
         std::vector<simnet::Byte> packet_serialization_scratch{};
         PreparedTransportGroup prepared_transport_group{};
         ServerCompressionReport latest_compression{};
+        std::uint64_t whole_update_raw_fallback_count{};
+        simnet::Nanoseconds whole_update_compression_cpu_time{};
         simnet::PacketizationReport latest_packetization{};
         std::uint32_t latest_attempted_submissions{};
         std::uint32_t latest_accepted_submissions{};
@@ -376,6 +389,42 @@ namespace
                 + " committed_emissions=" + std::to_string(peer.committed_emission_count)
                 + " cadence_skips=" + std::to_string(peer.cadence_skip_count)
         );
+        if (peer.latest_compression.mode == simnet::app::CompressionMode::WholeUpdate) {
+            simnet::log(
+                simnet::LogCategory::Pipeline,
+                simnet::LogLevel::Info,
+                "server whole-update compression peer_id=" + std::to_string(peer.peer)
+                    + " dictionary=" + std::string{peer.latest_compression.dictionary_name}
+                    + " dictionary_id=" + std::to_string(peer.latest_compression.dictionary_id)
+                    + " sequence=" + std::to_string(peer.latest_compression.group_id)
+                    + " source_bytes="
+                    + std::to_string(peer.latest_compression.compression_input_bytes)
+                    + " payload_bytes="
+                    + std::to_string(peer.latest_compression.compression_payload_bytes)
+                    + " envelope_bytes="
+                    + std::to_string(peer.latest_compression.compression_envelope_bytes)
+                    + " output_bytes="
+                    + std::to_string(peer.latest_compression.compression_output_bytes)
+                    + " packet_bytes="
+                    + std::to_string(peer.latest_compression.bytes_after_packetization)
+                    + " transport_bytes="
+                    + std::to_string(peer.latest_compression.final_transport_bytes)
+                    + " latest_compression_cpu_ns="
+                    + std::to_string(
+                        std::max(
+                            peer.latest_compression.compression_cpu_time,
+                            simnet::Nanoseconds{}
+                        )
+                            .count()
+                    )
+                    + " raw_fallbacks=" + std::to_string(peer.whole_update_raw_fallback_count)
+                    + " compression_cpu_ns="
+                    + std::to_string(
+                        std::max(peer.whole_update_compression_cpu_time, simnet::Nanoseconds{})
+                            .count()
+                    )
+            );
+        }
         for (auto const& retained : delivery_state.submitted) {
             simnet::log(
                 simnet::LogCategory::Transport,
@@ -754,6 +803,10 @@ namespace
             }
             auto const& compression = peer->latest_compression;
             details.compression_mode = simnet::app::compression_mode_name(compression.mode);
+            if (compression.dictionary_id != 0U) {
+                details.compression_dictionary = compression.dictionary_name;
+                details.compression_dictionary_id = compression.dictionary_id;
+            }
             if (compression.group_id != 0U) {
                 details.representation_bytes = compression.representation_bytes;
                 details.compression_input_bytes = compression.compression_input_bytes;
@@ -1892,7 +1945,8 @@ namespace
         CurrentSnapshotState& snapshot_state,
         simnet::ServerReplicationMeasurements& measurements,
         simnet::ServerReplicationCsvWriter& csv,
-        simnet::app::CompressionCorpusWriter& compression_corpus
+        simnet::app::CompressionCorpusWriter& compression_corpus,
+        simnet::app::LoadedCompressionDictionary const* compression_dictionary
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
@@ -2172,6 +2226,10 @@ namespace
 
             auto compression_report = ServerCompressionReport{
                 .mode = compression.mode,
+                .dictionary_name = compression.dictionary,
+                .dictionary_id = compression_dictionary == nullptr
+                    ? 0U
+                    : compression_dictionary->dictionary.identity().dictionary_id,
                 .group_id = encoded.update.sequence,
                 .representation_bytes = measurement.encoded_update_bytes,
                 .bytes_before_packetization = measurement.encoded_update_bytes,
@@ -2188,17 +2246,26 @@ namespace
             }
             auto group_bytes = std::move(encoded.update.bytes);
             if (compression.mode == simnet::app::CompressionMode::WholeUpdate) {
-                auto const compressed = simnet::compress_bytes(
-                    peer->compressor,
-                    group_bytes,
-                    compression.level,
-                    {
-                        .max_uncompressed_bytes = packetization.max_group_bytes,
-                        .max_output_bytes = packetization.max_group_bytes,
-                    },
-                    simnet::CompressionEnvelopePolicy::Always,
-                    peer->compression_scratch
-                );
+                auto const limits = simnet::CompressionLimits{
+                    .max_uncompressed_bytes = packetization.max_group_bytes,
+                    .max_output_bytes = packetization.max_group_bytes,
+                };
+                auto const compressed = compression_dictionary == nullptr
+                    ? simnet::compress_bytes(
+                          peer->compressor,
+                          group_bytes,
+                          compression.level,
+                          limits,
+                          simnet::CompressionEnvelopePolicy::Always,
+                          peer->compression_scratch
+                      )
+                    : simnet::compress_bytes_with_dictionary(
+                          peer->compressor,
+                          compression_dictionary->dictionary,
+                          group_bytes,
+                          limits,
+                          peer->compression_scratch
+                      );
                 compression_report.compression_input_bytes = compressed.input_bytes;
                 compression_report.compression_payload_bytes = compressed.encoded_payload_bytes;
                 compression_report.compression_envelope_bytes = compressed.envelope_bytes;
@@ -2220,6 +2287,10 @@ namespace
                         "snapshot compression preparation failed: " + compressed.error
                     );
                     return false;
+                }
+                peer->whole_update_compression_cpu_time += compressed.compression_cpu_time;
+                if (compressed.encoding == simnet::CompressionEncoding::Raw) {
+                    ++peer->whole_update_raw_fallback_count;
                 }
                 group_bytes = std::move(peer->compression_scratch);
             }
@@ -2574,6 +2645,16 @@ namespace simnet::app
                     "compression corpus manifest path="
                         + compression_corpus->manifest_path().string());
             }
+            auto compression_dictionary = load_compression_dictionary(compression);
+            if (compression_dictionary.has_value()) {
+                auto const& identity = compression_dictionary->dictionary.identity();
+                log(LogCategory::Pipeline,
+                    LogLevel::Info,
+                    "compression dictionary name=" + std::string{compression_dictionary->name}
+                        + " id=" + std::to_string(identity.dictionary_id)
+                        + " bytes=" + std::to_string(identity.byte_count)
+                        + " fingerprint=" + std::to_string(identity.content_fingerprint));
+            }
             auto const packetization = make_packetization_settings(shared);
             if (packetization.max_payload_bytes > local.transport.max_payload_bytes
                 || (packetization.enabled && local.transport.send_size_policy != "enforce_limit")) {
@@ -2596,7 +2677,13 @@ namespace simnet::app
                 .bind_address = local.transport.host,
                 .port = local.transport.port,
                 .max_peers = local.transport.max_clients,
-                .expected_identity = make_session_identity(shared, pipeline),
+                .expected_identity = make_session_identity(
+                    shared,
+                    pipeline,
+                    compression_dictionary.has_value()
+                        ? &compression_dictionary->dictionary.identity()
+                        : nullptr
+                ),
                 .limits = {
                     .max_payload_bytes = local.transport.max_payload_bytes,
                     .size_policy = transport_send_size_policy(local.transport),
@@ -2799,7 +2886,8 @@ namespace simnet::app
                             current_snapshot,
                             replication_measurements,
                             *replication_csv,
-                            *compression_corpus
+                            *compression_corpus,
+                            compression_dictionary.has_value() ? &*compression_dictionary : nullptr
                         )) {
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                         break;

@@ -35,6 +35,7 @@ export namespace simnet::app
     {
         CompressionMode mode{CompressionMode::None};
         int level{1};
+        std::string dictionary{"none"};
     };
 
     /// App-local stationary interest/debug view state.
@@ -109,8 +110,11 @@ export namespace simnet::app
     [[nodiscard]] CompressionSettings make_compression_settings(SharedConfig const& shared);
     [[nodiscard]] constexpr std::string_view compression_mode_name(CompressionMode mode) noexcept;
     [[nodiscard]] PacketizationSettings make_packetization_settings(SharedConfig const& shared);
-    [[nodiscard]] SessionIdentity
-    make_session_identity(SharedConfig const& shared, PipelineDefinition const& pipeline);
+    [[nodiscard]] SessionIdentity make_session_identity(
+        SharedConfig const& shared,
+        PipelineDefinition const& pipeline,
+        ZstdDictionaryIdentity const* dictionary_identity = nullptr
+    );
     [[nodiscard]] std::string_view shutdown_reason_name(ShutdownReason reason);
 }
 
@@ -303,9 +307,20 @@ namespace simnet::app
             && (shared.compression.level < 1 || shared.compression.level > 19)) {
             throw std::runtime_error("unsupported Zstd compression level");
         }
+        if (shared.compression.dictionary != "none"
+            && shared.compression.dictionary != "pipeline_v1") {
+            throw std::runtime_error(
+                "unsupported compression dictionary: " + shared.compression.dictionary
+            );
+        }
+        if ((mode == CompressionMode::None || mode == CompressionMode::PerPacket)
+            && shared.compression.dictionary != "none") {
+            throw std::runtime_error("compression dictionary requires whole_update mode");
+        }
         return {
             .mode = mode,
             .level = shared.compression.level,
+            .dictionary = shared.compression.dictionary,
         };
     }
 
@@ -339,12 +354,36 @@ namespace simnet::app
         return settings;
     }
 
-    SessionIdentity
-    make_session_identity(SharedConfig const& shared, PipelineDefinition const& pipeline)
+    SessionIdentity make_session_identity(
+        SharedConfig const& shared,
+        PipelineDefinition const& pipeline,
+        ZstdDictionaryIdentity const* dictionary_identity
+    )
     {
+        auto compatibility = fingerprint_network_compatibility(shared).value;
+        auto const dictionary_selected = shared.compression.dictionary != "none";
+        if (dictionary_selected != (dictionary_identity != nullptr)) {
+            throw std::runtime_error(
+                "selected compression dictionary identity is unavailable or unexpected"
+            );
+        }
+        if (dictionary_identity != nullptr) {
+            auto mix = [&](std::uint64_t value) {
+                for (auto shift = 56U;; shift -= 8U) {
+                    compatibility ^= (value >> shift) & 0xffU;
+                    compatibility *= 1099511628211ULL;
+                    if (shift == 0U) {
+                        break;
+                    }
+                }
+            };
+            mix(dictionary_identity->dictionary_id);
+            mix(dictionary_identity->byte_count);
+            mix(dictionary_identity->content_fingerprint);
+        }
         return {
             .application_protocol_version = application_protocol_version,
-            .compatibility_fingerprint = fingerprint_network_compatibility(shared).value,
+            .compatibility_fingerprint = compatibility,
             .application_wire_fingerprint = pipeline_decode_signature(pipeline),
             .capabilities = 0,
         };

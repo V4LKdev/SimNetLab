@@ -56,7 +56,11 @@ control. The cadence treatment emits every four authoritative ticks.
 Shared `compression` selects `none`, `whole_update`, or `per_packet`. Active modes require an
 explicit Zstd level from 1 through 19. Whole-update mode compresses the complete encoded update
 before packetization. Per-packet mode independently compresses complete application packets after
-packetization. Compression settings participate in network compatibility.
+packetization. An omitted `dictionary` normalizes to `none`. The only maintained non-none value is
+`pipeline_v1`, which requires `whole_update`. None mode rejects both `level` and `dictionary`, and
+per-packet mode rejects dictionary selection. The selected name participates in configuration
+fingerprints. Its loaded asset identity is added to session compatibility before snapshot traffic.
+The pipeline decode signature and application wire fingerprint remain unchanged.
 
 Shared `player` settings define smooth authoritative movement. Input accelerates
 private yaw and pitch velocities. Damping reduces them after release, maximum

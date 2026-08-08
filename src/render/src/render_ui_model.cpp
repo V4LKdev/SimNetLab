@@ -485,6 +485,8 @@ namespace simnet
             count64("Repeated upserts", value.repeated_recovery_upserts);
             count64("Repeated deletes", value.repeated_recovery_deletes);
             text_value("Compression", value.compression_mode);
+            text_value("Compression dictionary", value.compression_dictionary);
+            count("Compression dictionary ID", value.compression_dictionary_id);
             text_value("Compression outcome", value.compression_outcome);
             count("Representation bytes", value.representation_bytes);
             count("Compression input", value.compression_input_bytes);

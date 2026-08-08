@@ -118,10 +118,71 @@ namespace
             std::chrono::steady_clock::now().time_since_epoch()
         );
     }
+
+    [[nodiscard]] std::uint64_t fnv1a_64(simnet::ByteSpan bytes) noexcept
+    {
+        auto hash = std::uint64_t{14695981039346656037ULL};
+        for (auto const byte : bytes) {
+            hash ^= static_cast<std::uint8_t>(byte);
+            hash *= 1099511628211ULL;
+        }
+        return hash;
+    }
 }
 
 namespace simnet
 {
+    struct ZstdDictionary::Impl
+    {
+        Impl(
+            std::vector<Byte> dictionary_bytes,
+            int compression_level,
+            ZstdDictionaryExpectations expectations
+        )
+            : bytes(std::move(dictionary_bytes))
+        {
+            if (compression_level < 1 || compression_level > 19) {
+                throw std::invalid_argument("Zstd dictionary compression level must be in [1, 19]");
+            }
+            if (bytes.empty() || bytes.size() > maximum_zstd_dictionary_bytes
+                || bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::invalid_argument("Zstd dictionary byte count is outside bounds");
+            }
+            identity = {
+                .dictionary_id = ZSTD_getDictID_fromDict(bytes.data(), bytes.size()),
+                .byte_count = static_cast<std::uint32_t>(bytes.size()),
+                .content_fingerprint = fnv1a_64(bytes),
+            };
+            if (identity.dictionary_id == 0U) {
+                throw std::invalid_argument("Zstd dictionary is corrupt or has no dictionary ID");
+            }
+            if (identity.dictionary_id != expectations.dictionary_id
+                || identity.byte_count != expectations.byte_count
+                || identity.content_fingerprint != expectations.content_fingerprint) {
+                throw std::invalid_argument("Zstd dictionary identity does not match expectations");
+            }
+            compression_dictionary
+                = ZSTD_createCDict(bytes.data(), bytes.size(), compression_level);
+            decompression_dictionary = ZSTD_createDDict(bytes.data(), bytes.size());
+            if (compression_dictionary == nullptr || decompression_dictionary == nullptr) {
+                ZSTD_freeCDict(compression_dictionary);
+                ZSTD_freeDDict(decompression_dictionary);
+                throw std::runtime_error("failed to prepare reusable Zstd dictionary state");
+            }
+        }
+
+        ~Impl()
+        {
+            ZSTD_freeCDict(compression_dictionary);
+            ZSTD_freeDDict(decompression_dictionary);
+        }
+
+        std::vector<Byte> bytes{};
+        ZstdDictionaryIdentity identity{};
+        ZSTD_CDict* compression_dictionary{};
+        ZSTD_DDict* decompression_dictionary{};
+    };
+
     struct ZstdCompressor::Impl
     {
         Impl()
@@ -157,7 +218,26 @@ namespace simnet
         }
 
         ZSTD_DCtx* context{};
+        std::vector<Byte> frame_scratch{};
     };
+
+    ZstdDictionary::ZstdDictionary(
+        std::vector<Byte> bytes,
+        int compression_level,
+        ZstdDictionaryExpectations expectations
+    )
+        : impl_(std::make_unique<Impl>(std::move(bytes), compression_level, expectations))
+    {
+    }
+
+    ZstdDictionary::~ZstdDictionary() = default;
+    ZstdDictionary::ZstdDictionary(ZstdDictionary&&) noexcept = default;
+    ZstdDictionary& ZstdDictionary::operator=(ZstdDictionary&&) noexcept = default;
+
+    ZstdDictionaryIdentity const& ZstdDictionary::identity() const noexcept
+    {
+        return impl_->identity;
+    }
 
     ZstdCompressor::ZstdCompressor()
         : impl_(std::make_unique<Impl>())
@@ -285,6 +365,87 @@ namespace simnet
         return report;
     }
 
+    CompressionReport compress_bytes_with_dictionary(
+        ZstdCompressor& compressor,
+        ZstdDictionary const& dictionary,
+        ByteSpan input,
+        CompressionLimits limits,
+        std::vector<Byte>& output
+    )
+    {
+        auto report = CompressionReport{};
+        if (!valid_limits(limits)) {
+            report.error = "compression limits must be positive";
+            return report;
+        }
+        if (input.empty() || input.size() > limits.max_uncompressed_bytes
+            || input.size() > std::numeric_limits<std::uint32_t>::max()) {
+            report.error = "compression input byte count is outside contextual bounds";
+            return report;
+        }
+        report.input_bytes = static_cast<std::uint32_t>(input.size());
+
+        auto const bound = ZSTD_compressBound(input.size());
+        if (ZSTD_isError(bound) != 0U || bound > compressor.impl_->frame_scratch.max_size()) {
+            report.error = "Zstd dictionary compression bound is invalid";
+            return report;
+        }
+
+        auto const start = now_ns();
+        compressor.impl_->frame_scratch.resize(bound);
+        auto const compressed = ZSTD_compress_usingCDict(
+            compressor.impl_->context,
+            compressor.impl_->frame_scratch.data(),
+            compressor.impl_->frame_scratch.size(),
+            input.data(),
+            input.size(),
+            dictionary.impl_->compression_dictionary
+        );
+        report.compression_cpu_time = now_ns() - start;
+        if (ZSTD_isError(compressed) != 0U) {
+            report.error = std::string{"Zstd dictionary compression failed: "}
+                + ZSTD_getErrorName(compressed);
+            return report;
+        }
+        if (compressed > std::numeric_limits<std::uint32_t>::max()) {
+            report.error = "Zstd dictionary payload byte count exceeds envelope capacity";
+            return report;
+        }
+
+        auto const dictionary_total
+            = static_cast<std::uint64_t>(compression_envelope_bytes) + compressed;
+        auto const use_dictionary
+            = dictionary_total < input.size() && dictionary_total <= limits.max_output_bytes;
+        auto const payload_bytes = use_dictionary ? compressed : input.size();
+        auto const total_bytes
+            = static_cast<std::uint64_t>(compression_envelope_bytes) + payload_bytes;
+        if (total_bytes > limits.max_output_bytes
+            || total_bytes > std::numeric_limits<std::uint32_t>::max()) {
+            report.error = "dictionary compression envelope exceeds contextual output bound";
+            return report;
+        }
+
+        report.encoding
+            = use_dictionary ? CompressionEncoding::ZstdDictionary : CompressionEncoding::Raw;
+        report.encoded_payload_bytes = static_cast<std::uint32_t>(payload_bytes);
+        report.envelope_bytes = compression_envelope_bytes;
+        report.output_bytes = static_cast<std::uint32_t>(total_bytes);
+        output.clear();
+        output.reserve(report.output_bytes);
+        write_header(output, report.encoding, report.input_bytes, report.encoded_payload_bytes);
+        if (use_dictionary) {
+            output.insert(
+                output.end(),
+                compressor.impl_->frame_scratch.begin(),
+                compressor.impl_->frame_scratch.begin() + static_cast<std::ptrdiff_t>(compressed)
+            );
+        } else {
+            output.insert(output.end(), input.begin(), input.end());
+        }
+        report.valid = true;
+        return report;
+    }
+
     DecompressionReport decompress_bytes(
         ZstdDecompressor& decompressor,
         ByteSpan input,
@@ -309,7 +470,9 @@ namespace simnet
             || header.protocol != compression_protocol_version
             || header.schema != compression_schema_version
             || (header.encoding != static_cast<std::uint8_t>(CompressionEncoding::Raw)
-                && header.encoding != static_cast<std::uint8_t>(CompressionEncoding::Zstd))) {
+                && header.encoding != static_cast<std::uint8_t>(CompressionEncoding::Zstd)
+                && header.encoding
+                    != static_cast<std::uint8_t>(CompressionEncoding::ZstdDictionary))) {
             report.error = "compression envelope identity or version is invalid";
             return report;
         }
@@ -339,6 +502,10 @@ namespace simnet
             report.decompression_cpu_time = now_ns() - start;
             report.output_bytes = header.uncompressed_bytes;
             report.valid = true;
+            return report;
+        }
+        if (report.encoding == CompressionEncoding::ZstdDictionary) {
+            report.error = "Zstd dictionary envelope requires a dictionary context";
             return report;
         }
 
@@ -371,6 +538,108 @@ namespace simnet
                 : "Zstd decompressed byte count is inconsistent";
             return report;
         }
+        report.output_bytes = header.uncompressed_bytes;
+        report.valid = true;
+        return report;
+    }
+
+    DecompressionReport decompress_bytes_with_dictionary(
+        ZstdDecompressor& decompressor,
+        ZstdDictionary const& dictionary,
+        ByteSpan input,
+        CompressionLimits limits,
+        std::vector<Byte>& output
+    )
+    {
+        auto report = DecompressionReport{};
+        if (!valid_limits(limits)) {
+            report.error = "decompression limits must be positive";
+            return report;
+        }
+        if (input.size() < compression_envelope_bytes || input.size() > limits.max_output_bytes
+            || input.size() > std::numeric_limits<std::uint32_t>::max()) {
+            report.error = "compression envelope byte count is outside contextual bounds";
+            return report;
+        }
+        report.input_bytes = static_cast<std::uint32_t>(input.size());
+
+        auto header = EnvelopeHeader{};
+        if (!read_header(input, header) || header.magic != compression_magic
+            || header.protocol != compression_protocol_version
+            || header.schema != compression_schema_version
+            || (header.encoding != static_cast<std::uint8_t>(CompressionEncoding::Raw)
+                && header.encoding
+                    != static_cast<std::uint8_t>(CompressionEncoding::ZstdDictionary))) {
+            report.error = "dictionary compression envelope identity or version is invalid";
+            return report;
+        }
+        if (header.uncompressed_bytes == 0U || header.payload_bytes == 0U
+            || header.uncompressed_bytes > limits.max_uncompressed_bytes) {
+            report.error = "dictionary compression envelope sizes are outside contextual bounds";
+            return report;
+        }
+        auto const total_bytes
+            = static_cast<std::uint64_t>(compression_envelope_bytes) + header.payload_bytes;
+        if (total_bytes != input.size() || total_bytes > limits.max_output_bytes) {
+            report.error = "dictionary compression envelope payload size is inconsistent";
+            return report;
+        }
+
+        report.encoding = static_cast<CompressionEncoding>(header.encoding);
+        report.encoded_payload_bytes = header.payload_bytes;
+        report.envelope_bytes = compression_envelope_bytes;
+        auto const payload = input.subspan(compression_envelope_bytes);
+        if (report.encoding == CompressionEncoding::Raw) {
+            if (header.payload_bytes != header.uncompressed_bytes) {
+                report.error = "Raw envelope sizes must match";
+                return report;
+            }
+            auto const start = now_ns();
+            decompressor.impl_->frame_scratch.assign(payload.begin(), payload.end());
+            report.decompression_cpu_time = now_ns() - start;
+            output = decompressor.impl_->frame_scratch;
+            report.output_bytes = header.uncompressed_bytes;
+            report.valid = true;
+            return report;
+        }
+
+        auto const content_size = ZSTD_getFrameContentSize(payload.data(), payload.size());
+        if (content_size == ZSTD_CONTENTSIZE_ERROR || content_size == ZSTD_CONTENTSIZE_UNKNOWN
+            || content_size != header.uncompressed_bytes) {
+            report.error = "Zstd dictionary frame content size is invalid or inconsistent";
+            return report;
+        }
+        auto const frame_size = ZSTD_findFrameCompressedSize(payload.data(), payload.size());
+        if (ZSTD_isError(frame_size) != 0U || frame_size != payload.size()) {
+            report.error = "Zstd dictionary frame is truncated or has trailing data";
+            return report;
+        }
+        auto const frame_dictionary_id = ZSTD_getDictID_fromFrame(payload.data(), payload.size());
+        if (frame_dictionary_id == 0U
+            || frame_dictionary_id != dictionary.impl_->identity.dictionary_id) {
+            report.error = "Zstd frame dictionary ID does not match the supplied dictionary";
+            return report;
+        }
+
+        decompressor.impl_->frame_scratch.resize(header.uncompressed_bytes);
+        auto const start = now_ns();
+        auto const decompressed = ZSTD_decompress_usingDDict(
+            decompressor.impl_->context,
+            decompressor.impl_->frame_scratch.data(),
+            decompressor.impl_->frame_scratch.size(),
+            payload.data(),
+            payload.size(),
+            dictionary.impl_->decompression_dictionary
+        );
+        report.decompression_cpu_time = now_ns() - start;
+        if (ZSTD_isError(decompressed) != 0U || decompressed != header.uncompressed_bytes) {
+            report.error = ZSTD_isError(decompressed) != 0U
+                ? std::string{"Zstd dictionary decompression failed: "}
+                    + ZSTD_getErrorName(decompressed)
+                : "Zstd dictionary decompressed byte count is inconsistent";
+            return report;
+        }
+        output = decompressor.impl_->frame_scratch;
         report.output_bytes = header.uncompressed_bytes;
         report.valid = true;
         return report;

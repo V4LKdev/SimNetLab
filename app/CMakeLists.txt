@@ -4,6 +4,7 @@ add_executable(
     server_main.cpp
     server_runtime.cpp
     app_compression_corpus.cpp
+    app_compression_dictionary.cpp
     app_evidence.cpp
 )
 target_sources(
@@ -11,6 +12,7 @@ target_sources(
     PRIVATE FILE_SET CXX_MODULES FILES
         app_common.cppm
         app_compression_corpus.cppm
+        app_compression_dictionary.cppm
         app_evidence.cppm
         app_protocol.cppm
         app_snapshot_delivery.cppm
@@ -37,13 +39,14 @@ if (SIMNET_ENABLE_RENDER)
 endif ()
 simnet_configure_target(Server)
 
-add_executable(Client client_main.cpp client_runtime.cpp)
+add_executable(Client client_main.cpp client_runtime.cpp app_compression_dictionary.cpp)
 target_sources(Client
     PRIVATE
         FILE_SET CXX_MODULES
         FILES
             app_camera.cppm
             app_common.cppm
+            app_compression_dictionary.cppm
             app_player_input.cppm
             app_protocol.cppm
             app_snapshot_delivery.cppm
@@ -67,4 +70,10 @@ if (SIMNET_ENABLE_RENDER)
         SIMNET_BUILD_CONFIG="$<CONFIG>"
     )
 endif ()
+target_compile_definitions(
+    Server PRIVATE SIMNET_COMPRESSION_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets/compression"
+)
+target_compile_definitions(
+    Client PRIVATE SIMNET_COMPRESSION_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets/compression"
+)
 simnet_configure_target(Client)
