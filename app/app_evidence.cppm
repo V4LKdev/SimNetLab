@@ -10,6 +10,7 @@ export module simnet.app_evidence;
 
 import simnet.core;
 import simnet.game_server;
+import simnet.pipeline;
 import simnet.telemetry;
 
 export namespace simnet::app
@@ -32,6 +33,13 @@ export namespace simnet::app
           "acceleration_saturation_count,overlap_recovery_count,hard_wall_guard_count,"
           "polarization_ratio,capture_duration_ms,grid_duration_ms,compute_duration_ms,"
           "validate_duration_ms,commit_duration_ms,progress_duration_ms";
+
+    /// Flattens one production encode report into application-owned research evidence.
+    void flatten_server_encode_report(
+        ServerReplicationMeasurement& measurement,
+        EncodeReport const& report,
+        ClientReplicationState const& state
+    ) noexcept;
 
     struct ServerBoidCsvWriterConfig
     {

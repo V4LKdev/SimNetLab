@@ -91,12 +91,27 @@ namespace
         output.push_back('"');
     }
 
+    void append_csv_integer(std::string& output, bool value)
+    {
+        output.push_back(value ? '1' : '0');
+    }
+
     template <typename Value> void append_csv_integer(std::string& output, Value value)
     {
         char buffer[32]{};
         auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
         if (result.ec != std::errc{}) {
             throw std::runtime_error("failed to format CSV integer");
+        }
+        output.append(buffer, result.ptr);
+    }
+
+    void append_csv_real(std::string& output, double value)
+    {
+        char buffer[64]{};
+        auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+        if (result.ec != std::errc{}) {
+            throw std::runtime_error("failed to format CSV real value");
         }
         output.append(buffer, result.ptr);
     }
@@ -120,6 +135,12 @@ namespace
         {
             separator();
             append_csv_integer(output_, value);
+        }
+
+        void real(double value)
+        {
+            separator();
+            append_csv_real(output_, value);
         }
 
     private:
@@ -153,6 +174,8 @@ namespace
                 return "snapshot_extraction_failed";
             case ServerReplicationOutcome::Skipped:
                 return "skipped";
+            case ServerReplicationOutcome::Abandoned:
+                return "abandoned";
             case ServerReplicationOutcome::TransportSendFailed:
                 return "transport_send_failed";
             case ServerReplicationOutcome::Sent:
@@ -164,6 +187,20 @@ namespace
     [[nodiscard]] std::string_view client_outcome_name(ClientReplicationOutcome outcome) noexcept
     {
         switch (outcome) {
+            case ClientReplicationOutcome::PacketIncomplete:
+                return "packet_incomplete";
+            case ClientReplicationOutcome::PacketDuplicate:
+                return "packet_duplicate";
+            case ClientReplicationOutcome::PacketInvalid:
+                return "packet_invalid";
+            case ClientReplicationOutcome::PacketStale:
+                return "packet_stale";
+            case ClientReplicationOutcome::PacketGroupExpired:
+                return "packet_group_expired";
+            case ClientReplicationOutcome::DeliveryMismatch:
+                return "delivery_mismatch";
+            case ClientReplicationOutcome::DecompressionFailed:
+                return "decompression_failed";
             case ClientReplicationOutcome::DecodeFailed:
                 return "decode_failed";
             case ClientReplicationOutcome::StaleSequenceIgnored:
@@ -299,26 +336,110 @@ namespace
             server_replication_csv_schema_version
         );
         auto const& value = entry.value;
+        row.integer(value.runtime_config_fingerprint);
+        row.integer(value.network_compatibility_fingerprint);
+        row.integer(value.application_wire_fingerprint);
         row.integer(value.peer_id);
         row.text(value.accepted_gameplay_role);
         row.integer(value.tick);
         row.integer(value.sequence);
         row.integer(value.baseline_sequence);
+        row.integer(value.acknowledged_sequence);
+        row.integer(value.latest_submitted_sequence);
         row.text(snapshot_kind_name(value.snapshot_kind));
         row.text(server_outcome_name(value.outcome));
+        row.text(value.outcome_detail);
+        row.integer(value.cadence_enabled);
+        row.integer(value.incremental_enabled);
+        row.integer(value.quantization_enabled);
+        row.integer(value.oct_heading_enabled);
+        row.integer(value.delta_enabled);
+        row.integer(value.delta_field_mask_enabled);
+        row.integer(value.bit_packing_enabled);
+        row.integer(value.cadence_interval_ticks);
+        row.integer(value.incremental_limit);
+        row.integer(value.incremental_cursor_before);
+        row.integer(value.incremental_cursor_after);
+        row.integer(value.incremental_seeded_before);
+        row.integer(value.incremental_seeded_after);
+        row.text(value.area_of_interest_mode);
+        row.text(value.area_of_interest_source_status);
+        row.text(value.level_of_detail_mode);
         row.integer(value.source_entity_count);
         row.integer(value.selected_entity_count);
         row.integer(value.upsert_count);
         row.integer(value.delete_count);
+        row.integer(value.area_of_interest_candidate_count);
+        row.integer(value.area_of_interest_culled_count);
+        row.integer(value.lod_near_population);
+        row.integer(value.lod_medium_population);
+        row.integer(value.lod_far_population);
+        row.integer(value.lod_near_scheduled);
+        row.integer(value.lod_medium_scheduled);
+        row.integer(value.lod_far_scheduled);
+        row.integer(value.lod_pending_due_count);
+        row.integer(value.lod_transition_count);
+        row.integer(value.lod_forced_immediate_count);
+        row.integer(value.lod_recovery_forced_count);
+        row.integer(value.lod_deletions_bypassing_count);
+        row.integer(value.lod_full_replace_override_count);
+        row.integer(value.delta_candidate_count);
+        row.integer(value.delta_unchanged_count);
+        row.integer(value.delta_changed_existing_count);
+        row.integer(value.delta_spawned_count);
+        row.integer(value.delta_whole_record_existing_count);
+        row.integer(value.delta_masked_existing_count);
+        row.integer(value.delta_classification_field_count);
+        row.integer(value.delta_position_field_count);
+        row.integer(value.delta_heading_field_count);
+        row.integer(value.delta_hue_field_count);
+        row.integer(value.complete_record_equivalent_bytes);
+        row.integer(value.sparse_record_bytes);
+        row.text(value.representation_layout);
+        row.integer(value.complete_record_bytes);
+        row.integer(value.representation_quality_sample_count);
+        row.real(value.position_error_sum);
+        row.real(value.position_error_maximum);
+        row.real(value.heading_error_degrees_sum);
+        row.real(value.heading_error_degrees_maximum);
         row.integer(value.encoded_update_bytes);
         row.integer(value.application_payload_bytes);
         row.integer(value.transport_payload_bytes);
-        row.integer(value.snapshot_extraction_cpu_time.count());
-        row.integer(value.baseline_resolution_cpu_time.count());
-        row.integer(value.encode_cpu_time.count());
-        row.integer(value.transport_send_cpu_time.count());
-        row.integer(value.snapshot_retention_cpu_time.count());
-        row.integer(value.total_replication_cpu_time.count());
+        row.text(value.compression_mode);
+        row.text(value.compression_encoding);
+        row.text(value.compression_dictionary);
+        row.integer(value.compression_dictionary_id);
+        row.integer(value.compression_dictionary_fingerprint);
+        row.integer(value.compression_raw_fallback);
+        row.integer(value.compression_input_bytes);
+        row.integer(value.compression_payload_bytes);
+        row.integer(value.compression_envelope_bytes);
+        row.integer(value.compression_output_bytes);
+        row.integer(value.compression_elapsed_time.count());
+        row.integer(value.packetization_enabled);
+        row.integer(value.packet_group_id);
+        row.integer(value.packet_group_bytes);
+        row.integer(value.packet_payload_bytes);
+        row.integer(value.packet_header_bytes);
+        row.integer(value.packet_chunk_count);
+        row.integer(value.attempted_submissions);
+        row.integer(value.accepted_submissions);
+        row.text(value.delivery_mode);
+        row.integer(value.recovery_active);
+        row.text(value.recovery_reason);
+        row.integer(value.recovery_forced_upsert_count);
+        row.integer(value.recovery_forced_delete_count);
+        row.integer(value.repeated_without_ack_upsert_count);
+        row.integer(value.repeated_without_ack_delete_count);
+        row.integer(value.submissions_since_ack_progress);
+        row.integer(value.canonical_entity_count);
+        row.integer(value.canonical_fingerprint);
+        row.integer(value.snapshot_extraction_elapsed_time.count());
+        row.integer(value.baseline_resolution_elapsed_time.count());
+        row.integer(value.encode_elapsed_time.count());
+        row.integer(value.transport_send_elapsed_time.count());
+        row.integer(value.snapshot_retention_elapsed_time.count());
+        row.integer(value.total_replication_elapsed_time.count());
     }
 
     void format_client_row(
@@ -336,34 +457,66 @@ namespace
             entry.record_order,
             client_replication_csv_schema_version
         );
-        row.text(accepted_gameplay_role);
         auto const& value = entry.value;
+        row.integer(value.runtime_config_fingerprint);
+        row.integer(value.network_compatibility_fingerprint);
+        row.integer(value.application_wire_fingerprint);
+        row.integer(value.peer_id);
+        row.text(accepted_gameplay_role);
         row.integer(value.tick);
         row.integer(value.sequence);
         row.integer(value.baseline_sequence);
+        row.integer(value.acknowledged_sequence_before);
+        row.integer(value.received_sequence_after);
+        row.integer(value.acknowledged_sequence_after);
         row.text(snapshot_kind_name(value.snapshot_kind));
         row.text(client_outcome_name(value.outcome));
+        row.text(value.outcome_detail);
         row.integer(value.encoded_update_bytes);
-        row.integer(value.application_payload_bytes);
-        row.integer(value.transport_payload_bytes);
         row.integer(value.upsert_count);
         row.integer(value.delete_count);
         row.integer(value.reconstructed_entity_count);
         row.integer(value.final_sink_entity_count);
-        row.integer(value.decode_cpu_time.count());
-        row.integer(value.baseline_resolution_cpu_time.count());
-        row.integer(value.reconstruction_cpu_time.count());
-        row.integer(value.sink_preparation_cpu_time.count());
-        row.integer(value.sink_application_cpu_time.count());
-        row.integer(value.canonical_snapshot_commit_cpu_time.count());
-        row.integer(value.total_receive_to_applied_cpu_time.count());
+        row.integer(value.canonical_fingerprint);
+        row.integer(value.packetization_enabled);
+        row.integer(value.packet_group_id);
+        row.integer(value.received_outer_bytes);
+        row.integer(value.group_chunk_count);
+        row.integer(value.received_packet_count);
+        row.integer(value.duplicate_packet_count);
+        row.integer(value.invalid_packet_count);
+        row.integer(value.stale_packet_count);
+        row.integer(value.incomplete_packet_count);
+        row.integer(value.expired_group_count);
+        row.integer(value.retained_incomplete_group_count);
+        row.integer(value.retained_incomplete_bytes);
+        row.integer(value.packet_group_wait_available);
+        row.integer(value.packet_group_wait_time.count());
+        row.text(value.compression_mode);
+        row.text(value.decompression_encoding);
+        row.text(value.decompression_result);
+        row.text(value.compression_dictionary);
+        row.integer(value.compression_dictionary_id);
+        row.integer(value.compression_dictionary_fingerprint);
+        row.integer(value.compressed_bytes);
+        row.integer(value.compression_payload_bytes);
+        row.integer(value.compression_envelope_bytes);
+        row.integer(value.uncompressed_bytes);
+        row.integer(value.decompression_elapsed_time.count());
+        row.integer(value.decode_elapsed_time.count());
+        row.integer(value.baseline_resolution_elapsed_time.count());
+        row.integer(value.reconstruction_elapsed_time.count());
+        row.integer(value.sink_preparation_elapsed_time.count());
+        row.integer(value.sink_application_elapsed_time.count());
+        row.integer(value.canonical_snapshot_commit_elapsed_time.count());
+        row.integer(value.total_receive_to_applied_elapsed_time.count());
     }
 
     [[nodiscard]] bool
     persist_server_rows(ReplicationWriterState<ServerReplicationMeasurement>& state)
     {
         auto row = std::string{};
-        row.reserve(512);
+        row.reserve(2048);
         for (auto const& entry : state.buffer) {
             format_server_row(row, state.config.run, entry);
             if (!state.file->write_row(row)) {
@@ -385,7 +538,7 @@ namespace
     )
     {
         auto row = std::string{};
-        row.reserve(512);
+        row.reserve(1536);
         for (auto const& entry : state.buffer) {
             format_client_row(row, state.config.run, accepted_gameplay_role, entry);
             if (!state.file->write_row(row)) {
@@ -564,8 +717,8 @@ namespace simnet
             : state(
                   std::move(config),
                   EvidenceProcessRole::Server,
-                  "server_replication_v2_",
-                  server_replication_csv_header_v2
+                  "server_replication_v3_",
+                  server_replication_csv_header_v3
               )
         {
         }
@@ -679,8 +832,8 @@ namespace simnet
             : state(
                   std::move(config),
                   EvidenceProcessRole::Client,
-                  "client_replication_v1_",
-                  client_replication_csv_header_v1
+                  "client_replication_v2_",
+                  client_replication_csv_header_v2
               )
         {
         }

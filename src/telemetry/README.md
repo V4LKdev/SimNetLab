@@ -26,16 +26,32 @@ The application runtimes own all timing boundaries. The telemetry module owns on
 records and the allocation-free current observers. Snapshot, pipeline, transport, game, and render
 reports remain domain results. They do not write research output.
 
-The Server records snapshot extraction, baseline resolution, encoding, transport submission, and
-retained-baseline storage. `encoded_update_bytes` is the complete pipeline update.
-`application_payload_bytes` is the update offered to transport. `transport_payload_bytes` is the
-application payload accepted by transport and excludes network protocol overhead.
+The Server records snapshot extraction, baseline resolution, encoding, compression,
+packetization, transport submission, and retained-baseline storage. It also flattens the active
+techniques, AOI, LOD, Incremental, Delta, representation quality, delivery, recovery, ACK, and
+canonical-state reports that the application owns. `encoded_update_bytes` is the complete
+pipeline update. `application_payload_bytes` is the complete prepared application packet group.
+`transport_payload_bytes` is the portion accepted by transport and excludes network protocol
+overhead. Packet group, application header, and payload columns preserve the intervening
+packetization boundaries.
 
-The Client records decode, retained-baseline resolution, reconstruction, sink preparation, Client
-Flecs sink application, canonical snapshot commit, and total receive-to-applied CPU work. Retained
-reconstructed snapshots remain canonical Client state. Pipeline-only treatments exclude sink
-preparation and sink application. Full-system treatments include both and report sink application
-separately. A failed attempt never enters `latest_applied` and never increments `applied_count`.
+The Client records received outer bytes, reassembly outcomes, decompression, decode,
+retained-baseline resolution, reconstruction, sink preparation, Client Flecs sink application,
+canonical snapshot commit, ACK progression, and total receive-to-applied work. Incomplete,
+duplicate, invalid, stale, expired, decompression-failed, and non-commit application outcomes are
+rows rather than implied successes. Retained reconstructed snapshots remain canonical Client
+state. Pipeline-only treatments exclude sink preparation and sink application. Full-system
+treatments include both and report sink application separately. A failed attempt never enters
+`latest_applied` and never increments `applied_count`.
+
+Every replication duration column ending in `_elapsed_ns` is elapsed wall time measured with
+`std::chrono::steady_clock` around the named application stage. It is not process CPU time. Server
+total elapsed time starts after shared snapshot extraction and ends after retention commit.
+Optional corpus file I/O is excluded from that elapsed duration. Client total elapsed time starts
+at encoded-header inspection after reassembly and decompression and ends at canonical commit.
+Canonical fingerprint work happens after these measured totals. Representation quality sampling
+is part of Server encoding when CSV evidence is enabled. The Server snapshot extraction duration
+appears only on the first joined peer row for a tick.
 
 The current runtime consumer keeps the latest attempt, latest successful result, and counts for
 the shutdown summary. Each application also submits every attempt to its role-specific CSV
@@ -44,8 +60,8 @@ writer after the measured stage ends.
 ### simnet.telemetry:csv
 
 - `EvidenceRunContext` - immutable process role, process-start clocks, and validated run ID.
-- `ServerReplicationCsvWriter` - bounded peer-attributed Server rows and the Server v2 schema.
-- `ClientReplicationCsvWriter` - bounded typed Client rows and the Client v1 schema.
+- `ServerReplicationCsvWriter` - bounded peer-attributed Server rows and the Server v3 schema.
+- `ClientReplicationCsvWriter` - bounded typed Client rows and the Client v2 schema.
 - `EvidenceCsvFile` - exclusive creation and checked write, flush, and close operations.
 
 Server and Client accept optional `--run-id TEXT`. Supplied values must contain 1 to 64 ASCII
@@ -58,7 +74,8 @@ The application captures each record envelope after its TEL-001 measured stage. 
 the authoritative order within one file. `recorded_at_unix_ns` supports approximate cross-process
 alignment. `elapsed_since_process_start_ns` is monotonic within the process. The role and
 process-start timestamp identify the producing process. Server rows store the Server-assigned peer
-ID and accepted gameplay role. Client rows also store the authoritative role from `JoinAccepted`.
+ID and accepted gameplay role. Client rows store the Server-assigned peer ID and authoritative
+role from `JoinAccepted`.
 
 Replication writers reserve 256 typed records at startup and request a drain at 128. Submission
 copies only the measurement and envelope. Formatting and file I/O occur during explicit
@@ -71,13 +88,18 @@ capacity, and drain threshold. It retains its existing sample cadence of one agg
 simulated second plus the last unsampled tick. The boid schema remains separate from replication
 because it describes simulation diagnostics and phase timings rather than a replication attempt.
 
-Enabled files are named `server_replication_v2_<process_started_unix_ns>.csv`,
-`client_replication_v1_<process_started_unix_ns>.csv`, and
+Enabled files are named `server_replication_v3_<process_started_unix_ns>.csv`,
+`client_replication_v2_<process_started_unix_ns>.csv`, and
 `server_boids_v1_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
 version.
 
-No in-process field represents externally captured packet bytes, operating-system counters, perf
-data, energy data, or netem data.
+When CSV evidence is disabled, writers create no directory or file. They also skip timestamp
+capture and row formatting. Application report flattening remains fixed-size value assignment and
+does no file I/O.
+
+No in-process field represents captured network bytes, operating-system counters, perf data,
+energy data, or netem data. `scripts/simnet_linux_collector.py` owns the separate Linux process and
+host evidence layer.
 
 ## Trace Macros
 

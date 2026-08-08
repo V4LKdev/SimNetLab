@@ -18,6 +18,7 @@ export namespace simnet
     {
         SnapshotExtractionFailed,
         Skipped,
+        Abandoned,
         TransportSendFailed,
         Sent
     };
@@ -25,44 +26,144 @@ export namespace simnet
     /// One Server replication attempt measured by the application runtime.
     struct ServerReplicationMeasurement
     {
+        std::uint64_t runtime_config_fingerprint{};
+        std::uint64_t network_compatibility_fingerprint{};
+        std::uint64_t application_wire_fingerprint{};
         PeerId peer_id{};
         // The application supplies stable role vocabulary that outlives buffered CSV records.
         std::string_view accepted_gameplay_role{};
         Tick tick{};
         SequenceId sequence{};
         SequenceId baseline_sequence{};
+        SequenceId acknowledged_sequence{};
+        SequenceId latest_submitted_sequence{};
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
         ServerReplicationOutcome outcome{ServerReplicationOutcome::SnapshotExtractionFailed};
+        /// Stable application-owned detail for skipped and failed terminal outcomes.
+        std::string_view outcome_detail{"snapshot_extraction_failed"};
+
+        bool cadence_enabled{};
+        bool incremental_enabled{};
+        bool quantization_enabled{};
+        bool oct_heading_enabled{};
+        bool delta_enabled{};
+        bool delta_field_mask_enabled{};
+        bool bit_packing_enabled{};
+        std::uint32_t cadence_interval_ticks{1};
+        std::uint32_t incremental_limit{};
+        std::uint32_t incremental_cursor_before{};
+        std::uint32_t incremental_cursor_after{};
+        bool incremental_seeded_before{};
+        bool incremental_seeded_after{};
+        std::string_view area_of_interest_mode{"none"};
+        std::string_view area_of_interest_source_status{"not_required"};
+        std::string_view level_of_detail_mode{"none"};
 
         std::uint32_t source_entity_count{};
         std::uint32_t selected_entity_count{};
         std::uint32_t upsert_count{};
         std::uint32_t delete_count{};
 
+        std::uint32_t area_of_interest_candidate_count{};
+        std::uint32_t area_of_interest_culled_count{};
+        std::uint32_t lod_near_population{};
+        std::uint32_t lod_medium_population{};
+        std::uint32_t lod_far_population{};
+        std::uint32_t lod_near_scheduled{};
+        std::uint32_t lod_medium_scheduled{};
+        std::uint32_t lod_far_scheduled{};
+        std::uint32_t lod_pending_due_count{};
+        std::uint32_t lod_transition_count{};
+        std::uint32_t lod_forced_immediate_count{};
+        std::uint32_t lod_recovery_forced_count{};
+        std::uint32_t lod_deletions_bypassing_count{};
+        std::uint32_t lod_full_replace_override_count{};
+
+        std::uint32_t delta_candidate_count{};
+        std::uint32_t delta_unchanged_count{};
+        std::uint32_t delta_changed_existing_count{};
+        std::uint32_t delta_spawned_count{};
+        std::uint32_t delta_whole_record_existing_count{};
+        std::uint32_t delta_masked_existing_count{};
+        std::uint32_t delta_classification_field_count{};
+        std::uint32_t delta_position_field_count{};
+        std::uint32_t delta_heading_field_count{};
+        std::uint32_t delta_hue_field_count{};
+        std::uint64_t complete_record_equivalent_bytes{};
+        std::uint64_t sparse_record_bytes{};
+
+        std::string_view representation_layout{"unknown"};
+        std::uint32_t complete_record_bytes{};
+        std::uint32_t representation_quality_sample_count{};
+        double position_error_sum{};
+        double position_error_maximum{};
+        double heading_error_degrees_sum{};
+        double heading_error_degrees_maximum{};
+
         /// Complete pipeline update including its application header.
         std::uint32_t encoded_update_bytes{};
-        /// Encoded update bytes offered by the Server application to transport.
+        /// Complete prepared application packet group offered to transport.
         std::uint32_t application_payload_bytes{};
         /// Application payload bytes accepted by transport, excluding network overhead.
         std::uint32_t transport_payload_bytes{};
 
-        /// ensure_current_snapshot for the current authoritative tick.
-        Nanoseconds snapshot_extraction_cpu_time{};
-        /// Retained acknowledged-baseline lookup and fallback selection.
-        Nanoseconds baseline_resolution_cpu_time{};
-        /// encode_snapshot_unchecked for the selected current and baseline snapshots.
-        Nanoseconds encode_cpu_time{};
-        /// TransportServer::send for the encoded update.
-        Nanoseconds transport_send_cpu_time{};
-        /// Retained-baseline copy and newest-emitted sequence commit after send succeeds.
-        Nanoseconds snapshot_retention_cpu_time{};
-        /// Extraction start through the terminal outcome of this attempt.
-        Nanoseconds total_replication_cpu_time{};
+        std::string_view compression_mode{"none"};
+        std::string_view compression_encoding{"disabled"};
+        std::string_view compression_dictionary{"none"};
+        std::uint32_t compression_dictionary_id{};
+        std::uint64_t compression_dictionary_fingerprint{};
+        bool compression_raw_fallback{};
+        std::uint32_t compression_input_bytes{};
+        std::uint32_t compression_payload_bytes{};
+        std::uint32_t compression_envelope_bytes{};
+        std::uint32_t compression_output_bytes{};
+        /// Steady-clock elapsed wall time around production compression.
+        Nanoseconds compression_elapsed_time{};
+
+        bool packetization_enabled{};
+        std::uint32_t packet_group_id{};
+        std::uint32_t packet_group_bytes{};
+        std::uint32_t packet_payload_bytes{};
+        std::uint32_t packet_header_bytes{};
+        std::uint32_t packet_chunk_count{};
+        std::uint32_t attempted_submissions{};
+        std::uint32_t accepted_submissions{};
+
+        std::string_view delivery_mode{"unknown"};
+        bool recovery_active{};
+        std::string_view recovery_reason{"none"};
+        std::uint32_t recovery_forced_upsert_count{};
+        std::uint32_t recovery_forced_delete_count{};
+        std::uint32_t repeated_without_ack_upsert_count{};
+        std::uint32_t repeated_without_ack_delete_count{};
+        std::uint32_t submissions_since_ack_progress{};
+        std::uint32_t canonical_entity_count{};
+        std::uint64_t canonical_fingerprint{};
+
+        /// Steady-clock elapsed wall time around authoritative snapshot extraction.
+        Nanoseconds snapshot_extraction_elapsed_time{};
+        /// Steady-clock elapsed wall time around retained-baseline resolution.
+        Nanoseconds baseline_resolution_elapsed_time{};
+        /// Steady-clock elapsed wall time around pipeline encoding.
+        Nanoseconds encode_elapsed_time{};
+        /// Steady-clock elapsed wall time around transport submissions.
+        Nanoseconds transport_send_elapsed_time{};
+        /// Steady-clock elapsed wall time around retained-baseline commit.
+        Nanoseconds snapshot_retention_elapsed_time{};
+        /// Steady-clock elapsed wall time from per-peer baseline work through terminal outcome.
+        Nanoseconds total_replication_elapsed_time{};
     };
 
     /// Terminal result of one Snapshot-lane packet handled by the Client runtime.
     enum class ClientReplicationOutcome : std::uint8_t
     {
+        PacketIncomplete,
+        PacketDuplicate,
+        PacketInvalid,
+        PacketStale,
+        PacketGroupExpired,
+        DeliveryMismatch,
+        DecompressionFailed,
         DecodeFailed,
         StaleSequenceIgnored,
         BaselineUnavailable,
@@ -75,40 +176,74 @@ export namespace simnet
     ///
     /// Retained reconstructed snapshots are canonical Client state. Sink preparation and sink
     /// application are separate so pipeline-only treatments can exclude the nonauthoritative
-    /// Client Flecs workload. total_receive_to_applied_cpu_time is populated only for Applied.
+    /// Client Flecs workload. total_receive_to_applied_elapsed_time is populated only for Applied.
     struct ClientReplicationMeasurement
     {
+        std::uint64_t runtime_config_fingerprint{};
+        std::uint64_t network_compatibility_fingerprint{};
+        std::uint64_t application_wire_fingerprint{};
+        PeerId peer_id{};
         Tick tick{};
         SequenceId sequence{};
         SequenceId baseline_sequence{};
+        SequenceId acknowledged_sequence_before{};
+        SequenceId received_sequence_after{};
+        SequenceId acknowledged_sequence_after{};
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
         ClientReplicationOutcome outcome{ClientReplicationOutcome::DecodeFailed};
+        std::string_view outcome_detail{"decode_failed"};
 
         /// Complete pipeline update reported by decode.
         std::uint32_t encoded_update_bytes{};
-        /// Encoded update bytes submitted by the Client application to decode.
-        std::uint32_t application_payload_bytes{};
-        /// Application payload bytes delivered by transport, excluding network overhead.
-        std::uint32_t transport_payload_bytes{};
         std::uint32_t upsert_count{};
         std::uint32_t delete_count{};
         std::uint32_t reconstructed_entity_count{};
         std::uint32_t final_sink_entity_count{};
+        std::uint64_t canonical_fingerprint{};
 
-        /// decode_update for the delivered Snapshot-lane application payload.
-        Nanoseconds decode_cpu_time{};
-        /// Exact retained-baseline lookup or current baseline selection.
-        Nanoseconds baseline_resolution_cpu_time{};
-        /// reconstruct_world_snapshot_unchecked into a new canonical snapshot.
-        Nanoseconds reconstruction_cpu_time{};
-        /// FullReplace construction when the sink cannot apply the decoded patch directly.
-        Nanoseconds sink_preparation_cpu_time{};
-        /// Client Flecs patch application including entity, component, and sink-index work.
-        Nanoseconds sink_application_cpu_time{};
-        /// Applied sequence, ACK tracker, retained snapshot, and runtime tick commit.
-        Nanoseconds canonical_snapshot_commit_cpu_time{};
-        /// Decode start through canonical commit after successful sink application.
-        Nanoseconds total_receive_to_applied_cpu_time{};
+        bool packetization_enabled{};
+        std::uint32_t packet_group_id{};
+        std::uint32_t received_outer_bytes{};
+        std::uint32_t group_chunk_count{};
+        std::uint32_t received_packet_count{};
+        std::uint32_t duplicate_packet_count{};
+        std::uint32_t invalid_packet_count{};
+        std::uint32_t stale_packet_count{};
+        std::uint32_t incomplete_packet_count{};
+        std::uint32_t expired_group_count{};
+        std::uint32_t retained_incomplete_group_count{};
+        std::uint32_t retained_incomplete_bytes{};
+        bool packet_group_wait_available{};
+        /// Steady-clock elapsed wall time from the first packet to group completion.
+        Nanoseconds packet_group_wait_time{};
+
+        std::string_view compression_mode{"none"};
+        std::string_view decompression_encoding{"disabled"};
+        std::string_view decompression_result{"not_required"};
+        std::string_view compression_dictionary{"none"};
+        std::uint32_t compression_dictionary_id{};
+        std::uint64_t compression_dictionary_fingerprint{};
+        std::uint32_t compressed_bytes{};
+        std::uint32_t compression_payload_bytes{};
+        std::uint32_t compression_envelope_bytes{};
+        std::uint32_t uncompressed_bytes{};
+        /// Steady-clock elapsed wall time around production decompression.
+        Nanoseconds decompression_elapsed_time{};
+
+        /// Steady-clock elapsed wall time around pipeline decoding.
+        Nanoseconds decode_elapsed_time{};
+        /// Steady-clock elapsed wall time around retained-baseline lookup.
+        Nanoseconds baseline_resolution_elapsed_time{};
+        /// Steady-clock elapsed wall time around canonical snapshot reconstruction.
+        Nanoseconds reconstruction_elapsed_time{};
+        /// Steady-clock elapsed wall time around Flecs sink preparation.
+        Nanoseconds sink_preparation_elapsed_time{};
+        /// Steady-clock elapsed wall time around Flecs sink application.
+        Nanoseconds sink_application_elapsed_time{};
+        /// Steady-clock elapsed wall time around canonical state and ACK commit.
+        Nanoseconds canonical_snapshot_commit_elapsed_time{};
+        /// Steady-clock elapsed wall time from decode start through canonical commit.
+        Nanoseconds total_receive_to_applied_elapsed_time{};
     };
 
     /// Allocation-free current observer state for Server replication attempts.

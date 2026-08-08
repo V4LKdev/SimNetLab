@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -15,10 +18,10 @@ import simnet.snapshot;
 static_assert(std::is_trivially_move_constructible_v<simnet::ServerReplicationMeasurement>);
 static_assert(std::is_trivially_move_constructible_v<simnet::ClientReplicationMeasurement>);
 static_assert(std::is_same_v<
-              decltype(simnet::ServerReplicationMeasurement::encode_cpu_time),
+              decltype(simnet::ServerReplicationMeasurement::encode_elapsed_time),
               simnet::Nanoseconds>);
 static_assert(std::is_same_v<
-              decltype(simnet::ClientReplicationMeasurement::sink_application_cpu_time),
+              decltype(simnet::ClientReplicationMeasurement::sink_application_elapsed_time),
               simnet::Nanoseconds>);
 static_assert(!std::is_copy_constructible_v<simnet::EvidenceCsvFile>);
 static_assert(!std::is_copy_assignable_v<simnet::EvidenceCsvFile>);
@@ -70,6 +73,44 @@ namespace
             lines.push_back(line);
         }
         return lines;
+    }
+
+    [[nodiscard]] std::vector<std::string> parse_csv_row(std::string_view text)
+    {
+        auto fields = std::vector<std::string>{};
+        auto field = std::string{};
+        auto quoted = false;
+        for (auto index = std::size_t{}; index < text.size(); ++index) {
+            auto const character = text[index];
+            if (character == '"') {
+                if (quoted && index + 1U < text.size() && text[index + 1U] == '"') {
+                    field.push_back('"');
+                    ++index;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (character == ',' && !quoted) {
+                fields.push_back(std::move(field));
+                field.clear();
+            } else {
+                field.push_back(character);
+            }
+        }
+        fields.push_back(std::move(field));
+        return fields;
+    }
+
+    [[nodiscard]] std::string const& column_value(
+        std::vector<std::string> const& header,
+        std::vector<std::string> const& row,
+        std::string_view column
+    )
+    {
+        auto const found = std::ranges::find(header, column);
+        REQUIRE(found != header.end());
+        auto const index = static_cast<std::size_t>(std::distance(header.begin(), found));
+        REQUIRE(index < row.size());
+        return row[index];
     }
 }
 
@@ -146,18 +187,9 @@ TEST_CASE("evidence CSV flush and post-close failures are observable", "[telemet
     CHECK_FALSE(file.close());
 }
 
-TEST_CASE("Server replication CSV has peer-attributed v2 rows", "[telemetry][csv][peer]")
+TEST_CASE("Server replication CSV has complete peer-attributed v3 rows", "[telemetry][csv][peer]")
 {
-    CHECK(
-        simnet::server_replication_csv_header_v2
-        == "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
-           "elapsed_since_process_start_ns,record_order,peer_id,accepted_gameplay_role,tick,"
-           "sequence,baseline_sequence,snapshot_kind,outcome,source_entity_count,"
-           "selected_entity_count,upsert_count,delete_count,encoded_update_bytes,"
-           "application_payload_bytes,transport_payload_bytes,snapshot_extraction_cpu_ns,"
-           "baseline_resolution_cpu_ns,encode_cpu_ns,transport_send_cpu_ns,"
-           "snapshot_retention_cpu_ns,total_replication_cpu_ns"
-    );
+    CHECK(simnet::server_replication_csv_schema_version == 3U);
     auto temporary = TemporaryDirectory{};
     auto writer = simnet::ServerReplicationCsvWriter{{
         .enabled = true,
@@ -168,7 +200,7 @@ TEST_CASE("Server replication CSV has peer-attributed v2 rows", "[telemetry][csv
             .process_started_unix_ns = 100,
         },
     }};
-    CHECK(writer.path().filename() == "server_replication_v2_100.csv");
+    CHECK(writer.path().filename() == "server_replication_v3_100.csv");
 
     auto first = simnet::ServerReplicationMeasurement{
         .peer_id = 3U,
@@ -176,25 +208,36 @@ TEST_CASE("Server replication CSV has peer-attributed v2 rows", "[telemetry][csv
         .tick = 7,
         .sequence = 3,
         .baseline_sequence = 2,
+        .acknowledged_sequence = 2,
         .snapshot_kind = simnet::SnapshotKind::Patch,
         .outcome = simnet::ServerReplicationOutcome::Sent,
+        .outcome_detail = "committed,with \"quoted\" detail",
         .source_entity_count = 10,
         .selected_entity_count = 8,
         .upsert_count = 6,
         .delete_count = 2,
+        .representation_layout = "raw",
+        .complete_record_bytes = 30,
         .encoded_update_bytes = 101,
         .application_payload_bytes = 101,
         .transport_payload_bytes = 101,
-        .snapshot_extraction_cpu_time = std::chrono::nanoseconds{11},
-        .baseline_resolution_cpu_time = std::chrono::nanoseconds{12},
-        .encode_cpu_time = std::chrono::nanoseconds{13},
-        .transport_send_cpu_time = std::chrono::nanoseconds{14},
-        .snapshot_retention_cpu_time = std::chrono::nanoseconds{15},
-        .total_replication_cpu_time = std::chrono::nanoseconds{65},
+        .compression_elapsed_time = std::chrono::nanoseconds{10},
+        .packet_group_id = 3,
+        .packet_chunk_count = 2,
+        .canonical_entity_count = 8,
+        .canonical_fingerprint = 1234,
+        .snapshot_extraction_elapsed_time = std::chrono::nanoseconds{11},
+        .baseline_resolution_elapsed_time = std::chrono::nanoseconds{12},
+        .encode_elapsed_time = std::chrono::nanoseconds{13},
+        .transport_send_elapsed_time = std::chrono::nanoseconds{14},
+        .snapshot_retention_elapsed_time = std::chrono::nanoseconds{15},
+        .total_replication_elapsed_time = std::chrono::nanoseconds{65},
     };
     auto second = first;
     second.tick = 8;
     second.sequence = 4;
+    second.outcome = simnet::ServerReplicationOutcome::Skipped;
+    second.outcome_detail = "cadence_skip";
     REQUIRE(
         writer.submit(first, {.recorded_at_unix_ns = 110, .elapsed_since_process_start_ns = 9})
     );
@@ -211,15 +254,34 @@ TEST_CASE("Server replication CSV has peer-attributed v2 rows", "[telemetry][csv
 
     auto const lines = read_lines(writer.path());
     REQUIRE(lines.size() == 3);
-    CHECK(lines[0] == simnet::server_replication_csv_header_v2);
-    CHECK(
-        lines[1]
-        == "2,paired-run,server,100,110,9,0,3,player,7,3,2,patch,sent,10,8,6,2,101,101,101,11,12,13,14,15,65"
-    );
-    CHECK(
-        lines[2]
-        == "2,paired-run,server,100,120,19,1,3,player,8,4,2,patch,sent,10,8,6,2,101,101,101,11,12,13,14,15,65"
-    );
+    CHECK(lines[0] == simnet::server_replication_csv_header_v3);
+    CHECK(lines[0].find("_cpu_ns") == std::string::npos);
+    auto const header = parse_csv_row(lines[0]);
+    auto const row1 = parse_csv_row(lines[1]);
+    auto const row2 = parse_csv_row(lines[2]);
+    CHECK(row1.size() == header.size());
+    CHECK(row2.size() == header.size());
+    CHECK(column_value(header, row1, "schema_version") == "3");
+    CHECK(column_value(header, row1, "peer_id") == "3");
+    CHECK(column_value(header, row1, "outcome") == "sent");
+    CHECK(column_value(header, row1, "outcome_detail") == "committed,with \"quoted\" detail");
+    CHECK(column_value(header, row1, "complete_record_bytes") == "30");
+    CHECK(column_value(header, row1, "canonical_fingerprint") == "1234");
+    CHECK(column_value(header, row1, "compression_elapsed_ns") == "10");
+    CHECK(column_value(header, row1, "snapshot_extraction_elapsed_ns") == "11");
+    CHECK(column_value(header, row1, "baseline_resolution_elapsed_ns") == "12");
+    CHECK(column_value(header, row1, "encode_elapsed_ns") == "13");
+    CHECK(column_value(header, row1, "transport_send_elapsed_ns") == "14");
+    CHECK(column_value(header, row1, "snapshot_retention_elapsed_ns") == "15");
+    CHECK(column_value(header, row1, "total_replication_elapsed_ns") == "65");
+    CHECK(column_value(header, row1, "record_order") == "0");
+    CHECK(column_value(header, row2, "record_order") == "1");
+    CHECK(column_value(header, row2, "outcome") == "skipped");
+    CHECK(column_value(header, row2, "outcome_detail") == "cadence_skip");
+    CHECK(column_value(header, row1, "recorded_at_unix_ns") == "110");
+    CHECK(column_value(header, row2, "recorded_at_unix_ns") == "120");
+    CHECK(column_value(header, row1, "elapsed_since_process_start_ns") == "9");
+    CHECK(column_value(header, row2, "elapsed_since_process_start_ns") == "19");
 }
 
 TEST_CASE(
@@ -227,17 +289,7 @@ TEST_CASE(
     "[telemetry][csv]"
 )
 {
-    CHECK(
-        simnet::client_replication_csv_header_v1
-        == "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
-           "elapsed_since_process_start_ns,record_order,accepted_gameplay_role,tick,sequence,"
-           "baseline_sequence,snapshot_kind,outcome,encoded_update_bytes,"
-           "application_payload_bytes,transport_payload_bytes,upsert_count,delete_count,"
-           "reconstructed_entity_count,final_sink_entity_count,decode_cpu_ns,"
-           "baseline_resolution_cpu_ns,reconstruction_cpu_ns,sink_preparation_cpu_ns,"
-           "sink_application_cpu_ns,canonical_snapshot_commit_cpu_ns,"
-           "total_receive_to_applied_cpu_ns"
-    );
+    CHECK(simnet::client_replication_csv_schema_version == 2U);
     auto temporary = TemporaryDirectory{};
     auto writer = simnet::ClientReplicationCsvWriter{{
         .enabled = true,
@@ -248,29 +300,37 @@ TEST_CASE(
             .process_started_unix_ns = 200,
         },
     }};
-    CHECK(simnet::client_replication_csv_header_v1 != simnet::server_replication_csv_header_v2);
-    CHECK(writer.path().filename() == "client_replication_v1_200.csv");
+    CHECK(simnet::client_replication_csv_header_v2 != simnet::server_replication_csv_header_v3);
+    CHECK(writer.path().filename() == "client_replication_v2_200.csv");
 
     auto const measurement = simnet::ClientReplicationMeasurement{
         .tick = 9,
         .sequence = 5,
         .baseline_sequence = 4,
+        .acknowledged_sequence_before = 4,
+        .received_sequence_after = 5,
+        .acknowledged_sequence_after = 5,
         .snapshot_kind = simnet::SnapshotKind::Patch,
         .outcome = simnet::ClientReplicationOutcome::Applied,
+        .outcome_detail = "committed",
         .encoded_update_bytes = 88,
-        .application_payload_bytes = 88,
-        .transport_payload_bytes = 88,
         .upsert_count = 5,
         .delete_count = 1,
         .reconstructed_entity_count = 12,
         .final_sink_entity_count = 12,
-        .decode_cpu_time = std::chrono::nanoseconds{1},
-        .baseline_resolution_cpu_time = std::chrono::nanoseconds{2},
-        .reconstruction_cpu_time = std::chrono::nanoseconds{3},
-        .sink_preparation_cpu_time = std::chrono::nanoseconds{4},
-        .sink_application_cpu_time = std::chrono::nanoseconds{5},
-        .canonical_snapshot_commit_cpu_time = std::chrono::nanoseconds{6},
-        .total_receive_to_applied_cpu_time = std::chrono::nanoseconds{21},
+        .canonical_fingerprint = 5678,
+        .packet_group_id = 5,
+        .received_outer_bytes = 113,
+        .group_chunk_count = 2,
+        .received_packet_count = 1,
+        .decompression_elapsed_time = std::chrono::nanoseconds{7},
+        .decode_elapsed_time = std::chrono::nanoseconds{1},
+        .baseline_resolution_elapsed_time = std::chrono::nanoseconds{2},
+        .reconstruction_elapsed_time = std::chrono::nanoseconds{3},
+        .sink_preparation_elapsed_time = std::chrono::nanoseconds{4},
+        .sink_application_elapsed_time = std::chrono::nanoseconds{5},
+        .canonical_snapshot_commit_elapsed_time = std::chrono::nanoseconds{6},
+        .total_receive_to_applied_elapsed_time = std::chrono::nanoseconds{21},
     };
     REQUIRE(writer.submit(
         measurement,
@@ -303,6 +363,8 @@ TEST_CASE(
     auto next_measurement = measurement;
     next_measurement.tick = 10;
     next_measurement.sequence = 6;
+    next_measurement.outcome = simnet::ClientReplicationOutcome::PacketIncomplete;
+    next_measurement.outcome_detail = "group_incomplete";
     REQUIRE(second_writer.submit(
         next_measurement,
         {.recorded_at_unix_ns = 230, .elapsed_since_process_start_ns = 30}
@@ -310,15 +372,32 @@ TEST_CASE(
     REQUIRE(second_writer.close());
     auto const lines = read_lines(second_writer.path());
     REQUIRE(lines.size() == 3);
-    CHECK(lines[0] == simnet::client_replication_csv_header_v1);
-    CHECK(
-        lines[1]
-        == "1,second-run,client,201,220,20,0,player,9,5,4,patch,applied,88,88,88,5,1,12,12,1,2,3,4,5,6,21"
-    );
-    CHECK(
-        lines[2]
-        == "1,second-run,client,201,230,30,1,player,10,6,4,patch,applied,88,88,88,5,1,12,12,1,2,3,4,5,6,21"
-    );
+    CHECK(lines[0] == simnet::client_replication_csv_header_v2);
+    CHECK(lines[0].find("_cpu_ns") == std::string::npos);
+    auto const header = parse_csv_row(lines[0]);
+    auto const row1 = parse_csv_row(lines[1]);
+    auto const row2 = parse_csv_row(lines[2]);
+    CHECK(row1.size() == header.size());
+    CHECK(row2.size() == header.size());
+    CHECK(column_value(header, row1, "schema_version") == "2");
+    CHECK(column_value(header, row1, "accepted_gameplay_role") == "player");
+    CHECK(column_value(header, row1, "outcome") == "applied");
+    CHECK(column_value(header, row1, "received_outer_bytes") == "113");
+    CHECK(column_value(header, row1, "canonical_fingerprint") == "5678");
+    CHECK(column_value(header, row1, "decompression_elapsed_ns") == "7");
+    CHECK(column_value(header, row1, "decode_elapsed_ns") == "1");
+    CHECK(column_value(header, row1, "baseline_resolution_elapsed_ns") == "2");
+    CHECK(column_value(header, row1, "reconstruction_elapsed_ns") == "3");
+    CHECK(column_value(header, row1, "sink_preparation_elapsed_ns") == "4");
+    CHECK(column_value(header, row1, "sink_application_elapsed_ns") == "5");
+    CHECK(column_value(header, row1, "canonical_snapshot_commit_elapsed_ns") == "6");
+    CHECK(column_value(header, row1, "total_receive_to_applied_elapsed_ns") == "21");
+    CHECK(column_value(header, row1, "record_order") == "0");
+    CHECK(column_value(header, row2, "record_order") == "1");
+    CHECK(column_value(header, row2, "outcome") == "packet_incomplete");
+    CHECK(column_value(header, row2, "outcome_detail") == "group_incomplete");
+    CHECK(column_value(header, row1, "recorded_at_unix_ns") == "220");
+    CHECK(column_value(header, row2, "recorded_at_unix_ns") == "230");
 }
 
 TEST_CASE("replication CSV disabling and failures are explicit", "[telemetry][csv]")
@@ -523,7 +602,7 @@ TEST_CASE("Server replication measurements preserve byte ownership", "[telemetry
     CHECK(measurements.latest_sent->encoded_update_bytes == 96);
     CHECK(measurements.latest_sent->application_payload_bytes == 96);
     CHECK(measurements.latest_sent->transport_payload_bytes == 96);
-    CHECK(measurements.latest_sent->total_replication_cpu_time == simnet::Nanoseconds{});
+    CHECK(measurements.latest_sent->total_replication_elapsed_time == simnet::Nanoseconds{});
 }
 
 TEST_CASE("Client applied measurements exclude failed attempts", "[telemetry][client]")
@@ -534,19 +613,19 @@ TEST_CASE("Client applied measurements exclude failed attempts", "[telemetry][cl
         .sequence = 5,
         .outcome = simnet::ClientReplicationOutcome::SinkApplicationFailed,
         .encoded_update_bytes = 128,
-        .application_payload_bytes = 128,
-        .transport_payload_bytes = 128,
         .upsert_count = 4,
         .reconstructed_entity_count = 4,
         .final_sink_entity_count = 0,
-        .sink_application_cpu_time = std::chrono::nanoseconds{2},
+        .sink_application_elapsed_time = std::chrono::nanoseconds{2},
     };
     measurements.observe(failed);
 
     CHECK(measurements.attempt_count == 1);
     CHECK(measurements.applied_count == 0);
     CHECK_FALSE(measurements.latest_applied.has_value());
-    CHECK(measurements.latest_attempt->total_receive_to_applied_cpu_time == simnet::Nanoseconds{});
+    CHECK(
+        measurements.latest_attempt->total_receive_to_applied_elapsed_time == simnet::Nanoseconds{}
+    );
 
     auto const applied = simnet::ClientReplicationMeasurement{
         .tick = 11,
@@ -555,13 +634,11 @@ TEST_CASE("Client applied measurements exclude failed attempts", "[telemetry][cl
         .snapshot_kind = simnet::SnapshotKind::Patch,
         .outcome = simnet::ClientReplicationOutcome::Applied,
         .encoded_update_bytes = 160,
-        .application_payload_bytes = 160,
-        .transport_payload_bytes = 160,
         .upsert_count = 3,
         .delete_count = 1,
         .reconstructed_entity_count = 6,
         .final_sink_entity_count = 6,
-        .total_receive_to_applied_cpu_time = std::chrono::nanoseconds{9},
+        .total_receive_to_applied_elapsed_time = std::chrono::nanoseconds{9},
     };
     measurements.observe(applied);
 
@@ -575,5 +652,5 @@ TEST_CASE("Client applied measurements exclude failed attempts", "[telemetry][cl
     CHECK(measurements.latest_applied->delete_count == 1);
     CHECK(measurements.latest_applied->reconstructed_entity_count == 6);
     CHECK(measurements.latest_applied->final_sink_entity_count == 6);
-    CHECK(measurements.latest_applied->total_receive_to_applied_cpu_time.count() == 9);
+    CHECK(measurements.latest_applied->total_receive_to_applied_elapsed_time.count() == 9);
 }
