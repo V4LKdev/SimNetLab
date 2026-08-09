@@ -1,0 +1,46 @@
+{
+  "run": {
+    "seed": 12345
+  },
+  "snapshot_delivery": {
+    "mode": "reliable_sequenced",
+    "full_replace_after_unacknowledged_updates": 32
+  },
+  "simulation": {
+    "tick_rate_hz": 60,
+    "world_half": 220,
+    "initial_boid_count": 4096
+  },
+  "synthetic": {
+    "pattern": "random_uniform",
+    "entity_change_fraction": 0.125,
+    "field_change_mode": "position_only"
+  },
+  "pipeline": {
+    "send_interval_ticks": 1,
+    "enable_incremental": false,
+    "enable_quantization": false,
+    "enable_oct_heading": false,
+    "enable_delta": true,
+    "enable_delta_field_mask": true,
+    "enable_bit_packing": false,
+    "area_of_interest": {
+      "mode": "none"
+    },
+    "level_of_detail": {
+      "mode": "none"
+    }
+  },
+  "compression": {
+    "mode": "none"
+  },
+  "packetization": {
+    "enabled": true,
+    "max_payload_bytes": 1200,
+    "max_update_bytes": 524288,
+    "max_chunks_per_update": 4096,
+    "max_in_flight_updates": 4,
+    "max_incomplete_bytes": 1048576,
+    "reassembly_timeout_ms": 5000
+  }
+}

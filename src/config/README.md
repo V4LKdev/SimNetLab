@@ -13,6 +13,8 @@ after semantic loading. Named visual, stress, and treatment profiles remain expl
 
 Shared configuration controls deterministic seed, world and population settings, spatial acceleration, authoritative boid and player movement, and supported pipeline selections. Boid settings cover independent separation/alignment/cohesion radii, FOV, speed and acceleration limits, containment, deterministic wander, circular hue behavior, and a direct toggle for each rule. The runtime derives its spatial query radius from the largest configured rule radius. Older local profiles may still use `perception_radius` as a compatibility alias for both social radii. Maintained profiles should use the explicit fields.
 
+An optional shared `synthetic` object selects the mutually exclusive synthetic authoritative producer. It requires `pattern`, `entity_change_fraction`, and `field_change_mode`. Pattern is `random_uniform` or `grid`. The finite fraction is in `[0, 1]`. Field mode is `all`, `transform`, `position_only`, or `heading_only`. These settings participate in runtime and network compatibility fingerprints. Omitting the object preserves the ordinary Flecs producer and the existing default fingerprints. A Server built without synthetic support rejects an active object at startup. Synthetic mode also rejects Server visualization and Player clients, while a stationary observer Client may use its existing renderer.
+
 Server-local `flecs.thread_count` selects `1..64` persistent Flecs worker threads. The default value of one preserves serial system execution. It is included in the Server runtime fingerprint but not in network compatibility.
 
 Server-local `transport.max_clients` accepts `1..64` simultaneous sessions. Maintained one-client

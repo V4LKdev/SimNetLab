@@ -146,6 +146,14 @@ namespace
         CHECK(left.player.max_yaw_rate_degrees == right.player.max_yaw_rate_degrees);
         CHECK(left.player.max_pitch_rate_degrees == right.player.max_pitch_rate_degrees);
         CHECK(left.player.pitch_limit_degrees == right.player.pitch_limit_degrees);
+        CHECK(left.synthetic.has_value() == right.synthetic.has_value());
+        if (left.synthetic.has_value() && right.synthetic.has_value()) {
+            CHECK(left.synthetic->pattern == right.synthetic->pattern);
+            CHECK(
+                left.synthetic->entity_change_fraction == right.synthetic->entity_change_fraction
+            );
+            CHECK(left.synthetic->field_change_mode == right.synthetic->field_change_mode);
+        }
         CHECK(left.pipeline.send_interval_ticks == right.pipeline.send_interval_ticks);
         CHECK(left.pipeline.enable_incremental == right.pipeline.enable_incremental);
         CHECK(left.pipeline.enable_quantization == right.pipeline.enable_quantization);
@@ -630,6 +638,99 @@ TEST_CASE("field-mask Delta profiles are a matched pair", "[config][pipeline][pr
     check_shared_equal(control, treatment);
 }
 
+TEST_CASE("synthetic workload configuration is strict and fingerprinted", "[config][synthetic]")
+{
+    auto const defaults = simnet::default_shared_config();
+    REQUIRE_FALSE(defaults.synthetic.has_value());
+    auto const legacy_fingerprint = simnet::fingerprint_network_compatibility(defaults);
+
+    auto const accepted = TemporaryConfig{
+        "simnet_synthetic_accepted.json",
+        R"({
+            "synthetic": {
+                "pattern": "grid",
+                "entity_change_fraction": 0.125,
+                "field_change_mode": "position_only"
+            }
+        })"
+    };
+    auto const loaded = simnet::load_shared_config(accepted.path());
+    REQUIRE(loaded.synthetic.has_value());
+    CHECK(loaded.synthetic->pattern == "grid");
+    CHECK(loaded.synthetic->entity_change_fraction == 0.125);
+    CHECK(loaded.synthetic->field_change_mode == "position_only");
+    CHECK(simnet::fingerprint_network_compatibility(loaded).value != legacy_fingerprint.value);
+
+    auto changed = loaded;
+    changed.synthetic->pattern = "random_uniform";
+    CHECK(
+        simnet::fingerprint_network_compatibility(changed).value
+        != simnet::fingerprint_network_compatibility(loaded).value
+    );
+    changed = loaded;
+    changed.synthetic->entity_change_fraction = 0.25;
+    CHECK(
+        simnet::fingerprint_network_compatibility(changed).value
+        != simnet::fingerprint_network_compatibility(loaded).value
+    );
+    changed = loaded;
+    changed.synthetic->field_change_mode = "heading_only";
+    CHECK(
+        simnet::fingerprint_network_compatibility(changed).value
+        != simnet::fingerprint_network_compatibility(loaded).value
+    );
+
+    for (
+        auto const contents : {
+            R"({ "synthetic": {} })",
+            R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": 1.0 } })",
+            R"({ "synthetic": { "pattern": "unknown", "entity_change_fraction": 1.0, "field_change_mode": "all" } })",
+            R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": -0.01, "field_change_mode": "all" } })",
+            R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": 1.01, "field_change_mode": "all" } })",
+            R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": "1", "field_change_mode": "all" } })",
+            R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": 1.0, "field_change_mode": "unknown" } })",
+            R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": 1.0, "field_change_mode": "all", "extra": true } })",
+        }) {
+        auto const invalid = TemporaryConfig{"simnet_synthetic_invalid.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(invalid.path()));
+    }
+}
+
+TEST_CASE("synthetic Delta profiles are matched treatments", "[config][synthetic][profile]")
+{
+    auto const directory = maintained_config_directory();
+    auto full = simnet::load_shared_config(directory / "shared_synthetic_delta_full_change.json");
+    auto sparse_entities
+        = simnet::load_shared_config(directory / "shared_synthetic_delta_sparse_entities.json");
+    auto sparse_fields_whole = simnet::load_shared_config(
+        directory / "shared_synthetic_delta_sparse_fields_whole_record.json"
+    );
+    auto sparse_fields_mask = simnet::load_shared_config(
+        directory / "shared_synthetic_delta_sparse_fields_field_mask.json"
+    );
+
+    REQUIRE(full.synthetic.has_value());
+    REQUIRE(sparse_entities.synthetic.has_value());
+    REQUIRE(sparse_fields_whole.synthetic.has_value());
+    REQUIRE(sparse_fields_mask.synthetic.has_value());
+    CHECK(full.synthetic->entity_change_fraction == 1.0);
+    CHECK(full.synthetic->field_change_mode == "all");
+    CHECK(sparse_entities.synthetic->entity_change_fraction == 0.125);
+    CHECK(sparse_entities.synthetic->field_change_mode == "all");
+    CHECK(sparse_fields_whole.synthetic->entity_change_fraction == 0.125);
+    CHECK(sparse_fields_whole.synthetic->field_change_mode == "position_only");
+    CHECK_FALSE(sparse_fields_whole.pipeline.enable_delta_field_mask);
+    CHECK(sparse_fields_mask.pipeline.enable_delta_field_mask);
+
+    sparse_entities.synthetic = full.synthetic;
+    check_shared_equal(full, sparse_entities);
+    sparse_fields_whole.synthetic = full.synthetic;
+    check_shared_equal(full, sparse_fields_whole);
+    sparse_fields_mask.synthetic = full.synthetic;
+    sparse_fields_mask.pipeline.enable_delta_field_mask = false;
+    check_shared_equal(full, sparse_fields_mask);
+}
+
 TEST_CASE("typed defaults equal shipped default profiles", "[config][defaults]")
 {
     auto const directory = maintained_config_directory();
@@ -732,6 +833,16 @@ TEST_CASE("maintained profile fingerprints preserve normalized semantics", "[con
             14776041096246557698ULL
         },
         SharedFingerprint{"shared_cadence_reduced_aoi_radius_visual.json", 666291167247402478ULL},
+        SharedFingerprint{"shared_synthetic_delta_full_change.json", 11621082009713136448ULL},
+        SharedFingerprint{"shared_synthetic_delta_sparse_entities.json", 11346589131469884240ULL},
+        SharedFingerprint{
+            "shared_synthetic_delta_sparse_fields_whole_record.json",
+            2082947159746639717ULL
+        },
+        SharedFingerprint{
+            "shared_synthetic_delta_sparse_fields_field_mask.json",
+            9470061669881578492ULL
+        },
     };
 
     auto const directory = maintained_config_directory();
@@ -762,7 +873,7 @@ TEST_CASE("every maintained JSON file loads through its production loader", "[co
         }
         ++loaded_count;
     }
-    CHECK(loaded_count == 32U);
+    CHECK(loaded_count == 36U);
 }
 
 TEST_CASE("default alignment preserves inherited treatment tuning", "[config][defaults]")

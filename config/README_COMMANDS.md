@@ -18,6 +18,10 @@
 - `shared_player_lure_visual.json`: authoritative Player lure treatment using a 35-unit radius and 5-unit acceleration limit.
 - `shared_player_predator_visual.json`: authoritative Player predator treatment using a 24-unit radius and 10-unit acceleration limit.
 - `shared_stress_50k.json`: local high-count stress and visual-inspection profile. Use it only with the Server. Do not present it as realistic current network replication.
+- `shared_synthetic_delta_full_change.json`: full-change synthetic Delta control.
+- `shared_synthetic_delta_sparse_entities.json`: 12.5 percent entity cohort treatment for whole-record Delta.
+- `shared_synthetic_delta_sparse_fields_whole_record.json`: 12.5 percent position-only treatment with whole-record Delta.
+- `shared_synthetic_delta_sparse_fields_field_mask.json`: matched position-only treatment with field-mask Delta.
 - `shared_default.json`: conservative fallback baseline.
 
 ## Commands
@@ -74,6 +78,20 @@ build/relWithDebInfo/app/Client \
 ```
 
 Use `shared_aoi_fov_visual.json` in both commands for the conical FOV treatment.
+
+Headless synthetic treatments use a Server built with `SIMNET_ENABLE_SYNTHETIC=ON`, the stationary observer Client, and the same shared profile in both processes. Start with the full-change control and substitute each other synthetic profile for its matched treatment:
+
+```sh
+build/release/app/Server \
+  --config config/server_default.json \
+  --shared-config config/shared_synthetic_delta_full_change.json
+```
+
+```sh
+build/release/app/Client \
+  --config config/client_default.json \
+  --shared-config config/shared_synthetic_delta_full_change.json
+```
 
 Local 50k stress and visual inspection:
 
