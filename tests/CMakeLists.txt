@@ -1,6 +1,7 @@
 # tests
 find_package(Catch2 CONFIG REQUIRED)
 find_package(zstd CONFIG REQUIRED)
+find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
 
 add_executable(SimNetTests
     app_compression_corpus_tests.cpp
@@ -91,3 +92,9 @@ catch_discover_tests(SimNetTests
         LABELS "safety-net"
         TIMEOUT 10
 )
+
+add_test(
+    NAME simnet.linux_collector
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/linux_collector_tests.py
+)
+set_tests_properties(simnet.linux_collector PROPERTIES LABELS "safety-net" TIMEOUT 10)
