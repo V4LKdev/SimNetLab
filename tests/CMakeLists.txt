@@ -98,3 +98,9 @@ add_test(
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/linux_collector_tests.py
 )
 set_tests_properties(simnet.linux_collector PROPERTIES LABELS "safety-net" TIMEOUT 10)
+
+add_test(
+    NAME simnet.perf_stat
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf_stat_tests.py
+)
+set_tests_properties(simnet.perf_stat PROPERTIES LABELS "safety-net" TIMEOUT 15)
