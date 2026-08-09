@@ -1,45 +1,41 @@
-BasedOnStyle: WebKit
+BasedOnStyle: LLVM
+Language: Cpp
 Standard: Latest
+
+UseTab: Never
 IndentWidth: 4
 TabWidth: 4
-UseTab: Never
 ContinuationIndentWidth: 4
 ColumnLimit: 100
-BreakStringLiterals: false
-AlignAfterOpenBracket: BlockIndent
-BreakBeforeCloseBracketFunction: true
-BreakBeforeCloseBracketBracedList: true
-BreakBeforeBraces: Custom
-BraceWrapping:
-  AfterClass: true
-  AfterControlStatement: Never
-  AfterEnum: true
-  AfterFunction: true
-  AfterNamespace: true
-  AfterStruct: true
-  AfterUnion: true
-  BeforeCatch: false
-  BeforeElse: false
-  BeforeLambdaBody: false
+
+BreakBeforeBraces: Allman
+InsertBraces: true
 NamespaceIndentation: All
-DerivePointerAlignment: false
-PointerAlignment: Left
-ReferenceAlignment: Left
-QualifierAlignment: Leave
-Cpp11BracedListStyle: FunctionCall
-SpaceBeforeCpp11BracedList: false
-BinPackLongBracedList: false
+IndentCaseLabels: true
+
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: None
+AllowShortNamespacesOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+AlignAfterOpenBracket: BlockIndent
 BinPackArguments: false
 BinPackParameters: OnePerLine
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
+
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+QualifierAlignment: Leave
+
 SortIncludes: Never
 IncludeBlocks: Preserve
 ReflowComments: Never
 FixNamespaceComments: false
-AllowShortBlocksOnASingleLine: Never
-AllowShortFunctionsOnASingleLine: Empty
-AllowShortIfStatementsOnASingleLine: Never
-AllowShortLoopsOnASingleLine: false
-AllowShortLambdasOnASingleLine: Empty
-IndentCaseLabels: true
+RemoveParentheses: Leave
+InsertNewlineAtEOF: true
