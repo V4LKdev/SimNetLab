@@ -431,6 +431,41 @@ namespace
         }
     }
 
+    void apply_synthetic(Json const& json, simnet::SyntheticWorkloadConfig& config)
+    {
+        for (auto const& [key, value] : json.items()) {
+            static_cast<void>(value);
+            if (key != "pattern" && key != "entity_change_fraction" && key != "field_change_mode") {
+                throw std::runtime_error(
+                    "invalid config field 'synthetic." + key + "': unknown field"
+                );
+            }
+        }
+        if (!json.contains("pattern") || !json.contains("entity_change_fraction")
+            || !json.contains("field_change_mode")) {
+            throw std::runtime_error(
+                "invalid synthetic configuration: pattern, entity_change_fraction, and "
+                "field_change_mode are required"
+            );
+        }
+
+        read_optional(json, "pattern", config.pattern);
+        read_optional(json, "entity_change_fraction", config.entity_change_fraction);
+        read_optional(json, "field_change_mode", config.field_change_mode);
+        validate_one_of("synthetic.pattern", config.pattern, {"random_uniform", "grid"});
+        validate_one_of(
+            "synthetic.field_change_mode",
+            config.field_change_mode,
+            {"all", "transform", "position_only", "heading_only"}
+        );
+        if (!std::isfinite(config.entity_change_fraction) || config.entity_change_fraction < 0.0
+            || config.entity_change_fraction > 1.0) {
+            throw std::runtime_error(
+                "invalid config field 'synthetic.entity_change_fraction': expected finite [0, 1]"
+            );
+        }
+    }
+
     void apply_area_of_interest(Json const& json, simnet::AreaOfInterestConfig& config)
     {
         for (auto const& [key, value] : json.items()) {
@@ -886,6 +921,10 @@ namespace
         if (auto const* section = optional_object(json, "player")) {
             apply_player(*section, config.player);
         }
+        if (auto const* section = optional_object(json, "synthetic")) {
+            config.synthetic.emplace();
+            apply_synthetic(*section, *config.synthetic);
+        }
         if (auto const* section = optional_object(json, "pipeline")) {
             apply_pipeline(*section, config.pipeline);
         }
@@ -1004,6 +1043,12 @@ namespace
         hash_bytes(hash, config.player.max_yaw_rate_degrees);
         hash_bytes(hash, config.player.max_pitch_rate_degrees);
         hash_bytes(hash, config.player.pitch_limit_degrees);
+        if (config.synthetic.has_value()) {
+            hash_string(hash, "synthetic_workload");
+            hash_string(hash, config.synthetic->pattern);
+            hash_bytes(hash, config.synthetic->entity_change_fraction);
+            hash_string(hash, config.synthetic->field_change_mode);
+        }
         hash_bytes(hash, config.pipeline.send_interval_ticks);
         hash_bytes(hash, config.pipeline.enable_incremental);
         hash_bytes(hash, config.pipeline.enable_quantization);
@@ -1092,6 +1137,12 @@ namespace
         hash_canonical_float(hash, config.player.max_yaw_rate_degrees);
         hash_canonical_float(hash, config.player.max_pitch_rate_degrees);
         hash_canonical_float(hash, config.player.pitch_limit_degrees);
+        if (config.synthetic.has_value()) {
+            hash_string(hash, "synthetic_workload");
+            hash_string(hash, config.synthetic->pattern);
+            hash_canonical_double(hash, config.synthetic->entity_change_fraction);
+            hash_string(hash, config.synthetic->field_change_mode);
+        }
         hash_canonical_u32(hash, config.pipeline.send_interval_ticks);
         hash_canonical_bool(hash, config.pipeline.enable_incremental);
         hash_canonical_bool(hash, config.pipeline.enable_quantization);

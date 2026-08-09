@@ -29,6 +29,10 @@ target_link_libraries(Server
         simnet_telemetry
         simnet_transport
 )
+if (SIMNET_ENABLE_SYNTHETIC)
+    target_link_libraries(Server PRIVATE simnet_synthetic)
+    target_compile_definitions(Server PRIVATE SIMNET_ENABLE_SYNTHETIC=1)
+endif ()
 if (SIMNET_ENABLE_RENDER)
     target_link_libraries(Server PRIVATE simnet_render)
     target_sources(Server PRIVATE FILE_SET CXX_MODULES FILES app_visual_setup.cppm)

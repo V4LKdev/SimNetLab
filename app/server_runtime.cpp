@@ -40,6 +40,9 @@ import simnet.snapshot;
 import simnet.spatial;
 import simnet.telemetry;
 import simnet.transport;
+#if defined(SIMNET_ENABLE_SYNTHETIC)
+import simnet.synthetic;
+#endif
 #if defined(SIMNET_ENABLE_RENDER)
 import simnet.app_visual_setup;
 import simnet.render;
@@ -126,12 +129,16 @@ namespace
     struct CurrentSnapshotState
     {
         simnet::WorldSnapshot snapshot{};
-        simnet::SpatialGrid area_of_interest_grid{};
-        simnet::SpatialGridScratch area_of_interest_grid_scratch{};
         simnet::Tick extracted_tick{};
-        simnet::Tick area_of_interest_grid_tick{};
         bool valid{};
         bool dirty{true};
+    };
+
+    struct AreaOfInterestGridState
+    {
+        simnet::SpatialGrid grid{};
+        simnet::SpatialGridScratch scratch{};
+        simnet::Tick snapshot_tick{};
         bool area_of_interest_grid_valid{};
     };
 
@@ -630,6 +637,38 @@ namespace
             },
         };
     }
+
+#if defined(SIMNET_ENABLE_SYNTHETIC)
+    [[nodiscard]] simnet::SyntheticSnapshotSettings
+    synthetic_snapshot_settings(simnet::SharedConfig const& config)
+    {
+        return {
+            .seed = config.run.seed,
+            .entity_count = config.simulation.initial_boid_count,
+            .bounds = simnet::make_centered_bounds(config.simulation.world_half),
+            .pattern = config.synthetic->pattern == "grid"
+                ? simnet::SyntheticPattern::Grid
+                : simnet::SyntheticPattern::RandomUniform,
+        };
+    }
+
+    [[nodiscard]] simnet::SyntheticChangeSettings
+    synthetic_change_settings(simnet::SharedConfig const& config)
+    {
+        auto mode = simnet::SyntheticFieldChangeMode::All;
+        if (config.synthetic->field_change_mode == "transform") {
+            mode = simnet::SyntheticFieldChangeMode::Transform;
+        } else if (config.synthetic->field_change_mode == "position_only") {
+            mode = simnet::SyntheticFieldChangeMode::PositionOnly;
+        } else if (config.synthetic->field_change_mode == "heading_only") {
+            mode = simnet::SyntheticFieldChangeMode::HeadingOnly;
+        }
+        return {
+            .entity_change_fraction = config.synthetic->entity_change_fraction,
+            .field_change_mode = mode,
+        };
+    }
+#endif
 
     [[nodiscard]] simnet::PlayerMovementSettings player_settings(simnet::SharedConfig const& config)
     {
@@ -1423,38 +1462,28 @@ namespace
         state.extracted_tick = tick;
         state.valid = true;
         state.dirty = false;
-        state.area_of_interest_grid_valid = false;
         return report;
     }
 
     void ensure_area_of_interest_grid(
-        CurrentSnapshotState& state,
+        simnet::WorldSnapshot const& snapshot,
+        AreaOfInterestGridState& state,
         simnet::SpatialGridSettings const& settings
     )
     {
-        if (state.area_of_interest_grid_valid
-            && state.area_of_interest_grid_tick == state.extracted_tick) {
+        if (state.area_of_interest_grid_valid && state.snapshot_tick == snapshot.tick) {
             return;
         }
 
-        auto& grid = state.area_of_interest_grid;
+        auto& grid = state.grid;
         if (grid.dim_x == 0U || grid.settings.cell_size != settings.cell_size
             || grid.settings.bounds.min.x != settings.bounds.min.x
             || grid.settings.bounds.max.x != settings.bounds.max.x) {
             simnet::resize_spatial_grid(grid, settings);
         }
-        simnet::prepare_spatial_grid_scratch(
-            state.area_of_interest_grid_scratch,
-            state.snapshot.size(),
-            1U
-        );
-        simnet::build_spatial_grid_serial(
-            grid,
-            state.area_of_interest_grid_scratch,
-            state.snapshot.positions,
-            state.snapshot.ids
-        );
-        state.area_of_interest_grid_tick = state.extracted_tick;
+        simnet::prepare_spatial_grid_scratch(state.scratch, snapshot.size(), 1U);
+        simnet::build_spatial_grid_serial(grid, state.scratch, snapshot.positions, snapshot.ids);
+        state.snapshot_tick = snapshot.tick;
         state.area_of_interest_grid_valid = true;
     }
 
@@ -1503,17 +1532,18 @@ namespace
 
     void query_area_of_interest_candidates(
         PeerRuntimeState& peer,
-        CurrentSnapshotState& snapshot_state,
+        simnet::WorldSnapshot const& snapshot,
+        AreaOfInterestGridState& grid_state,
         simnet::SpatialGridSettings const& grid_settings,
         simnet::InterestSource const& source,
         float radius
     )
     {
-        ensure_area_of_interest_grid(snapshot_state, grid_settings);
+        ensure_area_of_interest_grid(snapshot, grid_state, grid_settings);
         peer.area_of_interest_candidates.clear();
         static_cast<void>(simnet::query_radius(
-            snapshot_state.area_of_interest_grid,
-            snapshot_state.snapshot.positions,
+            grid_state.grid,
+            snapshot.positions,
             source.position,
             radius,
             [&](std::uint32_t source_index) {
@@ -1617,13 +1647,14 @@ namespace
     }
 
     void remove_session_player(
-        flecs::world& world,
+        flecs::world* world,
         PeerRuntimeState const& peer,
-        CurrentSnapshotState& snapshot_state
+        CurrentSnapshotState* snapshot_state
     )
     {
-        if (peer.player_id != 0U && simnet::delete_authoritative_player(world, peer.player_id)) {
-            snapshot_state.dirty = true;
+        if (world != nullptr && snapshot_state != nullptr && peer.player_id != 0U
+            && simnet::delete_authoritative_player(*world, peer.player_id)) {
+            snapshot_state->dirty = true;
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Info,
@@ -1633,9 +1664,9 @@ namespace
     }
 
     void remove_failed_peer_state(
-        flecs::world& world,
+        flecs::world* world,
         PeerRuntimeState const& peer,
-        CurrentSnapshotState& snapshot_state,
+        CurrentSnapshotState* snapshot_state,
         simnet::TransportDelivery snapshot_delivery
     )
     {
@@ -1644,10 +1675,10 @@ namespace
     }
 
     [[nodiscard]] bool erase_peer_state(
-        flecs::world& world,
+        flecs::world* world,
         PeerRuntimeStates& peers,
         simnet::PeerId peer_id,
-        CurrentSnapshotState& snapshot_state,
+        CurrentSnapshotState* snapshot_state,
         simnet::TransportDelivery snapshot_delivery
     )
     {
@@ -1661,7 +1692,7 @@ namespace
     }
 
     [[nodiscard]] bool poll_transport(
-        flecs::world& world,
+        flecs::world* world,
         simnet::TransportServer& transport,
         PeerRuntimeStates& peers,
         std::uint32_t max_clients,
@@ -1670,7 +1701,7 @@ namespace
         simnet::TransportDelivery snapshot_delivery,
         bool& simulation_paused,
         bool& pause_state_changed,
-        CurrentSnapshotState& snapshot_state
+        CurrentSnapshotState* snapshot_state
     )
     {
         events.clear();
@@ -1747,7 +1778,16 @@ namespace
                         && !peer->role.has_value()) {
                         peer->role = message.role;
                         if (message.role == simnet::app::ClientRole::Player) {
-                            peer->player_id = simnet::spawn_authoritative_player(world);
+                            if (world == nullptr || snapshot_state == nullptr) {
+                                simnet::log(
+                                    simnet::LogCategory::Simulation,
+                                    simnet::LogLevel::Error,
+                                    "synthetic workload accepts stationary observer clients only"
+                                );
+                                reject_peer(simnet::DisconnectCode::ProtocolMismatch);
+                                continue;
+                            }
+                            peer->player_id = simnet::spawn_authoritative_player(*world);
                             if (peer->player_id == 0U) {
                                 simnet::log(
                                     simnet::LogCategory::Simulation,
@@ -1757,7 +1797,7 @@ namespace
                                 reject_peer(simnet::DisconnectCode::ServerFull);
                                 continue;
                             }
-                            snapshot_state.dirty = true;
+                            snapshot_state->dirty = true;
                         }
                         simnet::log(
                             simnet::LogCategory::Simulation,
@@ -1856,10 +1896,10 @@ namespace
                 auto rate_limited = false;
                 if (valid && peer->role == simnet::app::ClientRole::Player) {
                     auto decoded = simnet::app::PlayerInputMessage{};
-                    valid = peer->player_id != 0U
+                    valid = world != nullptr && peer->player_id != 0U
                         && simnet::app::decode_player_input(packet->payload, decoded)
                         && simnet::set_authoritative_player_input(
-                                world,
+                                *world,
                                 peer->player_id,
                                 player_control(decoded)
                         );
@@ -1908,11 +1948,11 @@ namespace
     }
 
     void broadcast_pause_state(
-        flecs::world& world,
+        flecs::world* world,
         simnet::TransportServer& transport,
         PeerRuntimeStates& peers,
         bool paused,
-        CurrentSnapshotState& snapshot_state,
+        CurrentSnapshotState* snapshot_state,
         simnet::TransportDelivery snapshot_delivery
     )
     {
@@ -2073,8 +2113,13 @@ namespace
     }
 
     [[nodiscard]] bool run_tick(
-        flecs::world& world,
-        simnet::ServerGameRuntime& game,
+        flecs::world* world,
+        simnet::ServerGameRuntime* game,
+#if defined(SIMNET_ENABLE_SYNTHETIC)
+        simnet::SyntheticSnapshotState* synthetic_state,
+        simnet::SyntheticSnapshotSettings const* synthetic_snapshot_settings,
+        simnet::SyntheticChangeSettings const* synthetic_change_settings,
+#endif
         simnet::Tick tick,
         simnet::Nanoseconds fixed_dt,
         simnet::PipelineDefinition const& pipeline,
@@ -2087,7 +2132,8 @@ namespace
         ServerEvidenceIdentity const& evidence_identity,
         simnet::TransportServer& transport,
         PeerRuntimeStates& peers,
-        CurrentSnapshotState& snapshot_state,
+        CurrentSnapshotState* snapshot_state,
+        AreaOfInterestGridState& area_of_interest_grid_state,
         simnet::ServerReplicationMeasurements& measurements,
         simnet::ServerReplicationCsvWriter& csv,
         simnet::app::CompressionCorpusWriter& compression_corpus,
@@ -2095,15 +2141,53 @@ namespace
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
-        if (!advance_world(world, game, fixed_dt)) {
+        auto const* source_snapshot = static_cast<simnet::WorldSnapshot const*>(nullptr);
+        auto extraction = simnet::ServerSnapshotExtractionReport{};
+        auto extraction_elapsed_time = simnet::Nanoseconds{};
+        if (world != nullptr) {
+            if (game == nullptr || snapshot_state == nullptr) {
+                simnet::log(
+                    simnet::LogCategory::Simulation,
+                    simnet::LogLevel::Error,
+                    "game producer state is incomplete"
+                );
+                return false;
+            }
+            if (!advance_world(*world, *game, fixed_dt)) {
+                simnet::log(
+                    simnet::LogCategory::Simulation,
+                    simnet::LogLevel::Error,
+                    "authoritative boid step failed: " + game->last_step_report().error
+                );
+                return false;
+            }
+            snapshot_state->dirty = true;
+#if defined(SIMNET_ENABLE_SYNTHETIC)
+        } else if (
+            synthetic_state != nullptr && synthetic_snapshot_settings != nullptr
+            && synthetic_change_settings != nullptr
+        ) {
+            auto const extraction_start = simnet::steady_now_ns();
+            source_snapshot = &simnet::update_synthetic_world_snapshot(
+                *synthetic_snapshot_settings,
+                *synthetic_change_settings,
+                tick,
+                *synthetic_state
+            );
+            extraction_elapsed_time = simnet::steady_now_ns() - extraction_start;
+            extraction = {
+                .tick = source_snapshot->tick,
+                .entity_count = static_cast<std::uint32_t>(source_snapshot->size()),
+            };
+#endif
+        } else {
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Error,
-                "authoritative boid step failed: " + game.last_step_report().error
+                "authoritative producer state is incomplete"
             );
             return false;
         }
-        snapshot_state.dirty = true;
         auto const have_joined_peer = std::ranges::any_of(peers, [](PeerRuntimeState const& peer) {
             return peer.role.has_value();
         });
@@ -2111,9 +2195,12 @@ namespace
             return true;
         }
 
-        auto const extraction_start = simnet::steady_now_ns();
-        auto const extraction = ensure_current_snapshot(world, tick, snapshot_state);
-        auto const extraction_elapsed_time = simnet::steady_now_ns() - extraction_start;
+        if (world != nullptr) {
+            auto const extraction_start = simnet::steady_now_ns();
+            extraction = ensure_current_snapshot(*world, tick, *snapshot_state);
+            extraction_elapsed_time = simnet::steady_now_ns() - extraction_start;
+            source_snapshot = &snapshot_state->snapshot;
+        }
         if (!extraction.valid) {
             for (auto const& failed_peer : peers) {
                 if (!failed_peer.role.has_value()) {
@@ -2143,7 +2230,11 @@ namespace
         }
 
         if (pipeline.area_of_interest.mode != simnet::AreaOfInterestMode::None) {
-            ensure_area_of_interest_grid(snapshot_state, area_of_interest_grid_settings);
+            ensure_area_of_interest_grid(
+                *source_snapshot,
+                area_of_interest_grid_state,
+                area_of_interest_grid_settings
+            );
         }
 
         auto first_joined_peer = true;
@@ -2172,7 +2263,7 @@ namespace
             auto const delta_enabled
                 = simnet::has_all_flags(pipeline.techniques, simnet::PipelineTechniqueFlags::Delta);
             bool const cadence_emits
-                = simnet::should_emit_snapshot(pipeline, snapshot_state.snapshot.tick);
+                = simnet::should_emit_snapshot(pipeline, source_snapshot->tick);
             auto const incremental_enabled = simnet::has_all_flags(
                 pipeline.techniques,
                 simnet::PipelineTechniqueFlags::Incremental
@@ -2182,7 +2273,7 @@ namespace
             auto const partial_selection_enabled = incremental_enabled || level_of_detail_enabled;
             auto interest_source = std::optional<simnet::InterestSource>{};
             if (pipeline.area_of_interest.mode != simnet::AreaOfInterestMode::None) {
-                interest_source = resolve_interest_source(*peer, snapshot_state.snapshot);
+                interest_source = resolve_interest_source(*peer, *source_snapshot);
                 if (!interest_source.has_value()) {
                     measurement.baseline_resolution_elapsed_time
                         = simnet::steady_now_ns() - baseline_start;
@@ -2197,7 +2288,8 @@ namespace
                 if (cadence_emits) {
                     query_area_of_interest_candidates(
                         *peer,
-                        snapshot_state,
+                        *source_snapshot,
+                        area_of_interest_grid_state,
                         area_of_interest_grid_settings,
                         *interest_source,
                         pipeline.area_of_interest.radius
@@ -2300,7 +2392,7 @@ namespace
                     pending_pipeline_state,
                     peer->pipeline_scratch,
                     {
-                        .snapshot = &snapshot_state.snapshot,
+                        .snapshot = source_snapshot,
                         .baseline_snapshot = explicit_level_of_detail_baseline != nullptr
                             ? &explicit_level_of_detail_baseline->snapshot
                             : delta_baseline != nullptr ? &delta_baseline->snapshot
@@ -2845,6 +2937,21 @@ namespace simnet::app
                 = options.config_path.value_or(default_server_config_path());
             auto const shared = load_shared_config(shared_config_source);
             auto const local = load_server_config(local_config_source);
+            auto const synthetic_enabled = shared.synthetic.has_value();
+#if !defined(SIMNET_ENABLE_SYNTHETIC)
+            if (synthetic_enabled) {
+                throw std::runtime_error(
+                    "shared config enables synthetic workload, but Server was built with "
+                    "SIMNET_ENABLE_SYNTHETIC=OFF; reconfigure with "
+                    "-DSIMNET_ENABLE_SYNTHETIC=ON"
+                );
+            }
+#endif
+            if (synthetic_enabled && local.visualization.enabled) {
+                throw std::runtime_error(
+                    "synthetic workload requires Server visualization.enabled=false"
+                );
+            }
             auto telemetry = TelemetryLifetime{local.telemetry};
 #if defined(SIMNET_ENABLE_TRACY)
             log(LogCategory::Telemetry, LogLevel::Info, "Tracy instrumentation compiled in");
@@ -2979,54 +3086,75 @@ namespace simnet::app
             }
 #endif
 
-            auto game = ServerGameRuntime{
-                boid_settings(shared),
-                player_settings(shared),
-            };
-            auto world = flecs::world{};
-            register_server_game(world, game);
-            auto const initialization_start = std::chrono::steady_clock::now();
-            log(LogCategory::Simulation,
-                LogLevel::Info,
-                "initializing authoritative world entities="
-                    + std::to_string(shared.simulation.initial_boid_count));
-            auto const population = initialize_world(world, shared);
-            if (!population.success()) {
-                throw std::runtime_error(
-                    "authoritative world initialization failed: "
-                    + std::string{authoritative_spawn_error_name(population.error)}
-                );
-            }
-            auto const initialization_elapsed = std::chrono::duration_cast<Nanoseconds>(
-                std::chrono::steady_clock::now() - initialization_start
-            );
-            log(LogCategory::Simulation,
-                LogLevel::Info,
-                "authoritative world initialized elapsed_ns="
-                    + std::to_string(initialization_elapsed.count()));
-            if (local.flecs.thread_count > 1U) {
-                world.set_threads(static_cast<std::int32_t>(local.flecs.thread_count));
-            }
-            log(LogCategory::Simulation,
-                LogLevel::Info,
-                "Flecs scheduler threads=" + std::to_string(local.flecs.thread_count));
-            SIMNET_TRACE_PLOT(
-                "server.flecs.thread_count",
-                static_cast<double>(local.flecs.thread_count)
-            );
-            boid_csv.emplace(
-                ServerBoidCsvWriterConfig{
-                    .enabled = local.telemetry.metrics_csv_enabled,
-                    .output_directory = local.telemetry.log_directory,
-                    .run = run_context,
-                    .tick_rate_hz = shared.simulation.tick_rate_hz,
-                    .worker_count = local.flecs.thread_count,
-                }
-            );
-            if (boid_csv->enabled()) {
-                log(LogCategory::Telemetry,
+            auto game = std::optional<ServerGameRuntime>{};
+            auto world = std::optional<flecs::world>{};
+            auto current_snapshot = std::optional<CurrentSnapshotState>{};
+#if defined(SIMNET_ENABLE_SYNTHETIC)
+            auto synthetic_state = std::optional<SyntheticSnapshotState>{};
+            auto synthetic_snapshots = std::optional<SyntheticSnapshotSettings>{};
+            auto synthetic_changes = std::optional<SyntheticChangeSettings>{};
+#endif
+            if (synthetic_enabled) {
+#if defined(SIMNET_ENABLE_SYNTHETIC)
+                synthetic_state.emplace();
+                synthetic_snapshots.emplace(synthetic_snapshot_settings(shared));
+                synthetic_changes.emplace(synthetic_change_settings(shared));
+                log(LogCategory::Simulation,
                     LogLevel::Info,
-                    "Server boid CSV path=" + boid_csv->path().string());
+                    "synthetic authoritative producer configured entities="
+                        + std::to_string(shared.simulation.initial_boid_count)
+                        + " pattern=" + shared.synthetic->pattern + " entity_change_fraction="
+                        + std::to_string(shared.synthetic->entity_change_fraction)
+                        + " field_change_mode=" + shared.synthetic->field_change_mode);
+#endif
+            } else {
+                game.emplace(boid_settings(shared), player_settings(shared));
+                world.emplace();
+                current_snapshot.emplace();
+                register_server_game(*world, *game);
+                auto const initialization_start = std::chrono::steady_clock::now();
+                log(LogCategory::Simulation,
+                    LogLevel::Info,
+                    "initializing authoritative world entities="
+                        + std::to_string(shared.simulation.initial_boid_count));
+                auto const population = initialize_world(*world, shared);
+                if (!population.success()) {
+                    throw std::runtime_error(
+                        "authoritative world initialization failed: "
+                        + std::string{authoritative_spawn_error_name(population.error)}
+                    );
+                }
+                auto const initialization_elapsed = std::chrono::duration_cast<Nanoseconds>(
+                    std::chrono::steady_clock::now() - initialization_start
+                );
+                log(LogCategory::Simulation,
+                    LogLevel::Info,
+                    "authoritative world initialized elapsed_ns="
+                        + std::to_string(initialization_elapsed.count()));
+                if (local.flecs.thread_count > 1U) {
+                    world->set_threads(static_cast<std::int32_t>(local.flecs.thread_count));
+                }
+                log(LogCategory::Simulation,
+                    LogLevel::Info,
+                    "Flecs scheduler threads=" + std::to_string(local.flecs.thread_count));
+                SIMNET_TRACE_PLOT(
+                    "server.flecs.thread_count",
+                    static_cast<double>(local.flecs.thread_count)
+                );
+                boid_csv.emplace(
+                    ServerBoidCsvWriterConfig{
+                        .enabled = local.telemetry.metrics_csv_enabled,
+                        .output_directory = local.telemetry.log_directory,
+                        .run = run_context,
+                        .tick_rate_hz = shared.simulation.tick_rate_hz,
+                        .worker_count = local.flecs.thread_count,
+                    }
+                );
+                if (boid_csv->enabled()) {
+                    log(LogCategory::Telemetry,
+                        LogLevel::Info,
+                        "Server boid CSV path=" + boid_csv->path().string());
+                }
             }
 
             auto stats = RuntimeStats{};
@@ -3043,7 +3171,7 @@ namespace simnet::app
                 shared.spatial.cell_size
             );
             auto simulation_paused = false;
-            auto current_snapshot = CurrentSnapshotState{};
+            auto area_of_interest_grid_state = AreaOfInterestGridState{};
 #if defined(SIMNET_ENABLE_RENDER)
             auto spatial_render = SpatialRenderStorage{};
             auto selected_debug_render = SelectedDebugRenderStorage{};
@@ -3071,7 +3199,7 @@ namespace simnet::app
                 {
                     SIMNET_TRACE_SCOPE_CATEGORY("server.transport_poll", LogCategory::Transport);
                     transport_ok = poll_transport(
-                        world,
+                        world.has_value() ? &*world : nullptr,
                         transport,
                         peers,
                         local.transport.max_clients,
@@ -3080,7 +3208,7 @@ namespace simnet::app
                         delivery,
                         simulation_paused,
                         pause_state_changed,
-                        current_snapshot
+                        current_snapshot.has_value() ? &*current_snapshot : nullptr
                     );
                 }
                 if (!transport_ok) {
@@ -3089,11 +3217,11 @@ namespace simnet::app
                 }
                 if (pause_state_changed) {
                     broadcast_pause_state(
-                        world,
+                        world.has_value() ? &*world : nullptr,
                         transport,
                         peers,
                         simulation_paused,
-                        current_snapshot,
+                        current_snapshot.has_value() ? &*current_snapshot : nullptr,
                         delivery
                     );
                     clock.accumulator = Nanoseconds{};
@@ -3112,8 +3240,13 @@ namespace simnet::app
                 for (std::uint16_t offset = 0; offset < frame.step_count; ++offset) {
                     auto const tick = frame.first_tick + offset;
                     if (!run_tick(
-                            world,
-                            game,
+                            world.has_value() ? &*world : nullptr,
+                            game.has_value() ? &*game : nullptr,
+#if defined(SIMNET_ENABLE_SYNTHETIC)
+                            synthetic_state.has_value() ? &*synthetic_state : nullptr,
+                            synthetic_snapshots.has_value() ? &*synthetic_snapshots : nullptr,
+                            synthetic_changes.has_value() ? &*synthetic_changes : nullptr,
+#endif
                             tick,
                             clock.fixed_dt,
                             pipeline,
@@ -3126,7 +3259,8 @@ namespace simnet::app
                             evidence_identity,
                             transport,
                             peers,
-                            current_snapshot,
+                            current_snapshot.has_value() ? &*current_snapshot : nullptr,
+                            area_of_interest_grid_state,
                             replication_measurements,
                             *replication_csv,
                             *compression_corpus,
@@ -3138,7 +3272,7 @@ namespace simnet::app
 #if defined(SIMNET_ENABLE_RENDER)
                     if (viewer.has_value() && local.visualization.interpolation_enabled) {
                         auto const extracted
-                            = ensure_current_snapshot(world, tick, current_snapshot);
+                            = ensure_current_snapshot(*world, tick, *current_snapshot);
                         if (!extracted.valid) {
                             log(LogCategory::Simulation,
                                 LogLevel::Error,
@@ -3146,10 +3280,10 @@ namespace simnet::app
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
                             break;
                         }
-                        retain_presentation_snapshot(presentation, current_snapshot.snapshot);
+                        retain_presentation_snapshot(presentation, current_snapshot->snapshot);
                     }
 #endif
-                    if (!boid_csv->sample(tick, game.last_step_report())) {
+                    if (boid_csv.has_value() && !boid_csv->sample(tick, game->last_step_report())) {
                         throw std::runtime_error(
                             "Server boid CSV submission failed: " + std::string{boid_csv->error()}
                         );
@@ -3162,7 +3296,7 @@ namespace simnet::app
                         + std::string{replication_csv->error()}
                     );
                 }
-                if (boid_csv->needs_drain() && !boid_csv->drain()) {
+                if (boid_csv.has_value() && boid_csv->needs_drain() && !boid_csv->drain()) {
                     throw std::runtime_error(
                         "Server boid CSV drain failed: " + std::string{boid_csv->error()}
                     );
@@ -3177,7 +3311,7 @@ namespace simnet::app
 #if defined(SIMNET_ENABLE_RENDER)
                 if (viewer.has_value()) {
                     auto const extracted
-                        = ensure_current_snapshot(world, stats.ticks, current_snapshot);
+                        = ensure_current_snapshot(*world, stats.ticks, *current_snapshot);
                     if (!extracted.valid) {
                         log(LogCategory::Simulation,
                             LogLevel::Error,
@@ -3185,20 +3319,20 @@ namespace simnet::app
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
                     } else if (
                         !spatial_snapshot_tick.has_value()
-                        || *spatial_snapshot_tick != current_snapshot.extracted_tick
+                        || *spatial_snapshot_tick != current_snapshot->extracted_tick
                     ) {
-                        spatial_snapshot_tick = current_snapshot.extracted_tick;
+                        spatial_snapshot_tick = current_snapshot->extracted_tick;
                         rebuild_spatial_render_view(
                             spatial_render,
-                            current_snapshot.snapshot,
+                            current_snapshot->snapshot,
                             shared,
                             Vec3f{},
                             local.visualization.max_visible_spatial_cells
                         );
                     }
-                    if (!stop.requested() && current_snapshot.valid) {
+                    if (!stop.requested() && current_snapshot->valid) {
                         if (local.visualization.interpolation_enabled) {
-                            retain_presentation_snapshot(presentation, current_snapshot.snapshot);
+                            retain_presentation_snapshot(presentation, current_snapshot->snapshot);
                         }
                         auto const* displayed_snapshot = local.visualization.interpolation_enabled
                             ? presentation_snapshot(
@@ -3207,7 +3341,7 @@ namespace simnet::app
                                   simulation_paused,
                                   frame.interpolation_alpha
                               )
-                            : &current_snapshot.snapshot;
+                            : &current_snapshot->snapshot;
                         if (displayed_snapshot == nullptr) {
                             log(LogCategory::Render,
                                 LogLevel::Error,
@@ -3220,9 +3354,10 @@ namespace simnet::app
                         auto const interpolation = RenderInterpolationInfo{
                             .enabled = local.visualization.interpolation_enabled,
                             .interpolating = interpolation_active,
-                            .from_tick = presentation.has_previous ? presentation.previous.tick
-                                                                   : current_snapshot.snapshot.tick,
-                            .to_tick = current_snapshot.snapshot.tick,
+                            .from_tick = presentation.has_previous
+                                ? presentation.previous.tick
+                                : current_snapshot->snapshot.tick,
+                            .to_tick = current_snapshot->snapshot.tick,
                             .alpha = interpolation_active ? frame.interpolation_alpha : 1.0,
                         };
                         SIMNET_TRACE_PLOT("server.render.interpolation_alpha", interpolation.alpha);
@@ -3239,12 +3374,12 @@ namespace simnet::app
                                 local.transport.max_clients,
                                 spatial_render,
                                 selected_debug_render,
-                                game.selected_boid_debug(),
+                                game->selected_boid_debug(),
                                 run_setup.view()
                             ));
                         }
                         selected_entity = viewer_result.selected_entity;
-                        game.select_boid(selected_entity);
+                        game->select_boid(selected_entity);
                         if (viewer_result.close_requested) {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }
@@ -3256,11 +3391,11 @@ namespace simnet::app
                                 simulation_paused ? "server simulation paused by viewer"
                                                   : "server simulation resumed by viewer");
                             broadcast_pause_state(
-                                world,
+                                world.has_value() ? &*world : nullptr,
                                 transport,
                                 peers,
                                 simulation_paused,
-                                current_snapshot,
+                                current_snapshot.has_value() ? &*current_snapshot : nullptr,
                                 delivery
                             );
                         }
@@ -3279,8 +3414,8 @@ namespace simnet::app
                 SIMNET_TRACE_FRAME("server");
             }
 
-            if (stats.ticks != 0U) {
-                if (!boid_csv->sample(stats.ticks, game.last_step_report(), true)) {
+            if (stats.ticks != 0U && boid_csv.has_value()) {
+                if (!boid_csv->sample(stats.ticks, game->last_step_report(), true)) {
                     throw std::runtime_error(
                         "Server boid CSV final submission failed: " + std::string{boid_csv->error()}
                     );
@@ -3301,7 +3436,7 @@ namespace simnet::app
                     "server replication CSV close failed: " + std::string{replication_csv->error()}
                 );
             }
-            if (!boid_csv->close()) {
+            if (boid_csv.has_value() && !boid_csv->close()) {
                 throw std::runtime_error(
                     "Server boid CSV close failed: " + std::string{boid_csv->error()}
                 );

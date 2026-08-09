@@ -2,6 +2,7 @@ module;
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 /// @brief Runtime configuration data contracts.
@@ -119,6 +120,14 @@ export namespace simnet
         LevelOfDetailConfig level_of_detail{};
     };
 
+    /// Optional deterministic synthetic authoritative workload policy.
+    struct SyntheticWorkloadConfig
+    {
+        std::string pattern{"random_uniform"};
+        double entity_change_fraction{1.0};
+        std::string field_change_mode{"all"};
+    };
+
     /// Shared opaque application byte-group packetization settings.
     struct PacketizationConfig
     {
@@ -223,6 +232,7 @@ export namespace simnet
         SpatialConfig spatial{};
         BoidsConfig boids{};
         PlayerConfig player{};
+        std::optional<SyntheticWorkloadConfig> synthetic{};
         PipelineConfig pipeline{};
         SnapshotDeliveryConfig snapshot_delivery{};
         CompressionConfig compression{};
