@@ -1,7 +1,9 @@
 module;
 
+#include <array>
 #include <charconv>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -108,24 +110,24 @@ namespace
 
     template <typename Value> void append_csv_integer(std::string& output, Value value)
     {
-        char buffer[32]{};
-        auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+        auto buffer = std::array<char, 32>{};
+        auto const result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
         if (result.ec != std::errc{})
         {
             throw std::runtime_error("failed to format CSV integer");
         }
-        output.append(buffer, result.ptr);
+        output.append(buffer.data(), result.ptr);
     }
 
     void append_csv_real(std::string& output, double value)
     {
-        char buffer[64]{};
-        auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+        auto buffer = std::array<char, 64>{};
+        auto const result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
         if (result.ec != std::errc{})
         {
             throw std::runtime_error("failed to format CSV real value");
         }
-        output.append(buffer, result.ptr);
+        output.append(buffer.data(), result.ptr);
     }
 
     class CsvRow
@@ -243,8 +245,8 @@ namespace
     {
         explicit ReplicationWriterState(
             ReplicationCsvWriterConfig writer_config,
-            EvidenceProcessRole required_role,
             std::string_view filename_prefix,
+            EvidenceProcessRole required_role,
             std::string_view header
         )
             : config(std::move(writer_config))
@@ -263,7 +265,7 @@ namespace
             path = config.output_directory /
                    (std::string{filename_prefix} +
                     std::to_string(config.run.process_started_unix_ns) + ".csv");
-            file.emplace(path, header);
+            file = std::make_unique<EvidenceCsvFile>(path, header);
         }
 
         [[nodiscard]] bool submit(Measurement const& measurement, EvidenceRecordTimestamp timestamp)
@@ -305,7 +307,7 @@ namespace
 
         void capture_file_failure()
         {
-            if (!file.has_value() || file->error().empty())
+            if (file == nullptr || file->error().empty())
             {
                 return;
             }
@@ -321,7 +323,7 @@ namespace
         }
 
         ReplicationCsvWriterConfig config{};
-        std::optional<EvidenceCsvFile> file{};
+        std::unique_ptr<EvidenceCsvFile> file{};
         std::vector<BufferedMeasurement<Measurement>> buffer{};
         std::filesystem::path path{};
         std::string failure{};
@@ -331,10 +333,10 @@ namespace
 
     void add_envelope(
         CsvRow& row,
+        std::uint32_t schema_version,
         EvidenceRunContext const& run,
         EvidenceRecordTimestamp timestamp,
-        std::uint64_t record_order,
-        std::uint32_t schema_version
+        std::uint64_t record_order
     )
     {
         row.integer(schema_version);
@@ -355,10 +357,10 @@ namespace
         auto row = CsvRow{output};
         add_envelope(
             row,
+            server_replication_csv_schema_version,
             run,
             entry.timestamp,
-            entry.record_order,
-            server_replication_csv_schema_version
+            entry.record_order
         );
         auto const& value = entry.value;
         row.integer(value.runtime_config_fingerprint);
@@ -477,10 +479,10 @@ namespace
         auto row = CsvRow{output};
         add_envelope(
             row,
+            client_replication_csv_schema_version,
             run,
             entry.timestamp,
-            entry.record_order,
-            client_replication_csv_schema_version
+            entry.record_order
         );
         auto const& value = entry.value;
         row.integer(value.runtime_config_fingerprint);
@@ -537,14 +539,23 @@ namespace
         row.integer(value.total_receive_to_applied_elapsed_time.count());
     }
 
-    [[nodiscard]] bool
-    persist_server_rows(ReplicationWriterState<ServerReplicationMeasurement>& state)
+    template <typename Measurement, typename FormatEntry>
+    [[nodiscard]] bool persist_rows(
+        ReplicationWriterState<Measurement>& state,
+        std::size_t row_capacity,
+        FormatEntry format_entry
+    )
     {
+        if (state.file == nullptr)
+        {
+            state.reject("replication CSV file is unavailable");
+            return false;
+        }
         auto row = std::string{};
-        row.reserve(2048);
+        row.reserve(row_capacity);
         for (auto const& entry : state.buffer)
         {
-            format_server_row(row, state.config.run, entry);
+            format_entry(row, entry);
             if (!state.file->write_row(row))
             {
                 state.capture_file_failure();
@@ -560,29 +571,38 @@ namespace
         return true;
     }
 
+    [[nodiscard]] bool
+    persist_server_rows(ReplicationWriterState<ServerReplicationMeasurement>& state)
+    {
+        return persist_rows(
+            state,
+            2048U,
+            [&state](
+                std::string& row,
+                BufferedMeasurement<ServerReplicationMeasurement> const& entry
+            )
+            {
+                format_server_row(row, state.config.run, entry);
+            }
+        );
+    }
+
     [[nodiscard]] bool persist_client_rows(
         ReplicationWriterState<ClientReplicationMeasurement>& state,
         std::string_view accepted_gameplay_role
     )
     {
-        auto row = std::string{};
-        row.reserve(1536);
-        for (auto const& entry : state.buffer)
-        {
-            format_client_row(row, state.config.run, accepted_gameplay_role, entry);
-            if (!state.file->write_row(row))
+        return persist_rows(
+            state,
+            1536U,
+            [&state, accepted_gameplay_role](
+                std::string& row,
+                BufferedMeasurement<ClientReplicationMeasurement> const& entry
+            )
             {
-                state.capture_file_failure();
-                return false;
+                format_client_row(row, state.config.run, accepted_gameplay_role, entry);
             }
-        }
-        if (!state.file->flush())
-        {
-            state.capture_file_failure();
-            return false;
-        }
-        state.buffer.clear();
-        return true;
+        );
     }
 }
 
@@ -667,11 +687,18 @@ namespace simnet
         }
     }
 
-    EvidenceCsvFile::~EvidenceCsvFile()
+    EvidenceCsvFile::~EvidenceCsvFile() noexcept
     {
-        if (impl_)
+        try
         {
-            static_cast<void>(close());
+            if (impl_)
+            {
+                static_cast<void>(close());
+            }
+        }
+        catch (...)
+        {
+            return;
         }
     }
 
@@ -765,8 +792,8 @@ namespace simnet
         explicit Impl(ReplicationCsvWriterConfig config)
             : state(
                   std::move(config),
-                  EvidenceProcessRole::Server,
                   "server_replication_v3_",
+                  EvidenceProcessRole::Server,
                   server_replication_csv_header_v3
               )
         {
@@ -780,11 +807,18 @@ namespace simnet
     {
     }
 
-    ServerReplicationCsvWriter::~ServerReplicationCsvWriter()
+    ServerReplicationCsvWriter::~ServerReplicationCsvWriter() noexcept
     {
-        if (impl_)
+        try
         {
-            static_cast<void>(close());
+            if (impl_)
+            {
+                static_cast<void>(close());
+            }
+        }
+        catch (...)
+        {
+            return;
         }
     }
 
@@ -845,7 +879,7 @@ namespace simnet
         {
             success = false;
         }
-        if (state.file.has_value() && !state.file->close())
+        if (state.file != nullptr && !state.file->close())
         {
             state.capture_file_failure();
             success = false;
@@ -889,8 +923,8 @@ namespace simnet
         explicit Impl(ReplicationCsvWriterConfig config)
             : state(
                   std::move(config),
-                  EvidenceProcessRole::Client,
                   "client_replication_v2_",
+                  EvidenceProcessRole::Client,
                   client_replication_csv_header_v2
               )
         {
@@ -905,11 +939,18 @@ namespace simnet
     {
     }
 
-    ClientReplicationCsvWriter::~ClientReplicationCsvWriter()
+    ClientReplicationCsvWriter::~ClientReplicationCsvWriter() noexcept
     {
-        if (impl_)
+        try
         {
-            static_cast<void>(close());
+            if (impl_)
+            {
+                static_cast<void>(close());
+            }
+        }
+        catch (...)
+        {
+            return;
         }
     }
 
@@ -1015,7 +1056,7 @@ namespace simnet
                 success = false;
             }
         }
-        if (state.file.has_value() && !state.file->close())
+        if (state.file != nullptr && !state.file->close())
         {
             state.capture_file_failure();
             success = false;

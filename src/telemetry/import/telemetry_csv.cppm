@@ -119,7 +119,7 @@ export namespace simnet
     {
       public:
         EvidenceCsvFile(std::filesystem::path path, std::string_view header);
-        ~EvidenceCsvFile();
+        ~EvidenceCsvFile() noexcept;
 
         EvidenceCsvFile(EvidenceCsvFile const&) = delete;
         EvidenceCsvFile& operator=(EvidenceCsvFile const&) = delete;
@@ -151,7 +151,7 @@ export namespace simnet
     {
       public:
         explicit ServerReplicationCsvWriter(ReplicationCsvWriterConfig config);
-        ~ServerReplicationCsvWriter();
+        ~ServerReplicationCsvWriter() noexcept;
 
         ServerReplicationCsvWriter(ServerReplicationCsvWriter const&) = delete;
         ServerReplicationCsvWriter& operator=(ServerReplicationCsvWriter const&) = delete;
@@ -181,7 +181,7 @@ export namespace simnet
     {
       public:
         explicit ClientReplicationCsvWriter(ReplicationCsvWriterConfig config);
-        ~ClientReplicationCsvWriter();
+        ~ClientReplicationCsvWriter() noexcept;
 
         ClientReplicationCsvWriter(ClientReplicationCsvWriter const&) = delete;
         ClientReplicationCsvWriter& operator=(ClientReplicationCsvWriter const&) = delete;

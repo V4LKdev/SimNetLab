@@ -83,6 +83,9 @@ application drains outside TEL-001 stage boundaries. Buffer overflow and open, w
 close failures make evidence collection fail and cause the owning process to fail. Files use
 exclusive creation and are never truncated, appended to, or overwritten.
 
+Applications use explicit `close()` calls as the failure-reporting boundary. Destructors perform
+only best-effort fallback cleanup and do not report failures.
+
 The Server boid evidence path uses the same process envelope, exclusive file lifecycle, buffer
 capacity, and drain threshold. It retains its existing sample cadence of one aggregate report per
 simulated second plus the last unsampled tick. The boid schema remains separate from replication

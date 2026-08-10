@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SIMNET_TELEMETRY_TRACE_HPP
+#define SIMNET_TELEMETRY_TRACE_HPP
 
 /**
  * @brief Tracy scoped-trace macros.
@@ -21,4 +22,6 @@
 #define SIMNET_TRACE_SCOPE_CATEGORY(name, category) ((void)0)
 #define SIMNET_TRACE_PLOT(name, value) ((void)0)
 #define SIMNET_TRACE_FRAME(name) ((void)0)
+#endif
+
 #endif

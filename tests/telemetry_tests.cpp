@@ -27,14 +27,17 @@ static_assert(!std::is_copy_constructible_v<simnet::EvidenceCsvFile>);
 static_assert(!std::is_copy_assignable_v<simnet::EvidenceCsvFile>);
 static_assert(!std::is_move_constructible_v<simnet::EvidenceCsvFile>);
 static_assert(!std::is_move_assignable_v<simnet::EvidenceCsvFile>);
+static_assert(std::is_nothrow_destructible_v<simnet::EvidenceCsvFile>);
 static_assert(!std::is_copy_constructible_v<simnet::ServerReplicationCsvWriter>);
 static_assert(!std::is_copy_assignable_v<simnet::ServerReplicationCsvWriter>);
 static_assert(!std::is_move_constructible_v<simnet::ServerReplicationCsvWriter>);
 static_assert(!std::is_move_assignable_v<simnet::ServerReplicationCsvWriter>);
+static_assert(std::is_nothrow_destructible_v<simnet::ServerReplicationCsvWriter>);
 static_assert(!std::is_copy_constructible_v<simnet::ClientReplicationCsvWriter>);
 static_assert(!std::is_copy_assignable_v<simnet::ClientReplicationCsvWriter>);
 static_assert(!std::is_move_constructible_v<simnet::ClientReplicationCsvWriter>);
 static_assert(!std::is_move_assignable_v<simnet::ClientReplicationCsvWriter>);
+static_assert(std::is_nothrow_destructible_v<simnet::ClientReplicationCsvWriter>);
 
 namespace
 {

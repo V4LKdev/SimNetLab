@@ -37,30 +37,29 @@ export namespace simnet
     /// Returns a Tracy-friendly RGBA color for a log category. Use with SIMNET_TRACE_SCOPE_C.
     [[nodiscard]] constexpr std::uint32_t category_trace_color(LogCategory category) noexcept
     {
-        // Yes, I used a color palette for this, programmers are artists too!!!
         switch (category)
         {
             case LogCategory::Core:
-                return 0xAAAAAAFF; // mid-gray
+                return 0xAAAAAAFF;
             case LogCategory::Config:
-                return 0xEDC948FF; // muted yellow
+                return 0xEDC948FF;
             case LogCategory::Telemetry:
-                return 0x76B7B2FF; // teal
+                return 0x76B7B2FF;
             case LogCategory::Simulation:
-                return 0xF28E2BFF; // orange
+                return 0xF28E2BFF;
             case LogCategory::Snapshot:
-                return 0x4E79A7FF; // blue
+                return 0x4E79A7FF;
             case LogCategory::Spatial:
-                return 0xE15759FF; // red
+                return 0xE15759FF;
             case LogCategory::Pipeline:
-                return 0xB07AA1FF; // purple
+                return 0xB07AA1FF;
             case LogCategory::Transport:
-                return 0x59A14FFF; // green
+                return 0x59A14FFF;
             case LogCategory::Render:
-                return 0xFF9DA7FF; // soft pink
+                return 0xFF9DA7FF;
             case LogCategory::Benchmark:
-                return 0x2F4B7CFF; // dark navy
+                return 0x2F4B7CFF;
         }
-        return 0xFFFFFFFF; // white fallback
+        return 0xFFFFFFFF;
     }
 }

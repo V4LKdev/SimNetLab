@@ -21,7 +21,6 @@ import simnet.config;
 
 namespace
 {
-    /// Protects the configured logger pointer.
     std::mutex logger_mutex;
     std::shared_ptr<spdlog::logger> logger;
 
@@ -75,7 +74,6 @@ namespace
         return LogLevel::Info;
     }
 
-    /// Converts a simnet LogLevel to the corresponding spdlog level.
     [[nodiscard]] spdlog::level::level_enum to_spdlog_level(LogLevel level) noexcept
     {
         switch (level)
@@ -98,7 +96,6 @@ namespace
         return spdlog::level::info;
     }
 
-    /// Maps a log category to a short name used in the log output.
     [[nodiscard]] std::string_view category_name(LogCategory category) noexcept
     {
         switch (category)
@@ -127,15 +124,12 @@ namespace
         return "unknown";
     }
 
-    /// Returns shared ownership of the configured logger, if any.
     [[nodiscard]] std::shared_ptr<spdlog::logger> current_logger()
     {
-        std::scoped_lock lock{logger_mutex};
+        auto const lock = std::scoped_lock{logger_mutex};
         return logger;
     }
 }
-
-// --- Public API ---
 
 namespace simnet
 {
@@ -143,7 +137,6 @@ namespace simnet
     {
         auto sinks = std::vector<spdlog::sink_ptr>{};
 
-        // Build the active sink set from runtime config
         if (config.console_log_enabled)
         {
             sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
@@ -168,7 +161,7 @@ namespace simnet
             created->set_level(to_spdlog_level(parse_log_level(config.min_level)));
         }
 
-        std::scoped_lock lock{logger_mutex};
+        auto const lock = std::scoped_lock{logger_mutex};
         logger = std::move(created);
     }
 
@@ -176,7 +169,7 @@ namespace simnet
     {
         std::shared_ptr<spdlog::logger> old_logger;
         {
-            std::scoped_lock lock{logger_mutex};
+            auto const lock = std::scoped_lock{logger_mutex};
             old_logger = std::move(logger);
         }
         if (old_logger)
