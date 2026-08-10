@@ -21,60 +21,6 @@ namespace
     constexpr auto compression_protocol_version = std::uint16_t{1U};
     constexpr auto compression_schema_version = std::uint16_t{1U};
 
-    void write_u8(std::vector<simnet::Byte>& bytes, std::uint8_t value)
-    {
-        bytes.push_back(static_cast<simnet::Byte>(value));
-    }
-
-    void write_u16(std::vector<simnet::Byte>& bytes, std::uint16_t value)
-    {
-        write_u8(bytes, static_cast<std::uint8_t>(value >> 8U));
-        write_u8(bytes, static_cast<std::uint8_t>(value));
-    }
-
-    void write_u32(std::vector<simnet::Byte>& bytes, std::uint32_t value)
-    {
-        write_u16(bytes, static_cast<std::uint16_t>(value >> 16U));
-        write_u16(bytes, static_cast<std::uint16_t>(value));
-    }
-
-    [[nodiscard]] bool
-    read_u8(simnet::ByteSpan bytes, std::size_t& offset, std::uint8_t& value) noexcept
-    {
-        if (offset >= bytes.size())
-        {
-            return false;
-        }
-        value = static_cast<std::uint8_t>(bytes[offset++]);
-        return true;
-    }
-
-    [[nodiscard]] bool
-    read_u16(simnet::ByteSpan bytes, std::size_t& offset, std::uint16_t& value) noexcept
-    {
-        auto high = std::uint8_t{};
-        auto low = std::uint8_t{};
-        if (!read_u8(bytes, offset, high) || !read_u8(bytes, offset, low))
-        {
-            return false;
-        }
-        value = static_cast<std::uint16_t>(static_cast<std::uint16_t>(high) << 8U) | low;
-        return true;
-    }
-
-    [[nodiscard]] bool
-    read_u32(simnet::ByteSpan bytes, std::size_t& offset, std::uint32_t& value) noexcept
-    {
-        auto high = std::uint16_t{};
-        auto low = std::uint16_t{};
-        if (!read_u16(bytes, offset, high) || !read_u16(bytes, offset, low))
-        {
-            return false;
-        }
-        value = (static_cast<std::uint32_t>(high) << 16U) | low;
-        return true;
-    }
-
     struct EnvelopeHeader
     {
         std::uint32_t magic{};
@@ -88,10 +34,12 @@ namespace
     [[nodiscard]] bool read_header(simnet::ByteSpan bytes, EnvelopeHeader& header) noexcept
     {
         auto offset = std::size_t{};
-        return read_u32(bytes, offset, header.magic) && read_u16(bytes, offset, header.protocol) &&
-               read_u16(bytes, offset, header.schema) && read_u8(bytes, offset, header.encoding) &&
-               read_u32(bytes, offset, header.uncompressed_bytes) &&
-               read_u32(bytes, offset, header.payload_bytes) &&
+        return simnet::read_big_endian(bytes, offset, header.magic) &&
+               simnet::read_big_endian(bytes, offset, header.protocol) &&
+               simnet::read_big_endian(bytes, offset, header.schema) &&
+               simnet::read_byte(bytes, offset, header.encoding) &&
+               simnet::read_big_endian(bytes, offset, header.uncompressed_bytes) &&
+               simnet::read_big_endian(bytes, offset, header.payload_bytes) &&
                offset == simnet::compression_envelope_bytes;
     }
 
@@ -102,12 +50,12 @@ namespace
         std::uint32_t payload_bytes
     )
     {
-        write_u32(output, compression_magic);
-        write_u16(output, compression_protocol_version);
-        write_u16(output, compression_schema_version);
-        write_u8(output, static_cast<std::uint8_t>(encoding));
-        write_u32(output, uncompressed_bytes);
-        write_u32(output, payload_bytes);
+        simnet::append_big_endian(output, compression_magic);
+        simnet::append_big_endian(output, compression_protocol_version);
+        simnet::append_big_endian(output, compression_schema_version);
+        simnet::append_byte(output, static_cast<std::uint8_t>(encoding));
+        simnet::append_big_endian(output, uncompressed_bytes);
+        simnet::append_big_endian(output, payload_bytes);
     }
 
     [[nodiscard]] bool valid_limits(simnet::CompressionLimits limits) noexcept
@@ -272,7 +220,7 @@ namespace simnet
         }
         auto offset = std::size_t{};
         auto magic = std::uint32_t{};
-        return read_u32(bytes, offset, magic) && magic == compression_magic;
+        return simnet::read_big_endian(bytes, offset, magic) && magic == compression_magic;
     }
 
     CompressionReport compress_bytes(

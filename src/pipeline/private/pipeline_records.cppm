@@ -340,9 +340,8 @@ namespace simnet::pipeline_records
         auto x = std::uint16_t{};
         auto y = std::uint16_t{};
         auto z = std::uint16_t{};
-        if (!pipeline_wire::read_u16(bytes, offset, x) ||
-            !pipeline_wire::read_u16(bytes, offset, y) ||
-            !pipeline_wire::read_u16(bytes, offset, z))
+        if (!read_big_endian(bytes, offset, x) || !read_big_endian(bytes, offset, y) ||
+            !read_big_endian(bytes, offset, z))
         {
             return false;
         }
@@ -362,9 +361,8 @@ namespace simnet::pipeline_records
         auto x = std::uint16_t{};
         auto y = std::uint16_t{};
         auto z = std::uint16_t{};
-        if (!pipeline_wire::read_u16(bytes, offset, x) ||
-            !pipeline_wire::read_u16(bytes, offset, y) ||
-            !pipeline_wire::read_u16(bytes, offset, z))
+        if (!read_big_endian(bytes, offset, x) || !read_big_endian(bytes, offset, y) ||
+            !read_big_endian(bytes, offset, z))
         {
             return false;
         }
@@ -386,8 +384,7 @@ namespace simnet::pipeline_records
     {
         auto x = std::uint16_t{};
         auto y = std::uint16_t{};
-        if (!pipeline_wire::read_u16(bytes, offset, x) ||
-            !pipeline_wire::read_u16(bytes, offset, y))
+        if (!read_big_endian(bytes, offset, x) || !read_big_endian(bytes, offset, y))
         {
             return false;
         }
@@ -475,59 +472,35 @@ namespace simnet::pipeline_records
             return;
         }
 
-        pipeline_wire::write_u32(bytes, prepared.canonical.id);
-        pipeline_wire::write_u8(bytes, prepared.canonical.classification.value());
+        append_big_endian(bytes, prepared.canonical.id);
+        append_byte(bytes, prepared.canonical.classification.value());
         if (layout.quantized)
         {
-            pipeline_wire::write_u16(
-                bytes,
-                static_cast<std::uint16_t>(prepared.position_tokens[0])
-            );
-            pipeline_wire::write_u16(
-                bytes,
-                static_cast<std::uint16_t>(prepared.position_tokens[1])
-            );
-            pipeline_wire::write_u16(
-                bytes,
-                static_cast<std::uint16_t>(prepared.position_tokens[2])
-            );
+            append_big_endian(bytes, static_cast<std::uint16_t>(prepared.position_tokens[0]));
+            append_big_endian(bytes, static_cast<std::uint16_t>(prepared.position_tokens[1]));
+            append_big_endian(bytes, static_cast<std::uint16_t>(prepared.position_tokens[2]));
             if (layout.oct_heading)
             {
-                pipeline_wire::write_u16(
-                    bytes,
-                    static_cast<std::uint16_t>(prepared.heading_tokens[0])
-                );
-                pipeline_wire::write_u16(
-                    bytes,
-                    static_cast<std::uint16_t>(prepared.heading_tokens[1])
-                );
+                append_big_endian(bytes, static_cast<std::uint16_t>(prepared.heading_tokens[0]));
+                append_big_endian(bytes, static_cast<std::uint16_t>(prepared.heading_tokens[1]));
             }
             else
             {
-                pipeline_wire::write_u16(
-                    bytes,
-                    static_cast<std::uint16_t>(prepared.heading_tokens[0])
-                );
-                pipeline_wire::write_u16(
-                    bytes,
-                    static_cast<std::uint16_t>(prepared.heading_tokens[1])
-                );
-                pipeline_wire::write_u16(
-                    bytes,
-                    static_cast<std::uint16_t>(prepared.heading_tokens[2])
-                );
+                append_big_endian(bytes, static_cast<std::uint16_t>(prepared.heading_tokens[0]));
+                append_big_endian(bytes, static_cast<std::uint16_t>(prepared.heading_tokens[1]));
+                append_big_endian(bytes, static_cast<std::uint16_t>(prepared.heading_tokens[2]));
             }
         }
         else
         {
-            pipeline_wire::write_u32(bytes, prepared.position_tokens[0]);
-            pipeline_wire::write_u32(bytes, prepared.position_tokens[1]);
-            pipeline_wire::write_u32(bytes, prepared.position_tokens[2]);
-            pipeline_wire::write_u32(bytes, prepared.heading_tokens[0]);
-            pipeline_wire::write_u32(bytes, prepared.heading_tokens[1]);
-            pipeline_wire::write_u32(bytes, prepared.heading_tokens[2]);
+            append_big_endian(bytes, prepared.position_tokens[0]);
+            append_big_endian(bytes, prepared.position_tokens[1]);
+            append_big_endian(bytes, prepared.position_tokens[2]);
+            append_big_endian(bytes, prepared.heading_tokens[0]);
+            append_big_endian(bytes, prepared.heading_tokens[1]);
+            append_big_endian(bytes, prepared.heading_tokens[2]);
         }
-        pipeline_wire::write_u8(bytes, prepared.canonical.hue);
+        append_byte(bytes, prepared.canonical.hue);
     }
 
     /// Writes selected prepared canonical fields without an entity ID.
@@ -540,7 +513,7 @@ namespace simnet::pipeline_records
     {
         if ((mask & pipeline_wire::classification_field_mask) != 0U)
         {
-            pipeline_wire::write_u8(bytes, prepared.canonical.classification.value());
+            append_byte(bytes, prepared.canonical.classification.value());
         }
         if ((mask & pipeline_wire::position_field_mask) != 0U)
         {
@@ -548,14 +521,14 @@ namespace simnet::pipeline_records
             {
                 for (auto const token : prepared.position_tokens)
                 {
-                    pipeline_wire::write_u16(bytes, static_cast<std::uint16_t>(token));
+                    append_big_endian(bytes, static_cast<std::uint16_t>(token));
                 }
             }
             else
             {
                 for (auto const token : prepared.position_tokens)
                 {
-                    pipeline_wire::write_u32(bytes, token);
+                    append_big_endian(bytes, token);
                 }
             }
         }
@@ -566,7 +539,7 @@ namespace simnet::pipeline_records
                 auto const token_count = layout.oct_heading ? 2U : 3U;
                 for (auto index = std::size_t{}; index < token_count; ++index)
                 {
-                    pipeline_wire::write_u16(
+                    append_big_endian(
                         bytes,
                         static_cast<std::uint16_t>(prepared.heading_tokens[index])
                     );
@@ -576,13 +549,13 @@ namespace simnet::pipeline_records
             {
                 for (auto const token : prepared.heading_tokens)
                 {
-                    pipeline_wire::write_u32(bytes, token);
+                    append_big_endian(bytes, token);
                 }
             }
         }
         if ((mask & pipeline_wire::hue_field_mask) != 0U)
         {
-            pipeline_wire::write_u8(bytes, prepared.canonical.hue);
+            append_byte(bytes, prepared.canonical.hue);
         }
     }
 
@@ -593,8 +566,8 @@ namespace simnet::pipeline_records
         std::uint8_t selector
     )
     {
-        pipeline_wire::write_u32(bytes, prepared.canonical.id);
-        pipeline_wire::write_u8(bytes, selector);
+        append_big_endian(bytes, prepared.canonical.id);
+        append_byte(bytes, selector);
         auto const fields = selector == pipeline_wire::spawn_record_selector
                                 ? pipeline_wire::existing_field_mask
                                 : selector;
@@ -613,7 +586,7 @@ namespace simnet::pipeline_records
         if ((mask & pipeline_wire::classification_field_mask) != 0U)
         {
             auto classification = std::uint8_t{};
-            if (!pipeline_wire::read_u8(bytes, offset, classification))
+            if (!read_byte(bytes, offset, classification))
             {
                 return false;
             }
@@ -656,7 +629,7 @@ namespace simnet::pipeline_records
         }
         if ((mask & pipeline_wire::hue_field_mask) != 0U)
         {
-            return pipeline_wire::read_u8(bytes, offset, entity.hue);
+            return read_byte(bytes, offset, entity.hue);
         }
         return true;
     }
@@ -685,12 +658,12 @@ namespace simnet::pipeline_records
             return true;
         }
 
-        if (!pipeline_wire::read_u32(bytes, offset, boid.id))
+        if (!read_big_endian(bytes, offset, boid.id))
         {
             return false;
         }
         auto classification = std::uint8_t{};
-        if (!pipeline_wire::read_u8(bytes, offset, classification))
+        if (!read_byte(bytes, offset, classification))
         {
             return false;
         }
@@ -720,6 +693,6 @@ namespace simnet::pipeline_records
         {
             return false;
         }
-        return pipeline_wire::read_u8(bytes, offset, boid.hue);
+        return read_byte(bytes, offset, boid.hue);
     }
 }

@@ -1,10 +1,8 @@
 module;
 
-#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <span>
 #include <vector>
@@ -117,68 +115,6 @@ export namespace simnet::app
         return role == ClientRole::StationaryObserver || role == ClientRole::Player;
     }
 
-    inline void write_u32(std::vector<Byte>& bytes, std::uint32_t value)
-    {
-        bytes.push_back(static_cast<Byte>((value >> 24U) & 0xFFU));
-        bytes.push_back(static_cast<Byte>((value >> 16U) & 0xFFU));
-        bytes.push_back(static_cast<Byte>((value >> 8U) & 0xFFU));
-        bytes.push_back(static_cast<Byte>(value & 0xFFU));
-    }
-
-    inline void write_u16(std::vector<Byte>& bytes, std::uint16_t value)
-    {
-        bytes.push_back(static_cast<Byte>((value >> 8U) & 0xFFU));
-        bytes.push_back(static_cast<Byte>(value & 0xFFU));
-    }
-
-    inline void write_f32(std::vector<Byte>& bytes, float value)
-    {
-        static_assert(
-            std::numeric_limits<float>::is_iec559 && sizeof(float) == sizeof(std::uint32_t)
-        );
-        write_u32(bytes, std::bit_cast<std::uint32_t>(value));
-    }
-
-    [[nodiscard]] inline bool
-    read_u32(std::span<Byte const> bytes, std::size_t offset, std::uint32_t& value) noexcept
-    {
-        if (offset + 4U > bytes.size())
-        {
-            return false;
-        }
-        value = (static_cast<std::uint32_t>(bytes[offset]) << 24U) |
-                (static_cast<std::uint32_t>(bytes[offset + 1U]) << 16U) |
-                (static_cast<std::uint32_t>(bytes[offset + 2U]) << 8U) |
-                static_cast<std::uint32_t>(bytes[offset + 3U]);
-        return true;
-    }
-
-    [[nodiscard]] inline bool
-    read_u16(std::span<Byte const> bytes, std::size_t offset, std::uint16_t& value) noexcept
-    {
-        if (offset + 2U > bytes.size())
-        {
-            return false;
-        }
-        value = static_cast<std::uint16_t>(
-            (static_cast<std::uint16_t>(bytes[offset]) << 8U) |
-            static_cast<std::uint16_t>(bytes[offset + 1U])
-        );
-        return true;
-    }
-
-    [[nodiscard]] inline bool
-    read_f32(std::span<Byte const> bytes, std::size_t offset, float& value) noexcept
-    {
-        auto bits = std::uint32_t{};
-        if (!read_u32(bytes, offset, bits))
-        {
-            return false;
-        }
-        value = std::bit_cast<float>(bits);
-        return true;
-    }
-
     [[nodiscard]] inline std::optional<AppMessageKind>
     decode_app_message_kind(std::span<Byte const> bytes) noexcept
     {
@@ -219,8 +155,8 @@ export namespace simnet::app
                 break;
             case AppMessageKind::JoinAccepted:
                 bytes.push_back(static_cast<Byte>(message.role));
-                write_u16(bytes, message.peer_id);
-                write_u32(bytes, message.player_id);
+                append_big_endian(bytes, message.peer_id);
+                append_big_endian(bytes, message.player_id);
                 break;
             case AppMessageKind::SnapshotAck:
             case AppMessageKind::PlayerInput:
@@ -266,8 +202,9 @@ export namespace simnet::app
             {
                 auto peer_id = std::uint16_t{};
                 auto player_id = std::uint32_t{};
-                if (bytes.size() != 9U || !read_u16(bytes, 3U, peer_id) ||
-                    !read_u32(bytes, 5U, player_id))
+                auto offset = std::size_t{3U};
+                if (bytes.size() != 9U || !read_big_endian(bytes, offset, peer_id) ||
+                    !read_big_endian(bytes, offset, player_id))
                 {
                     return false;
                 }
@@ -317,9 +254,9 @@ export namespace simnet::app
             static_cast<Byte>(app_message_version),
         };
         bytes.reserve(14U);
-        write_u32(bytes, ack.newest_received_snapshot);
-        write_u32(bytes, ack.received_mask);
-        write_u32(bytes, ack.newest_applied_snapshot);
+        append_big_endian(bytes, ack.newest_received_snapshot);
+        append_big_endian(bytes, ack.received_mask);
+        append_big_endian(bytes, ack.newest_applied_snapshot);
         return bytes;
     }
 
@@ -327,11 +264,12 @@ export namespace simnet::app
     decode_snapshot_ack(std::span<Byte const> bytes, SnapshotAck& ack) noexcept
     {
         auto decoded = SnapshotAck{};
+        auto offset = std::size_t{2U};
         if (bytes.size() != 14U || bytes[0] != static_cast<Byte>(AppMessageKind::SnapshotAck) ||
             bytes[1] != static_cast<Byte>(app_message_version) ||
-            !read_u32(bytes, 2U, decoded.newest_received_snapshot) ||
-            !read_u32(bytes, 6U, decoded.received_mask) ||
-            !read_u32(bytes, 10U, decoded.newest_applied_snapshot))
+            !read_big_endian(bytes, offset, decoded.newest_received_snapshot) ||
+            !read_big_endian(bytes, offset, decoded.received_mask) ||
+            !read_big_endian(bytes, offset, decoded.newest_applied_snapshot))
         {
             return false;
         }
@@ -347,8 +285,8 @@ export namespace simnet::app
             static_cast<Byte>(app_message_version),
         };
         bytes.reserve(10U);
-        write_u32(bytes, request.rejected_update_sequence);
-        write_u32(bytes, request.missing_baseline_sequence);
+        append_big_endian(bytes, request.rejected_update_sequence);
+        append_big_endian(bytes, request.missing_baseline_sequence);
         return bytes;
     }
 
@@ -358,11 +296,12 @@ export namespace simnet::app
     ) noexcept
     {
         auto decoded = SnapshotRecoveryRequest{};
+        auto offset = std::size_t{2U};
         if (bytes.size() != 10U ||
             bytes[0] != static_cast<Byte>(AppMessageKind::SnapshotRecoveryRequest) ||
             bytes[1] != static_cast<Byte>(app_message_version) ||
-            !read_u32(bytes, 2U, decoded.rejected_update_sequence) ||
-            !read_u32(bytes, 6U, decoded.missing_baseline_sequence) ||
+            !read_big_endian(bytes, offset, decoded.rejected_update_sequence) ||
+            !read_big_endian(bytes, offset, decoded.missing_baseline_sequence) ||
             decoded.rejected_update_sequence == 0U || decoded.missing_baseline_sequence == 0U ||
             decoded.missing_baseline_sequence >= decoded.rejected_update_sequence)
         {
@@ -380,12 +319,12 @@ export namespace simnet::app
             static_cast<Byte>(app_message_version),
         };
         bytes.reserve(26U);
-        write_f32(bytes, message.position.x);
-        write_f32(bytes, message.position.y);
-        write_f32(bytes, message.position.z);
-        write_f32(bytes, message.forward.x);
-        write_f32(bytes, message.forward.y);
-        write_f32(bytes, message.forward.z);
+        append_float32_big_endian(bytes, message.position.x);
+        append_float32_big_endian(bytes, message.position.y);
+        append_float32_big_endian(bytes, message.position.z);
+        append_float32_big_endian(bytes, message.forward.x);
+        append_float32_big_endian(bytes, message.forward.y);
+        append_float32_big_endian(bytes, message.forward.z);
         return bytes;
     }
 
@@ -402,9 +341,13 @@ export namespace simnet::app
         }
 
         auto decoded = StationaryObserverInterestMessage{};
-        if (!read_f32(bytes, 2U, decoded.position.x) || !read_f32(bytes, 6U, decoded.position.y) ||
-            !read_f32(bytes, 10U, decoded.position.z) || !read_f32(bytes, 14U, decoded.forward.x) ||
-            !read_f32(bytes, 18U, decoded.forward.y) || !read_f32(bytes, 22U, decoded.forward.z) ||
+        auto offset = std::size_t{2U};
+        if (!read_float32_big_endian(bytes, offset, decoded.position.x) ||
+            !read_float32_big_endian(bytes, offset, decoded.position.y) ||
+            !read_float32_big_endian(bytes, offset, decoded.position.z) ||
+            !read_float32_big_endian(bytes, offset, decoded.forward.x) ||
+            !read_float32_big_endian(bytes, offset, decoded.forward.y) ||
+            !read_float32_big_endian(bytes, offset, decoded.forward.z) ||
             !is_finite(decoded.position) || !is_finite(decoded.forward))
         {
             return false;

@@ -7,6 +7,7 @@ target_sources(simnet_core
         BASE_DIRS import
         FILES
             import/core.cppm
+            import/core_ids.cppm
             import/core_math.cppm
             import/core_time.cppm
             import/core_bytes.cppm

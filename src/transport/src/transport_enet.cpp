@@ -562,7 +562,7 @@ namespace simnet
                 auto message = SessionMessage{};
                 auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
                 if (lane != TransportLane::Lane0 ||
-                    !decode_session_message(data, event.packet->dataLength, message) ||
+                    !decode_session_message(ByteSpan{data, event.packet->dataLength}, message) ||
                     message.kind != SessionMessageKind::ClientHello)
                 {
                     out_events.push_back(
@@ -923,7 +923,7 @@ namespace simnet
                 auto message = SessionMessage{};
                 auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
                 if (lane != TransportLane::Lane0 ||
-                    !decode_session_message(data, event.packet->dataLength, message))
+                    !decode_session_message(ByteSpan{data, event.packet->dataLength}, message))
                 {
                     out_events.push_back(
                         TransportErrorEvent{

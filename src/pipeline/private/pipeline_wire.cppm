@@ -1,6 +1,5 @@
 module;
 
-#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -134,134 +133,28 @@ namespace simnet::pipeline_wire
         return field_mask_enabled(pipeline) ? field_mask_schema_version : schema_version;
     }
 
-    // --- Writers ---
-
-    /// Appends a single byte.
-    void write_u8(std::vector<Byte>& bytes, std::uint8_t value)
-    {
-        bytes.push_back(static_cast<Byte>(value));
-    }
-
-    /// Appends a 16-bit unsigned integer in network byte order.
-    void write_u16(std::vector<Byte>& bytes, std::uint16_t value)
-    {
-        write_u8(bytes, static_cast<std::uint8_t>((value >> 8U) & 0xFFU));
-        write_u8(bytes, static_cast<std::uint8_t>(value & 0xFFU));
-    }
-
-    /// Appends a 32-bit unsigned integer in network byte order.
-    void write_u32(std::vector<Byte>& bytes, std::uint32_t value)
-    {
-        write_u8(bytes, static_cast<std::uint8_t>((value >> 24U) & 0xFFU));
-        write_u8(bytes, static_cast<std::uint8_t>((value >> 16U) & 0xFFU));
-        write_u8(bytes, static_cast<std::uint8_t>((value >> 8U) & 0xFFU));
-        write_u8(bytes, static_cast<std::uint8_t>(value & 0xFFU));
-    }
-
-    /// Appends a 64-bit unsigned integer in network byte order.
-    void write_u64(std::vector<Byte>& bytes, std::uint64_t value)
-    {
-        write_u32(bytes, static_cast<std::uint32_t>((value >> 32U) & 0xFFFFFFFFULL));
-        write_u32(bytes, static_cast<std::uint32_t>(value & 0xFFFFFFFFULL));
-    }
-
-    /// Appends a 32-bit floating point value in network byte order.
-    void write_f32(std::vector<Byte>& bytes, float value)
-    {
-        write_u32(bytes, std::bit_cast<std::uint32_t>(value));
-    }
-
     /// Serializes the full encoded update header.
     void write_header(std::vector<Byte>& bytes, EncodedUpdateHeader const& header)
     {
-        write_u32(bytes, header.magic);
-        write_u16(bytes, header.protocol);
-        write_u16(bytes, header.schema);
-        write_u64(bytes, header.decode_signature);
-        write_u8(bytes, static_cast<std::uint8_t>(header.snapshot_kind));
-        write_u64(bytes, header.tick);
-        write_u32(bytes, header.sequence);
-        write_u32(bytes, header.baseline_sequence);
-        write_u32(bytes, header.upsert_count);
-        write_u32(bytes, header.delete_count);
-        write_u32(bytes, header.payload_bytes);
+        append_big_endian(bytes, header.magic);
+        append_big_endian(bytes, header.protocol);
+        append_big_endian(bytes, header.schema);
+        append_big_endian(bytes, header.decode_signature);
+        append_byte(bytes, static_cast<std::uint8_t>(header.snapshot_kind));
+        append_big_endian(bytes, header.tick);
+        append_big_endian(bytes, header.sequence);
+        append_big_endian(bytes, header.baseline_sequence);
+        append_big_endian(bytes, header.upsert_count);
+        append_big_endian(bytes, header.delete_count);
+        append_big_endian(bytes, header.payload_bytes);
     }
 
     /// Serializes a 3D vector as three floats.
     void write_vec3(std::vector<Byte>& bytes, Vec3f value)
     {
-        write_f32(bytes, value.x);
-        write_f32(bytes, value.y);
-        write_f32(bytes, value.z);
-    }
-
-    // --- Readers ---
-
-    /// Reads a single byte, advancing offset. Returns false on truncation.
-    bool read_u8(ByteSpan bytes, std::size_t& offset, std::uint8_t& value)
-    {
-        if (offset + 1U > bytes.size())
-        {
-            return false;
-        }
-        value = std::to_integer<std::uint8_t>(bytes[offset]);
-        ++offset;
-        return true;
-    }
-
-    /// Reads a 16-bit value in big-endian.
-    bool read_u16(ByteSpan bytes, std::size_t& offset, std::uint16_t& value)
-    {
-        auto b0 = std::uint8_t{};
-        auto b1 = std::uint8_t{};
-        if (!read_u8(bytes, offset, b0) || !read_u8(bytes, offset, b1))
-        {
-            return false;
-        }
-        value = static_cast<std::uint16_t>((static_cast<std::uint16_t>(b0) << 8U) | b1);
-        return true;
-    }
-
-    /// Reads a 32-bit value in big-endian.
-    bool read_u32(ByteSpan bytes, std::size_t& offset, std::uint32_t& value)
-    {
-        auto b0 = std::uint8_t{};
-        auto b1 = std::uint8_t{};
-        auto b2 = std::uint8_t{};
-        auto b3 = std::uint8_t{};
-        if (!read_u8(bytes, offset, b0) || !read_u8(bytes, offset, b1) ||
-            !read_u8(bytes, offset, b2) || !read_u8(bytes, offset, b3))
-        {
-            return false;
-        }
-        value = (static_cast<std::uint32_t>(b0) << 24U) | (static_cast<std::uint32_t>(b1) << 16U) |
-                (static_cast<std::uint32_t>(b2) << 8U) | static_cast<std::uint32_t>(b3);
-        return true;
-    }
-
-    /// Reads a 64-bit value in big-endian.
-    bool read_u64(ByteSpan bytes, std::size_t& offset, std::uint64_t& value)
-    {
-        auto hi = std::uint32_t{};
-        auto lo = std::uint32_t{};
-        if (!read_u32(bytes, offset, hi) || !read_u32(bytes, offset, lo))
-        {
-            return false;
-        }
-        value = (static_cast<std::uint64_t>(hi) << 32U) | lo;
-        return true;
-    }
-
-    /// Reads a 32-bit floating point value from its 32-bit bit pattern.
-    bool read_f32(ByteSpan bytes, std::size_t& offset, float& value)
-    {
-        auto bits = std::uint32_t{};
-        if (!read_u32(bytes, offset, bits))
-        {
-            return false;
-        }
-        value = std::bit_cast<float>(bits);
-        return true;
+        append_float32_big_endian(bytes, value.x);
+        append_float32_big_endian(bytes, value.y);
+        append_float32_big_endian(bytes, value.z);
     }
 
     /// Reads the full encoded update header, advancing offset. Returns false on truncation.
@@ -270,15 +163,17 @@ namespace simnet::pipeline_wire
         auto offset = std::size_t{};
         auto snapshot_kind = std::uint8_t{};
 
-        if (!read_u32(bytes, offset, header.magic) || !read_u16(bytes, offset, header.protocol) ||
-            !read_u16(bytes, offset, header.schema) ||
-            !read_u64(bytes, offset, header.decode_signature) ||
-            !read_u8(bytes, offset, snapshot_kind) || !read_u64(bytes, offset, header.tick) ||
-            !read_u32(bytes, offset, header.sequence) ||
-            !read_u32(bytes, offset, header.baseline_sequence) ||
-            !read_u32(bytes, offset, header.upsert_count) ||
-            !read_u32(bytes, offset, header.delete_count) ||
-            !read_u32(bytes, offset, header.payload_bytes))
+        if (!read_big_endian(bytes, offset, header.magic) ||
+            !read_big_endian(bytes, offset, header.protocol) ||
+            !read_big_endian(bytes, offset, header.schema) ||
+            !read_big_endian(bytes, offset, header.decode_signature) ||
+            !read_byte(bytes, offset, snapshot_kind) ||
+            !read_big_endian(bytes, offset, header.tick) ||
+            !read_big_endian(bytes, offset, header.sequence) ||
+            !read_big_endian(bytes, offset, header.baseline_sequence) ||
+            !read_big_endian(bytes, offset, header.upsert_count) ||
+            !read_big_endian(bytes, offset, header.delete_count) ||
+            !read_big_endian(bytes, offset, header.payload_bytes))
         {
             return false;
         }
@@ -290,7 +185,8 @@ namespace simnet::pipeline_wire
     /// Reads a 3D vector as three floats in big-endian.
     bool read_vec3(ByteSpan bytes, std::size_t& offset, Vec3f& value)
     {
-        return read_f32(bytes, offset, value.x) && read_f32(bytes, offset, value.y) &&
-               read_f32(bytes, offset, value.z);
+        return read_float32_big_endian(bytes, offset, value.x) &&
+               read_float32_big_endian(bytes, offset, value.y) &&
+               read_float32_big_endian(bytes, offset, value.z);
     }
 }

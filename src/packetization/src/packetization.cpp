@@ -35,72 +35,19 @@ namespace
         std::uint32_t chunk_bytes{};
     };
 
-    void write_u8(std::vector<simnet::Byte>& bytes, std::uint8_t value)
-    {
-        bytes.push_back(static_cast<simnet::Byte>(value));
-    }
-
-    void write_u16(std::vector<simnet::Byte>& bytes, std::uint16_t value)
-    {
-        write_u8(bytes, static_cast<std::uint8_t>(value >> 8U));
-        write_u8(bytes, static_cast<std::uint8_t>(value));
-    }
-
-    void write_u32(std::vector<simnet::Byte>& bytes, std::uint32_t value)
-    {
-        write_u8(bytes, static_cast<std::uint8_t>(value >> 24U));
-        write_u8(bytes, static_cast<std::uint8_t>(value >> 16U));
-        write_u8(bytes, static_cast<std::uint8_t>(value >> 8U));
-        write_u8(bytes, static_cast<std::uint8_t>(value));
-    }
-
-    [[nodiscard]] bool
-    read_u8(simnet::ByteSpan bytes, std::size_t& offset, std::uint8_t& value) noexcept
-    {
-        if (offset >= bytes.size())
-        {
-            return false;
-        }
-        value = static_cast<std::uint8_t>(bytes[offset++]);
-        return true;
-    }
-
-    [[nodiscard]] bool
-    read_u16(simnet::ByteSpan bytes, std::size_t& offset, std::uint16_t& value) noexcept
-    {
-        std::uint8_t high{};
-        std::uint8_t low{};
-        if (!read_u8(bytes, offset, high) || !read_u8(bytes, offset, low))
-        {
-            return false;
-        }
-        value = static_cast<std::uint16_t>(static_cast<std::uint16_t>(high) << 8U) | low;
-        return true;
-    }
-
-    [[nodiscard]] bool
-    read_u32(simnet::ByteSpan bytes, std::size_t& offset, std::uint32_t& value) noexcept
-    {
-        std::uint16_t high{};
-        std::uint16_t low{};
-        if (!read_u16(bytes, offset, high) || !read_u16(bytes, offset, low))
-        {
-            return false;
-        }
-        value = (static_cast<std::uint32_t>(high) << 16U) | low;
-        return true;
-    }
-
     [[nodiscard]] bool read_header(simnet::ByteSpan bytes, PacketHeader& header) noexcept
     {
         auto offset = std::size_t{};
-        return read_u32(bytes, offset, header.magic) && read_u16(bytes, offset, header.protocol) &&
-               read_u16(bytes, offset, header.schema) && read_u8(bytes, offset, header.kind) &&
-               read_u32(bytes, offset, header.group_id) &&
-               read_u16(bytes, offset, header.chunk_index) &&
-               read_u16(bytes, offset, header.chunk_count) &&
-               read_u32(bytes, offset, header.group_bytes) &&
-               read_u32(bytes, offset, header.chunk_bytes) && offset == simnet::packet_header_bytes;
+        return simnet::read_big_endian(bytes, offset, header.magic) &&
+               simnet::read_big_endian(bytes, offset, header.protocol) &&
+               simnet::read_big_endian(bytes, offset, header.schema) &&
+               simnet::read_byte(bytes, offset, header.kind) &&
+               simnet::read_big_endian(bytes, offset, header.group_id) &&
+               simnet::read_big_endian(bytes, offset, header.chunk_index) &&
+               simnet::read_big_endian(bytes, offset, header.chunk_count) &&
+               simnet::read_big_endian(bytes, offset, header.group_bytes) &&
+               simnet::read_big_endian(bytes, offset, header.chunk_bytes) &&
+               offset == simnet::packet_header_bytes;
     }
 
     [[nodiscard]] std::uint64_t ceiling_divide(std::uint64_t value, std::uint64_t divisor)
@@ -291,15 +238,18 @@ namespace simnet
         auto const chunk_bytes = std::min<std::size_t>(remaining, prepared.chunk_payload_capacity);
         serialization_scratch.clear();
         serialization_scratch.reserve(packet_header_bytes + chunk_bytes);
-        write_u32(serialization_scratch, packet_magic);
-        write_u16(serialization_scratch, packet_protocol_version);
-        write_u16(serialization_scratch, packet_schema_version);
-        write_u8(serialization_scratch, byte_group_chunk_kind);
-        write_u32(serialization_scratch, prepared.group_id);
-        write_u16(serialization_scratch, chunk_index);
-        write_u16(serialization_scratch, prepared.chunk_count);
-        write_u32(serialization_scratch, static_cast<std::uint32_t>(prepared.bytes.size()));
-        write_u32(serialization_scratch, static_cast<std::uint32_t>(chunk_bytes));
+        simnet::append_big_endian(serialization_scratch, packet_magic);
+        simnet::append_big_endian(serialization_scratch, packet_protocol_version);
+        simnet::append_big_endian(serialization_scratch, packet_schema_version);
+        simnet::append_byte(serialization_scratch, byte_group_chunk_kind);
+        simnet::append_big_endian(serialization_scratch, prepared.group_id);
+        simnet::append_big_endian(serialization_scratch, chunk_index);
+        simnet::append_big_endian(serialization_scratch, prepared.chunk_count);
+        simnet::append_big_endian(
+            serialization_scratch,
+            static_cast<std::uint32_t>(prepared.bytes.size())
+        );
+        simnet::append_big_endian(serialization_scratch, static_cast<std::uint32_t>(chunk_bytes));
         serialization_scratch.insert(
             serialization_scratch.end(),
             prepared.bytes.begin() + static_cast<std::ptrdiff_t>(offset),

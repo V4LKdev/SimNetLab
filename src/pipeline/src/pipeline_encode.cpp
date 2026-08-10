@@ -468,7 +468,7 @@ namespace simnet
 
         for (EntityNetId const id : scratch.selected_delete_ids)
         {
-            pipeline_wire::write_u32(scratch.bytes, id);
+            simnet::append_big_endian(scratch.bytes, id);
         }
 
         if (!emit_delta)

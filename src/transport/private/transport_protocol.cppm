@@ -7,6 +7,7 @@ module;
 module simnet.transport:protocol;
 
 import :types;
+import simnet.core;
 
 namespace simnet::transport_protocol
 {
@@ -36,21 +37,6 @@ namespace simnet::transport_protocol
     [[nodiscard]] bool valid_delivery(TransportDelivery delivery) noexcept;
     [[nodiscard]] bool valid_disconnect_code(DisconnectCode code) noexcept;
 
-    void write_u8(std::vector<Byte>& bytes, std::uint8_t value);
-    void write_u16(std::vector<Byte>& bytes, std::uint16_t value);
-    void write_u32(std::vector<Byte>& bytes, std::uint32_t value);
-    void write_u64(std::vector<Byte>& bytes, std::uint64_t value);
-
-    [[nodiscard]] bool
-    read_u8(Byte const* data, std::size_t size, std::size_t& offset, std::uint8_t& value);
-    [[nodiscard]] bool
-    read_u16(Byte const* data, std::size_t size, std::size_t& offset, std::uint16_t& value);
-    [[nodiscard]] bool
-    read_u32(Byte const* data, std::size_t size, std::size_t& offset, std::uint32_t& value);
-    [[nodiscard]] bool
-    read_u64(Byte const* data, std::size_t size, std::size_t& offset, std::uint64_t& value);
-
     [[nodiscard]] std::vector<Byte> encode_session_message(SessionMessage const& message);
-    [[nodiscard]] bool
-    decode_session_message(Byte const* data, std::size_t size, SessionMessage& message);
+    [[nodiscard]] bool decode_session_message(ByteSpan bytes, SessionMessage& message);
 } // namespace simnet::transport_protocol

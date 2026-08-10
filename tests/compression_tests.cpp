@@ -158,6 +158,31 @@ TEST_CASE("Raw and Zstd envelopes roundtrip exactly", "[compression][roundtrip]"
             encoded.encoding == (input.size() == 1U ? simnet::CompressionEncoding::Raw
                                                     : simnet::CompressionEncoding::Zstd)
         );
+        if (input.size() == 1U)
+        {
+            CHECK(
+                envelope == std::vector<simnet::Byte>{
+                                simnet::Byte{'S'},
+                                simnet::Byte{'N'},
+                                simnet::Byte{'C'},
+                                simnet::Byte{'Z'},
+                                simnet::Byte{0U},
+                                simnet::Byte{1U},
+                                simnet::Byte{0U},
+                                simnet::Byte{1U},
+                                simnet::Byte{0U},
+                                simnet::Byte{0U},
+                                simnet::Byte{0U},
+                                simnet::Byte{0U},
+                                simnet::Byte{1U},
+                                simnet::Byte{0U},
+                                simnet::Byte{0U},
+                                simnet::Byte{0U},
+                                simnet::Byte{1U},
+                                simnet::Byte{'x'},
+                            }
+            );
+        }
 
         auto decoded_bytes = std::vector<simnet::Byte>{};
         auto const decoded =

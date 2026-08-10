@@ -336,7 +336,7 @@ namespace
         for (auto index = std::uint32_t{}; index < header.delete_count; ++index)
         {
             auto id = simnet::EntityNetId{};
-            if (!simnet::pipeline_wire::read_u32(input.bytes, offset, id))
+            if (!simnet::read_big_endian(input.bytes, offset, id))
             {
                 return invalid_update("truncated delete id data");
             }
@@ -360,8 +360,8 @@ namespace
 
             auto id = simnet::EntityNetId{};
             auto selector = std::uint8_t{};
-            if (!simnet::pipeline_wire::read_u32(input.bytes, offset, id) ||
-                !simnet::pipeline_wire::read_u8(input.bytes, offset, selector))
+            if (!simnet::read_big_endian(input.bytes, offset, id) ||
+                !simnet::read_byte(input.bytes, offset, selector))
             {
                 return invalid_update("truncated field-mask upsert prefix");
             }

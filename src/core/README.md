@@ -4,8 +4,11 @@
 ## Exported Types
 
 ### simnet.core:bytes
-- `EntityNetId`, `PeerId`, `SequenceId`
 - `Byte`, `ByteSpan`
+- Network-order byte, integer, and IEEE-754 binary32 append/read operations
+
+### simnet.core:ids
+- `EntityNetId`, `PeerId`, `SequenceId`
 
 ### simnet.core:math
 - `Vec3f`, `Aabb3f`
