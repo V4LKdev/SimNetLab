@@ -48,6 +48,16 @@ export namespace simnet
         return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z;
     }
 
+    /// Returns the right-handed cross product of two vectors.
+    [[nodiscard]] constexpr Vec3f cross(Vec3f lhs, Vec3f rhs) noexcept
+    {
+        return {
+            .x = lhs.y * rhs.z - lhs.z * rhs.y,
+            .y = lhs.z * rhs.x - lhs.x * rhs.z,
+            .z = lhs.x * rhs.y - lhs.y * rhs.x,
+        };
+    }
+
     /// Returns the squared vector length.
     [[nodiscard]] constexpr float length_squared(Vec3f value) noexcept
     {

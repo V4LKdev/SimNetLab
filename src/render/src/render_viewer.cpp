@@ -148,15 +148,6 @@ namespace
         return heading / std::sqrt(length_squared);
     }
 
-    [[nodiscard]] simnet::Vec3f cross(simnet::Vec3f lhs, simnet::Vec3f rhs) noexcept
-    {
-        return {
-            .x = lhs.y * rhs.z - lhs.z * rhs.y,
-            .y = lhs.z * rhs.x - lhs.x * rhs.z,
-            .z = lhs.x * rhs.y - lhs.y * rhs.x,
-        };
-    }
-
     struct WorldUpBasis
     {
         simnet::Vec3f right{.x = 1.0F};

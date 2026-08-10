@@ -52,15 +52,6 @@ namespace simnet::render_detail
         return heading / std::sqrt(magnitude_squared);
     }
 
-    [[nodiscard]] inline Vec3f cross(Vec3f lhs, Vec3f rhs) noexcept
-    {
-        return {
-            .x = lhs.y * rhs.z - lhs.z * rhs.y,
-            .y = lhs.z * rhs.x - lhs.x * rhs.z,
-            .z = lhs.x * rhs.y - lhs.y * rhs.x,
-        };
-    }
-
     struct WorldUpBasis
     {
         Vec3f right{.x = 1.0F};

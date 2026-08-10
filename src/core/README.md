@@ -12,7 +12,7 @@
 
 ### simnet.core:math
 - `Vec3f`, `Aabb3f`
-- Arithmetic operators, `dot`, `length`, `length_squared`, `normalize_or`
+- Arithmetic operators, `dot`, `cross`, `length`, `length_squared`, `normalize_or`
 - `is_finite`, `make_centered_bounds`, `contains`
 
 ### simnet.core:time

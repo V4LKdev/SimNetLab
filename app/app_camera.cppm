@@ -22,18 +22,6 @@ export namespace simnet::app
     locked_chase_camera_pose(Vec3f player_position, Vec3f player_heading) noexcept;
 }
 
-namespace
-{
-    [[nodiscard]] simnet::Vec3f cross(simnet::Vec3f lhs, simnet::Vec3f rhs) noexcept
-    {
-        return {
-            .x = lhs.y * rhs.z - lhs.z * rhs.y,
-            .y = lhs.z * rhs.x - lhs.x * rhs.z,
-            .z = lhs.x * rhs.y - lhs.y * rhs.x,
-        };
-    }
-}
-
 namespace simnet::app
 {
     LockedChaseCameraPose
