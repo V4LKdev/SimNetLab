@@ -278,6 +278,78 @@ TEST_CASE("ID-aware spatial build rejects mismatched arrays transactionally", "[
     CHECK(grid.occupied_cells[0].key == previous_cells[0].key);
 }
 
+TEST_CASE("phased spatial builds are identical across worker counts", "[spatial][parallel]")
+{
+    auto const positions = std::array{
+        simnet::Vec3f{.x = 9.0F, .y = 9.0F, .z = 9.0F},
+        simnet::Vec3f{.x = -9.0F, .y = -9.0F, .z = -9.0F},
+        simnet::Vec3f{.x = -8.0F, .y = -8.0F, .z = -8.0F},
+        simnet::Vec3f{.x = 1.0F, .y = 1.0F, .z = 1.0F},
+        simnet::Vec3f{.x = -4.0F, .y = 6.0F, .z = 2.0F},
+    };
+    auto const settings =
+        simnet::make_spatial_grid_settings(simnet::make_centered_bounds(10.0F), 5.0F);
+    auto expected_grid = simnet::SpatialGrid{};
+    auto expected_scratch = simnet::SpatialGridScratch{};
+    simnet::resize_spatial_grid(expected_grid, settings);
+    simnet::build_spatial_grid_serial(expected_grid, expected_scratch, positions);
+
+    for (auto worker_count = 1U; worker_count <= 8U; ++worker_count)
+    {
+        auto grid = simnet::SpatialGrid{};
+        auto scratch = simnet::SpatialGridScratch{};
+        simnet::resize_spatial_grid(grid, settings);
+        simnet::prepare_spatial_grid_scratch(scratch, positions.size(), worker_count);
+        simnet::begin_spatial_grid_build(grid, scratch, positions);
+        for (auto worker_index = 0U; worker_index < worker_count; ++worker_index)
+        {
+            auto const begin_index =
+                static_cast<std::uint32_t>(positions.size() * worker_index / worker_count);
+            auto const end_index =
+                static_cast<std::uint32_t>(positions.size() * (worker_index + 1U) / worker_count);
+            simnet::build_spatial_grid_worker_entries(
+                grid,
+                scratch.workers[worker_index],
+                positions,
+                begin_index,
+                end_index
+            );
+        }
+        simnet::finish_spatial_grid_build(grid, scratch);
+
+        REQUIRE(grid.entries.size() == expected_grid.entries.size());
+        for (std::size_t entry_index = 0; entry_index < grid.entries.size(); ++entry_index)
+        {
+            CHECK(grid.entries[entry_index].key == expected_grid.entries[entry_index].key);
+            CHECK(
+                grid.entries[entry_index].source_index ==
+                expected_grid.entries[entry_index].source_index
+            );
+        }
+        REQUIRE(grid.occupied_cells.size() == expected_grid.occupied_cells.size());
+        for (std::size_t cell_index = 0; cell_index < grid.occupied_cells.size(); ++cell_index)
+        {
+            CHECK(
+                grid.occupied_cells[cell_index].key == expected_grid.occupied_cells[cell_index].key
+            );
+            CHECK(
+                grid.occupied_cells[cell_index].begin ==
+                expected_grid.occupied_cells[cell_index].begin
+            );
+            CHECK(
+                grid.occupied_cells[cell_index].count ==
+                expected_grid.occupied_cells[cell_index].count
+            );
+        }
+        CHECK(grid.stats.entity_count == expected_grid.stats.entity_count);
+        CHECK(grid.stats.occupied_cell_count == expected_grid.stats.occupied_cell_count);
+        CHECK(grid.stats.max_cell_occupancy == expected_grid.stats.max_cell_occupancy);
+        CHECK(
+            grid.stats.average_occupied_cell_load == expected_grid.stats.average_occupied_cell_load
+        );
+    }
+}
+
 TEST_CASE("radius queries expose the exact inspected bounded cells", "[spatial][query]")
 {
     auto grid = simnet::SpatialGrid{};
@@ -319,4 +391,37 @@ TEST_CASE("radius queries expose the exact inspected bounded cells", "[spatial][
     CHECK(enumerated.size() == enumerated_count);
     CHECK(queried_indices == std::vector<std::uint32_t>{0U});
     CHECK(simnet::cell_coord_for_position(grid, positions[0]).x == 0);
+}
+
+TEST_CASE("AABB queries retain duplicates and include exact boundaries", "[spatial][query]")
+{
+    auto grid = simnet::SpatialGrid{};
+    auto scratch = simnet::SpatialGridScratch{};
+    simnet::resize_spatial_grid(
+        grid,
+        simnet::make_spatial_grid_settings(simnet::make_centered_bounds(10.0F), 5.0F)
+    );
+    auto const positions = std::array{
+        simnet::Vec3f{-4.0F, 0.0F, 0.0F},
+        simnet::Vec3f{-4.0F, 0.0F, 0.0F},
+        simnet::Vec3f{4.0F, 0.0F, 0.0F},
+        simnet::Vec3f{4.01F, 0.0F, 0.0F},
+    };
+    simnet::build_spatial_grid_serial(grid, scratch, positions);
+
+    auto queried_indices = std::vector<std::uint32_t>{};
+    simnet::query_aabb(
+        grid,
+        positions,
+        {
+            .min = {-4.0F, -1.0F, -1.0F},
+            .max = {4.0F, 1.0F, 1.0F},
+        },
+        [&](std::uint32_t source_index)
+        {
+            queried_indices.push_back(source_index);
+        }
+    );
+
+    CHECK(queried_indices == std::vector<std::uint32_t>{0U, 1U, 2U});
 }
