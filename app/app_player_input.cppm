@@ -61,17 +61,20 @@ export namespace simnet::app
         Nanoseconds now
     ) noexcept
     {
-        if (!accepted_player_session) {
+        if (!accepted_player_session)
+        {
             return std::nullopt;
         }
-        if (!state.has_submitted || !same_player_input(state.desired, state.last_submitted)) {
+        if (!state.has_submitted || !same_player_input(state.desired, state.last_submitted))
+        {
             return PlayerInputSubmission{
                 .input = state.desired,
                 .cause = PlayerInputSubmissionCause::StateChange,
             };
         }
-        if (now >= state.last_submission_time
-            && now - state.last_submission_time >= player_input_heartbeat_interval) {
+        if (now >= state.last_submission_time &&
+            now - state.last_submission_time >= player_input_heartbeat_interval)
+        {
             return PlayerInputSubmission{
                 .input = state.desired,
                 .cause = PlayerInputSubmissionCause::Heartbeat,
@@ -89,9 +92,12 @@ export namespace simnet::app
         state.last_submitted = submission.input;
         state.has_submitted = true;
         state.last_submission_time = now;
-        if (submission.cause == PlayerInputSubmissionCause::StateChange) {
+        if (submission.cause == PlayerInputSubmissionCause::StateChange)
+        {
             ++state.state_change_submission_count;
-        } else {
+        }
+        else
+        {
             ++state.heartbeat_submission_count;
         }
     }

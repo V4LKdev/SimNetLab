@@ -31,7 +31,8 @@ namespace simnet
     void Viewer::Impl::clear_instances()
     {
         SIMNET_TRACE_SCOPE_CATEGORY("render.prepare.clear_buckets", simnet::LogCategory::Render);
-        for (auto& bucket : transform_buckets_) {
+        for (auto& bucket : transform_buckets_)
+        {
             bucket.clear();
         }
     }
@@ -45,18 +46,22 @@ namespace simnet
                 simnet::LogCategory::Render
             );
             auto const per_bucket = entities.size() / hue_bucket_count + 1U;
-            for (auto& bucket : transform_buckets_) {
-                if (bucket.capacity() < per_bucket) {
+            for (auto& bucket : transform_buckets_)
+            {
+                if (bucket.capacity() < per_bucket)
+                {
                     bucket.reserve(per_bucket);
                 }
             }
         }
         {
             SIMNET_TRACE_SCOPE_CATEGORY("render.prepare.transforms", simnet::LogCategory::Render);
-            for (std::size_t index = 0; index < entities.size(); ++index) {
+            for (std::size_t index = 0; index < entities.size(); ++index)
+            {
                 auto const position = entities.positions[index];
                 auto const heading = entities.headings[index];
-                if (!finite(position) || !finite(heading)) {
+                if (!finite(position) || !finite(heading))
+                {
                     ++stats.skipped_entity_count;
                     continue;
                 }
@@ -79,12 +84,12 @@ namespace simnet
         );
         auto const position = to_raylib(stationary_observer.position);
         auto const forward = normalized_or_forward(stationary_observer.forward);
-        auto const direction_end = to_raylib(
-            stationary_observer.position + forward * stationary_observer.interest_radius
-        );
+        auto const direction_end =
+            to_raylib(stationary_observer.position + forward * stationary_observer.interest_radius);
         DrawSphere(position, std::max(config_.entity_scale, 1.0F) * 1.5F, Color{247, 184, 74, 255});
         DrawLine3D(position, direction_end, Color{247, 184, 74, 255});
-        if (overlays_.stationary_observer_radius) {
+        if (overlays_.stationary_observer_radius)
+        {
             DrawSphereWires(
                 position,
                 stationary_observer.interest_radius,
@@ -93,17 +98,19 @@ namespace simnet
                 Color{247, 184, 74, 110}
             );
         }
-        if (overlays_.stationary_observer_frustum) {
+        if (overlays_.stationary_observer_frustum)
+        {
             auto const basis = world_up_basis(forward);
-            auto const aspect
-                = static_cast<float>(scene_rect_.width) / static_cast<float>(scene_rect_.height);
+            auto const aspect =
+                static_cast<float>(scene_rect_.width) / static_cast<float>(scene_rect_.height);
             auto const vertical = stationary_observer.vertical_fov_degrees * DEG2RAD;
-            auto const vertical_half
-                = std::tan(vertical * 0.5F) * stationary_observer.interest_radius;
+            auto const vertical_half =
+                std::tan(vertical * 0.5F) * stationary_observer.interest_radius;
             auto const horizontal_half = vertical_half * aspect;
-            auto const center
-                = stationary_observer.position + forward * stationary_observer.interest_radius;
-            auto const corner = [&](float horizontal, float vertical_offset) {
+            auto const center =
+                stationary_observer.position + forward * stationary_observer.interest_radius;
+            auto const corner = [&](float horizontal, float vertical_offset)
+            {
                 return to_raylib(center + basis.right * horizontal + basis.up * vertical_offset);
             };
             auto const top_left = corner(-horizontal_half, vertical_half);
@@ -126,9 +133,10 @@ namespace simnet
     void Viewer::Impl::draw_spatial_cells(SpatialDebugView const& spatial, RenderStats& stats)
     {
         SIMNET_TRACE_SCOPE_CATEGORY("render.spatial_geometry", simnet::LogCategory::Render);
-        for (auto const& cell : spatial.cells) {
-            auto const intensity
-                = static_cast<unsigned char>(std::min(220U, 55U + cell.entity_count * 12U));
+        for (auto const& cell : spatial.cells)
+        {
+            auto const intensity =
+                static_cast<unsigned char>(std::min(220U, 55U + cell.entity_count * 12U));
             DrawBoundingBox(
                 {
                     .min = to_raylib(cell.bounds.min),
@@ -137,7 +145,8 @@ namespace simnet
                 Color{85, 179, 226, intensity}
             );
         }
-        if (!spatial.cells.empty()) {
+        if (!spatial.cells.empty())
+        {
             ++stats.draw_calls;
         }
     }
@@ -145,10 +154,13 @@ namespace simnet
     void Viewer::Impl::draw_debug_primitives(DebugPrimitiveView const& debug, RenderStats& stats)
     {
         SIMNET_TRACE_SCOPE_CATEGORY("render.selected_debug_geometry", simnet::LogCategory::Render);
-        if (overlays_.rule_radii) {
-            for (auto const& sphere : debug.spheres) {
-                if (sphere.radius <= 0.0F || !std::isfinite(sphere.radius)
-                    || !finite(sphere.center)) {
+        if (overlays_.rule_radii)
+        {
+            for (auto const& sphere : debug.spheres)
+            {
+                if (sphere.radius <= 0.0F || !std::isfinite(sphere.radius) ||
+                    !finite(sphere.center))
+                {
                     continue;
                 }
                 DrawSphereWires(
@@ -161,10 +173,13 @@ namespace simnet
                 ++stats.draw_calls;
             }
         }
-        if (overlays_.steering_vectors) {
-            for (auto const& vector : debug.vectors) {
-                if (!finite(vector.origin) || !finite(vector.vector)
-                    || simnet::length_squared(vector.vector) <= 0.000001F) {
+        if (overlays_.steering_vectors)
+        {
+            for (auto const& vector : debug.vectors)
+            {
+                if (!finite(vector.origin) || !finite(vector.vector) ||
+                    simnet::length_squared(vector.vector) <= 0.000001F)
+                {
                     continue;
                 }
                 DrawLine3D(
@@ -175,9 +190,12 @@ namespace simnet
                 ++stats.draw_calls;
             }
         }
-        if (overlays_.queried_cells) {
-            for (auto const& box : debug.boxes) {
-                if (!finite(box.bounds.min) || !finite(box.bounds.max)) {
+        if (overlays_.queried_cells)
+        {
+            for (auto const& box : debug.boxes)
+            {
+                if (!finite(box.bounds.min) || !finite(box.bounds.max))
+                {
                     continue;
                 }
                 DrawBoundingBox(
@@ -187,17 +205,20 @@ namespace simnet
                 ++stats.draw_calls;
             }
         }
-        if (overlays_.field_of_view) {
-            for (auto const& cone : debug.cones) {
-                if (!finite(cone.apex) || !finite(cone.direction) || cone.length <= 0.0F
-                    || !std::isfinite(cone.length) || cone.half_angle_degrees <= 0.0F
-                    || cone.half_angle_degrees >= 180.0F
-                    || !std::isfinite(cone.half_angle_degrees)) {
+        if (overlays_.field_of_view)
+        {
+            for (auto const& cone : debug.cones)
+            {
+                if (!finite(cone.apex) || !finite(cone.direction) || cone.length <= 0.0F ||
+                    !std::isfinite(cone.length) || cone.half_angle_degrees <= 0.0F ||
+                    cone.half_angle_degrees >= 180.0F || !std::isfinite(cone.half_angle_degrees))
+                {
                     continue;
                 }
                 auto const forward = normalized_or_forward(cone.direction);
                 auto right = cross(forward, {0.0F, 1.0F, 0.0F});
-                if (simnet::length_squared(right) <= 0.000001F) {
+                if (simnet::length_squared(right) <= 0.000001F)
+                {
                     right = cross(forward, {1.0F, 0.0F, 0.0F});
                 }
                 right = normalized_or_forward(right);
@@ -207,15 +228,17 @@ namespace simnet
                 auto const lateral_scale = std::sin(angle);
                 auto previous = simnet::Vec3f{};
                 auto constexpr segments = 12;
-                for (auto index = 0; index <= segments; ++index) {
-                    auto const around
-                        = 2.0F * pi * static_cast<float>(index) / static_cast<float>(segments);
+                for (auto index = 0; index <= segments; ++index)
+                {
+                    auto const around =
+                        2.0F * pi * static_cast<float>(index) / static_cast<float>(segments);
                     auto const lateral = right * std::cos(around) + up * std::sin(around);
-                    auto const direction
-                        = normalized_or_forward(forward * forward_scale + lateral * lateral_scale);
+                    auto const direction =
+                        normalized_or_forward(forward * forward_scale + lateral * lateral_scale);
                     auto const point = cone.apex + direction * cone.length;
                     DrawLine3D(to_raylib(cone.apex), to_raylib(point), to_raylib(cone.color));
-                    if (index != 0) {
+                    if (index != 0)
+                    {
                         DrawLine3D(to_raylib(previous), to_raylib(point), to_raylib(cone.color));
                     }
                     previous = point;
@@ -227,13 +250,16 @@ namespace simnet
 
     void Viewer::Impl::draw_debug_labels(DebugPrimitiveView const& debug) const
     {
-        if (!overlays_.debug_labels) {
+        if (!overlays_.debug_labels)
+        {
             return;
         }
         auto drawn = std::size_t{};
         auto constexpr label_limit = std::size_t{12};
-        auto label = [&](Vec3f position, std::string_view value, DebugColor color) {
-            if (value.empty() || drawn >= label_limit || !finite(position)) {
+        auto label = [&](Vec3f position, std::string_view value, DebugColor color)
+        {
+            if (value.empty() || drawn >= label_limit || !finite(position))
+            {
                 return;
             }
             auto const screen = GetWorldToScreenEx(
@@ -254,16 +280,20 @@ namespace simnet
             );
             ++drawn;
         };
-        for (auto const& sphere : debug.spheres) {
+        for (auto const& sphere : debug.spheres)
+        {
             label(sphere.center, sphere.label, sphere.color);
         }
-        for (auto const& vector : debug.vectors) {
+        for (auto const& vector : debug.vectors)
+        {
             label(vector.origin + vector.vector, vector.label, vector.color);
         }
-        for (auto const& box : debug.boxes) {
+        for (auto const& box : debug.boxes)
+        {
             label((box.bounds.min + box.bounds.max) * 0.5F, box.label, box.color);
         }
-        for (auto const& cone : debug.cones) {
+        for (auto const& cone : debug.cones)
+        {
             label(
                 cone.apex + normalized_or_forward(cone.direction) * cone.length,
                 cone.label,
@@ -274,15 +304,16 @@ namespace simnet
 
     void Viewer::Impl::draw_selected_trail(RenderStats& stats) const
     {
-        if (!overlays_.selected_trail || selected_trail_.size() < 2U) {
+        if (!overlays_.selected_trail || selected_trail_.size() < 2U)
+        {
             return;
         }
         rlBegin(RL_LINES);
-        for (std::size_t index = 1; index < selected_trail_.size(); ++index) {
+        for (std::size_t index = 1; index < selected_trail_.size(); ++index)
+        {
             auto const alpha = static_cast<unsigned char>(
-                55.0F
-                + 190.0F * static_cast<float>(index)
-                    / static_cast<float>(selected_trail_.size() - 1U)
+                55.0F +
+                190.0F * static_cast<float>(index) / static_cast<float>(selected_trail_.size() - 1U)
             );
             auto const start = selected_trail_[index - 1U];
             auto const end = selected_trail_[index];
@@ -299,12 +330,13 @@ namespace simnet
         BeginTextureMode(scene_);
         ClearBackground(Color{10, 13, 18, 255});
         BeginMode3D(camera_);
-        auto const aspect
-            = static_cast<double>(scene_rect_.width) / static_cast<double>(scene_rect_.height);
+        auto const aspect =
+            static_cast<double>(scene_rect_.width) / static_cast<double>(scene_rect_.height);
         rlSetMatrixProjection(MatrixPerspective(camera_.fovy * DEG2RAD, aspect, 0.01, 10000.0));
         rlSetMatrixModelview(MatrixLookAt(camera_.position, camera_.target, camera_.up));
 
-        if (overlays_.world_bounds) {
+        if (overlays_.world_bounds)
+        {
             auto const bounds = frame.info.world_bounds;
             auto const center = Vector3{
                 (bounds.min.x + bounds.max.x) * 0.5F,
@@ -319,34 +351,43 @@ namespace simnet
                 Color{95, 112, 136, 72}
             );
         }
-        if (overlays_.origin_axes) {
+        if (overlays_.origin_axes)
+        {
             DrawLine3D({0.0F, 0.0F, 0.0F}, {10.0F, 0.0F, 0.0F}, RED);
             DrawLine3D({0.0F, 0.0F, 0.0F}, {0.0F, 10.0F, 0.0F}, GREEN);
             DrawLine3D({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 10.0F}, BLUE);
         }
-        if (frame.stationary_observer.has_value() && mode_ != CameraMode::StationaryObserver
-            && overlays_.stationary_observer_marker) {
+        if (frame.stationary_observer.has_value() && mode_ != CameraMode::StationaryObserver &&
+            overlays_.stationary_observer_marker)
+        {
             draw_stationary_observer(*frame.stationary_observer, stats);
         }
-        if (frame.spatial.has_value() && overlays_.spatial_cells) {
+        if (frame.spatial.has_value() && overlays_.spatial_cells)
+        {
             draw_spatial_cells(*frame.spatial, stats);
         }
-        if (!frame.debug_primitives.empty()) {
+        if (!frame.debug_primitives.empty())
+        {
             draw_debug_primitives(frame.debug_primitives, stats);
         }
         draw_selected_trail(stats);
 
-        if (instancing_available_) {
-            for (std::size_t index = 0; index < transform_buckets_.size(); ++index) {
+        if (instancing_available_)
+        {
+            for (std::size_t index = 0; index < transform_buckets_.size(); ++index)
+            {
                 auto const& bucket = transform_buckets_[index];
-                if (bucket.empty()) {
+                if (bucket.empty())
+                {
                     continue;
                 }
-                auto const color
-                    = hue_color(static_cast<std::uint8_t>(index * 256U / hue_bucket_count));
-                for (int mesh_index = 0; mesh_index < model_.meshCount; ++mesh_index) {
+                auto const color =
+                    hue_color(static_cast<std::uint8_t>(index * 256U / hue_bucket_count));
+                for (int mesh_index = 0; mesh_index < model_.meshCount; ++mesh_index)
+                {
                     auto const material_index = model_.meshMaterial[mesh_index];
-                    if (material_index < 0 || material_index >= model_.materialCount) {
+                    if (material_index < 0 || material_index >= model_.materialCount)
+                    {
                         continue;
                     }
                     auto& material = model_.materials[material_index];
@@ -362,7 +403,8 @@ namespace simnet
                 ++stats.active_hue_buckets;
             }
         }
-        if (selected_entity_frame_.has_value() && overlays_.selected_marker) {
+        if (selected_entity_frame_.has_value() && overlays_.selected_marker)
+        {
             auto const radius = std::max(config_.picking_radius, config_.entity_scale * 1.5F);
             DrawSphereWires(
                 to_raylib(selected_entity_frame_->position),

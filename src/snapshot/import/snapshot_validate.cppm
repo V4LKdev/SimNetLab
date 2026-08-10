@@ -23,41 +23,53 @@ export namespace simnet
     {
         // --- 1. Vector sizes ---
         auto const count = snapshot.ids.size();
-        if (snapshot.classifications.size() != count) {
+        if (snapshot.classifications.size() != count)
+        {
             return {false, "world snapshot classifications size does not match ids size"};
         }
-        if (snapshot.positions.size() != count) {
+        if (snapshot.positions.size() != count)
+        {
             return {false, "world snapshot positions size does not match ids size"};
         }
-        if (snapshot.headings.size() != count) {
+        if (snapshot.headings.size() != count)
+        {
             return {false, "world snapshot headings size does not match ids size"};
         }
-        if (snapshot.hues.size() != count) {
+        if (snapshot.hues.size() != count)
+        {
             return {false, "world snapshot hues size does not match ids size"};
         }
 
         // --- 2. Entity IDs ---
-        for (std::size_t index = 0; index < count; ++index) {
-            if (snapshot.ids[index] == 0U) {
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            if (snapshot.ids[index] == 0U)
+            {
                 return {false, "world snapshot entity id zero is reserved"};
             }
-            if (snapshot.classifications[index].value() == 0U) {
+            if (snapshot.classifications[index].value() == 0U)
+            {
                 return {false, "world snapshot classification zero is reserved"};
             }
-            if (index != 0U && snapshot.ids[index - 1] >= snapshot.ids[index]) {
+            if (index != 0U && snapshot.ids[index - 1] >= snapshot.ids[index])
+            {
                 return {false, "world snapshot ids must be strictly ascending"};
             }
         }
 
         // --- 3. Vector component validity ---
-        for (std::size_t index = 0; index < count; ++index) {
-            if (!is_finite(snapshot.positions[index])) {
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            if (!is_finite(snapshot.positions[index]))
+            {
                 return {false, "world snapshot position contains a non-finite component"};
             }
-            if (!is_finite(snapshot.headings[index])) {
+            if (!is_finite(snapshot.headings[index]))
+            {
                 return {false, "world snapshot heading contains a non-finite component"};
             }
-            if (!is_normalized_heading(snapshot.headings[index])) {
+            if (!is_normalized_heading(snapshot.headings[index]))
+            {
                 return {false, "world snapshot heading is not normalized"};
             }
         }
@@ -70,58 +82,73 @@ export namespace simnet
     validate_client_snapshot_patch(SnapshotUpdate const& patch)
     {
         // --- 1. Update kind ---
-        if (patch.kind != SnapshotKind::FullReplace && patch.kind != SnapshotKind::Patch) {
+        if (patch.kind != SnapshotKind::FullReplace && patch.kind != SnapshotKind::Patch)
+        {
             return {false, "client snapshot patch kind is unknown"};
         }
-        if (patch.kind == SnapshotKind::FullReplace && !patch.deletes.empty()) {
+        if (patch.kind == SnapshotKind::FullReplace && !patch.deletes.empty())
+        {
             return {false, "full replacement snapshot update deletes must be empty"};
         }
 
         // --- 2. Entity IDs ---
-        for (std::size_t index = 0; index < patch.upserts.size(); ++index) {
-            if (patch.upserts[index].id == 0U) {
+        for (std::size_t index = 0; index < patch.upserts.size(); ++index)
+        {
+            if (patch.upserts[index].id == 0U)
+            {
                 return {false, "client snapshot patch upsert entity id zero is reserved"};
             }
-            if (patch.upserts[index].classification.value() == 0U) {
+            if (patch.upserts[index].classification.value() == 0U)
+            {
                 return {false, "client snapshot patch upsert classification zero is reserved"};
             }
-            if (index != 0U && patch.upserts[index - 1].id >= patch.upserts[index].id) {
+            if (index != 0U && patch.upserts[index - 1].id >= patch.upserts[index].id)
+            {
                 return {false, "client snapshot patch upserts must be strictly ascending"};
             }
         }
 
-        for (std::size_t index = 0; index < patch.deletes.size(); ++index) {
-            if (patch.deletes[index] == 0U) {
+        for (std::size_t index = 0; index < patch.deletes.size(); ++index)
+        {
+            if (patch.deletes[index] == 0U)
+            {
                 return {false, "client snapshot patch delete entity id zero is reserved"};
             }
-            if (index != 0U && patch.deletes[index - 1] >= patch.deletes[index]) {
+            if (index != 0U && patch.deletes[index - 1] >= patch.deletes[index])
+            {
                 return {false, "client snapshot patch deletes must be strictly ascending"};
             }
         }
 
         // --- 3. Vector component validity ---
         auto delete_index = std::size_t{};
-        for (auto const& boid : patch.upserts) {
-            if (!is_finite(boid.position)) {
+        for (auto const& boid : patch.upserts)
+        {
+            if (!is_finite(boid.position))
+            {
                 return {
                     false,
                     "client snapshot patch upsert position contains a non-finite component"
                 };
             }
-            if (!is_finite(boid.heading)) {
+            if (!is_finite(boid.heading))
+            {
                 return {
                     false,
                     "client snapshot patch upsert heading contains a non-finite component"
                 };
             }
-            if (!is_normalized_heading(boid.heading)) {
+            if (!is_normalized_heading(boid.heading))
+            {
                 return {false, "client snapshot patch upsert heading is not normalized"};
             }
 
-            while (delete_index < patch.deletes.size() && patch.deletes[delete_index] < boid.id) {
+            while (delete_index < patch.deletes.size() && patch.deletes[delete_index] < boid.id)
+            {
                 ++delete_index;
             }
-            if (delete_index < patch.deletes.size() && patch.deletes[delete_index] == boid.id) {
+            if (delete_index < patch.deletes.size() && patch.deletes[delete_index] == boid.id)
+            {
                 return {false, "client snapshot patch id appears in both upserts and deletes"};
             }
         }

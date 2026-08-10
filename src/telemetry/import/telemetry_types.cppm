@@ -10,13 +10,13 @@ export namespace simnet
     /// Logging severity.
     enum class LogLevel : std::uint8_t
     {
-        Trace, /// Most verbose.
-        Debug, /// Detailed diagnostics.
-        Info, /// Normal operational messages.
-        Warn, /// Potential issues.
-        Error, /// Recoverable errors.
+        Trace,    /// Most verbose.
+        Debug,    /// Detailed diagnostics.
+        Info,     /// Normal operational messages.
+        Warn,     /// Potential issues.
+        Error,    /// Recoverable errors.
         Critical, /// Unrecoverable failures.
-        Off /// No logging.
+        Off       /// No logging.
     };
 
     /// Logging source category (by module).
@@ -38,7 +38,8 @@ export namespace simnet
     [[nodiscard]] constexpr std::uint32_t category_trace_color(LogCategory category) noexcept
     {
         // Yes, I used a color palette for this, programmers are artists too!!!
-        switch (category) {
+        switch (category)
+        {
             case LogCategory::Core:
                 return 0xAAAAAAFF; // mid-gray
             case LogCategory::Config:

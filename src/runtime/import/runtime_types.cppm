@@ -64,14 +64,16 @@ export namespace simnet
     /// First-wins stop request owned by runtime control code.
     class StopRequest
     {
-    public:
+      public:
         /// Requests shutdown. Returns true only for the first accepted reason.
         [[nodiscard]] bool request(ShutdownReason reason = ShutdownReason::Requested) noexcept
         {
-            if (reason == ShutdownReason::None) {
+            if (reason == ShutdownReason::None)
+            {
                 return false;
             }
-            if (reason_ != ShutdownReason::None) {
+            if (reason_ != ShutdownReason::None)
+            {
                 return false;
             }
             reason_ = reason;
@@ -88,7 +90,7 @@ export namespace simnet
             return reason_;
         }
 
-    private:
+      private:
         ShutdownReason reason_{ShutdownReason::None};
     };
 

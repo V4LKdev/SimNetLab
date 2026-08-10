@@ -38,11 +38,13 @@ namespace
 
     void populate_world(flecs::world& world, simnet::Tick tick)
     {
-        for (std::uint32_t index = 0; index < boid_count; ++index) {
+        for (std::uint32_t index = 0; index < boid_count; ++index)
+        {
             auto const id = static_cast<simnet::EntityNetId>(index + 1U);
             static_cast<void>(simnet::upsert_authoritative_boid(world, test_boid(id, index, tick)));
         }
-        if (tick == 2) {
+        if (tick == 2)
+        {
             static_cast<void>(simnet::delete_authoritative_boid(world, boid_count));
         }
     }
@@ -50,7 +52,8 @@ namespace
     void record_received(simnet::app::SnapshotAck& ack, simnet::SequenceId sequence)
     {
         auto const previous = ack.newest_received_snapshot;
-        if (previous == 0) {
+        if (previous == 0)
+        {
             ack.newest_received_snapshot = sequence;
             return;
         }
@@ -79,20 +82,20 @@ TEST_CASE("game entity classification mapping is exact", "[replication][classifi
     CHECK(simnet::boid_entity_classification == simnet::EntityClassification{1U});
     CHECK(simnet::player_entity_classification == simnet::EntityClassification{2U});
     CHECK(
-        simnet::classification_from_entity_kind(simnet::EntityKind::Boid)
-        == simnet::boid_entity_classification
+        simnet::classification_from_entity_kind(simnet::EntityKind::Boid) ==
+        simnet::boid_entity_classification
     );
     CHECK(
-        simnet::classification_from_entity_kind(simnet::EntityKind::Player)
-        == simnet::player_entity_classification
+        simnet::classification_from_entity_kind(simnet::EntityKind::Player) ==
+        simnet::player_entity_classification
     );
     CHECK(
-        simnet::entity_kind_from_classification(simnet::boid_entity_classification)
-        == simnet::EntityKind::Boid
+        simnet::entity_kind_from_classification(simnet::boid_entity_classification) ==
+        simnet::EntityKind::Boid
     );
     CHECK(
-        simnet::entity_kind_from_classification(simnet::player_entity_classification)
-        == simnet::EntityKind::Player
+        simnet::entity_kind_from_classification(simnet::player_entity_classification) ==
+        simnet::EntityKind::Player
     );
     CHECK_FALSE(
         simnet::entity_kind_from_classification(simnet::EntityClassification{247U}).has_value()
@@ -131,7 +134,8 @@ TEST_CASE(
         second_world.id<simnet::Hue>(),
     };
 
-    for (std::size_t index = 0; index < component_names.size(); ++index) {
+    for (std::size_t index = 0; index < component_names.size(); ++index)
+    {
         auto const first_component = first_world.lookup(component_names[index]);
         auto const second_component = second_world.lookup(component_names[index]);
         REQUIRE(first_component.is_alive());
@@ -140,8 +144,10 @@ TEST_CASE(
         CHECK(second_component.id() == second_ids[index]);
         CHECK(first_component.id() == second_component.id());
     }
-    for (std::size_t first = 0; first < first_ids.size(); ++first) {
-        for (std::size_t second = first + 1; second < first_ids.size(); ++second) {
+    for (std::size_t first = 0; first < first_ids.size(); ++first)
+    {
+        for (std::size_t second = first + 1; second < first_ids.size(); ++second)
+        {
             CHECK(first_ids[first] != first_ids[second]);
             CHECK(second_ids[first] != second_ids[second]);
         }
@@ -187,7 +193,8 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
         simnet::SnapshotKind::Patch,
     };
 
-    for (simnet::Tick tick = 0; tick < 5; ++tick) {
+    for (simnet::Tick tick = 0; tick < 5; ++tick)
+    {
         populate_world(server_world, tick);
 
         auto snapshot = simnet::WorldSnapshot{};
@@ -204,7 +211,8 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
                 .baseline_sequence = acknowledged_sequence,
             }
         );
-        if (encoded.kind == simnet::EncodeResultKind::Skipped) {
+        if (encoded.kind == simnet::EncodeResultKind::Skipped)
+        {
             continue;
         }
 
@@ -240,8 +248,8 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
         );
         REQUIRE(decoded.report.valid);
 
-        auto const applied
-            = simnet::apply_client_snapshot_patch_unchecked(client_world, decoded.update);
+        auto const applied =
+            simnet::apply_client_snapshot_patch_unchecked(client_world, decoded.update);
         REQUIRE(applied.valid);
 
         record_received(ack, decoded.report.sequence);
@@ -270,10 +278,11 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     CHECK(extracted_client_snapshot.tick == 4);
     CHECK(extracted_client_snapshot.ids.size() == boid_count);
     CHECK(
-        extracted_client_snapshot.classifications
-        == std::vector<simnet::EntityClassification>(boid_count, simnet::boid_entity_classification)
+        extracted_client_snapshot.classifications ==
+        std::vector<simnet::EntityClassification>(boid_count, simnet::boid_entity_classification)
     );
-    for (auto const id : extracted_client_snapshot.ids) {
+    for (auto const id : extracted_client_snapshot.ids)
+    {
         CHECK(simnet::client_entity_kind(client_world, id) == simnet::EntityKind::Boid);
     }
 }
@@ -296,12 +305,11 @@ TEST_CASE(
     REQUIRE(simnet::extract_world_snapshot(server_world, 7U, authoritative).valid);
     CHECK(authoritative.ids == std::vector<simnet::EntityNetId>{1U, 2U, 3U});
     CHECK(
-        authoritative.classifications
-        == std::vector<simnet::EntityClassification>{
-            simnet::boid_entity_classification,
-            simnet::player_entity_classification,
-            simnet::player_entity_classification,
-        }
+        authoritative.classifications == std::vector<simnet::EntityClassification>{
+                                             simnet::boid_entity_classification,
+                                             simnet::player_entity_classification,
+                                             simnet::player_entity_classification,
+                                         }
     );
 
     auto pipeline = simnet::PipelineDefinition{};
@@ -315,8 +323,8 @@ TEST_CASE(
         encode_scratch,
         {.snapshot = &authoritative}
     );
-    auto const decoded
-        = simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
+    auto const decoded =
+        simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
     REQUIRE(decoded.report.valid);
 
     auto delivery = simnet::app::SnapshotDeliveryState{};
@@ -336,8 +344,7 @@ TEST_CASE(
             delivery,
             encoded.update.sequence,
             simnet::Nanoseconds{2U}
-        )
-        == simnet::app::AckPromotionOutcome::Promoted
+        ) == simnet::app::AckPromotionOutcome::Promoted
     );
 
     auto reconstructed = simnet::WorldSnapshot{};
@@ -348,8 +355,8 @@ TEST_CASE(
 
     auto client_world = flecs::world{};
     simnet::register_client_game(client_world);
-    auto const applied
-        = simnet::apply_client_snapshot_patch_unchecked(client_world, decoded.update);
+    auto const applied =
+        simnet::apply_client_snapshot_patch_unchecked(client_world, decoded.update);
     REQUIRE(applied.valid);
     CHECK(simnet::client_entity_kind(client_world, 1U) == simnet::EntityKind::Boid);
     CHECK(simnet::client_entity_kind(client_world, first_player) == simnet::EntityKind::Player);
@@ -383,8 +390,8 @@ TEST_CASE(
     CHECK(deletion.report.snapshot_kind == simnet::SnapshotKind::Patch);
     CHECK(deletion.report.delete_count == 1U);
 
-    auto const decoded_deletion
-        = simnet::decode_update(pipeline, decode_state, {.bytes = deletion.update.bytes});
+    auto const decoded_deletion =
+        simnet::decode_update(pipeline, decode_state, {.bytes = deletion.update.bytes});
     REQUIRE(decoded_deletion.report.valid);
     CHECK(decoded_deletion.update.deletes == std::vector<simnet::EntityNetId>{first_player});
     auto observer_canonical = simnet::WorldSnapshot{};
@@ -401,8 +408,8 @@ TEST_CASE(
     CHECK(std::ranges::find(observer_canonical.ids, second_player) != observer_canonical.ids.end());
     CHECK(observer_canonical.ids == deletion.resulting_snapshot.ids);
 
-    auto const applied_deletion
-        = simnet::apply_client_snapshot_patch_unchecked(client_world, decoded_deletion.update);
+    auto const applied_deletion =
+        simnet::apply_client_snapshot_patch_unchecked(client_world, decoded_deletion.update);
     REQUIRE(applied_deletion.valid);
     CHECK_FALSE(simnet::client_entity_kind(client_world, first_player).has_value());
     CHECK(simnet::client_entity_kind(client_world, 1U) == simnet::EntityKind::Boid);
@@ -413,8 +420,8 @@ TEST_CASE(
     CHECK(sink_snapshot.classifications == observer_canonical.classifications);
 
     auto retained_deletion = deletion.resulting_snapshot;
-    auto const deletion_retention
-        = simnet::app::plan_snapshot_retention(delivery, retained_deletion);
+    auto const deletion_retention =
+        simnet::app::plan_snapshot_retention(delivery, retained_deletion);
     REQUIRE(deletion_retention.valid);
     simnet::app::commit_submitted_snapshot(
         delivery,
@@ -433,7 +440,8 @@ TEST_CASE("Patch reconstruction removes requested entities", "[replication][snap
 {
     auto baseline = simnet::WorldSnapshot{};
     baseline.tick = 1U;
-    for (std::uint32_t index = 0; index < 3U; ++index) {
+    for (std::uint32_t index = 0; index < 3U; ++index)
+    {
         auto const boid = test_boid(index + 1U, index, baseline.tick);
         baseline.ids.push_back(boid.id);
         baseline.classifications.push_back(boid.classification);
@@ -455,8 +463,8 @@ TEST_CASE("Patch reconstruction removes requested entities", "[replication][snap
     CHECK(reconstructed.tick == patch.tick);
     CHECK(reconstructed.ids == std::vector<simnet::EntityNetId>{1U, 3U});
     CHECK(
-        reconstructed.classifications
-        == std::vector<simnet::EntityClassification>(2U, simnet::boid_entity_classification)
+        reconstructed.classifications ==
+        std::vector<simnet::EntityClassification>(2U, simnet::boid_entity_classification)
     );
     REQUIRE(reconstructed.positions.size() == 2U);
     CHECK(reconstructed.positions[0].x == baseline.positions[0].x);
@@ -557,7 +565,8 @@ TEST_CASE(
     auto before_entities = std::vector<std::pair<simnet::EntityNetId, flecs::entity_t>>{};
     auto identity_query = world.query_builder<const simnet::NetIdentity>().build();
     identity_query.each(
-        [&](flecs::iter& iterator, std::size_t row, simnet::NetIdentity const& identity) {
+        [&](flecs::iter& iterator, std::size_t row, simnet::NetIdentity const& identity)
+        {
             before_entities.push_back({identity.id, iterator.entity(row).id()});
         }
     );
@@ -596,7 +605,8 @@ TEST_CASE(
     CHECK(after.hues == before.hues);
     REQUIRE(after.positions.size() == before.positions.size());
     REQUIRE(after.headings.size() == before.headings.size());
-    for (std::size_t index = 0; index < after.size(); ++index) {
+    for (std::size_t index = 0; index < after.size(); ++index)
+    {
         CHECK(after.positions[index].x == before.positions[index].x);
         CHECK(after.positions[index].y == before.positions[index].y);
         CHECK(after.positions[index].z == before.positions[index].z);
@@ -607,7 +617,8 @@ TEST_CASE(
 
     auto after_entities = std::vector<std::pair<simnet::EntityNetId, flecs::entity_t>>{};
     identity_query.each(
-        [&](flecs::iter& iterator, std::size_t row, simnet::NetIdentity const& identity) {
+        [&](flecs::iter& iterator, std::size_t row, simnet::NetIdentity const& identity)
+        {
             after_entities.push_back({identity.id, iterator.entity(row).id()});
         }
     );
@@ -631,14 +642,16 @@ TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[repl
     REQUIRE(appended.success());
     CHECK(appended.spawned_count == 3U);
     CHECK(simnet::authoritative_boid_count(world) == 3U);
-    auto kind_query
-        = world.query_builder<const simnet::EntityKindComponent, const simnet::NetIdentity>()
-              .build();
+    auto kind_query =
+        world.query_builder<const simnet::EntityKindComponent, const simnet::NetIdentity>().build();
     auto kind_count = std::size_t{};
-    kind_query.each([&](simnet::EntityKindComponent const& kind, simnet::NetIdentity const&) {
-        CHECK(kind.value == simnet::EntityKind::Boid);
-        ++kind_count;
-    });
+    kind_query.each(
+        [&](simnet::EntityKindComponent const& kind, simnet::NetIdentity const&)
+        {
+            CHECK(kind.value == simnet::EntityKind::Boid);
+            ++kind_count;
+        }
+    );
     CHECK(kind_count == 3U);
 
     auto updated = test_boid(2, 9, 4);
@@ -758,11 +771,13 @@ TEST_CASE("evicted acknowledged snapshot falls back to FullReplace", "[replicati
     auto const retained = std::find_if(
         retained_snapshots.begin(),
         retained_snapshots.end(),
-        [sequence = *acknowledged_baseline](auto const& entry) {
+        [sequence = *acknowledged_baseline](auto const& entry)
+        {
             return entry.first == sequence;
         }
     );
-    if (retained == retained_snapshots.end()) {
+    if (retained == retained_snapshots.end())
+    {
         acknowledged_baseline.reset();
     }
 

@@ -41,7 +41,8 @@ export namespace simnet::app
     [[nodiscard]] constexpr std::string_view
     snapshot_recovery_reason_name(SnapshotRecoveryReason reason) noexcept
     {
-        switch (reason) {
+        switch (reason)
+        {
             case SnapshotRecoveryReason::None:
                 return "none";
             case SnapshotRecoveryReason::NoAcknowledgedBaseline:
@@ -140,21 +141,23 @@ export namespace simnet::app
         SequenceId missing_baseline_sequence
     ) noexcept
     {
-        return rejected_update_sequence != 0U && missing_baseline_sequence != 0U
-            && missing_baseline_sequence < rejected_update_sequence
-            && missing_baseline_sequence >= state.latest_acknowledged_sequence
-            && rejected_update_sequence > state.latest_acknowledged_sequence
-            && rejected_update_sequence <= state.latest_submitted_sequence;
+        return rejected_update_sequence != 0U && missing_baseline_sequence != 0U &&
+               missing_baseline_sequence < rejected_update_sequence &&
+               missing_baseline_sequence >= state.latest_acknowledged_sequence &&
+               rejected_update_sequence > state.latest_acknowledged_sequence &&
+               rejected_update_sequence <= state.latest_submitted_sequence;
     }
 
     [[nodiscard]] std::uint64_t snapshot_capacity_bytes(WorldSnapshot const& snapshot) noexcept
     {
         auto total = std::uint64_t{};
-        auto add_capacity = [&total](std::size_t capacity, std::size_t element_bytes) {
+        auto add_capacity = [&total](std::size_t capacity, std::size_t element_bytes)
+        {
             auto const widened_capacity = static_cast<std::uint64_t>(capacity);
             auto const widened_element_bytes = static_cast<std::uint64_t>(element_bytes);
-            if (widened_capacity
-                > (std::numeric_limits<std::uint64_t>::max() - total) / widened_element_bytes) {
+            if (widened_capacity >
+                (std::numeric_limits<std::uint64_t>::max() - total) / widened_element_bytes)
+            {
                 total = std::numeric_limits<std::uint64_t>::max();
                 return;
             }
@@ -172,13 +175,16 @@ export namespace simnet::app
     snapshot_diagnostic_fingerprint(WorldSnapshot const& snapshot) noexcept
     {
         auto hash = std::uint64_t{14695981039346656037ULL};
-        auto append_u32 = [&hash](std::uint32_t value) {
-            for (auto shift : {24U, 16U, 8U, 0U}) {
+        auto append_u32 = [&hash](std::uint32_t value)
+        {
+            for (auto shift : {24U, 16U, 8U, 0U})
+            {
                 hash ^= (value >> shift) & 0xFFU;
                 hash *= 1099511628211ULL;
             }
         };
-        for (auto index = std::size_t{}; index < snapshot.size(); ++index) {
+        for (auto index = std::size_t{}; index < snapshot.size(); ++index)
+        {
             append_u32(snapshot.ids[index]);
             append_u32(snapshot.classifications[index].value());
             append_u32(std::bit_cast<std::uint32_t>(snapshot.positions[index].x));
@@ -204,8 +210,8 @@ export namespace simnet::app
         std::uint32_t full_replace_after_unacknowledged_updates
     ) noexcept
     {
-        return full_replace_after_unacknowledged_updates != 0U
-            && state.submissions_since_ack_progress >= full_replace_after_unacknowledged_updates;
+        return full_replace_after_unacknowledged_updates != 0U &&
+               state.submissions_since_ack_progress >= full_replace_after_unacknowledged_updates;
     }
 
     void discard_acknowledged_replica(
@@ -213,7 +219,8 @@ export namespace simnet::app
         SnapshotRecoveryReason reason
     ) noexcept
     {
-        if (state.acknowledged.has_value()) {
+        if (state.acknowledged.has_value())
+        {
             state.retained_capacity_bytes -= state.acknowledged->capacity_bytes;
             state.acknowledged.reset();
             ++state.baseline_eviction_count;
@@ -228,21 +235,24 @@ export namespace simnet::app
     ) noexcept
     {
         auto const result_bytes = snapshot_capacity_bytes(result);
-        if (result_bytes > maximum_retained_capacity_bytes) {
+        if (result_bytes > maximum_retained_capacity_bytes)
+        {
             return {};
         }
         auto bytes = state.retained_capacity_bytes;
         auto count = state.submitted.size();
         auto evict_count = std::size_t{};
-        while ((count >= maximum_retained_results
-                || bytes > maximum_retained_capacity_bytes - result_bytes)
-               && evict_count < state.submitted.size()) {
+        while ((count >= maximum_retained_results ||
+                bytes > maximum_retained_capacity_bytes - result_bytes) &&
+               evict_count < state.submitted.size())
+        {
             bytes -= state.submitted[evict_count].capacity_bytes;
             --count;
             ++evict_count;
         }
-        if (count >= maximum_retained_results
-            || bytes > maximum_retained_capacity_bytes - result_bytes) {
+        if (count >= maximum_retained_results ||
+            bytes > maximum_retained_capacity_bytes - result_bytes)
+        {
             return {};
         }
         return {
@@ -254,18 +264,19 @@ export namespace simnet::app
 
     [[nodiscard]] bool same_entity_state(EntityState const& left, EntityState const& right) noexcept
     {
-        return left.id == right.id && left.classification == right.classification
-            && left.position.x == right.position.x && left.position.y == right.position.y
-            && left.position.z == right.position.z && left.heading.x == right.heading.x
-            && left.heading.y == right.heading.y && left.heading.z == right.heading.z
-            && left.hue == right.hue;
+        return left.id == right.id && left.classification == right.classification &&
+               left.position.x == right.position.x && left.position.y == right.position.y &&
+               left.position.z == right.position.z && left.heading.x == right.heading.x &&
+               left.heading.y == right.heading.y && left.heading.z == right.heading.z &&
+               left.hue == right.hue;
     }
 
     [[nodiscard]] std::optional<EntityState>
     find_entity_state(WorldSnapshot const& snapshot, EntityNetId id)
     {
         auto const found = std::ranges::lower_bound(snapshot.ids, id);
-        if (found == snapshot.ids.end() || *found != id) {
+        if (found == snapshot.ids.end() || *found != id)
+        {
             return std::nullopt;
         }
         auto const index = static_cast<std::size_t>(std::distance(snapshot.ids.begin(), found));
@@ -281,13 +292,18 @@ export namespace simnet::app
     [[nodiscard]] bool
     merge_recovery_upserts(SnapshotDeliveryState& state, SnapshotUpdate const& update)
     {
-        for (auto const& upsert : update.upserts) {
-            auto const found
-                = std::ranges::lower_bound(state.recovery_upserts, upsert.id, {}, &EntityState::id);
-            if (found != state.recovery_upserts.end() && found->id == upsert.id) {
+        for (auto const& upsert : update.upserts)
+        {
+            auto const found =
+                std::ranges::lower_bound(state.recovery_upserts, upsert.id, {}, &EntityState::id);
+            if (found != state.recovery_upserts.end() && found->id == upsert.id)
+            {
                 *found = upsert;
-            } else {
-                if (state.recovery_upserts.size() >= maximum_recovery_upserts) {
+            }
+            else
+            {
+                if (state.recovery_upserts.size() >= maximum_recovery_upserts)
+                {
                     state.recovery_upserts.clear();
                     enter_snapshot_recovery(state, SnapshotRecoveryReason::RetentionPressure);
                     return false;
@@ -307,7 +323,8 @@ export namespace simnet::app
         SnapshotRetentionPlan const& plan
     )
     {
-        for (auto index = std::size_t{}; index < plan.evict_count; ++index) {
+        for (auto index = std::size_t{}; index < plan.evict_count; ++index)
+        {
             state.retained_capacity_bytes -= state.submitted.front().capacity_bytes;
             state.submitted.pop_front();
             ++state.baseline_eviction_count;
@@ -322,7 +339,8 @@ export namespace simnet::app
         });
         state.latest_submitted_sequence = sequence;
         ++state.submissions_since_ack_progress;
-        if (state.recovery_active && kind == SnapshotKind::FullReplace) {
+        if (state.recovery_active && kind == SnapshotKind::FullReplace)
+        {
             ++state.forced_full_replace_count;
         }
     }
@@ -330,18 +348,22 @@ export namespace simnet::app
     [[nodiscard]] AckPromotionOutcome
     promote_snapshot_ack(SnapshotDeliveryState& state, SequenceId sequence, Nanoseconds now)
     {
-        if (sequence == state.latest_acknowledged_sequence && sequence != 0U) {
+        if (sequence == state.latest_acknowledged_sequence && sequence != 0U)
+        {
             return AckPromotionOutcome::Duplicate;
         }
-        if (sequence < state.latest_acknowledged_sequence) {
+        if (sequence < state.latest_acknowledged_sequence)
+        {
             return AckPromotionOutcome::Stale;
         }
-        if (sequence == 0U || sequence > state.latest_submitted_sequence) {
+        if (sequence == 0U || sequence > state.latest_submitted_sequence)
+        {
             return AckPromotionOutcome::Future;
         }
-        auto found
-            = std::ranges::find(state.submitted, sequence, &SubmittedSnapshotResult::sequence);
-        if (found == state.submitted.end()) {
+        auto found =
+            std::ranges::find(state.submitted, sequence, &SubmittedSnapshotResult::sequence);
+        if (found == state.submitted.end())
+        {
             enter_snapshot_recovery(state, SnapshotRecoveryReason::MissingRetainedResult);
             return AckPromotionOutcome::Missing;
         }
@@ -349,11 +371,13 @@ export namespace simnet::app
         auto promoted = std::move(*found);
         auto const promoted_full_replace = promoted.kind == SnapshotKind::FullReplace;
         auto const erase_end = std::next(found);
-        for (auto iterator = state.submitted.begin(); iterator != erase_end; ++iterator) {
+        for (auto iterator = state.submitted.begin(); iterator != erase_end; ++iterator)
+        {
             state.retained_capacity_bytes -= iterator->capacity_bytes;
         }
         state.submitted.erase(state.submitted.begin(), erase_end);
-        if (state.acknowledged.has_value()) {
+        if (state.acknowledged.has_value())
+        {
             state.retained_capacity_bytes -= state.acknowledged->capacity_bytes;
         }
         state.latest_acknowledged_sequence = sequence;
@@ -363,15 +387,18 @@ export namespace simnet::app
         state.submissions_since_ack_progress = 0U;
 
         auto retained_count = std::size_t{};
-        for (auto const& recovery : state.recovery_upserts) {
+        for (auto const& recovery : state.recovery_upserts)
+        {
             auto const acknowledged = find_entity_state(state.acknowledged->snapshot, recovery.id);
-            if (acknowledged.has_value() && !same_entity_state(*acknowledged, recovery)) {
+            if (acknowledged.has_value() && !same_entity_state(*acknowledged, recovery))
+            {
                 state.recovery_upserts[retained_count++] = recovery;
             }
         }
         state.recovery_upserts.resize(retained_count);
 
-        if (!state.recovery_active || promoted_full_replace) {
+        if (!state.recovery_active || promoted_full_replace)
+        {
             state.recovery_active = false;
             state.recovery_reason = SnapshotRecoveryReason::None;
         }
@@ -380,14 +407,16 @@ export namespace simnet::app
 
     void expire_retained_snapshots(SnapshotDeliveryState& state, Nanoseconds now)
     {
-        while (!state.submitted.empty()
-               && now - state.submitted.front().submitted_at > maximum_retained_result_age) {
+        while (!state.submitted.empty() &&
+               now - state.submitted.front().submitted_at > maximum_retained_result_age)
+        {
             state.retained_capacity_bytes -= state.submitted.front().capacity_bytes;
             state.submitted.pop_front();
             ++state.baseline_eviction_count;
         }
-        if (state.acknowledged.has_value()
-            && now - state.acknowledged->submitted_at > maximum_retained_result_age) {
+        if (state.acknowledged.has_value() &&
+            now - state.acknowledged->submitted_at > maximum_retained_result_age)
+        {
             discard_acknowledged_replica(state, SnapshotRecoveryReason::BaselineExpired);
         }
     }

@@ -21,7 +21,7 @@ export namespace simnet::app
     /// Owns the immutable strings and views used by the read-only Setup inspector.
     class RunSetupStorage
     {
-    public:
+      public:
         RunSetupStorage(
             SharedConfig const& shared,
             ServerConfig const& local,
@@ -45,7 +45,7 @@ export namespace simnet::app
         RunSetupStorage(RunSetupStorage&&) = delete;
         RunSetupStorage& operator=(RunSetupStorage&&) = delete;
 
-    private:
+      private:
         void begin_section(std::string_view title, bool expanded);
         void end_section();
         void add_row(std::string_view label, std::string value);
@@ -113,8 +113,8 @@ namespace simnet::app
     void RunSetupStorage::end_section()
     {
         auto& section = sections_[section_count_++];
-        section.rows
-            = std::span{rows_}.subspan(active_section_row_, row_count_ - active_section_row_);
+        section.rows =
+            std::span{rows_}.subspan(active_section_row_, row_count_ - active_section_row_);
     }
 
     void RunSetupStorage::add_row(std::string_view label, std::string value)
@@ -148,33 +148,39 @@ namespace simnet::app
         );
         add_row(
             "Heading encoding",
-            has(pipeline, PipelineTechniqueFlags::OctHeading)         ? "Octahedral uint16 x 2"
-                : has(pipeline, PipelineTechniqueFlags::Quantization) ? "Quantized int16 x 3"
-                                                                      : "Float32 x 3"
+            has(pipeline, PipelineTechniqueFlags::OctHeading)     ? "Octahedral uint16 x 2"
+            : has(pipeline, PipelineTechniqueFlags::Quantization) ? "Quantized int16 x 3"
+                                                                  : "Float32 x 3"
         );
         add_row("Bit packing", enabled(has(pipeline, PipelineTechniqueFlags::BitPacking)));
         add_row("Delta baseline", enabled(has(pipeline, PipelineTechniqueFlags::Delta)));
         auto area_of_interest = std::string{"None"};
-        if (pipeline.area_of_interest.mode == AreaOfInterestMode::Radius) {
+        if (pipeline.area_of_interest.mode == AreaOfInterestMode::Radius)
+        {
             area_of_interest = "Radius " + format_float(pipeline.area_of_interest.radius);
-        } else if (pipeline.area_of_interest.mode == AreaOfInterestMode::Fov) {
-            area_of_interest = "3D cone " + format_float(pipeline.area_of_interest.radius)
-                + " radius, " + format_float(pipeline.area_of_interest.fov_degrees, 1) + " deg";
+        }
+        else if (pipeline.area_of_interest.mode == AreaOfInterestMode::Fov)
+        {
+            area_of_interest = "3D cone " + format_float(pipeline.area_of_interest.radius) +
+                               " radius, " +
+                               format_float(pipeline.area_of_interest.fov_degrees, 1) + " deg";
         }
         add_row("Area of interest", std::move(area_of_interest));
         auto level_of_detail = std::string{"None"};
-        if (pipeline.level_of_detail.mode == LevelOfDetailMode::DistanceBands) {
-            level_of_detail = "Distance bands "
-                + format_float(pipeline.level_of_detail.near_distance) + " / "
-                + format_float(pipeline.level_of_detail.medium_distance) + ", intervals 1 / "
-                + format_u64(pipeline.level_of_detail.medium_interval_ticks) + " / "
-                + format_u64(pipeline.level_of_detail.far_interval_ticks);
+        if (pipeline.level_of_detail.mode == LevelOfDetailMode::DistanceBands)
+        {
+            level_of_detail =
+                "Distance bands " + format_float(pipeline.level_of_detail.near_distance) + " / " +
+                format_float(pipeline.level_of_detail.medium_distance) + ", intervals 1 / " +
+                format_u64(pipeline.level_of_detail.medium_interval_ticks) + " / " +
+                format_u64(pipeline.level_of_detail.far_interval_ticks);
         }
         add_row("Level of detail", std::move(level_of_detail));
         auto compression = std::string{shared.compression.mode};
-        if (shared.compression.mode != "none") {
-            compression
-                += ", level " + format_u64(static_cast<std::uint64_t>(shared.compression.level));
+        if (shared.compression.mode != "none")
+        {
+            compression +=
+                ", level " + format_u64(static_cast<std::uint64_t>(shared.compression.level));
         }
         add_row("Compression", std::move(compression));
         add_row(
@@ -194,9 +200,9 @@ namespace simnet::app
         add_row("Initial boids", format_u64(shared.simulation.initial_boid_count));
         add_row(
             "World size",
-            format_float(shared.simulation.world_half * 2.0F, 0) + " x "
-                + format_float(shared.simulation.world_half * 2.0F, 0) + " x "
-                + format_float(shared.simulation.world_half * 2.0F, 0)
+            format_float(shared.simulation.world_half * 2.0F, 0) + " x " +
+                format_float(shared.simulation.world_half * 2.0F, 0) + " x " +
+                format_float(shared.simulation.world_half * 2.0F, 0)
         );
         add_row("Seed", format_u64(shared.run.seed));
         add_row("Deterministic", "Yes");
@@ -205,8 +211,8 @@ namespace simnet::app
         begin_section("BOID RULES", false);
         add_row(
             "Speed min / cruise / max",
-            format_float(shared.boids.min_speed) + " / " + format_float(shared.boids.cruise_speed)
-                + " / " + format_float(shared.boids.max_speed)
+            format_float(shared.boids.min_speed) + " / " + format_float(shared.boids.cruise_speed) +
+                " / " + format_float(shared.boids.max_speed)
         );
         add_row("Maximum acceleration", format_float(shared.boids.max_acceleration));
         add_row("Separation radius", format_float(shared.boids.separation_radius));
@@ -225,9 +231,9 @@ namespace simnet::app
         begin_section("PLAYER MOVEMENT", false);
         add_row(
             "Speed cruise / boost / slow",
-            format_float(shared.player.cruise_speed) + " / "
-                + format_float(shared.player.boost_speed) + " / "
-                + format_float(shared.player.slow_speed)
+            format_float(shared.player.cruise_speed) + " / " +
+                format_float(shared.player.boost_speed) + " / " +
+                format_float(shared.player.slow_speed)
         );
         add_row("Speed change rate", format_float(shared.player.speed_change_rate));
         add_row(

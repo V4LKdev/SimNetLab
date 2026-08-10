@@ -19,20 +19,20 @@ export namespace simnet::app
     inline constexpr std::size_t server_boids_csv_buffer_capacity = 256;
     inline constexpr std::size_t server_boids_csv_drain_threshold = 128;
 
-    inline constexpr std::string_view server_boids_csv_header_v1
-        = "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
-          "elapsed_since_process_start_ns,record_order,tick,entity_count,worker_count,"
-          "occupied_cell_count,max_cell_occupancy,average_entities_per_occupied_cell,"
-          "raw_candidate_count_mean,raw_candidate_count_max,retained_neighbor_count_mean,"
-          "retained_neighbor_count_max,neighbor_cap_hit_count,separation_neighbor_count_mean,"
-          "social_neighbor_count_mean,isolated_boid_count,"
-          "nearest_neighbor_distance_world_units_mean,speed_world_units_per_second_mean,"
-          "speed_world_units_per_second_min,speed_world_units_per_second_max,"
-          "acceleration_world_units_per_second_squared_mean,"
-          "acceleration_world_units_per_second_squared_max,"
-          "acceleration_saturation_count,overlap_recovery_count,hard_wall_guard_count,"
-          "polarization_ratio,capture_duration_ms,grid_duration_ms,compute_duration_ms,"
-          "validate_duration_ms,commit_duration_ms,progress_duration_ms";
+    inline constexpr std::string_view server_boids_csv_header_v1 =
+        "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
+        "elapsed_since_process_start_ns,record_order,tick,entity_count,worker_count,"
+        "occupied_cell_count,max_cell_occupancy,average_entities_per_occupied_cell,"
+        "raw_candidate_count_mean,raw_candidate_count_max,retained_neighbor_count_mean,"
+        "retained_neighbor_count_max,neighbor_cap_hit_count,separation_neighbor_count_mean,"
+        "social_neighbor_count_mean,isolated_boid_count,"
+        "nearest_neighbor_distance_world_units_mean,speed_world_units_per_second_mean,"
+        "speed_world_units_per_second_min,speed_world_units_per_second_max,"
+        "acceleration_world_units_per_second_squared_mean,"
+        "acceleration_world_units_per_second_squared_max,"
+        "acceleration_saturation_count,overlap_recovery_count,hard_wall_guard_count,"
+        "polarization_ratio,capture_duration_ms,grid_duration_ms,compute_duration_ms,"
+        "validate_duration_ms,commit_duration_ms,progress_duration_ms";
 
     /// Flattens one production encode report into application-owned research evidence.
     void flatten_server_encode_report(
@@ -53,7 +53,7 @@ export namespace simnet::app
     /// Application-owned bounded persistence for sampled Server boid diagnostics.
     class ServerBoidCsvWriter
     {
-    public:
+      public:
         explicit ServerBoidCsvWriter(ServerBoidCsvWriterConfig config);
         ~ServerBoidCsvWriter();
 
@@ -80,7 +80,7 @@ export namespace simnet::app
         [[nodiscard]] std::string_view error() const noexcept;
         [[nodiscard]] std::filesystem::path const& path() const noexcept;
 
-    private:
+      private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

@@ -64,7 +64,8 @@ export namespace simnet
     [[nodiscard]] inline Vec3f normalize_or(Vec3f value, Vec3f fallback) noexcept
     {
         const auto magnitude = length(value);
-        if (magnitude <= 0.0F) {
+        if (magnitude <= 0.0F)
+        {
             return fallback;
         }
         return value / magnitude;
@@ -88,7 +89,7 @@ export namespace simnet
     /// Returns true when the point lies inside the bounds.
     [[nodiscard]] constexpr bool contains(const Aabb3f& bounds, Vec3f point) noexcept
     {
-        return point.x >= bounds.min.x && point.x <= bounds.max.x && point.y >= bounds.min.y
-            && point.y <= bounds.max.y && point.z >= bounds.min.z && point.z <= bounds.max.z;
+        return point.x >= bounds.min.x && point.x <= bounds.max.x && point.y >= bounds.min.y &&
+               point.y <= bounds.max.y && point.z >= bounds.min.z && point.z <= bounds.max.z;
     }
 }

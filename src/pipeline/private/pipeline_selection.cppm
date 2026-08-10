@@ -40,10 +40,12 @@ namespace simnet::pipeline_selection
         auto const offset = position - source.position;
         auto const distance_squared = length_squared(offset);
         auto const radius_squared = settings.radius * settings.radius;
-        if (distance_squared > radius_squared) {
+        if (distance_squared > radius_squared)
+        {
             return false;
         }
-        if (settings.mode == AreaOfInterestMode::Radius || distance_squared == 0.0F) {
+        if (settings.mode == AreaOfInterestMode::Radius || distance_squared == 0.0F)
+        {
             return true;
         }
 
@@ -51,10 +53,12 @@ namespace simnet::pipeline_selection
         auto const half_angle = settings.fov_degrees * 0.5F * degrees_to_radians;
         auto const cosine = std::cos(half_angle);
         auto const forward_distance = dot(source.forward, offset);
-        if (forward_distance < 0.0F) {
+        if (forward_distance < 0.0F)
+        {
             return false;
         }
-        if (settings.fov_degrees == 180.0F) {
+        if (settings.fov_degrees == 180.0F)
+        {
             return true;
         }
         return forward_distance * forward_distance >= distance_squared * cosine * cosine;
@@ -73,25 +77,30 @@ namespace simnet::pipeline_selection
         normalized_source.forward = normalize_or(source.forward, {.z = 1.0F});
         scratch.relevant_source_indices.clear();
         scratch.relevant_source_indices.reserve(candidate_indices.size() + 1U);
-        for (auto const source_index : candidate_indices) {
+        for (auto const source_index : candidate_indices)
+        {
             if (inside_area_of_interest(
                     settings,
                     normalized_source,
                     snapshot.positions[source_index]
-                )) {
+                ))
+            {
                 scratch.relevant_source_indices.push_back(source_index);
             }
         }
 
-        if (source.source_entity_id != 0U) {
+        if (source.source_entity_id != 0U)
+        {
             auto const found = std::ranges::lower_bound(snapshot.ids, source.source_entity_id);
-            if (found != snapshot.ids.end() && *found == source.source_entity_id) {
-                auto const source_index
-                    = static_cast<std::uint32_t>(std::distance(snapshot.ids.begin(), found));
-                auto const insertion
-                    = std::ranges::lower_bound(scratch.relevant_source_indices, source_index);
-                if (insertion == scratch.relevant_source_indices.end()
-                    || *insertion != source_index) {
+            if (found != snapshot.ids.end() && *found == source.source_entity_id)
+            {
+                auto const source_index =
+                    static_cast<std::uint32_t>(std::distance(snapshot.ids.begin(), found));
+                auto const insertion =
+                    std::ranges::lower_bound(scratch.relevant_source_indices, source_index);
+                if (insertion == scratch.relevant_source_indices.end() ||
+                    *insertion != source_index)
+                {
                     scratch.relevant_source_indices.insert(insertion, source_index);
                 }
             }
@@ -100,7 +109,8 @@ namespace simnet::pipeline_selection
         scratch.relevant_snapshot.clear();
         scratch.relevant_snapshot.tick = snapshot.tick;
         scratch.relevant_snapshot.reserve(scratch.relevant_source_indices.size());
-        for (auto const source_index : scratch.relevant_source_indices) {
+        for (auto const source_index : scratch.relevant_source_indices)
+        {
             append_snapshot_entity(snapshot, source_index, scratch.relevant_snapshot);
         }
     }
@@ -114,7 +124,8 @@ namespace simnet::pipeline_selection
     )
     {
         scratch.selected_indices.clear();
-        if (entity_count == 0) {
+        if (entity_count == 0)
+        {
             return;
         }
 
@@ -124,7 +135,8 @@ namespace simnet::pipeline_selection
 
         // WorldSnapshot IDs are strictly ascending, so sorting indices restores ID order after
         // cursor wraparound and satisfies patch validation.
-        for (std::size_t offset = 0; offset < selected_count; ++offset) {
+        for (std::size_t offset = 0; offset < selected_count; ++offset)
+        {
             auto const source_index = (start + offset) % entity_count;
             scratch.selected_indices.push_back(static_cast<std::uint32_t>(source_index));
         }
@@ -139,9 +151,11 @@ namespace simnet::pipeline_selection
     )
     {
         auto const previous_size = scratch.selected_indices.size();
-        for (auto const id : recovery_ids) {
+        for (auto const id : recovery_ids)
+        {
             auto const found = std::ranges::lower_bound(current.ids, id);
-            if (found != current.ids.end() && *found == id) {
+            if (found != current.ids.end() && *found == id)
+            {
                 scratch.selected_indices.push_back(
                     static_cast<std::uint32_t>(std::distance(current.ids.begin(), found))
                 );
@@ -187,7 +201,8 @@ namespace simnet::pipeline_selection
     )
     {
         report.complete_record_equivalent_bytes += layout.record_bytes;
-        if (field_mask_enabled) {
+        if (field_mask_enabled)
+        {
             auto const selector = existing ? field_mask : pipeline_wire::spawn_record_selector;
             pipeline_records::write_masked_record(
                 scratch.prepared_record_bytes,
@@ -195,24 +210,28 @@ namespace simnet::pipeline_selection
                 prepared,
                 selector
             );
-            report.actual_upsert_representation_bytes += pipeline_wire::u32_bytes
-                + pipeline_wire::u8_bytes
-                + pipeline_records::selected_field_bytes(layout,
-                                                         existing
-                                                             ? field_mask
-                                                             : pipeline_wire::existing_field_mask);
-            if (existing) {
+            report.actual_upsert_representation_bytes +=
+                pipeline_wire::u32_bytes + pipeline_wire::u8_bytes +
+                pipeline_records::selected_field_bytes(
+                    layout,
+                    existing ? field_mask : pipeline_wire::existing_field_mask
+                );
+            if (existing)
+            {
                 ++report.masked_existing_upsert_count;
                 pipeline_records::observe_field_mask(report, field_mask);
             }
-        } else {
+        }
+        else
+        {
             pipeline_records::write_prepared_record(
                 scratch.prepared_record_bytes,
                 layout,
                 prepared
             );
             report.actual_upsert_representation_bytes += layout.record_bytes;
-            if (existing) {
+            if (existing)
+            {
                 ++report.whole_record_existing_upsert_count;
             }
         }
@@ -237,10 +256,12 @@ namespace simnet::pipeline_selection
         begin_delta_preparation(scratch, current.size());
 
         auto report = DeltaReport{};
-        auto retain_spawn = [&](std::size_t current_index) {
+        auto retain_spawn = [&](std::size_t current_index)
+        {
             auto const prepared = prepare_snapshot_record(layout, current, current_index);
             scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
-            if (collect_representation_quality) {
+            if (collect_representation_quality)
+            {
                 pipeline_records::observe_representation_quality(
                     representation,
                     current.positions[current_index],
@@ -265,17 +286,23 @@ namespace simnet::pipeline_selection
         auto current_index = std::size_t{};
         auto baseline_index = std::size_t{};
 
-        while (current_index < current.size() && baseline_index < baseline.size()) {
+        while (current_index < current.size() && baseline_index < baseline.size())
+        {
             auto const current_id = current.ids[current_index];
             auto const baseline_id = baseline.ids[baseline_index];
 
-            if (current_id < baseline_id) {
+            if (current_id < baseline_id)
+            {
                 retain_spawn(current_index);
                 ++current_index;
-            } else if (baseline_id < current_id) {
+            }
+            else if (baseline_id < current_id)
+            {
                 scratch.selected_delete_ids.push_back(baseline_id);
                 ++baseline_index;
-            } else {
+            }
+            else
+            {
                 auto const prepared = prepare_snapshot_record(layout, current, current_index);
                 ++report.candidate_count;
                 auto const field_mask = field_mask_enabled ? pipeline_records::canonical_field_mask(
@@ -290,9 +317,11 @@ namespace simnet::pipeline_selection
                                                                 baseline,
                                                                 baseline_index
                                                             );
-                if (!unchanged) {
+                if (!unchanged)
+                {
                     scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
-                    if (collect_representation_quality) {
+                    if (collect_representation_quality)
+                    {
                         pipeline_records::observe_representation_quality(
                             representation,
                             current.positions[current_index],
@@ -311,7 +340,9 @@ namespace simnet::pipeline_selection
                     );
                     ++report.changed_existing_count;
                     ++report.produced_upsert_count;
-                } else {
+                }
+                else
+                {
                     ++report.unchanged_count;
                 }
                 ++current_index;
@@ -319,11 +350,13 @@ namespace simnet::pipeline_selection
             }
         }
 
-        while (current_index < current.size()) {
+        while (current_index < current.size())
+        {
             retain_spawn(current_index);
             ++current_index;
         }
-        while (baseline_index < baseline.size()) {
+        while (baseline_index < baseline.size())
+        {
             scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);
             ++baseline_index;
         }
@@ -351,27 +384,33 @@ namespace simnet::pipeline_selection
         auto report = DeltaReport{};
         auto baseline_index = std::size_t{};
         auto retained_count = std::size_t{};
-        for (std::uint32_t const current_index : scratch.selected_indices) {
+        for (std::uint32_t const current_index : scratch.selected_indices)
+        {
             auto const prepared = prepare_snapshot_record(layout, current, current_index);
             ++report.candidate_count;
             auto const current_id = current.ids[current_index];
-            while (baseline_index < baseline.size() && baseline.ids[baseline_index] < current_id) {
+            while (baseline_index < baseline.size() && baseline.ids[baseline_index] < current_id)
+            {
                 ++baseline_index;
             }
 
-            bool const existed
-                = baseline_index < baseline.size() && baseline.ids[baseline_index] == current_id;
+            bool const existed =
+                baseline_index < baseline.size() && baseline.ids[baseline_index] == current_id;
             auto unchanged = false;
             auto field_mask = std::uint8_t{};
-            if (existed) {
-                if (field_mask_enabled) {
+            if (existed)
+            {
+                if (field_mask_enabled)
+                {
                     field_mask = pipeline_records::canonical_field_mask(
                         prepared.canonical,
                         baseline,
                         baseline_index
                     );
                     unchanged = field_mask == 0U;
-                } else {
+                }
+                else
+                {
                     unchanged = pipeline_records::same_canonical_state(
                         prepared.canonical,
                         baseline,
@@ -379,9 +418,11 @@ namespace simnet::pipeline_selection
                     );
                 }
             }
-            if (!unchanged) {
+            if (!unchanged)
+            {
                 scratch.selected_indices[retained_count++] = current_index;
-                if (collect_representation_quality) {
+                if (collect_representation_quality)
+                {
                     pipeline_records::observe_representation_quality(
                         representation,
                         current.positions[current_index],
@@ -398,13 +439,18 @@ namespace simnet::pipeline_selection
                     field_mask,
                     report
                 );
-                if (existed) {
+                if (existed)
+                {
                     ++report.changed_existing_count;
-                } else {
+                }
+                else
+                {
                     ++report.spawned_count;
                 }
                 ++report.produced_upsert_count;
-            } else {
+            }
+            else
+            {
                 ++report.unchanged_count;
             }
         }
@@ -414,20 +460,27 @@ namespace simnet::pipeline_selection
         scratch.selected_delete_ids.reserve(baseline.size());
         auto current_index = std::size_t{};
         baseline_index = 0;
-        while (current_index < current.size() && baseline_index < baseline.size()) {
+        while (current_index < current.size() && baseline_index < baseline.size())
+        {
             auto const current_id = current.ids[current_index];
             auto const baseline_id = baseline.ids[baseline_index];
-            if (current_id < baseline_id) {
+            if (current_id < baseline_id)
+            {
                 ++current_index;
-            } else if (baseline_id < current_id) {
+            }
+            else if (baseline_id < current_id)
+            {
                 scratch.selected_delete_ids.push_back(baseline_id);
                 ++baseline_index;
-            } else {
+            }
+            else
+            {
                 ++current_index;
                 ++baseline_index;
             }
         }
-        while (baseline_index < baseline.size()) {
+        while (baseline_index < baseline.size())
+        {
             scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);
             ++baseline_index;
         }
@@ -445,17 +498,24 @@ namespace simnet::pipeline_selection
         scratch.selected_delete_ids.reserve(replica.size());
         auto current_index = std::size_t{};
         auto replica_index = std::size_t{};
-        while (current_index < current.size() && replica_index < replica.size()) {
-            if (current.ids[current_index] < replica.ids[replica_index]) {
+        while (current_index < current.size() && replica_index < replica.size())
+        {
+            if (current.ids[current_index] < replica.ids[replica_index])
+            {
                 ++current_index;
-            } else if (replica.ids[replica_index] < current.ids[current_index]) {
+            }
+            else if (replica.ids[replica_index] < current.ids[current_index])
+            {
                 scratch.selected_delete_ids.push_back(replica.ids[replica_index++]);
-            } else {
+            }
+            else
+            {
                 ++current_index;
                 ++replica_index;
             }
         }
-        while (replica_index < replica.size()) {
+        while (replica_index < replica.size())
+        {
             scratch.selected_delete_ids.push_back(replica.ids[replica_index++]);
         }
     }

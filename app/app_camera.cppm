@@ -39,7 +39,8 @@ namespace simnet::app
     LockedChaseCameraPose
     locked_chase_camera_pose(Vec3f player_position, Vec3f player_heading) noexcept
     {
-        if (!is_finite(player_position)) {
+        if (!is_finite(player_position))
+        {
             player_position = {};
         }
         auto forward = is_finite(player_heading) ? normalize_or(player_heading, Vec3f{.z = 1.0F})
@@ -48,8 +49,8 @@ namespace simnet::app
         auto constexpr maximum_pitch_radians = 1.483529864F;
         auto const maximum_vertical = std::sin(maximum_pitch_radians);
         auto const vertical = std::clamp(forward.y, -maximum_vertical, maximum_vertical);
-        auto const horizontal
-            = normalize_or(Vec3f{.x = forward.x, .z = forward.z}, Vec3f{.z = 1.0F});
+        auto const horizontal =
+            normalize_or(Vec3f{.x = forward.x, .z = forward.z}, Vec3f{.z = 1.0F});
         auto const horizontal_scale = std::sqrt(std::max(0.0F, 1.0F - vertical * vertical));
         forward = normalize_or(
             Vec3f{

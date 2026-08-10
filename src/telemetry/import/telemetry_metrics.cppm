@@ -258,7 +258,8 @@ export namespace simnet
         {
             ++attempt_count;
             latest_attempt = measurement;
-            if (measurement.outcome == ServerReplicationOutcome::Sent) {
+            if (measurement.outcome == ServerReplicationOutcome::Sent)
+            {
                 ++sent_count;
                 latest_sent = measurement;
             }
@@ -277,7 +278,8 @@ export namespace simnet
         {
             ++attempt_count;
             latest_attempt = measurement;
-            if (measurement.outcome == ClientReplicationOutcome::Applied) {
+            if (measurement.outcome == ClientReplicationOutcome::Applied)
+            {
                 ++applied_count;
                 latest_applied = measurement;
             }

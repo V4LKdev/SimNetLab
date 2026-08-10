@@ -26,7 +26,8 @@ export namespace simnet
         WorldSnapshot& out_snapshot
     )
     {
-        if (patch.kind == SnapshotKind::Patch && baseline == nullptr) {
+        if (patch.kind == SnapshotKind::Patch && baseline == nullptr)
+        {
             return {false, "snapshot patch requires a baseline"};
         }
         auto reconstructed = WorldSnapshot{};
@@ -37,7 +38,8 @@ export namespace simnet
                                                     : source_baseline.size() + patch.upserts.size()
         );
 
-        auto append = [&reconstructed](EntityState const& boid) {
+        auto append = [&reconstructed](EntityState const& boid)
+        {
             reconstructed.ids.push_back(boid.id);
             reconstructed.classifications.push_back(boid.classification);
             reconstructed.positions.push_back(boid.position);
@@ -45,38 +47,50 @@ export namespace simnet
             reconstructed.hues.push_back(boid.hue);
         };
 
-        if (patch.kind == SnapshotKind::FullReplace) {
-            for (auto const& boid : patch.upserts) {
+        if (patch.kind == SnapshotKind::FullReplace)
+        {
+            for (auto const& boid : patch.upserts)
+            {
                 append(boid);
             }
-        } else {
+        }
+        else
+        {
             auto baseline_index = std::size_t{};
             auto upsert_index = std::size_t{};
             auto delete_index = std::size_t{};
-            while (baseline_index < source_baseline.size() || upsert_index < patch.upserts.size()) {
+            while (baseline_index < source_baseline.size() || upsert_index < patch.upserts.size())
+            {
                 auto const baseline_id = baseline_index < source_baseline.size()
-                    ? source_baseline.ids[baseline_index]
-                    : EntityNetId{};
+                                             ? source_baseline.ids[baseline_index]
+                                             : EntityNetId{};
                 auto const have_upsert = upsert_index < patch.upserts.size();
                 auto const upsert_id = have_upsert ? patch.upserts[upsert_index].id : EntityNetId{};
 
-                if (have_upsert
-                    && (baseline_index == source_baseline.size() || upsert_id < baseline_id)) {
+                if (have_upsert &&
+                    (baseline_index == source_baseline.size() || upsert_id < baseline_id))
+                {
                     append(patch.upserts[upsert_index++]);
                     continue;
                 }
 
-                while (delete_index < patch.deletes.size()
-                       && patch.deletes[delete_index] < baseline_id) {
+                while (delete_index < patch.deletes.size() &&
+                       patch.deletes[delete_index] < baseline_id)
+                {
                     ++delete_index;
                 }
-                auto const deleted = delete_index < patch.deletes.size()
-                    && patch.deletes[delete_index] == baseline_id;
-                if (deleted) {
+                auto const deleted = delete_index < patch.deletes.size() &&
+                                     patch.deletes[delete_index] == baseline_id;
+                if (deleted)
+                {
                     ++delete_index;
-                } else if (have_upsert && upsert_id == baseline_id) {
+                }
+                else if (have_upsert && upsert_id == baseline_id)
+                {
                     append(patch.upserts[upsert_index++]);
-                } else {
+                }
+                else
+                {
                     append({
                         .id = baseline_id,
                         .classification = source_baseline.classifications[baseline_index],
@@ -105,12 +119,15 @@ export namespace simnet
     )
     {
         auto const patch_validation = validate_client_snapshot_patch(patch);
-        if (!patch_validation.valid) {
+        if (!patch_validation.valid)
+        {
             return patch_validation;
         }
-        if (baseline != nullptr) {
+        if (baseline != nullptr)
+        {
             auto const baseline_validation = validate_world_snapshot(*baseline);
-            if (!baseline_validation.valid) {
+            if (!baseline_validation.valid)
+            {
                 return {
                     false,
                     "snapshot patch baseline is invalid: " + baseline_validation.message

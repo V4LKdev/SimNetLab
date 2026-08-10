@@ -249,15 +249,20 @@ namespace simnet::render_detail
     help_overlay_rect(SceneRect scene, RenderFrame const& frame, CameraMode mode) noexcept
     {
         auto lines = 7.0F;
-        if (mode == CameraMode::OverviewOrbit) {
+        if (mode == CameraMode::OverviewOrbit)
+        {
             lines += 4.0F;
-        } else if (mode == CameraMode::EntityFollow) {
+        }
+        else if (mode == CameraMode::EntityFollow)
+        {
             lines += 5.0F;
-        } else if (mode == CameraMode::Game && frame.game_camera.has_value()) {
+        }
+        else if (mode == CameraMode::Game && frame.game_camera.has_value())
+        {
             lines += 2.0F;
-        } else if (
-            mode == CameraMode::StationaryObserver && frame.stationary_observer.has_value()
-        ) {
+        }
+        else if (mode == CameraMode::StationaryObserver && frame.stationary_observer.has_value())
+        {
             lines += 1.0F;
         }
         return {static_cast<float>(scene.x + 32), 70.0F, 540.0F, 56.0F + lines * 29.0F};
@@ -270,11 +275,11 @@ namespace simnet::render_detail
         auto constexpr gap = 6.0F;
         auto const right = static_cast<float>(scene.x + scene.width) - 14.0F;
         auto layout = ViewportUiLayout{};
-        for (std::size_t index = 0; index < layout.toolbar_buttons.size(); ++index) {
+        for (std::size_t index = 0; index < layout.toolbar_buttons.size(); ++index)
+        {
             layout.toolbar_buttons[index] = {
-                right
-                    - (button_width + gap)
-                        * static_cast<float>(layout.toolbar_buttons.size() - index),
+                right - (button_width + gap) *
+                            static_cast<float>(layout.toolbar_buttons.size() - index),
                 14.0F,
                 button_width,
                 button_height,

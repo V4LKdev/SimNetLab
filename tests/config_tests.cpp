@@ -19,7 +19,7 @@ namespace
 {
     class TemporaryConfig
     {
-    public:
+      public:
         TemporaryConfig(std::string_view name, std::string_view contents)
             : path_(std::filesystem::temp_directory_path() / name)
         {
@@ -38,7 +38,7 @@ namespace
             return path_;
         }
 
-    private:
+      private:
         std::filesystem::path path_;
     };
 
@@ -74,8 +74,8 @@ namespace
             left.stationary_observer_interest_radius == right.stationary_observer_interest_radius
         );
         CHECK(
-            left.stationary_observer_vertical_fov_degrees
-            == right.stationary_observer_vertical_fov_degrees
+            left.stationary_observer_vertical_fov_degrees ==
+            right.stationary_observer_vertical_fov_degrees
         );
         CHECK(left.max_visible_spatial_cells == right.max_visible_spatial_cells);
         CHECK(left.entity_mesh_path == right.entity_mesh_path);
@@ -132,8 +132,8 @@ namespace
         CHECK(left.boids.player_predator.enabled == right.boids.player_predator.enabled);
         CHECK(left.boids.player_predator.radius == right.boids.player_predator.radius);
         CHECK(
-            left.boids.player_predator.max_acceleration
-            == right.boids.player_predator.max_acceleration
+            left.boids.player_predator.max_acceleration ==
+            right.boids.player_predator.max_acceleration
         );
         CHECK(left.player.cruise_speed == right.player.cruise_speed);
         CHECK(left.player.boost_speed == right.player.boost_speed);
@@ -147,7 +147,8 @@ namespace
         CHECK(left.player.max_pitch_rate_degrees == right.player.max_pitch_rate_degrees);
         CHECK(left.player.pitch_limit_degrees == right.player.pitch_limit_degrees);
         CHECK(left.synthetic.has_value() == right.synthetic.has_value());
-        if (left.synthetic.has_value() && right.synthetic.has_value()) {
+        if (left.synthetic.has_value() && right.synthetic.has_value())
+        {
             CHECK(left.synthetic->pattern == right.synthetic->pattern);
             CHECK(
                 left.synthetic->entity_change_fraction == right.synthetic->entity_change_fraction
@@ -164,30 +165,30 @@ namespace
         CHECK(left.pipeline.area_of_interest.mode == right.pipeline.area_of_interest.mode);
         CHECK(left.pipeline.area_of_interest.radius == right.pipeline.area_of_interest.radius);
         CHECK(
-            left.pipeline.area_of_interest.fov_degrees
-            == right.pipeline.area_of_interest.fov_degrees
+            left.pipeline.area_of_interest.fov_degrees ==
+            right.pipeline.area_of_interest.fov_degrees
         );
         CHECK(left.pipeline.level_of_detail.mode == right.pipeline.level_of_detail.mode);
         CHECK(
-            left.pipeline.level_of_detail.near_distance
-            == right.pipeline.level_of_detail.near_distance
+            left.pipeline.level_of_detail.near_distance ==
+            right.pipeline.level_of_detail.near_distance
         );
         CHECK(
-            left.pipeline.level_of_detail.medium_distance
-            == right.pipeline.level_of_detail.medium_distance
+            left.pipeline.level_of_detail.medium_distance ==
+            right.pipeline.level_of_detail.medium_distance
         );
         CHECK(
-            left.pipeline.level_of_detail.medium_interval_ticks
-            == right.pipeline.level_of_detail.medium_interval_ticks
+            left.pipeline.level_of_detail.medium_interval_ticks ==
+            right.pipeline.level_of_detail.medium_interval_ticks
         );
         CHECK(
-            left.pipeline.level_of_detail.far_interval_ticks
-            == right.pipeline.level_of_detail.far_interval_ticks
+            left.pipeline.level_of_detail.far_interval_ticks ==
+            right.pipeline.level_of_detail.far_interval_ticks
         );
         CHECK(left.snapshot_delivery.mode == right.snapshot_delivery.mode);
         CHECK(
-            left.snapshot_delivery.full_replace_after_unacknowledged_updates
-            == right.snapshot_delivery.full_replace_after_unacknowledged_updates
+            left.snapshot_delivery.full_replace_after_unacknowledged_updates ==
+            right.snapshot_delivery.full_replace_after_unacknowledged_updates
         );
         CHECK(left.compression.mode == right.compression.mode);
         CHECK(left.compression.level == right.compression.level);
@@ -217,12 +218,12 @@ namespace
         CHECK(left.benchmark.repetitions == right.benchmark.repetitions);
         CHECK(left.benchmark.load_ramp.enabled == right.benchmark.load_ramp.enabled);
         CHECK(
-            left.benchmark.load_ramp.add_boids_per_step
-            == right.benchmark.load_ramp.add_boids_per_step
+            left.benchmark.load_ramp.add_boids_per_step ==
+            right.benchmark.load_ramp.add_boids_per_step
         );
         CHECK(
-            left.benchmark.load_ramp.step_interval_seconds
-            == right.benchmark.load_ramp.step_interval_seconds
+            left.benchmark.load_ramp.step_interval_seconds ==
+            right.benchmark.load_ramp.step_interval_seconds
         );
         CHECK(left.benchmark.load_ramp.max_boids == right.benchmark.load_ramp.max_boids);
     }
@@ -232,8 +233,8 @@ namespace
         check_transport_equal(left.transport, right.transport);
         CHECK(left.gameplay.role == right.gameplay.role);
         CHECK(
-            left.gameplay.stationary_observer_position
-            == right.gameplay.stationary_observer_position
+            left.gameplay.stationary_observer_position ==
+            right.gameplay.stationary_observer_position
         );
         check_visualization_equal(left.visualization, right.visualization);
         check_telemetry_equal(left.telemetry, right.telemetry);
@@ -383,8 +384,8 @@ TEST_CASE(
     );
     CHECK(every_tick_pipeline.send_interval.interval_ticks == 1U);
     CHECK(
-        simnet::pipeline_decode_signature(every_tick_pipeline)
-        == simnet::pipeline_decode_signature(pipeline)
+        simnet::pipeline_decode_signature(every_tick_pipeline) ==
+        simnet::pipeline_decode_signature(pipeline)
     );
 
     auto raw = defaults;
@@ -399,16 +400,16 @@ TEST_CASE(
     auto const oct_pipeline = simnet::app::make_snapshot_pipeline(oct);
     auto const bit_packed_pipeline = simnet::app::make_snapshot_pipeline(bit_packed);
     CHECK(
-        simnet::pipeline_decode_signature(raw_pipeline)
-        != simnet::pipeline_decode_signature(quantized_pipeline)
-    );
-    CHECK(
+        simnet::pipeline_decode_signature(raw_pipeline) !=
         simnet::pipeline_decode_signature(quantized_pipeline)
-        != simnet::pipeline_decode_signature(oct_pipeline)
     );
     CHECK(
+        simnet::pipeline_decode_signature(quantized_pipeline) !=
         simnet::pipeline_decode_signature(oct_pipeline)
-        != simnet::pipeline_decode_signature(bit_packed_pipeline)
+    );
+    CHECK(
+        simnet::pipeline_decode_signature(oct_pipeline) !=
+        simnet::pipeline_decode_signature(bit_packed_pipeline)
     );
 
     auto snapshot = simnet::WorldSnapshot{};
@@ -418,15 +419,16 @@ TEST_CASE(
     snapshot.positions.push_back({1.25F, -2.5F, 3.75F});
     snapshot.headings.push_back(simnet::normalize_or({1.0F, 2.0F, 3.0F}, {.x = 1.0F}));
     snapshot.hues.push_back(42U);
-    auto check_round_trip = [&](simnet::PipelineDefinition const& definition) {
+    auto check_round_trip = [&](simnet::PipelineDefinition const& definition)
+    {
         auto encode_state = simnet::ClientReplicationState{};
         auto decode_state = simnet::ClientReplicationState{};
         auto scratch = simnet::PipelineScratch{};
-        auto const encoded
-            = simnet::encode_snapshot(definition, encode_state, scratch, {.snapshot = &snapshot});
+        auto const encoded =
+            simnet::encode_snapshot(definition, encode_state, scratch, {.snapshot = &snapshot});
         REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
-        auto const decoded
-            = simnet::decode_update(definition, decode_state, {.bytes = encoded.update.bytes});
+        auto const decoded =
+            simnet::decode_update(definition, decode_state, {.bytes = encoded.update.bytes});
         REQUIRE(decoded.report.valid);
         REQUIRE(decoded.update.upserts.size() == 1U);
         CHECK(decoded.update.upserts.front().id == 1U);
@@ -436,12 +438,13 @@ TEST_CASE(
     check_round_trip(oct_pipeline);
     check_round_trip(bit_packed_pipeline);
 
-    auto const runtime_fingerprint
-        = simnet::fingerprint_runtime_config(defaults, simnet::default_server_config());
-    for (auto changed : {loaded, quantized, oct, bit_packed}) {
+    auto const runtime_fingerprint =
+        simnet::fingerprint_runtime_config(defaults, simnet::default_server_config());
+    for (auto changed : {loaded, quantized, oct, bit_packed})
+    {
         CHECK(
-            simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value
-            != runtime_fingerprint.value
+            simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value !=
+            runtime_fingerprint.value
         );
     }
 
@@ -458,9 +461,10 @@ TEST_CASE(
              R"({ "pipeline": { "enable_oct_heading": 1 } })",
              R"({ "pipeline": { "enable_bit_packing": 1 } })",
              R"({ "pipeline": { "representation": "quantized" } })",
-         }) {
-        auto const invalid
-            = TemporaryConfig{"simnet_pipeline_representation_invalid.json", contents};
+         })
+    {
+        auto const invalid =
+            TemporaryConfig{"simnet_pipeline_representation_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
 
@@ -469,8 +473,8 @@ TEST_CASE(
         R"({ "pipeline": { "send_interval_ticks": 4294967295 } })"
     };
     CHECK(
-        simnet::load_shared_config(maximum_interval.path()).pipeline.send_interval_ticks
-        == std::numeric_limits<std::uint32_t>::max()
+        simnet::load_shared_config(maximum_interval.path()).pipeline.send_interval_ticks ==
+        std::numeric_limits<std::uint32_t>::max()
     );
 }
 
@@ -492,23 +496,24 @@ TEST_CASE("field-mask Delta configuration is strict and fingerprinted", "[config
     auto control = loaded;
     control.pipeline.enable_delta_field_mask = false;
     CHECK(
-        simnet::fingerprint_network_compatibility(loaded).value
-        != simnet::fingerprint_network_compatibility(control).value
+        simnet::fingerprint_network_compatibility(loaded).value !=
+        simnet::fingerprint_network_compatibility(control).value
     );
     CHECK(
-        simnet::fingerprint_runtime_config(loaded, simnet::default_server_config()).value
-        != simnet::fingerprint_runtime_config(control, simnet::default_server_config()).value
+        simnet::fingerprint_runtime_config(loaded, simnet::default_server_config()).value !=
+        simnet::fingerprint_runtime_config(control, simnet::default_server_config()).value
     );
     CHECK(
-        simnet::pipeline_decode_signature(pipeline)
-        != simnet::pipeline_decode_signature(simnet::app::make_snapshot_pipeline(control))
+        simnet::pipeline_decode_signature(pipeline) !=
+        simnet::pipeline_decode_signature(simnet::app::make_snapshot_pipeline(control))
     );
 
     for (auto const contents : {
              R"({ "pipeline": { "enable_delta_field_mask": true } })",
              R"({ "pipeline": { "enable_delta_field_mask": 1 } })",
              R"({ "pipeline": { "enable_delta_field_mask": "true" } })",
-         }) {
+         })
+    {
         auto const invalid = TemporaryConfig{
             "simnet_pipeline_delta_field_mask_invalid.json",
             contents,
@@ -520,9 +525,8 @@ TEST_CASE("field-mask Delta configuration is strict and fingerprinted", "[config
 TEST_CASE("maintained representation and cadence profiles are matched", "[config][pipeline]")
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
-    auto raw = simnet::load_shared_config(
-        directory / "shared_representation_raw_aoi_radius_visual.json"
-    );
+    auto raw =
+        simnet::load_shared_config(directory / "shared_representation_raw_aoi_radius_visual.json");
     auto quantized = simnet::load_shared_config(
         directory / "shared_representation_quantized_aoi_radius_visual.json"
     );
@@ -532,8 +536,8 @@ TEST_CASE("maintained representation and cadence profiles are matched", "[config
     auto bit_packed = simnet::load_shared_config(
         directory / "shared_representation_bit_packed_aoi_radius_visual.json"
     );
-    auto cadence
-        = simnet::load_shared_config(directory / "shared_cadence_reduced_aoi_radius_visual.json");
+    auto cadence =
+        simnet::load_shared_config(directory / "shared_cadence_reduced_aoi_radius_visual.json");
 
     CHECK(raw.simulation.initial_boid_count == 1500U);
     CHECK(raw.pipeline.area_of_interest.mode == "radius");
@@ -553,29 +557,30 @@ TEST_CASE("maintained representation and cadence profiles are matched", "[config
     auto quantized_control = quantized;
     quantized_control.pipeline.enable_quantization = false;
     CHECK(
-        simnet::fingerprint_network_compatibility(quantized_control).value
-        == simnet::fingerprint_network_compatibility(raw).value
+        simnet::fingerprint_network_compatibility(quantized_control).value ==
+        simnet::fingerprint_network_compatibility(raw).value
     );
     auto oct_control = oct;
     oct_control.pipeline.enable_oct_heading = false;
     CHECK(
-        simnet::fingerprint_network_compatibility(oct_control).value
-        == simnet::fingerprint_network_compatibility(quantized).value
+        simnet::fingerprint_network_compatibility(oct_control).value ==
+        simnet::fingerprint_network_compatibility(quantized).value
     );
     auto bit_packed_control = bit_packed;
     bit_packed_control.pipeline.enable_bit_packing = false;
     CHECK(
-        simnet::fingerprint_network_compatibility(bit_packed_control).value
-        == simnet::fingerprint_network_compatibility(oct).value
+        simnet::fingerprint_network_compatibility(bit_packed_control).value ==
+        simnet::fingerprint_network_compatibility(oct).value
     );
     auto cadence_control = cadence;
     cadence_control.pipeline.send_interval_ticks = 1U;
     CHECK(
-        simnet::fingerprint_network_compatibility(cadence_control).value
-        == simnet::fingerprint_network_compatibility(raw).value
+        simnet::fingerprint_network_compatibility(cadence_control).value ==
+        simnet::fingerprint_network_compatibility(raw).value
     );
 
-    auto normalize = [](simnet::SharedConfig& config) {
+    auto normalize = [](simnet::SharedConfig& config)
+    {
         config.pipeline.send_interval_ticks = 1U;
         config.pipeline.enable_quantization = false;
         config.pipeline.enable_oct_heading = false;
@@ -596,19 +601,28 @@ TEST_CASE("maintained representation and cadence profiles are matched", "[config
 TEST_CASE("every maintained JSON profile parses through its production loader", "[config]")
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
-    for (auto const& entry : std::filesystem::directory_iterator{directory}) {
+    for (auto const& entry : std::filesystem::directory_iterator{directory})
+    {
         auto const path = entry.path();
-        if (!entry.is_regular_file() || path.extension() != ".json") {
+        if (!entry.is_regular_file() || path.extension() != ".json")
+        {
             continue;
         }
         auto const name = path.filename().string();
-        if (name.starts_with("shared_")) {
+        if (name.starts_with("shared_"))
+        {
             REQUIRE_NOTHROW(simnet::load_shared_config(path));
-        } else if (name.starts_with("server_")) {
+        }
+        else if (name.starts_with("server_"))
+        {
             REQUIRE_NOTHROW(simnet::load_server_config(path));
-        } else if (name.starts_with("client_")) {
+        }
+        else if (name.starts_with("client_"))
+        {
             REQUIRE_NOTHROW(simnet::load_client_config(path));
-        } else {
+        }
+        else
+        {
             FAIL("unowned maintained JSON profile: " << name);
         }
     }
@@ -617,11 +631,10 @@ TEST_CASE("every maintained JSON profile parses through its production loader", 
 TEST_CASE("field-mask Delta profiles are a matched pair", "[config][pipeline][profile]")
 {
     auto const directory = maintained_config_directory();
-    auto control = simnet::load_shared_config(
-        directory / "shared_delta_whole_record_aoi_radius_visual.json"
-    );
-    auto treatment
-        = simnet::load_shared_config(directory / "shared_delta_field_mask_aoi_radius_visual.json");
+    auto control =
+        simnet::load_shared_config(directory / "shared_delta_whole_record_aoi_radius_visual.json");
+    auto treatment =
+        simnet::load_shared_config(directory / "shared_delta_field_mask_aoi_radius_visual.json");
     CHECK_FALSE(control.pipeline.enable_delta_field_mask);
     CHECK(treatment.pipeline.enable_delta_field_mask);
     CHECK(control.pipeline.enable_delta);
@@ -664,20 +677,20 @@ TEST_CASE("synthetic workload configuration is strict and fingerprinted", "[conf
     auto changed = loaded;
     changed.synthetic->pattern = "random_uniform";
     CHECK(
-        simnet::fingerprint_network_compatibility(changed).value
-        != simnet::fingerprint_network_compatibility(loaded).value
+        simnet::fingerprint_network_compatibility(changed).value !=
+        simnet::fingerprint_network_compatibility(loaded).value
     );
     changed = loaded;
     changed.synthetic->entity_change_fraction = 0.25;
     CHECK(
-        simnet::fingerprint_network_compatibility(changed).value
-        != simnet::fingerprint_network_compatibility(loaded).value
+        simnet::fingerprint_network_compatibility(changed).value !=
+        simnet::fingerprint_network_compatibility(loaded).value
     );
     changed = loaded;
     changed.synthetic->field_change_mode = "heading_only";
     CHECK(
-        simnet::fingerprint_network_compatibility(changed).value
-        != simnet::fingerprint_network_compatibility(loaded).value
+        simnet::fingerprint_network_compatibility(changed).value !=
+        simnet::fingerprint_network_compatibility(loaded).value
     );
 
     for (
@@ -690,7 +703,8 @@ TEST_CASE("synthetic workload configuration is strict and fingerprinted", "[conf
             R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": "1", "field_change_mode": "all" } })",
             R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": 1.0, "field_change_mode": "unknown" } })",
             R"({ "synthetic": { "pattern": "grid", "entity_change_fraction": 1.0, "field_change_mode": "all", "extra": true } })",
-        }) {
+        })
+    {
         auto const invalid = TemporaryConfig{"simnet_synthetic_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
@@ -700,8 +714,8 @@ TEST_CASE("synthetic Delta profiles are matched treatments", "[config][synthetic
 {
     auto const directory = maintained_config_directory();
     auto full = simnet::load_shared_config(directory / "shared_synthetic_delta_full_change.json");
-    auto sparse_entities
-        = simnet::load_shared_config(directory / "shared_synthetic_delta_sparse_entities.json");
+    auto sparse_entities =
+        simnet::load_shared_config(directory / "shared_synthetic_delta_sparse_entities.json");
     auto sparse_fields_whole = simnet::load_shared_config(
         directory / "shared_synthetic_delta_sparse_fields_whole_record.json"
     );
@@ -745,16 +759,16 @@ TEST_CASE("typed defaults equal shipped default profiles", "[config][defaults]")
     check_server_equal(typed_server, shipped_server);
     check_client_equal(typed_client, shipped_client);
     CHECK(
-        simnet::fingerprint_network_compatibility(typed_shared).value
-        == simnet::fingerprint_network_compatibility(shipped_shared).value
+        simnet::fingerprint_network_compatibility(typed_shared).value ==
+        simnet::fingerprint_network_compatibility(shipped_shared).value
     );
     CHECK(
-        simnet::fingerprint_runtime_config(typed_shared, typed_server).value
-        == simnet::fingerprint_runtime_config(shipped_shared, shipped_server).value
+        simnet::fingerprint_runtime_config(typed_shared, typed_server).value ==
+        simnet::fingerprint_runtime_config(shipped_shared, shipped_server).value
     );
     CHECK(
-        simnet::fingerprint_runtime_config(typed_shared, typed_client).value
-        == simnet::fingerprint_runtime_config(shipped_shared, shipped_client).value
+        simnet::fingerprint_runtime_config(typed_shared, typed_client).value ==
+        simnet::fingerprint_runtime_config(shipped_shared, shipped_client).value
     );
 
     auto const reloaded_shared = simnet::load_shared_config(directory / "shared_default.json");
@@ -846,7 +860,8 @@ TEST_CASE("maintained profile fingerprints preserve normalized semantics", "[con
     };
 
     auto const directory = maintained_config_directory();
-    for (auto const& expected : shared_fingerprints) {
+    for (auto const& expected : shared_fingerprints)
+    {
         CAPTURE(expected.name);
         auto const config = simnet::load_shared_config(directory / expected.name);
         CHECK(simnet::fingerprint_network_compatibility(config).value == expected.network);
@@ -856,19 +871,28 @@ TEST_CASE("maintained profile fingerprints preserve normalized semantics", "[con
 TEST_CASE("every maintained JSON file loads through its production loader", "[config][profiles]")
 {
     auto loaded_count = std::size_t{};
-    for (auto const& entry : std::filesystem::directory_iterator{maintained_config_directory()}) {
-        if (!entry.is_regular_file() || entry.path().extension() != ".json") {
+    for (auto const& entry : std::filesystem::directory_iterator{maintained_config_directory()})
+    {
+        if (!entry.is_regular_file() || entry.path().extension() != ".json")
+        {
             continue;
         }
         auto const name = entry.path().filename().string();
         CAPTURE(name);
-        if (name.starts_with("shared_")) {
+        if (name.starts_with("shared_"))
+        {
             static_cast<void>(simnet::load_shared_config(entry.path()));
-        } else if (name.starts_with("server_")) {
+        }
+        else if (name.starts_with("server_"))
+        {
             static_cast<void>(simnet::load_server_config(entry.path()));
-        } else if (name.starts_with("client_")) {
+        }
+        else if (name.starts_with("client_"))
+        {
             static_cast<void>(simnet::load_client_config(entry.path()));
-        } else {
+        }
+        else
+        {
             FAIL("maintained JSON filename has no production loader owner");
         }
         ++loaded_count;
@@ -884,7 +908,8 @@ TEST_CASE("default alignment preserves inherited treatment tuning", "[config][de
              "shared_delivery_unreliable_aoi_radius_visual.json",
              "shared_lod_none_aoi_radius_visual.json",
              "shared_lod_distance_bands_aoi_radius_visual.json",
-         }) {
+         })
+    {
         CAPTURE(name);
         auto const config = simnet::load_shared_config(directory / name);
         CHECK(config.boids.alignment_radius == 18.0F);
@@ -898,8 +923,7 @@ TEST_CASE("default alignment preserves inherited treatment tuning", "[config][de
     CHECK(simnet::load_server_config(directory / "server_visual.json").transport.max_clients == 1U);
     CHECK(
         simnet::load_server_config(directory / "server_multi_client_visual.json")
-            .transport.max_clients
-        == 2U
+            .transport.max_clients == 2U
     );
     auto observer = simnet::load_client_config(directory / "client_visual.json");
     auto player = simnet::load_client_config(directory / "client_player_visual.json");
@@ -909,8 +933,8 @@ TEST_CASE("default alignment preserves inherited treatment tuning", "[config][de
     CHECK(player.gameplay.role == "player");
     player.gameplay = observer.gameplay;
     CHECK(
-        simnet::fingerprint_runtime_config(simnet::default_shared_config(), player).value
-        == simnet::fingerprint_runtime_config(simnet::default_shared_config(), observer).value
+        simnet::fingerprint_runtime_config(simnet::default_shared_config(), player).value ==
+        simnet::fingerprint_runtime_config(simnet::default_shared_config(), observer).value
     );
 }
 
@@ -936,7 +960,8 @@ TEST_CASE("snapshot delivery configuration is strict shared treatment", "[config
             R"({ "snapshot_delivery": { "mode": "reliable_sequenced", "full_replace_after_unacknowledged_updates": 0 } })",
             R"({ "snapshot_delivery": { "mode": "reliable_sequenced", "full_replace_after_unacknowledged_updates": 64 } })",
             R"({ "snapshot_delivery": { "mode": "reliable_sequenced", "full_replace_after_unacknowledged_updates": 32, "extra": true } })",
-        }) {
+        })
+    {
         auto const invalid = TemporaryConfig{"simnet_delivery_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
@@ -951,17 +976,16 @@ TEST_CASE("snapshot delivery configuration is strict shared treatment", "[config
 TEST_CASE("maintained delivery treatments differ only by mode", "[config][delivery]")
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
-    auto reliable
-        = simnet::load_shared_config(directory / "shared_delivery_reliable_aoi_radius_visual.json");
-    auto unreliable = simnet::load_shared_config(
-        directory / "shared_delivery_unreliable_aoi_radius_visual.json"
-    );
+    auto reliable =
+        simnet::load_shared_config(directory / "shared_delivery_reliable_aoi_radius_visual.json");
+    auto unreliable =
+        simnet::load_shared_config(directory / "shared_delivery_unreliable_aoi_radius_visual.json");
     CHECK(reliable.snapshot_delivery.mode == "reliable_sequenced");
     CHECK(unreliable.snapshot_delivery.mode == "unreliable_sequenced");
     unreliable.snapshot_delivery.mode = reliable.snapshot_delivery.mode;
     CHECK(
-        simnet::fingerprint_network_compatibility(unreliable).value
-        == simnet::fingerprint_network_compatibility(reliable).value
+        simnet::fingerprint_network_compatibility(unreliable).value ==
+        simnet::fingerprint_network_compatibility(reliable).value
     );
 }
 
@@ -973,21 +997,23 @@ TEST_CASE("visual interpolation is local runtime configuration", "[config]")
     changed.visualization.interpolation_enabled = !changed.visualization.interpolation_enabled;
 
     CHECK(
-        simnet::fingerprint_runtime_config(shared, changed).value
-        != simnet::fingerprint_runtime_config(shared, baseline).value
+        simnet::fingerprint_runtime_config(shared, changed).value !=
+        simnet::fingerprint_runtime_config(shared, baseline).value
     );
 }
 
 TEST_CASE("transport client capacity is strictly bounded", "[config][peer]")
 {
-    for (auto const capacity : {1U, 64U}) {
+    for (auto const capacity : {1U, 64U})
+    {
         auto const accepted = TemporaryConfig{
             "simnet_client_capacity_accepted_" + std::to_string(capacity) + ".json",
             "{ \"transport\": { \"max_clients\": " + std::to_string(capacity) + " } }"
         };
         CHECK(simnet::load_server_config(accepted.path()).transport.max_clients == capacity);
     }
-    for (auto const capacity : {0U, 65U}) {
+    for (auto const capacity : {0U, 65U})
+    {
         auto const rejected = TemporaryConfig{
             "simnet_client_capacity_rejected_" + std::to_string(capacity) + ".json",
             "{ \"transport\": { \"max_clients\": " + std::to_string(capacity) + " } }"
@@ -1005,8 +1031,8 @@ TEST_CASE("multi-client visual profile changes only Server capacity", "[config][
     CHECK(treatment.transport.max_clients == 2U);
     treatment.transport.max_clients = control.transport.max_clients;
     CHECK(
-        simnet::fingerprint_runtime_config(simnet::default_shared_config(), treatment).value
-        == simnet::fingerprint_runtime_config(simnet::default_shared_config(), control).value
+        simnet::fingerprint_runtime_config(simnet::default_shared_config(), treatment).value ==
+        simnet::fingerprint_runtime_config(simnet::default_shared_config(), control).value
     );
 }
 
@@ -1018,8 +1044,8 @@ TEST_CASE("client gameplay role is local runtime configuration", "[config][playe
     player.gameplay.role = "player";
 
     CHECK(
-        simnet::fingerprint_runtime_config(shared, player).value
-        != simnet::fingerprint_runtime_config(shared, stationary_observer_config).value
+        simnet::fingerprint_runtime_config(shared, player).value !=
+        simnet::fingerprint_runtime_config(shared, stationary_observer_config).value
     );
 }
 
@@ -1078,7 +1104,8 @@ TEST_CASE("Player influence configuration is strict bounded and fingerprinted", 
             R"({ "boids": { "player_lure": { "enabled": true, "radius": 801.0, "max_acceleration": 1.0 } } })",
             R"({ "boids": { "player_predator": { "enabled": true, "radius": 1.0, "max_acceleration": 13.0 } } })",
             R"({ "boids": { "player_predator": { "enabled": false, "extra": true } } })",
-        }) {
+        })
+    {
         auto const invalid = TemporaryConfig{"simnet_player_influence_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
@@ -1096,13 +1123,14 @@ TEST_CASE("Player influence configuration is strict bounded and fingerprinted", 
         .max_acceleration = 10.0F,
     };
     auto const compatibility = simnet::fingerprint_network_compatibility(treatment);
-    auto const runtime
-        = simnet::fingerprint_runtime_config(treatment, simnet::default_server_config());
-    auto check_changed = [&](simnet::SharedConfig changed) {
+    auto const runtime =
+        simnet::fingerprint_runtime_config(treatment, simnet::default_server_config());
+    auto check_changed = [&](simnet::SharedConfig changed)
+    {
         CHECK(simnet::fingerprint_network_compatibility(changed).value != compatibility.value);
         CHECK(
-            simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value
-            != runtime.value
+            simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value !=
+            runtime.value
         );
     };
     auto changed = treatment;
@@ -1128,8 +1156,8 @@ TEST_CASE("Player influence configuration is strict bounded and fingerprinted", 
 TEST_CASE("maintained Player influence treatments match their control", "[config][player]")
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
-    auto control
-        = simnet::load_shared_config(directory / "shared_player_influence_control_visual.json");
+    auto control =
+        simnet::load_shared_config(directory / "shared_player_influence_control_visual.json");
     auto lure = simnet::load_shared_config(directory / "shared_player_lure_visual.json");
     auto predator = simnet::load_shared_config(directory / "shared_player_predator_visual.json");
     CHECK(control.simulation.initial_boid_count == 300U);
@@ -1163,8 +1191,8 @@ TEST_CASE("AOI configuration is mode-specific strict and fingerprinted", "[confi
     CHECK(radius_config.pipeline.area_of_interest.mode == "radius");
     CHECK(radius_config.pipeline.area_of_interest.radius == 80.0F);
     CHECK(
-        simnet::fingerprint_network_compatibility(radius_config).value
-        != simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
+        simnet::fingerprint_network_compatibility(radius_config).value !=
+        simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
     );
 
     auto const fov = TemporaryConfig{
@@ -1183,7 +1211,8 @@ TEST_CASE("AOI configuration is mode-specific strict and fingerprinted", "[confi
             R"({ "pipeline": { "area_of_interest": { "mode": "fov", "radius": 1.0, "fov_degrees": 0.0 } } })",
             R"({ "pipeline": { "area_of_interest": { "mode": "fov", "radius": 1.0, "fov_degrees": 180.1 } } })",
             R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 1.0, "unexpected": true } } })",
-        }) {
+        })
+    {
         auto const invalid = TemporaryConfig{"simnet_aoi_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
@@ -1201,8 +1230,8 @@ TEST_CASE("maintained AOI visual profiles load as distinct treatments", "[config
     CHECK(fov.pipeline.area_of_interest.fov_degrees == 120.0F);
     fov.pipeline.area_of_interest = radius.pipeline.area_of_interest;
     CHECK(
-        simnet::fingerprint_network_compatibility(fov).value
-        == simnet::fingerprint_network_compatibility(radius).value
+        simnet::fingerprint_network_compatibility(fov).value ==
+        simnet::fingerprint_network_compatibility(radius).value
     );
 }
 
@@ -1231,36 +1260,36 @@ TEST_CASE("level-of-detail configuration is strict shared treatment", "[config][
     CHECK(loaded.pipeline.level_of_detail.far_interval_ticks == 16U);
     CHECK_FALSE(loaded.pipeline.enable_incremental);
     CHECK(
-        simnet::fingerprint_network_compatibility(loaded).value
-        != simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
+        simnet::fingerprint_network_compatibility(loaded).value !=
+        simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
     );
     auto changed = loaded;
     changed.pipeline.level_of_detail.near_distance += 1.0F;
     CHECK(
-        simnet::fingerprint_network_compatibility(changed).value
-        != simnet::fingerprint_network_compatibility(loaded).value
+        simnet::fingerprint_network_compatibility(changed).value !=
+        simnet::fingerprint_network_compatibility(loaded).value
     );
     CHECK(
-        simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value
-        != simnet::fingerprint_runtime_config(loaded, simnet::default_server_config()).value
+        simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value !=
+        simnet::fingerprint_runtime_config(loaded, simnet::default_server_config()).value
     );
     changed = loaded;
     changed.pipeline.level_of_detail.medium_distance += 1.0F;
     CHECK(
-        simnet::fingerprint_network_compatibility(changed).value
-        != simnet::fingerprint_network_compatibility(loaded).value
+        simnet::fingerprint_network_compatibility(changed).value !=
+        simnet::fingerprint_network_compatibility(loaded).value
     );
     changed = loaded;
     ++changed.pipeline.level_of_detail.medium_interval_ticks;
     CHECK(
-        simnet::fingerprint_network_compatibility(changed).value
-        != simnet::fingerprint_network_compatibility(loaded).value
+        simnet::fingerprint_network_compatibility(changed).value !=
+        simnet::fingerprint_network_compatibility(loaded).value
     );
     changed = loaded;
     ++changed.pipeline.level_of_detail.far_interval_ticks;
     CHECK(
-        simnet::fingerprint_network_compatibility(changed).value
-        != simnet::fingerprint_network_compatibility(loaded).value
+        simnet::fingerprint_network_compatibility(changed).value !=
+        simnet::fingerprint_network_compatibility(loaded).value
     );
 
     for (
@@ -1275,7 +1304,8 @@ TEST_CASE("level-of-detail configuration is strict shared treatment", "[config][
             R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 4, "far_interval_ticks": 65536 } } })",
             R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "level_of_detail": { "mode": "distance_bands", "near_distance": 40.0, "medium_distance": 100.0, "medium_interval_ticks": 4, "far_interval_ticks": 16, "extra": true } } })",
             R"({ "pipeline": { "area_of_interest": { "mode": "radius", "radius": 160.0 }, "unexpected": true } })",
-        }) {
+        })
+    {
         auto const invalid = TemporaryConfig{"simnet_lod_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
@@ -1285,9 +1315,8 @@ TEST_CASE("maintained LOD treatments differ only by level of detail", "[config][
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
     auto none = simnet::load_shared_config(directory / "shared_lod_none_aoi_radius_visual.json");
-    auto distance = simnet::load_shared_config(
-        directory / "shared_lod_distance_bands_aoi_radius_visual.json"
-    );
+    auto distance =
+        simnet::load_shared_config(directory / "shared_lod_distance_bands_aoi_radius_visual.json");
     CHECK_FALSE(none.pipeline.enable_incremental);
     CHECK(none.pipeline.enable_delta);
     CHECK(distance.pipeline.level_of_detail.mode == "distance_bands");
@@ -1297,8 +1326,8 @@ TEST_CASE("maintained LOD treatments differ only by level of detail", "[config][
     CHECK(distance.pipeline.level_of_detail.far_interval_ticks == 16U);
     distance.pipeline.level_of_detail = none.pipeline.level_of_detail;
     CHECK(
-        simnet::fingerprint_network_compatibility(distance).value
-        == simnet::fingerprint_network_compatibility(none).value
+        simnet::fingerprint_network_compatibility(distance).value ==
+        simnet::fingerprint_network_compatibility(none).value
     );
 }
 
@@ -1326,8 +1355,8 @@ TEST_CASE(
     CHECK(loaded.packetization.max_payload_bytes == 256U);
     CHECK(loaded.packetization.max_update_bytes == 524288U);
     CHECK(
-        simnet::fingerprint_network_compatibility(loaded).value
-        != simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
+        simnet::fingerprint_network_compatibility(loaded).value !=
+        simnet::fingerprint_network_compatibility(simnet::default_shared_config()).value
     );
 
     for (auto const contents : {
@@ -1338,7 +1367,8 @@ TEST_CASE(
              R"({ "packetization": { "enabled": true, "max_in_flight_updates": 0 } })",
              R"({ "packetization": { "enabled": true, "max_incomplete_bytes": 1 } })",
              R"({ "packetization": { "enabled": true, "reassembly_timeout_ms": 0 } })",
-         }) {
+         })
+    {
         auto const invalid = TemporaryConfig{"simnet_packetization_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
@@ -1347,8 +1377,8 @@ TEST_CASE(
 TEST_CASE("maintained forced packetization treatment loads", "[config][packetization][aoi]")
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
-    auto const config
-        = simnet::load_shared_config(directory / "shared_packetization_aoi_radius_visual.json");
+    auto const config =
+        simnet::load_shared_config(directory / "shared_packetization_aoi_radius_visual.json");
     CHECK(config.packetization.enabled);
     CHECK(config.packetization.max_payload_bytes == 256U);
     CHECK(config.pipeline.area_of_interest.mode == "radius");
@@ -1373,8 +1403,8 @@ TEST_CASE("compression configuration is strict and fingerprinted", "[config][com
     auto const ordinary = simnet::load_shared_config(explicit_none.path());
     CHECK(ordinary.compression.dictionary == "none");
     CHECK(
-        simnet::fingerprint_network_compatibility(ordinary).value
-        == simnet::fingerprint_network_compatibility(loaded).value
+        simnet::fingerprint_network_compatibility(ordinary).value ==
+        simnet::fingerprint_network_compatibility(loaded).value
     );
 
     auto const selected_dictionary = TemporaryConfig{
@@ -1384,8 +1414,8 @@ TEST_CASE("compression configuration is strict and fingerprinted", "[config][com
     auto const dictionary = simnet::load_shared_config(selected_dictionary.path());
     CHECK(dictionary.compression.dictionary == "pipeline_v1");
     CHECK(
-        simnet::fingerprint_network_compatibility(dictionary).value
-        != simnet::fingerprint_network_compatibility(ordinary).value
+        simnet::fingerprint_network_compatibility(dictionary).value !=
+        simnet::fingerprint_network_compatibility(ordinary).value
     );
 
     for (
@@ -1400,7 +1430,8 @@ TEST_CASE("compression configuration is strict and fingerprinted", "[config][com
             R"({ "compression": { "mode": "whole_update", "level": 1, "dictionary": "unknown" } })",
             R"({ "compression": { "mode": "unknown", "level": 1 } })",
             R"({ "compression": { "mode": "whole_update", "level": 1, "extra": true } })",
-        }) {
+        })
+    {
         auto const invalid = TemporaryConfig{"simnet_compression_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
@@ -1448,12 +1479,12 @@ TEST_CASE(
         simnet::app::make_session_identity(ordinary, pipeline, &loaded->dictionary.identity())
     );
     auto const ordinary_identity = simnet::app::make_session_identity(ordinary, pipeline);
-    auto const selected_identity
-        = simnet::app::make_session_identity(selected, pipeline, &loaded->dictionary.identity());
+    auto const selected_identity =
+        simnet::app::make_session_identity(selected, pipeline, &loaded->dictionary.identity());
     auto mismatched = loaded->dictionary.identity();
     ++mismatched.content_fingerprint;
-    auto const mismatched_identity
-        = simnet::app::make_session_identity(selected, pipeline, &mismatched);
+    auto const mismatched_identity =
+        simnet::app::make_session_identity(selected, pipeline, &mismatched);
     CHECK(
         selected_identity.compatibility_fingerprint != ordinary_identity.compatibility_fingerprint
     );
@@ -1461,12 +1492,12 @@ TEST_CASE(
         selected_identity.compatibility_fingerprint != mismatched_identity.compatibility_fingerprint
     );
     CHECK(
-        selected_identity.application_wire_fingerprint
-        == ordinary_identity.application_wire_fingerprint
+        selected_identity.application_wire_fingerprint ==
+        ordinary_identity.application_wire_fingerprint
     );
     CHECK(
-        selected_identity.application_wire_fingerprint
-        == simnet::pipeline_decode_signature(pipeline)
+        selected_identity.application_wire_fingerprint ==
+        simnet::pipeline_decode_signature(pipeline)
     );
 }
 
@@ -1491,10 +1522,10 @@ TEST_CASE(
 TEST_CASE("maintained compression treatments load with matching controls", "[config][compression]")
 {
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
-    auto const none
-        = simnet::load_shared_config(directory / "shared_compression_none_aoi_radius_visual.json");
-    auto const whole
-        = simnet::load_shared_config(directory / "shared_compression_whole_aoi_radius_visual.json");
+    auto const none =
+        simnet::load_shared_config(directory / "shared_compression_none_aoi_radius_visual.json");
+    auto const whole =
+        simnet::load_shared_config(directory / "shared_compression_whole_aoi_radius_visual.json");
     auto const per_packet = simnet::load_shared_config(
         directory / "shared_compression_per_packet_aoi_radius_visual.json"
     );
@@ -1514,12 +1545,12 @@ TEST_CASE("maintained compression treatments load with matching controls", "[con
     normalized_per_packet.compression = {};
     auto const control_fingerprint = simnet::fingerprint_network_compatibility(normalized_none);
     CHECK(
-        simnet::fingerprint_network_compatibility(normalized_whole).value
-        == control_fingerprint.value
+        simnet::fingerprint_network_compatibility(normalized_whole).value ==
+        control_fingerprint.value
     );
     CHECK(
-        simnet::fingerprint_network_compatibility(normalized_per_packet).value
-        == control_fingerprint.value
+        simnet::fingerprint_network_compatibility(normalized_per_packet).value ==
+        control_fingerprint.value
     );
 }
 

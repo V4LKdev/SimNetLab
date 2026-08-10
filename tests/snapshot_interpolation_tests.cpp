@@ -17,7 +17,8 @@ namespace
         auto result = simnet::WorldSnapshot{};
         result.tick = tick;
         result.reserve(boids.size());
-        for (auto const& boid : boids) {
+        for (auto const& boid : boids)
+        {
             result.ids.push_back(boid.id);
             result.classifications.push_back(boid.classification);
             result.positions.push_back(boid.position);
@@ -120,8 +121,8 @@ TEST_CASE("snapshot interpolation uses the current entity population", "[snapsho
     REQUIRE(simnet::interpolate_world_snapshots(previous, current, 0.5, output).valid);
     CHECK(output.ids == std::vector<simnet::EntityNetId>{2U, 3U});
     CHECK(
-        output.classifications
-        == std::vector<simnet::EntityClassification>(2U, simnet::EntityClassification{247U})
+        output.classifications ==
+        std::vector<simnet::EntityClassification>(2U, simnet::EntityClassification{247U})
     );
     CHECK(output.positions[0].x == Catch::Approx(3.0F));
     CHECK(output.positions[1].x == 6.0F);

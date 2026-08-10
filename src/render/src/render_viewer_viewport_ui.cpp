@@ -35,21 +35,22 @@ namespace simnet
         draw_orientation_gizmo();
         auto layout = viewport_ui_layout(scene_rect_);
         auto const mouse = GetMousePosition();
-        auto const pause_label
-            = frame.info.simulation_paused.value_or(false) ? "\uf04b  Resume" : "\uf04c  Pause";
+        auto const pause_label =
+            frame.info.simulation_paused.value_or(false) ? "\uf04b  Resume" : "\uf04c  Pause";
         std::array labels{pause_label, "\uf030  Camera", "\uf03a  Overlays", "\uf059  Help"};
-        for (std::size_t index = 0; index < labels.size(); ++index) {
+        for (std::size_t index = 0; index < labels.size(); ++index)
+        {
             auto const rect = layout.toolbar_buttons[index];
             auto const hovered = CheckCollisionPointRec(mouse, rect);
             auto const disabled = index == 0U && !frame.info.capabilities.can_pause_simulation;
-            auto const active = (index == 1U && ui_.popover == OpenPopover::Camera)
-                || (index == 2U && ui_.popover == OpenPopover::Overlays)
-                || (index == 3U && ui_.popover == OpenPopover::Help);
+            auto const active = (index == 1U && ui_.popover == OpenPopover::Camera) ||
+                                (index == 2U && ui_.popover == OpenPopover::Overlays) ||
+                                (index == 3U && ui_.popover == OpenPopover::Help);
             DrawRectangleRec(
                 rect,
-                active                     ? palette.hover
-                    : hovered && !disabled ? palette.hover
-                                           : palette.raised
+                active                 ? palette.hover
+                : hovered && !disabled ? palette.hover
+                                       : palette.raised
             );
             DrawRectangleLinesEx(rect, 1.0F, active ? palette.accent : palette.border);
             draw_text(
@@ -62,18 +63,23 @@ namespace simnet
         }
 
         char const* camera_name = "Overview orbit";
-        if (mode_ == CameraMode::EntityFollow) {
+        if (mode_ == CameraMode::EntityFollow)
+        {
             camera_name = "Entity follow";
-        } else if (mode_ == CameraMode::StationaryObserver) {
+        }
+        else if (mode_ == CameraMode::StationaryObserver)
+        {
             camera_name = "Stationary observer";
-        } else if (mode_ == CameraMode::Game) {
+        }
+        else if (mode_ == CameraMode::Game)
+        {
             camera_name = "Game camera";
         }
         char mode[96]{};
         std::snprintf(mode, sizeof(mode), "\uf030  %s", camera_name);
         auto const backing_width = MeasureTextEx(font_, mode, typography.toolbar, 0.75F).x + 20.0F;
-        auto const backing
-            = Rectangle{static_cast<float>(scene_rect_.x + 14), 14.0F, backing_width, 38.0F};
+        auto const backing =
+            Rectangle{static_cast<float>(scene_rect_.x + 14), 14.0F, backing_width, 38.0F};
         DrawRectangleRec(backing, ColorAlpha(palette.raised, 0.88F));
         draw_text(
             font_,
@@ -83,10 +89,12 @@ namespace simnet
             palette.primary
         );
 
-        if (ui_.popover == OpenPopover::Camera) {
+        if (ui_.popover == OpenPopover::Camera)
+        {
             auto options = camera_options(frame, selected_entity_.has_value());
             auto count = std::size_t{};
-            for (auto const& option : options) {
+            for (auto const& option : options)
+            {
                 count += option.available ? 1U : 0U;
             }
             layout.popover.height = 96.0F + static_cast<float>(count) * overlay_row_height;
@@ -100,8 +108,10 @@ namespace simnet
                 palette.accent
             );
             auto y = layout.popover.y + 50.0F;
-            for (auto const& option : options) {
-                if (!option.available) {
+            for (auto const& option : options)
+            {
+                if (!option.available)
+                {
                     continue;
                 }
                 auto const active = mode_ == option.mode;
@@ -136,23 +146,28 @@ namespace simnet
                 typography.body,
                 palette.primary
             );
-        } else if (ui_.popover == OpenPopover::Overlays) {
+        }
+        else if (ui_.popover == OpenPopover::Overlays)
+        {
             auto options = overlay_options(overlays_, frame, selected_entity_.has_value());
             auto count = std::size_t{};
             auto groups = std::size_t{};
             auto last_group = std::string_view{};
-            for (auto const& option : options) {
-                if (!option.available) {
+            for (auto const& option : options)
+            {
+                if (!option.available)
+                {
                     continue;
                 }
                 ++count;
-                if (option.group != last_group) {
+                if (option.group != last_group)
+                {
                     ++groups;
                     last_group = option.group;
                 }
             }
-            layout.popover.height = 52.0F + static_cast<float>(count) * overlay_row_height
-                + static_cast<float>(groups) * 25.0F;
+            layout.popover.height = 52.0F + static_cast<float>(count) * overlay_row_height +
+                                    static_cast<float>(groups) * 25.0F;
             DrawRectangleRec(layout.popover, palette.raised);
             DrawRectangleLinesEx(layout.popover, 1.0F, palette.border);
             draw_text(
@@ -164,11 +179,14 @@ namespace simnet
             );
             auto y = layout.popover.y + 50.0F;
             last_group = {};
-            for (auto const& option : options) {
-                if (!option.available) {
+            for (auto const& option : options)
+            {
+                if (!option.available)
+                {
                     continue;
                 }
-                if (option.group != last_group) {
+                if (option.group != last_group)
+                {
                     last_group = option.group;
                     draw_text(
                         font_,
@@ -185,7 +203,8 @@ namespace simnet
                     layout.popover.width - 24.0F,
                     overlay_row_height - 2.0F
                 };
-                if (CheckCollisionPointRec(mouse, row)) {
+                if (CheckCollisionPointRec(mouse, row))
+                {
                     DrawRectangleRec(row, palette.hover);
                 }
                 DrawRectangleLinesEx(
@@ -193,7 +212,8 @@ namespace simnet
                     1.0F,
                     *option.value ? palette.accent : palette.border
                 );
-                if (*option.value) {
+                if (*option.value)
+                {
                     DrawRectangle(
                         static_cast<int>(row.x + 8.0F),
                         static_cast<int>(row.y + 12.0F),
@@ -213,10 +233,11 @@ namespace simnet
             }
         }
 
-        if (selected_entity_frame_.has_value() && ui_.page != InspectorPage::Entity) {
+        if (selected_entity_frame_.has_value() && ui_.page != InspectorPage::Entity)
+        {
             auto const card = Rectangle{
-                static_cast<float>(scene_rect_.x)
-                    + (static_cast<float>(scene_rect_.width) - 460.0F) * 0.5F,
+                static_cast<float>(scene_rect_.x) +
+                    (static_cast<float>(scene_rect_.width) - 460.0F) * 0.5F,
                 static_cast<float>(scene_rect_.height) - 76.0F,
                 460.0F,
                 56.0F
@@ -224,8 +245,9 @@ namespace simnet
             DrawRectangleRec(card, ColorAlpha(palette.raised, 0.94F));
             DrawRectangleLinesEx(card, 1.0F, palette.border);
             char value[160]{};
-            if (frame.selected_details.has_value()
-                && frame.selected_details->id == selected_entity_frame_->id) {
+            if (frame.selected_details.has_value() &&
+                frame.selected_details->id == selected_entity_frame_->id)
+            {
                 std::snprintf(
                     value,
                     sizeof(value),
@@ -234,7 +256,9 @@ namespace simnet
                     frame.selected_details->speed.value_or(0.0F),
                     frame.selected_details->retained_neighbor_count.value_or(0U)
                 );
-            } else {
+            }
+            else
+            {
                 std::snprintf(
                     value,
                     sizeof(value),
@@ -257,41 +281,49 @@ namespace simnet
 
     void Viewer::Impl::draw_help_overlay(RenderFrame const& frame) const
     {
-        if (ui_.popover != OpenPopover::Help) {
+        if (ui_.popover != OpenPopover::Help)
+        {
             return;
         }
         auto const rect = help_overlay_rect(scene_rect_, frame, mode_);
         DrawRectangleRec(rect, palette.raised);
         DrawRectangleLinesEx(rect, 1.0F, palette.border);
         auto y = rect.y + 17.0F;
-        auto line = [&](char const* value, Color color = palette.secondary) {
+        auto line = [&](char const* value, Color color = palette.secondary)
+        {
             draw_text(font_, value, {rect.x + 18.0F, y}, typography.body, color);
             y += 29.0F;
         };
         line("\uf11c  VIEWER CONTROLS", palette.accent);
         line("F1 / F2 / F3 / F4   Overview / Network / Entity / Setup");
-        if (mode_ == CameraMode::OverviewOrbit) {
+        if (mode_ == CameraMode::OverviewOrbit)
+        {
             line("LMB                    Select entity");
             line("RMB + drag             Orbit camera");
             line("Wheel                  Zoom viewport");
-        } else if (mode_ == CameraMode::EntityFollow) {
+        }
+        else if (mode_ == CameraMode::EntityFollow)
+        {
             line("[ / ]                  Previous / next entity");
             line("Backspace              Clear selection");
             line("RMB + drag             Orbit around entity");
             line("Wheel                  Follow distance");
         }
-        if (mode_ == CameraMode::OverviewOrbit || mode_ == CameraMode::EntityFollow) {
+        if (mode_ == CameraMode::OverviewOrbit || mode_ == CameraMode::EntityFollow)
+        {
             line("O                      Toggle automatic orbit");
         }
         line("C / R                   Camera menu / reset");
         line("M / H                   Overlays / close help");
         line("P                       Pause / resume");
         line("F12                     Save full-window screenshot");
-        if (mode_ == CameraMode::Game && frame.game_camera.has_value()) {
+        if (mode_ == CameraMode::Game && frame.game_camera.has_value())
+        {
             line("WASD                    Steer player fish");
             line("Shift / Ctrl            Accelerate / slow");
         }
-        if (mode_ == CameraMode::StationaryObserver && frame.stationary_observer.has_value()) {
+        if (mode_ == CameraMode::StationaryObserver && frame.stationary_observer.has_value())
+        {
             line("Arrow keys              Rotate stationary observer");
         }
         line("Escape                  Quit application");
@@ -318,9 +350,10 @@ namespace simnet
             static_cast<float>(scene_rect_.height - 58)
         };
         DrawCircleV(origin, 35.0F, ColorAlpha(palette.raised, 0.82F));
-        auto axis = [&](Vec3f world, Color color, char const* label) {
-            auto const endpoint
-                = Vector2{origin.x + dot(world, right) * 27.0F, origin.y - dot(world, up) * 27.0F};
+        auto axis = [&](Vec3f world, Color color, char const* label)
+        {
+            auto const endpoint =
+                Vector2{origin.x + dot(world, right) * 27.0F, origin.y - dot(world, up) * 27.0F};
             DrawLineEx(origin, endpoint, 2.5F, color);
             draw_text(
                 font_,

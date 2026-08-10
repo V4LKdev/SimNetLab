@@ -32,7 +32,8 @@ namespace simnet
 
         Color value_color(UiValueState state) noexcept
         {
-            switch (state) {
+            switch (state)
+            {
                 case UiValueState::Muted:
                     return palette.muted;
                 case UiValueState::Success:
@@ -68,10 +69,12 @@ namespace simnet
         float panel_content_extent(PanelModel const& model) noexcept
         {
             auto height = 12.0F;
-            for (std::size_t index = 0; index < model.section_count; ++index) {
+            for (std::size_t index = 0; index < model.section_count; ++index)
+            {
                 auto const& section = model.sections[index];
                 height += section_header_height;
-                if (section.expanded) {
+                if (section.expanded)
+                {
                     height += panel_row_height * section.row_count;
                 }
             }
@@ -91,74 +94,98 @@ namespace simnet
     )
     {
         ui_.pointer_captured = false;
-        if (IsKeyPressed(KEY_F1)) {
+        if (IsKeyPressed(KEY_F1))
+        {
             ui_.page = InspectorPage::Overview;
-        } else if (IsKeyPressed(KEY_F2)) {
+        }
+        else if (IsKeyPressed(KEY_F2))
+        {
             ui_.page = InspectorPage::Network;
-        } else if (IsKeyPressed(KEY_F3)) {
+        }
+        else if (IsKeyPressed(KEY_F3))
+        {
             ui_.page = InspectorPage::Entity;
-        } else if (IsKeyPressed(KEY_F4)) {
+        }
+        else if (IsKeyPressed(KEY_F4))
+        {
             ui_.page = InspectorPage::Setup;
         }
-        if (IsKeyPressed(KEY_H)) {
+        if (IsKeyPressed(KEY_H))
+        {
             toggle_popover(ui_, OpenPopover::Help);
         }
-        if (IsKeyPressed(KEY_M)) {
+        if (IsKeyPressed(KEY_M))
+        {
             toggle_popover(ui_, OpenPopover::Overlays);
         }
-        if (IsKeyPressed(KEY_C)) {
+        if (IsKeyPressed(KEY_C))
+        {
             toggle_popover(ui_, OpenPopover::Camera);
         }
-        if (IsKeyPressed(KEY_R)) {
+        if (IsKeyPressed(KEY_R))
+        {
             reset_active_camera(frame);
         }
-        if (IsKeyPressed(KEY_O)) {
+        if (IsKeyPressed(KEY_O))
+        {
             automatic_orbit_enabled_ = !automatic_orbit_enabled_;
         }
-        if (IsKeyPressed(KEY_F12)) {
+        if (IsKeyPressed(KEY_F12))
+        {
             screenshot_requested = true;
         }
-        if (IsKeyPressed(KEY_P) && frame.info.capabilities.can_pause_simulation) {
+        if (IsKeyPressed(KEY_P) && frame.info.capabilities.can_pause_simulation)
+        {
             result.toggle_simulation_pause_requested = true;
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && selected_entity_.has_value()) {
+        if (IsKeyPressed(KEY_BACKSPACE) && selected_entity_.has_value())
+        {
             clear_selection(result);
         }
 
         auto const mouse = GetMousePosition();
         auto const panel_width = static_cast<float>(scene_rect_.x);
-        if (mouse.x < panel_width) {
+        if (mouse.x < panel_width)
+        {
             ui_.pointer_captured = true;
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                for (std::size_t index = 0; index < 4U; ++index) {
-                    if (CheckCollisionPointRec(mouse, inspector_tab(index, panel_width))) {
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            {
+                for (std::size_t index = 0; index < 4U; ++index)
+                {
+                    if (CheckCollisionPointRec(mouse, inspector_tab(index, panel_width)))
+                    {
                         ui_.page = static_cast<InspectorPage>(index);
                     }
                 }
 
-                auto const content_bottom
-                    = static_cast<float>(config_.window_height) - panel_footer_height;
-                if (mouse.y >= panel_content_top && mouse.y < content_bottom) {
+                auto const content_bottom =
+                    static_cast<float>(config_.window_height) - panel_footer_height;
+                if (mouse.y >= panel_content_top && mouse.y < content_bottom)
+                {
                     auto const& model = panel_model_;
                     auto const scroll = ui_.page_scroll[page_index(ui_.page)];
                     auto y = panel_content_top - scroll + 12.0F;
-                    for (std::size_t index = 0; index < model.section_count; ++index) {
+                    for (std::size_t index = 0; index < model.section_count; ++index)
+                    {
                         auto const& section = model.sections[index];
                         auto const header = Rectangle{0.0F, y, panel_width, section_header_height};
-                        if (section.collapsible && CheckCollisionPointRec(mouse, header)) {
+                        if (section.collapsible && CheckCollisionPointRec(mouse, header))
+                        {
                             ui_.expanded_sections[page_index(ui_.page)] ^= (1U << index);
                             break;
                         }
                         y += section_header_height;
-                        if (section.expanded) {
+                        if (section.expanded)
+                        {
                             y += panel_row_height * section.row_count;
                         }
                     }
                 }
             }
             auto const wheel = GetMouseWheelMove();
-            if (wheel != 0.0F && mouse.y >= panel_content_top
-                && mouse.y < static_cast<float>(config_.window_height) - panel_footer_height) {
+            if (wheel != 0.0F && mouse.y >= panel_content_top &&
+                mouse.y < static_cast<float>(config_.window_height) - panel_footer_height)
+            {
                 auto& scroll = ui_.page_scroll[page_index(ui_.page)];
                 scroll = std::max(0.0F, scroll - wheel * 52.0F);
             }
@@ -167,69 +194,88 @@ namespace simnet
         auto layout = viewport_ui_layout(scene_rect_);
         auto const overlays = overlay_options(overlays_, frame, selected_entity_.has_value());
         auto const cameras = camera_options(frame, selected_entity_.has_value());
-        if (ui_.popover == OpenPopover::Overlays) {
+        if (ui_.popover == OpenPopover::Overlays)
+        {
             auto count = std::size_t{};
             auto groups = std::size_t{};
             auto last_group = std::string_view{};
-            for (auto const& option : overlays) {
-                if (!option.available) {
+            for (auto const& option : overlays)
+            {
+                if (!option.available)
+                {
                     continue;
                 }
                 ++count;
-                if (option.group != last_group) {
+                if (option.group != last_group)
+                {
                     ++groups;
                     last_group = option.group;
                 }
             }
-            layout.popover.height = 52.0F + static_cast<float>(count) * overlay_row_height
-                + static_cast<float>(groups) * 25.0F;
-        } else if (ui_.popover == OpenPopover::Camera) {
+            layout.popover.height = 52.0F + static_cast<float>(count) * overlay_row_height +
+                                    static_cast<float>(groups) * 25.0F;
+        }
+        else if (ui_.popover == OpenPopover::Camera)
+        {
             auto count = std::size_t{};
-            for (auto const& option : cameras) {
+            for (auto const& option : cameras)
+            {
                 count += option.available ? 1U : 0U;
             }
             layout.popover.height = 96.0F + static_cast<float>(count) * overlay_row_height;
         }
 
-        for (auto const rect : layout.toolbar_buttons) {
-            if (CheckCollisionPointRec(mouse, rect)) {
+        for (auto const rect : layout.toolbar_buttons)
+        {
+            if (CheckCollisionPointRec(mouse, rect))
+            {
                 ui_.pointer_captured = true;
             }
         }
-        if ((ui_.popover == OpenPopover::Camera || ui_.popover == OpenPopover::Overlays)
-            && CheckCollisionPointRec(mouse, layout.popover)) {
+        if ((ui_.popover == OpenPopover::Camera || ui_.popover == OpenPopover::Overlays) &&
+            CheckCollisionPointRec(mouse, layout.popover))
+        {
             ui_.pointer_captured = true;
         }
-        if (ui_.popover == OpenPopover::Help
-            && CheckCollisionPointRec(mouse, help_overlay_rect(scene_rect_, frame, mode_))) {
+        if (ui_.popover == OpenPopover::Help &&
+            CheckCollisionPointRec(mouse, help_overlay_rect(scene_rect_, frame, mode_)))
+        {
             ui_.pointer_captured = true;
         }
 
-        if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        {
             return;
         }
-        if (CheckCollisionPointRec(mouse, layout.toolbar_buttons[0])
-            && frame.info.capabilities.can_pause_simulation) {
+        if (CheckCollisionPointRec(mouse, layout.toolbar_buttons[0]) &&
+            frame.info.capabilities.can_pause_simulation)
+        {
             result.toggle_simulation_pause_requested = true;
             return;
         }
-        if (CheckCollisionPointRec(mouse, layout.toolbar_buttons[1])) {
+        if (CheckCollisionPointRec(mouse, layout.toolbar_buttons[1]))
+        {
             toggle_popover(ui_, OpenPopover::Camera);
             return;
         }
-        if (CheckCollisionPointRec(mouse, layout.toolbar_buttons[2])) {
+        if (CheckCollisionPointRec(mouse, layout.toolbar_buttons[2]))
+        {
             toggle_popover(ui_, OpenPopover::Overlays);
             return;
         }
-        if (CheckCollisionPointRec(mouse, layout.toolbar_buttons[3])) {
+        if (CheckCollisionPointRec(mouse, layout.toolbar_buttons[3]))
+        {
             toggle_popover(ui_, OpenPopover::Help);
             return;
         }
 
-        if (ui_.popover == OpenPopover::Camera && CheckCollisionPointRec(mouse, layout.popover)) {
+        if (ui_.popover == OpenPopover::Camera && CheckCollisionPointRec(mouse, layout.popover))
+        {
             auto y = layout.popover.y + 50.0F;
-            for (auto const& option : cameras) {
-                if (!option.available) {
+            for (auto const& option : cameras)
+            {
+                if (!option.available)
+                {
                     continue;
                 }
                 auto const row = Rectangle{
@@ -238,7 +284,8 @@ namespace simnet
                     layout.popover.width - 24.0F,
                     overlay_row_height - 2.0F
                 };
-                if (CheckCollisionPointRec(mouse, row)) {
+                if (CheckCollisionPointRec(mouse, row))
+                {
                     mode_ = option.mode;
                     ui_.popover = OpenPopover::None;
                     return;
@@ -251,21 +298,26 @@ namespace simnet
                 layout.popover.width - 24.0F,
                 overlay_row_height - 2.0F
             };
-            if (CheckCollisionPointRec(mouse, reset)) {
+            if (CheckCollisionPointRec(mouse, reset))
+            {
                 reset_active_camera(frame);
                 ui_.popover = OpenPopover::None;
             }
             return;
         }
 
-        if (ui_.popover == OpenPopover::Overlays && CheckCollisionPointRec(mouse, layout.popover)) {
+        if (ui_.popover == OpenPopover::Overlays && CheckCollisionPointRec(mouse, layout.popover))
+        {
             auto y = layout.popover.y + 50.0F;
             auto last_group = std::string_view{};
-            for (auto& option : overlays) {
-                if (!option.available) {
+            for (auto& option : overlays)
+            {
+                if (!option.available)
+                {
                     continue;
                 }
-                if (option.group != last_group) {
+                if (option.group != last_group)
+                {
                     y += 25.0F;
                     last_group = option.group;
                 }
@@ -275,7 +327,8 @@ namespace simnet
                     layout.popover.width - 24.0F,
                     overlay_row_height - 2.0F
                 };
-                if (CheckCollisionPointRec(mouse, row)) {
+                if (CheckCollisionPointRec(mouse, row))
+                {
                     *option.value = !*option.value;
                     return;
                 }
@@ -284,7 +337,8 @@ namespace simnet
             return;
         }
 
-        if (ui_.popover != OpenPopover::None) {
+        if (ui_.popover != OpenPopover::None)
+        {
             ui_.popover = OpenPopover::None;
         }
     }
@@ -316,7 +370,8 @@ namespace simnet
         );
         char context[96]{};
         constexpr std::array page_titles{"Overview", "Network", "Entity", "Setup"};
-        if (frame.info.context.kind == ViewerKind::Server) {
+        if (frame.info.context.kind == ViewerKind::Server)
+        {
             auto const state = frame.info.simulation_paused.value_or(false) ? "Paused" : "Running";
             std::snprintf(
                 context,
@@ -325,7 +380,9 @@ namespace simnet
                 page_titles[page_index(ui_.page)],
                 state
             );
-        } else {
+        }
+        else
+        {
             std::snprintf(
                 context,
                 sizeof(context),
@@ -339,10 +396,12 @@ namespace simnet
 
         constexpr std::array
             page_names{"\uf201 Overview", "\uf1eb Network", "\uf1b2 Entity", "\uf013 Setup"};
-        for (std::size_t index = 0; index < page_names.size(); ++index) {
+        for (std::size_t index = 0; index < page_names.size(); ++index)
+        {
             auto const rect = inspector_tab(index, width);
             auto const active = page_index(ui_.page) == index;
-            if (active) {
+            if (active)
+            {
                 DrawRectangleRec(rect, palette.raised);
                 DrawRectangle(
                     static_cast<int>(rect.x),
@@ -362,8 +421,8 @@ namespace simnet
         }
 
         auto const content_top = static_cast<int>(panel_content_top);
-        auto const content_bottom
-            = static_cast<int>(static_cast<float>(config_.window_height) - panel_footer_height);
+        auto const content_bottom =
+            static_cast<int>(static_cast<float>(config_.window_height) - panel_footer_height);
         auto const content_height = content_bottom - content_top;
         auto& scroll = ui_.page_scroll[page_index(ui_.page)];
         auto const total_height = panel_content_extent(panel_model_);
@@ -373,7 +432,8 @@ namespace simnet
 
         BeginScissorMode(0, content_top, scene_rect_.x - 2, content_height);
         for (std::size_t section_index = 0; section_index < panel_model_.section_count;
-             ++section_index) {
+             ++section_index)
+        {
             auto const& section = panel_model_.sections[section_index];
             DrawLine(
                 16,
@@ -383,7 +443,8 @@ namespace simnet
                 palette.divider
             );
             char title[48]{};
-            if (section.collapsible) {
+            if (section.collapsible)
+            {
                 std::snprintf(
                     title,
                     sizeof(title),
@@ -391,19 +452,24 @@ namespace simnet
                     section.expanded ? "\uf078" : "\uf054",
                     section.title.data()
                 );
-            } else {
+            }
+            else
+            {
                 std::snprintf(title, sizeof(title), "%s", section.title.data());
             }
             draw_text(font_, title, {16.0F, content_y + 16.0F}, typography.section, palette.accent);
             content_y += section_header_height;
-            if (!section.expanded) {
+            if (!section.expanded)
+            {
                 continue;
             }
             for (std::size_t row_index = section.first_row;
                  row_index < section.first_row + section.row_count;
-                 ++row_index) {
+                 ++row_index)
+            {
                 auto const& row = panel_model_.rows[row_index];
-                if (row.full_width) {
+                if (row.full_width)
+                {
                     draw_text(
                         font_,
                         row.value.data(),
@@ -411,7 +477,9 @@ namespace simnet
                         typography.body,
                         value_color(row.state)
                     );
-                } else {
+                }
+                else
+                {
                     draw_text(
                         font_,
                         row.label.data(),
@@ -419,8 +487,8 @@ namespace simnet
                         typography.body,
                         palette.secondary
                     );
-                    auto const value_width
-                        = MeasureTextEx(font_, row.value.data(), typography.body, 0.75F).x;
+                    auto const value_width =
+                        MeasureTextEx(font_, row.value.data(), typography.body, 0.75F).x;
                     draw_text(
                         font_,
                         row.value.data(),
@@ -434,7 +502,8 @@ namespace simnet
         }
         EndScissorMode();
 
-        if (max_scroll > 0.0F) {
+        if (max_scroll > 0.0F)
+        {
             auto const track = Rectangle{
                 width - 7.0F,
                 static_cast<float>(content_top),
@@ -455,18 +524,27 @@ namespace simnet
             palette.raised
         );
         char footer[160]{};
-        if (frame.info.context.kind == ViewerKind::Server) {
+        if (frame.info.context.kind == ViewerKind::Server)
+        {
             auto const connected = frame.info.connection
-                                       .and_then([](auto const& value) {
-                                           return value.connected_peer_count;
-                                       })
+                                       .and_then(
+                                           [](auto const& value)
+                                           {
+                                               return value.connected_peer_count;
+                                           }
+                                       )
                                        .value_or(0U);
-            if (connected == 0U) {
+            if (connected == 0U)
+            {
                 std::snprintf(footer, sizeof(footer), "No clients connected");
-            } else {
+            }
+            else
+            {
                 std::snprintf(footer, sizeof(footer), "%u client connected", connected);
             }
-        } else if (frame.info.connection.has_value()) {
+        }
+        else if (frame.info.connection.has_value())
+        {
             std::snprintf(
                 footer,
                 sizeof(footer),
@@ -474,7 +552,9 @@ namespace simnet
                 static_cast<int>(frame.info.connection->state.size()),
                 frame.info.connection->state.data()
             );
-        } else {
+        }
+        else
+        {
             std::snprintf(footer, sizeof(footer), "Disconnected");
         }
         char decorated[180]{};

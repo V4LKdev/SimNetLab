@@ -149,7 +149,8 @@ namespace
     [[nodiscard]] constexpr std::string_view
     compression_encoding_name(simnet::CompressionEncoding encoding) noexcept
     {
-        switch (encoding) {
+        switch (encoding)
+        {
             case simnet::CompressionEncoding::Raw:
                 return "Raw";
             case simnet::CompressionEncoding::Zstd:
@@ -176,9 +177,14 @@ namespace
         simnet::Nanoseconds timeout
     )
     {
-        std::erase_if(groups, [&](PendingCompressionGroup const& group) {
-            return now >= group.first_received_time && now - group.first_received_time >= timeout;
-        });
+        std::erase_if(
+            groups,
+            [&](PendingCompressionGroup const& group)
+            {
+                return now >= group.first_received_time &&
+                       now - group.first_received_time >= timeout;
+            }
+        );
     }
 
     void record_group_transport_bytes(
@@ -191,25 +197,31 @@ namespace
         std::uint32_t maximum_groups
     )
     {
-        if (group_id == 0U) {
+        if (group_id == 0U)
+        {
             return;
         }
         auto const found = std::ranges::find(groups, group_id, &PendingCompressionGroup::group_id);
-        if (found != groups.end()) {
+        if (found != groups.end())
+        {
             found->transport_bytes += bytes;
             found->compression_input_bytes += decompression.input_bytes;
             found->compression_payload_bytes += decompression.payload_bytes;
             found->compression_envelope_bytes += decompression.envelope_bytes;
             found->compression_output_bytes += decompression.output_bytes;
             found->decompression_cpu_time += decompression.cpu_time;
-            if (decompression.encoding == simnet::CompressionEncoding::Zstd) {
+            if (decompression.encoding == simnet::CompressionEncoding::Zstd)
+            {
                 ++found->zstd_packet_count;
-            } else {
+            }
+            else
+            {
                 ++found->raw_packet_count;
             }
             return;
         }
-        if (groups.size() >= maximum_groups) {
+        if (groups.size() >= maximum_groups)
+        {
             return;
         }
         groups.push_back({
@@ -222,10 +234,10 @@ namespace
             .compression_envelope_bytes = decompression.envelope_bytes,
             .compression_output_bytes = decompression.output_bytes,
             .decompression_cpu_time = decompression.cpu_time,
-            .zstd_packet_count
-            = decompression.encoding == simnet::CompressionEncoding::Zstd ? 1U : 0U,
-            .raw_packet_count
-            = decompression.encoding == simnet::CompressionEncoding::Zstd ? 0U : 1U,
+            .zstd_packet_count =
+                decompression.encoding == simnet::CompressionEncoding::Zstd ? 1U : 0U,
+            .raw_packet_count =
+                decompression.encoding == simnet::CompressionEncoding::Zstd ? 0U : 1U,
         });
     }
 
@@ -245,17 +257,18 @@ namespace
     ) noexcept
     {
         auto const found = std::ranges::find(groups, group_id, &PendingCompressionGroup::group_id);
-        return found == groups.end()
-                || found->transport_bytes > std::numeric_limits<std::uint32_t>::max()
-            ? fallback
-            : static_cast<std::uint32_t>(found->transport_bytes);
+        return found == groups.end() ||
+                       found->transport_bytes > std::numeric_limits<std::uint32_t>::max()
+                   ? fallback
+                   : static_cast<std::uint32_t>(found->transport_bytes);
     }
 
     [[nodiscard]] std::string_view
     client_replication_outcome_name(simnet::ClientReplicationOutcome outcome) noexcept
     {
         using enum simnet::ClientReplicationOutcome;
-        switch (outcome) {
+        switch (outcome)
+        {
             case PacketIncomplete:
                 return "packet_incomplete";
             case PacketDuplicate:
@@ -289,7 +302,8 @@ namespace
     void
     log_client_replication_measurements(simnet::ClientReplicationMeasurements const& measurements)
     {
-        if (!measurements.latest_attempt.has_value()) {
+        if (!measurements.latest_attempt.has_value())
+        {
             simnet::log(
                 simnet::LogCategory::Telemetry,
                 simnet::LogLevel::Info,
@@ -302,31 +316,33 @@ namespace
         simnet::log(
             simnet::LogCategory::Telemetry,
             simnet::LogLevel::Info,
-            "client replication measurements attempts=" + std::to_string(measurements.attempt_count)
-                + " applied=" + std::to_string(measurements.applied_count) + " latest_outcome="
-                + std::string{client_replication_outcome_name(value.outcome)} + " tick="
-                + std::to_string(value.tick) + " sequence=" + std::to_string(value.sequence)
-                + " baseline_sequence=" + std::to_string(value.baseline_sequence)
-                + " snapshot_kind=" + std::to_string(static_cast<unsigned>(value.snapshot_kind))
-                + " encoded_update_bytes=" + std::to_string(value.encoded_update_bytes)
-                + " received_outer_bytes=" + std::to_string(value.received_outer_bytes)
-                + " upserts=" + std::to_string(value.upsert_count)
-                + " deletes=" + std::to_string(value.delete_count)
-                + " reconstructed_entities=" + std::to_string(value.reconstructed_entity_count)
-                + " final_sink_entities=" + std::to_string(value.final_sink_entity_count)
-                + " decode_elapsed_ns=" + std::to_string(value.decode_elapsed_time.count())
-                + " baseline_resolution_elapsed_ns="
-                + std::to_string(value.baseline_resolution_elapsed_time.count())
-                + " reconstruction_elapsed_ns="
-                + std::to_string(value.reconstruction_elapsed_time.count())
-                + " sink_preparation_elapsed_ns="
-                + std::to_string(value.sink_preparation_elapsed_time.count())
-                + " sink_application_elapsed_ns="
-                + std::to_string(value.sink_application_elapsed_time.count())
-                + " canonical_snapshot_commit_elapsed_ns="
-                + std::to_string(value.canonical_snapshot_commit_elapsed_time.count())
-                + " total_receive_to_applied_elapsed_ns="
-                + std::to_string(value.total_receive_to_applied_elapsed_time.count())
+            "client replication measurements attempts=" +
+                std::to_string(measurements.attempt_count) +
+                " applied=" + std::to_string(measurements.applied_count) +
+                " latest_outcome=" + std::string{client_replication_outcome_name(value.outcome)} +
+                " tick=" + std::to_string(value.tick) +
+                " sequence=" + std::to_string(value.sequence) +
+                " baseline_sequence=" + std::to_string(value.baseline_sequence) +
+                " snapshot_kind=" + std::to_string(static_cast<unsigned>(value.snapshot_kind)) +
+                " encoded_update_bytes=" + std::to_string(value.encoded_update_bytes) +
+                " received_outer_bytes=" + std::to_string(value.received_outer_bytes) +
+                " upserts=" + std::to_string(value.upsert_count) +
+                " deletes=" + std::to_string(value.delete_count) +
+                " reconstructed_entities=" + std::to_string(value.reconstructed_entity_count) +
+                " final_sink_entities=" + std::to_string(value.final_sink_entity_count) +
+                " decode_elapsed_ns=" + std::to_string(value.decode_elapsed_time.count()) +
+                " baseline_resolution_elapsed_ns=" +
+                std::to_string(value.baseline_resolution_elapsed_time.count()) +
+                " reconstruction_elapsed_ns=" +
+                std::to_string(value.reconstruction_elapsed_time.count()) +
+                " sink_preparation_elapsed_ns=" +
+                std::to_string(value.sink_preparation_elapsed_time.count()) +
+                " sink_application_elapsed_ns=" +
+                std::to_string(value.sink_application_elapsed_time.count()) +
+                " canonical_snapshot_commit_elapsed_ns=" +
+                std::to_string(value.canonical_snapshot_commit_elapsed_time.count()) +
+                " total_receive_to_applied_elapsed_ns=" +
+                std::to_string(value.total_receive_to_applied_elapsed_time.count())
         );
     }
 
@@ -334,11 +350,13 @@ namespace
     [[nodiscard]] std::optional<simnet::GameCameraView>
     player_game_camera(simnet::WorldSnapshot const& snapshot, simnet::EntityNetId player_id)
     {
-        if (player_id == 0U) {
+        if (player_id == 0U)
+        {
             return std::nullopt;
         }
         auto const found = std::ranges::find(snapshot.ids, player_id);
-        if (found == snapshot.ids.end()) {
+        if (found == snapshot.ids.end())
+        {
             return std::nullopt;
         }
         auto const offset = static_cast<std::size_t>(std::distance(snapshot.ids.begin(), found));
@@ -358,8 +376,10 @@ namespace
     player_input_message(simnet::PlayerViewInput input) noexcept
     {
         auto buttons = std::uint8_t{};
-        auto const set = [&buttons](bool down, simnet::app::PlayerButton button) {
-            if (down) {
+        auto const set = [&buttons](bool down, simnet::app::PlayerButton button)
+        {
+            if (down)
+            {
                 buttons |= static_cast<std::uint8_t>(button);
             }
         };
@@ -392,23 +412,29 @@ namespace
     )
     {
         alpha = 1.0;
-        if (history.empty()) {
+        if (history.empty())
+        {
             return nullptr;
         }
 
         auto const& current = history.back();
-        if (state.observed_tick != current.snapshot.tick) {
+        if (state.observed_tick != current.snapshot.tick)
+        {
             state.observed_tick = current.snapshot.tick;
             state.elapsed = {};
-        } else if (!paused) {
+        }
+        else if (!paused)
+        {
             state.elapsed += std::max(frame_delta, simnet::Nanoseconds{});
         }
-        if (!interpolation_enabled || paused || history.size() < 2U) {
+        if (!interpolation_enabled || paused || history.size() < 2U)
+        {
             return &current.snapshot;
         }
 
         auto const& previous = history[history.size() - 2U];
-        if (previous.snapshot.tick >= current.snapshot.tick || tick_rate_hz <= 0.0) {
+        if (previous.snapshot.tick >= current.snapshot.tick || tick_rate_hz <= 0.0)
+        {
             return &current.snapshot;
         }
         auto const tick_span = current.snapshot.tick - previous.snapshot.tick;
@@ -445,7 +471,8 @@ namespace
 
     [[nodiscard]] std::string_view client_stop_cause_name(ClientStopCause cause) noexcept
     {
-        switch (cause) {
+        switch (cause)
+        {
             case ClientStopCause::None:
                 return "none";
             case ClientStopCause::ConnectionTimeout:
@@ -462,10 +489,12 @@ namespace
 
     [[nodiscard]] simnet::app::ClientRole configured_role(std::string_view role)
     {
-        if (role == "stationary_observer") {
+        if (role == "stationary_observer")
+        {
             return simnet::app::ClientRole::StationaryObserver;
         }
-        if (role == "player") {
+        if (role == "player")
+        {
             return simnet::app::ClientRole::Player;
         }
         throw std::runtime_error("unsupported gameplay role: " + std::string{role});
@@ -475,7 +504,8 @@ namespace
     [[nodiscard]] std::string_view
     client_connection_state_name(ClientConnectionState state) noexcept
     {
-        switch (state) {
+        switch (state)
+        {
             case ClientConnectionState::Connecting:
                 return "connecting";
             case ClientConnectionState::SessionReady:
@@ -498,8 +528,8 @@ namespace
             .entity_scale = config.entity_scale,
             .picking_radius = config.picking_radius,
             .stationary_observer_interest_radius = config.stationary_observer_interest_radius,
-            .stationary_observer_vertical_fov_degrees
-            = config.stationary_observer_vertical_fov_degrees,
+            .stationary_observer_vertical_fov_degrees =
+                config.stationary_observer_vertical_fov_degrees,
             .max_visible_spatial_cells = config.max_visible_spatial_cells,
             .entity_mesh_path = config.entity_mesh_path,
             .title = "SimNet Client",
@@ -534,32 +564,36 @@ namespace
     )
     {
         auto replication = std::optional<simnet::RenderReplicationInfo>{};
-        if (session_ready || ack.newest_received_snapshot != 0
-            || ack.newest_applied_snapshot != 0) {
+        if (session_ready || ack.newest_received_snapshot != 0 || ack.newest_applied_snapshot != 0)
+        {
             replication = simnet::RenderReplicationInfo{
-                .latest_received_sequence = ack.newest_received_snapshot != 0
-                    ? std::optional<simnet::SequenceId>{ack.newest_received_snapshot}
-                    : std::optional<simnet::SequenceId>{},
-                .latest_applied_sequence = ack.newest_applied_snapshot != 0
-                    ? std::optional<simnet::SequenceId>{ack.newest_applied_snapshot}
-                    : std::optional<simnet::SequenceId>{},
+                .latest_received_sequence =
+                    ack.newest_received_snapshot != 0
+                        ? std::optional<simnet::SequenceId>{ack.newest_received_snapshot}
+                        : std::optional<simnet::SequenceId>{},
+                .latest_applied_sequence =
+                    ack.newest_applied_snapshot != 0
+                        ? std::optional<simnet::SequenceId>{ack.newest_applied_snapshot}
+                        : std::optional<simnet::SequenceId>{},
                 .configured_delivery = config.snapshot_delivery.mode,
-                .effective_delivery = effective_delivery.has_value()
-                    ? std::optional<std::string_view>{simnet::app::transport_delivery_name(
-                          *effective_delivery
-                      )}
-                    : std::optional<std::string_view>{},
+                .effective_delivery =
+                    effective_delivery.has_value()
+                        ? std::optional<std::string_view>{simnet::app::transport_delivery_name(
+                              *effective_delivery
+                          )}
+                        : std::optional<std::string_view>{},
                 .recovery_request_count = recovery_request_count,
                 .missing_baseline_rejection_count = missing_baseline_rejection_count,
                 .sequence_gap_count = sequence_gap_count,
                 .reliable_promotion_count = reliable_promotion_count,
                 .latest_snapshot_tick = snapshot.tick,
                 .area_of_interest_mode = config.pipeline.area_of_interest.mode,
-                .interest_source_status = config.pipeline.area_of_interest.mode == "none"
-                    ? std::optional<std::string_view>{"not required"}
+                .interest_source_status =
+                    config.pipeline.area_of_interest.mode == "none"
+                        ? std::optional<std::string_view>{"not required"}
                     : role == "player"
-                    ? std::optional<std::string_view>{"Server authoritative Player"}
-                    : std::optional<std::string_view>{"local pose configured"},
+                        ? std::optional<std::string_view>{"Server authoritative Player"}
+                        : std::optional<std::string_view>{"local pose configured"},
                 .level_of_detail_mode = config.pipeline.level_of_detail.mode,
                 .applied_upsert_count = applied_upsert_count,
                 .applied_delete_count = applied_delete_count,
@@ -576,23 +610,26 @@ namespace
                 .invalid_packet_groups = packet_report.invalid_groups,
                 .stale_packet_groups = packet_report.stale_groups,
                 .compression_mode = simnet::app::compression_mode_name(compression_report.mode),
-                .compression_dictionary = compression_report.dictionary_id == 0U
-                    ? std::optional<std::string_view>{}
-                    : std::optional<std::string_view>{compression_report.dictionary_name},
-                .compression_dictionary_id = compression_report.dictionary_id == 0U
-                    ? std::optional<std::uint32_t>{}
-                    : std::optional<std::uint32_t>{compression_report.dictionary_id},
-                .compression_outcome = compression_report.mode == simnet::app::CompressionMode::None
-                    ? std::optional<std::string_view>{"Disabled"}
+                .compression_dictionary =
+                    compression_report.dictionary_id == 0U
+                        ? std::optional<std::string_view>{}
+                        : std::optional<std::string_view>{compression_report.dictionary_name},
+                .compression_dictionary_id =
+                    compression_report.dictionary_id == 0U
+                        ? std::optional<std::uint32_t>{}
+                        : std::optional<std::uint32_t>{compression_report.dictionary_id},
+                .compression_outcome =
+                    compression_report.mode == simnet::app::CompressionMode::None
+                        ? std::optional<std::string_view>{"Disabled"}
                     : compression_report.mode == simnet::app::CompressionMode::WholeUpdate
-                    ? std::optional<std::string_view>{compression_encoding_name(
-                          compression_report.latest_encoding
-                      )}
+                        ? std::optional<std::string_view>{compression_encoding_name(
+                              compression_report.latest_encoding
+                          )}
                     : compression_report.compressed_packet_count == 0U
-                    ? std::optional<std::string_view>{"Raw fallback"}
+                        ? std::optional<std::string_view>{"Raw fallback"}
                     : compression_report.raw_packet_count == 0U
-                    ? std::optional<std::string_view>{"Zstd"}
-                    : std::optional<std::string_view>{"Mixed"},
+                        ? std::optional<std::string_view>{"Zstd"}
+                        : std::optional<std::string_view>{"Mixed"},
                 .representation_bytes = compression_report.latest_completed_representation_bytes,
                 .compression_input_bytes = compression_report.latest_input_bytes,
                 .compression_payload_bytes = compression_report.latest_payload_bytes,
@@ -609,39 +646,42 @@ namespace
             };
         }
         return {
-            .entities = {
-                .ids = snapshot.ids,
-                .positions = snapshot.positions,
-                .headings = snapshot.headings,
-                .hues = snapshot.hues,
-            },
-            .info = {
-                .tick = snapshot.tick,
-                .snapshot_sequence = sequence,
-                .session_ready = session_ready,
-                .world_bounds = simnet::make_centered_bounds(config.simulation.world_half),
-                .frame_delta = frame_delta,
-                .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
-                .simulation_paused = simulation_paused,
-                .interpolation = interpolation,
-                .context = {
-                    .kind = simnet::ViewerKind::Client,
-                    .client_role = role,
+            .entities =
+                {
+                    .ids = snapshot.ids,
+                    .positions = snapshot.positions,
+                    .headings = snapshot.headings,
+                    .hues = snapshot.hues,
                 },
-                .capabilities = {
-                    .can_pause_simulation = session_ready && simulation_paused.has_value(),
-                    .has_networking = true,
-                    .has_stationary_observer = role == "stationary observer",
-                    .has_game_camera = role == "player",
+            .info =
+                {
+                    .tick = snapshot.tick,
+                    .snapshot_sequence = sequence,
+                    .session_ready = session_ready,
+                    .world_bounds = simnet::make_centered_bounds(config.simulation.world_half),
+                    .frame_delta = frame_delta,
+                    .fixed_tick_rate_hz = config.simulation.tick_rate_hz,
+                    .simulation_paused = simulation_paused,
+                    .interpolation = interpolation,
+                    .context =
+                        {
+                            .kind = simnet::ViewerKind::Client,
+                            .client_role = role,
+                        },
+                    .capabilities =
+                        {
+                            .can_pause_simulation = session_ready && simulation_paused.has_value(),
+                            .has_networking = true,
+                            .has_stationary_observer = role == "stationary observer",
+                            .has_game_camera = role == "player",
+                        },
+                    .connection =
+                        std::optional<simnet::RenderConnectionInfo>{simnet::RenderConnectionInfo{
+                            .state = client_connection_state_name(connection_state),
+                            .peer = peer,
+                        }},
+                    .replication = std::move(replication),
                 },
-                .connection = std::optional<simnet::RenderConnectionInfo> {
-                    simnet::RenderConnectionInfo {
-                        .state = client_connection_state_name(connection_state),
-                        .peer = peer,
-                    }
-                },
-                .replication = std::move(replication),
-            },
             .stationary_observer = std::move(stationary_observer),
             .game_camera = std::move(game_camera),
             .setup = setup,
@@ -652,31 +692,45 @@ namespace
     [[nodiscard]] ClientOptions parse_options(int argc, char** argv)
     {
         auto options = ClientOptions{};
-        for (auto index = 1; index < argc; ++index) {
+        for (auto index = 1; index < argc; ++index)
+        {
             auto const option = std::string_view{argv[index]};
-            if (option == "--config") {
+            if (option == "--config")
+            {
                 options.config_path = std::filesystem::path{
                     simnet::app::next_option_value(index, argc, argv, option)
                 };
-            } else if (option == "--shared-config") {
+            }
+            else if (option == "--shared-config")
+            {
                 options.shared_config_path = std::filesystem::path{
                     simnet::app::next_option_value(index, argc, argv, option)
                 };
-            } else if (option == "--run-id") {
+            }
+            else if (option == "--run-id")
+            {
                 options.run_id = simnet::app::next_option_value(index, argc, argv, option);
-            } else if (option == "--max-frames") {
+            }
+            else if (option == "--max-frames")
+            {
                 options.max_frames = simnet::app::parse_unsigned<std::uint64_t>(
                     simnet::app::next_option_value(index, argc, argv, option),
                     option
                 );
-            } else if (option == "--max-ticks") {
+            }
+            else if (option == "--max-ticks")
+            {
                 options.max_ticks = simnet::app::parse_unsigned<simnet::Tick>(
                     simnet::app::next_option_value(index, argc, argv, option),
                     option
                 );
-            } else if (option == "--max-runtime-ms") {
+            }
+            else if (option == "--max-runtime-ms")
+            {
                 options.max_runtime = simnet::app::milliseconds_option(index, argc, argv, option);
-            } else {
+            }
+            else
+            {
                 throw std::runtime_error("unknown client option: " + std::string{option});
             }
         }
@@ -690,7 +744,8 @@ namespace
     )
     {
         measurements.observe(measurement);
-        if (!csv.submit(measurement)) {
+        if (!csv.submit(measurement))
+        {
             throw std::runtime_error(
                 "client replication CSV submission failed: " + std::string{csv.error()}
             );
@@ -762,19 +817,24 @@ namespace
     record_received_snapshot(SnapshotAckTracker& tracker, simnet::SequenceId sequence) noexcept
     {
         auto const previous = tracker.value.newest_received_snapshot;
-        if (sequence == 0 || sequence <= previous) {
+        if (sequence == 0 || sequence <= previous)
+        {
             return false;
         }
-        if (previous == 0) {
+        if (previous == 0)
+        {
             tracker.value.newest_received_snapshot = sequence;
             tracker.value.received_mask = 0;
             return true;
         }
 
         auto const shift = sequence - previous;
-        if (shift >= 33U) {
+        if (shift >= 33U)
+        {
             tracker.value.received_mask = 0;
-        } else {
+        }
+        else
+        {
             auto const shifted_history = shift == 32U ? 0U : tracker.value.received_mask << shift;
             tracker.value.received_mask = shifted_history | (1U << (shift - 1U));
         }
@@ -799,12 +859,14 @@ namespace
     {
         auto const bytes = simnet::app::snapshot_capacity_bytes(snapshot);
         auto retained_bytes = std::uint64_t{};
-        for (auto const& retained : history) {
+        for (auto const& retained : history)
+        {
             retained_bytes += retained.capacity_bytes;
         }
-        while (!history.empty()
-               && (history.size() >= retained_snapshot_limit
-                   || retained_bytes > simnet::app::maximum_retained_capacity_bytes - bytes)) {
+        while (!history.empty() &&
+               (history.size() >= retained_snapshot_limit ||
+                retained_bytes > simnet::app::maximum_retained_capacity_bytes - bytes))
+        {
             retained_bytes -= history.front().capacity_bytes;
             history.pop_front();
         }
@@ -823,7 +885,8 @@ namespace
             .kind = simnet::SnapshotKind::FullReplace,
         };
         patch.upserts.reserve(snapshot.size());
-        for (std::size_t index = 0; index < snapshot.size(); ++index) {
+        for (std::size_t index = 0; index < snapshot.size(); ++index)
+        {
             patch.upserts.push_back({
                 .id = snapshot.ids[index],
                 .classification = snapshot.classifications[index],
@@ -860,20 +923,22 @@ namespace
         std::uint32_t& latest_applied_deletes
     )
     {
-        auto measurement
-            = make_client_measurement(evidence_identity, peer_id, ack_tracker, receive_evidence);
+        auto measurement =
+            make_client_measurement(evidence_identity, peer_id, ack_tracker, receive_evidence);
         auto const total_start = simnet::steady_now_ns();
         auto const decode_start = simnet::steady_now_ns();
-        auto const inspected
-            = simnet::inspect_encoded_update_header(pipeline, decode_state, encoded_bytes);
+        auto const inspected =
+            simnet::inspect_encoded_update_header(pipeline, decode_state, encoded_bytes);
         measurement.decode_elapsed_time = simnet::steady_now_ns() - decode_start;
         measurement.tick = inspected.tick;
         measurement.sequence = inspected.sequence;
         measurement.baseline_sequence = inspected.baseline_sequence;
         measurement.snapshot_kind = inspected.snapshot_kind;
         measurement.encoded_update_bytes = static_cast<std::uint32_t>(encoded_bytes.size());
-        if (!inspected.valid()) {
-            if (inspected.error == simnet::EncodedUpdateHeaderError::StaleSequence) {
+        if (!inspected.valid())
+        {
+            if (inspected.error == simnet::EncodedUpdateHeaderError::StaleSequence)
+            {
                 measurement.outcome = simnet::ClientReplicationOutcome::StaleSequenceIgnored;
                 measurement.outcome_detail = "stale_encoded_sequence";
                 observe_client_measurement(measurements, csv, measurement);
@@ -885,12 +950,13 @@ namespace
             simnet::log(
                 simnet::LogCategory::Pipeline,
                 simnet::LogLevel::Error,
-                "client snapshot header inspection failed error="
-                    + std::to_string(static_cast<unsigned>(inspected.error))
+                "client snapshot header inspection failed error=" +
+                    std::to_string(static_cast<unsigned>(inspected.error))
             );
             return ApplyPacketOutcome::Fatal;
         }
-        if (packetization_enabled && inspected.sequence != group.group_id) {
+        if (packetization_enabled && inspected.sequence != group.group_id)
+        {
             measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
             measurement.outcome_detail = "packet_group_sequence_mismatch";
             observe_client_measurement(measurements, csv, measurement);
@@ -904,25 +970,28 @@ namespace
 
         auto const baseline_start = simnet::steady_now_ns();
         auto const* baseline = static_cast<simnet::WorldSnapshot const*>(nullptr);
-        if (inspected.baseline_sequence != 0U) {
+        if (inspected.baseline_sequence != 0U)
+        {
             baseline = find_retained_snapshot(snapshot_history, inspected.baseline_sequence);
-            if (baseline == nullptr) {
-                measurement.baseline_resolution_elapsed_time
-                    = simnet::steady_now_ns() - baseline_start;
+            if (baseline == nullptr)
+            {
+                measurement.baseline_resolution_elapsed_time =
+                    simnet::steady_now_ns() - baseline_start;
                 measurement.outcome = simnet::ClientReplicationOutcome::BaselineUnavailable;
                 measurement.outcome_detail = "baseline_not_retained";
                 observe_client_measurement(measurements, csv, measurement);
                 simnet::log(
                     simnet::LogCategory::Snapshot,
                     simnet::LogLevel::Warn,
-                    "client Patch baseline is not retained sequence="
-                        + std::to_string(inspected.baseline_sequence)
+                    "client Patch baseline is not retained sequence=" +
+                        std::to_string(inspected.baseline_sequence)
                 );
                 simnet::app::record_missing_baseline_rejection(recovery_request_state);
                 if (simnet::app::recovery_request_needed(
                         recovery_request_state,
                         inspected.baseline_sequence
-                    )) {
+                    ))
+                {
                     auto const request = simnet::app::encode_snapshot_recovery_request({
                         .rejected_update_sequence = inspected.sequence,
                         .missing_baseline_sequence = inspected.baseline_sequence,
@@ -932,7 +1001,8 @@ namespace
                         simnet::TransportDelivery::ReliableSequenced,
                         request
                     );
-                    if (!sent.ok) {
+                    if (!sent.ok)
+                    {
                         simnet::log(
                             simnet::LogCategory::Transport,
                             simnet::LogLevel::Error,
@@ -968,7 +1038,8 @@ namespace
         measurement.decode_elapsed_time += simnet::steady_now_ns() - full_decode_start;
         measurement.upsert_count = static_cast<std::uint32_t>(decoded.update.upserts.size());
         measurement.delete_count = static_cast<std::uint32_t>(decoded.update.deletes.size());
-        if (!decoded.report.valid) {
+        if (!decoded.report.valid)
+        {
             measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
             measurement.outcome_detail = "update_decode_failed";
             observe_client_measurement(measurements, csv, measurement);
@@ -980,7 +1051,8 @@ namespace
             return ApplyPacketOutcome::Fatal;
         }
         auto candidate_ack_tracker = ack_tracker;
-        if (!record_received_snapshot(candidate_ack_tracker, decoded.report.sequence)) {
+        if (!record_received_snapshot(candidate_ack_tracker, decoded.report.sequence))
+        {
             measurement.outcome = simnet::ClientReplicationOutcome::StaleSequenceIgnored;
             measurement.outcome_detail = "ack_tracker_rejected_sequence";
             observe_client_measurement(measurements, csv, measurement);
@@ -992,18 +1064,19 @@ namespace
             return ApplyPacketOutcome::Ignored;
         }
         measurement.received_sequence_after = candidate_ack_tracker.value.newest_received_snapshot;
-        if (latest_applied_sequence != 0U
-            && decoded.report.sequence > latest_applied_sequence + 1U) {
+        if (latest_applied_sequence != 0U && decoded.report.sequence > latest_applied_sequence + 1U)
+        {
             ++sequence_gap_count;
         }
 
         auto reconstructed = simnet::WorldSnapshot{};
         // Decode validated the update. The baseline is locally empty or a retained reconstruction.
         auto const reconstruction_start = simnet::steady_now_ns();
-        auto const reconstruction
-            = simnet::reconstruct_world_snapshot_unchecked(baseline, decoded.update, reconstructed);
+        auto const reconstruction =
+            simnet::reconstruct_world_snapshot_unchecked(baseline, decoded.update, reconstructed);
         measurement.reconstruction_elapsed_time = simnet::steady_now_ns() - reconstruction_start;
-        if (!reconstruction.valid) {
+        if (!reconstruction.valid)
+        {
             measurement.outcome = simnet::ClientReplicationOutcome::ReconstructionFailed;
             measurement.outcome_detail = "snapshot_reconstruction_failed";
             observe_client_measurement(measurements, csv, measurement);
@@ -1014,8 +1087,9 @@ namespace
             );
             return ApplyPacketOutcome::Fatal;
         }
-        if (simnet::app::snapshot_capacity_bytes(reconstructed)
-            > simnet::app::maximum_retained_capacity_bytes) {
+        if (simnet::app::snapshot_capacity_bytes(reconstructed) >
+            simnet::app::maximum_retained_capacity_bytes)
+        {
             measurement.outcome = simnet::ClientReplicationOutcome::ReconstructionFailed;
             measurement.outcome_detail = "snapshot_retention_capacity_exceeded";
             observe_client_measurement(measurements, csv, measurement);
@@ -1029,16 +1103,17 @@ namespace
         measurement.reconstructed_entity_count = static_cast<std::uint32_t>(reconstructed.size());
 
         auto const sink_preparation_start = simnet::steady_now_ns();
-        auto const baseline_is_current = baseline != nullptr && !snapshot_history.empty()
-            && baseline == &snapshot_history.back().snapshot;
+        auto const baseline_is_current = baseline != nullptr && !snapshot_history.empty() &&
+                                         baseline == &snapshot_history.back().snapshot;
         auto replacement = simnet::SnapshotUpdate{};
         auto const* patch_to_apply = &decoded.update;
-        if (decoded.update.kind == simnet::SnapshotKind::Patch && !baseline_is_current) {
+        if (decoded.update.kind == simnet::SnapshotKind::Patch && !baseline_is_current)
+        {
             replacement = make_full_replace_patch(reconstructed);
             patch_to_apply = &replacement;
         }
-        measurement.sink_preparation_elapsed_time
-            = simnet::steady_now_ns() - sink_preparation_start;
+        measurement.sink_preparation_elapsed_time =
+            simnet::steady_now_ns() - sink_preparation_start;
 
         auto applied = simnet::ApplyPatchReport{};
         auto const sink_application_start = simnet::steady_now_ns();
@@ -1047,10 +1122,11 @@ namespace
             // The update passed decode validation or was built from successful reconstruction.
             applied = simnet::apply_client_snapshot_patch_unchecked(world, *patch_to_apply);
         }
-        measurement.sink_application_elapsed_time
-            = simnet::steady_now_ns() - sink_application_start;
+        measurement.sink_application_elapsed_time =
+            simnet::steady_now_ns() - sink_application_start;
         measurement.final_sink_entity_count = applied.final_entities;
-        if (!applied.valid) {
+        if (!applied.valid)
+        {
             measurement.outcome = simnet::ClientReplicationOutcome::SinkApplicationFailed;
             measurement.outcome_detail = "flecs_application_failed";
             observe_client_measurement(measurements, csv, measurement);
@@ -1078,8 +1154,8 @@ namespace
         measurement.outcome_detail = "committed";
         measurement.acknowledged_sequence_after = ack_tracker.value.newest_applied_snapshot;
         measurement.total_receive_to_applied_elapsed_time = simnet::steady_now_ns() - total_start;
-        measurement.canonical_fingerprint
-            = simnet::app::snapshot_diagnostic_fingerprint(snapshot_history.back().snapshot);
+        measurement.canonical_fingerprint =
+            simnet::app::snapshot_diagnostic_fingerprint(snapshot_history.back().snapshot);
         observe_client_measurement(measurements, csv, measurement);
         auto sent = simnet::TransportResult{};
         {
@@ -1091,7 +1167,8 @@ namespace
                 bytes
             );
         }
-        if (!sent.ok) {
+        if (!sent.ok)
+        {
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Error,
@@ -1099,28 +1176,30 @@ namespace
             );
             return ApplyPacketOutcome::Fatal;
         }
-        if (group.chunk_count > 1U && !logged_multi_packet_application) {
+        if (group.chunk_count > 1U && !logged_multi_packet_application)
+        {
             logged_multi_packet_application = true;
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Info,
-                "client packet group applied group_id=" + std::to_string(group.group_id)
-                    + " encoded_bytes=" + std::to_string(encoded_bytes.size())
-                    + " chunks=" + std::to_string(group.chunk_count)
-                    + " application_packet_bytes=" + std::to_string(group.total_packet_bytes)
-                    + " canonical_entities=" + std::to_string(applied.final_entities)
-                    + " ack_sequence=" + std::to_string(ack_tracker.value.newest_applied_snapshot)
+                "client packet group applied group_id=" + std::to_string(group.group_id) +
+                    " encoded_bytes=" + std::to_string(encoded_bytes.size()) +
+                    " chunks=" + std::to_string(group.chunk_count) +
+                    " application_packet_bytes=" + std::to_string(group.total_packet_bytes) +
+                    " canonical_entities=" + std::to_string(applied.final_entities) +
+                    " ack_sequence=" + std::to_string(ack_tracker.value.newest_applied_snapshot)
             );
         }
 
-        if (simnet::log_enabled(simnet::LogLevel::Debug)) {
+        if (simnet::log_enabled(simnet::LogLevel::Debug))
+        {
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Debug,
-                "client snapshot applied tick=" + std::to_string(applied.tick)
-                    + " sequence=" + std::to_string(decoded.report.sequence)
-                    + " entities=" + std::to_string(applied.final_entities)
-                    + " fingerprint=" + std::to_string(measurement.canonical_fingerprint)
+                "client snapshot applied tick=" + std::to_string(applied.tick) +
+                    " sequence=" + std::to_string(decoded.report.sequence) +
+                    " entities=" + std::to_string(applied.final_entities) +
+                    " fingerprint=" + std::to_string(measurement.canonical_fingerprint)
             );
         }
         return ApplyPacketOutcome::Applied;
@@ -1138,7 +1217,8 @@ namespace
     )
     {
         auto message = simnet::app::AppMessage{};
-        if (!simnet::app::decode_app_message(control.payload, message)) {
+        if (!simnet::app::decode_app_message(control.payload, message))
+        {
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Error,
@@ -1147,12 +1227,14 @@ namespace
             return false;
         }
 
-        if (message.kind == simnet::app::AppMessageKind::JoinAccepted && !join_accepted
-            && message.role == requested_role) {
+        if (message.kind == simnet::app::AppMessageKind::JoinAccepted && !join_accepted &&
+            message.role == requested_role)
+        {
             auto const accepted_role = message.role == simnet::app::ClientRole::Player
-                ? std::string_view{"player"}
-                : std::string_view{"stationary_observer"};
-            if (!csv.set_accepted_gameplay_role(accepted_role)) {
+                                           ? std::string_view{"player"}
+                                           : std::string_view{"stationary_observer"};
+            if (!csv.set_accepted_gameplay_role(accepted_role))
+            {
                 throw std::runtime_error(
                     "client replication CSV role assignment failed: " + std::string{csv.error()}
                 );
@@ -1163,15 +1245,18 @@ namespace
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Info,
-                "client join accepted role="
-                    + std::
-                        string{requested_role == simnet::app::ClientRole::Player ? "player" : "stationary_observer"}
-                    + " peer_id=" + std::to_string(assigned_peer_id)
-                    + " player_id=" + std::to_string(player_id)
+                "client join accepted role=" +
+                    std::string{
+                        requested_role == simnet::app::ClientRole::Player ? "player"
+                                                                          : "stationary_observer"
+                    } +
+                    " peer_id=" + std::to_string(assigned_peer_id) +
+                    " player_id=" + std::to_string(player_id)
             );
             return true;
         }
-        if (message.kind != simnet::app::AppMessageKind::PauseState) {
+        if (message.kind != simnet::app::AppMessageKind::PauseState)
+        {
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Error,
@@ -1183,7 +1268,8 @@ namespace
         auto const changed = !pause_state_received || simulation_paused != message.paused;
         simulation_paused = message.paused;
         pause_state_received = true;
-        if (changed) {
+        if (changed)
+        {
             simnet::log(
                 simnet::LogCategory::Simulation,
                 simnet::LogLevel::Info,
@@ -1201,17 +1287,18 @@ namespace simnet::app
     int run_client(int argc, char** argv)
     {
         auto replication_csv = std::optional<ClientReplicationCsvWriter>{};
-        try {
+        try
+        {
             auto const options = parse_options(argc, argv);
             auto const run_context = make_evidence_run_context(
                 EvidenceProcessRole::Client,
                 options.run_id.has_value() ? std::optional<std::string_view>{*options.run_id}
                                            : std::nullopt
             );
-            auto const shared_config_source
-                = options.shared_config_path.value_or(default_shared_config_path());
-            auto const local_config_source
-                = options.config_path.value_or(default_client_config_path());
+            auto const shared_config_source =
+                options.shared_config_path.value_or(default_shared_config_path());
+            auto const local_config_source =
+                options.config_path.value_or(default_client_config_path());
             auto const shared = load_shared_config(shared_config_source);
             auto const local = load_client_config(local_config_source);
             auto const requested_role = configured_role(local.gameplay.role);
@@ -1225,19 +1312,21 @@ namespace simnet::app
             auto const pipeline = make_snapshot_pipeline(shared);
             auto const compression = make_compression_settings(shared);
             auto compression_dictionary = load_compression_dictionary(compression);
-            if (compression_dictionary.has_value()) {
+            if (compression_dictionary.has_value())
+            {
                 auto const& identity = compression_dictionary->dictionary.identity();
                 log(LogCategory::Pipeline,
                     LogLevel::Info,
-                    "compression dictionary name=" + std::string{compression_dictionary->name}
-                        + " id=" + std::to_string(identity.dictionary_id)
-                        + " bytes=" + std::to_string(identity.byte_count)
-                        + " fingerprint=" + std::to_string(identity.content_fingerprint));
+                    "compression dictionary name=" + std::string{compression_dictionary->name} +
+                        " id=" + std::to_string(identity.dictionary_id) +
+                        " bytes=" + std::to_string(identity.byte_count) +
+                        " fingerprint=" + std::to_string(identity.content_fingerprint));
             }
             auto const packetization = make_packetization_settings(shared);
             auto const delivery = snapshot_transport_delivery(shared.snapshot_delivery);
-            if (packetization.max_payload_bytes > local.transport.max_payload_bytes
-                || (packetization.enabled && local.transport.send_size_policy != "enforce_limit")) {
+            if (packetization.max_payload_bytes > local.transport.max_payload_bytes ||
+                (packetization.enabled && local.transport.send_size_policy != "enforce_limit"))
+            {
                 throw std::runtime_error(
                     "packetization payload limit must fit the hard transport payload limit"
                 );
@@ -1254,12 +1343,14 @@ namespace simnet::app
                 .application_wire_fingerprint = session_identity.application_wire_fingerprint,
                 .compression_mode = compression_mode_name(compression.mode),
                 .compression_dictionary = compression.dictionary,
-                .compression_dictionary_id = compression_dictionary.has_value()
-                    ? compression_dictionary->dictionary.identity().dictionary_id
-                    : 0U,
-                .compression_dictionary_fingerprint = compression_dictionary.has_value()
-                    ? compression_dictionary->dictionary.identity().content_fingerprint
-                    : 0U,
+                .compression_dictionary_id =
+                    compression_dictionary.has_value()
+                        ? compression_dictionary->dictionary.identity().dictionary_id
+                        : 0U,
+                .compression_dictionary_fingerprint =
+                    compression_dictionary.has_value()
+                        ? compression_dictionary->dictionary.identity().content_fingerprint
+                        : 0U,
                 .packetization_enabled = packetization.enabled,
             };
 #if defined(SIMNET_ENABLE_RENDER)
@@ -1282,7 +1373,8 @@ namespace simnet::app
                     .size_policy = transport_send_size_policy(local.transport),
                 },
             });
-            if (!connected.ok) {
+            if (!connected.ok)
+            {
                 log(LogCategory::Transport,
                     LogLevel::Error,
                     "client transport connect failed: " + connected.error.message);
@@ -1295,7 +1387,8 @@ namespace simnet::app
                     .run = run_context,
                 }
             );
-            if (replication_csv->enabled()) {
+            if (replication_csv->enabled())
+            {
                 log(LogCategory::Telemetry,
                     LogLevel::Info,
                     "client replication CSV path=" + replication_csv->path().string());
@@ -1309,23 +1402,26 @@ namespace simnet::app
             auto world = flecs::world{};
             register_client_game(world);
             auto stationary_observer = std::optional<StationaryObserverState>{};
-            if (requested_role == app::ClientRole::StationaryObserver) {
+            if (requested_role == app::ClientRole::StationaryObserver)
+            {
                 stationary_observer = StationaryObserverState{
-                    .position = {
-                        local.gameplay.stationary_observer_position[0],
-                        local.gameplay.stationary_observer_position[1],
-                        local.gameplay.stationary_observer_position[2],
-                    },
+                    .position =
+                        {
+                            local.gameplay.stationary_observer_position[0],
+                            local.gameplay.stationary_observer_position[1],
+                            local.gameplay.stationary_observer_position[2],
+                        },
                     .interest_radius = local.visualization.stationary_observer_interest_radius,
-                    .vertical_fov_degrees
-                    = local.visualization.stationary_observer_vertical_fov_degrees,
+                    .vertical_fov_degrees =
+                        local.visualization.stationary_observer_vertical_fov_degrees,
                 };
             }
 #if defined(SIMNET_ENABLE_RENDER)
             auto viewer = std::optional<Viewer>{};
             auto presentation = ClientPresentationState{};
             auto empty_presentation = WorldSnapshot{};
-            if (local.visualization.enabled) {
+            if (local.visualization.enabled)
+            {
                 viewer.emplace(viewer_config(local.visualization), local.telemetry.log_directory);
             }
 #endif
@@ -1353,8 +1449,8 @@ namespace simnet::app
                 .mode = compression.mode,
                 .dictionary_name = compression.dictionary,
                 .dictionary_id = compression_dictionary.has_value()
-                    ? compression_dictionary->dictionary.identity().dictionary_id
-                    : 0U,
+                                     ? compression_dictionary->dictionary.identity().dictionary_id
+                                     : 0U,
             };
             auto snapshot_history = std::deque<RetainedClientSnapshot>{};
             auto logged_multi_packet_application = false;
@@ -1376,8 +1472,10 @@ namespace simnet::app
 #endif
 
             log(LogCategory::Simulation, LogLevel::Info, "client runtime started");
-            while (!stop.requested()) {
-                if (signal_stop_requested()) {
+            while (!stop.requested())
+            {
+                if (signal_stop_requested())
+                {
                     static_cast<void>(stop.request(ShutdownReason::Signal));
                     break;
                 }
@@ -1393,7 +1491,8 @@ namespace simnet::app
                     SIMNET_TRACE_SCOPE_CATEGORY("client.transport_poll", LogCategory::Transport);
                     polled = transport.poll(events, 1);
                 }
-                if (!polled.ok) {
+                if (!polled.ok)
+                {
                     log(LogCategory::Transport,
                         LogLevel::Error,
                         "client transport poll failed: " + polled.error.message);
@@ -1404,9 +1503,10 @@ namespace simnet::app
 
                 auto const expired_groups_before = reassembly_state.report.expired_groups;
                 expire_incomplete_groups(packetization, reassembly_state, stats.raw_time);
-                auto const newly_expired_groups
-                    = reassembly_state.report.expired_groups - expired_groups_before;
-                if (newly_expired_groups != 0U && join_accepted) {
+                auto const newly_expired_groups =
+                    reassembly_state.report.expired_groups - expired_groups_before;
+                if (newly_expired_groups != 0U && join_accepted)
+                {
                     observe_client_receive_outcome(
                         replication_measurements,
                         *replication_csv,
@@ -1420,10 +1520,10 @@ namespace simnet::app
                                     std::numeric_limits<std::uint32_t>::max()
                                 )
                             )),
-                            .retained_incomplete_group_count
-                            = reassembly_state.report.incomplete_groups,
-                            .retained_incomplete_bytes
-                            = reassembly_state.report.retained_incomplete_bytes,
+                            .retained_incomplete_group_count =
+                                reassembly_state.report.incomplete_groups,
+                            .retained_incomplete_bytes =
+                                reassembly_state.report.retained_incomplete_bytes,
                         },
                         ClientReplicationOutcome::PacketGroupExpired,
                         "reassembly_timeout"
@@ -1435,8 +1535,10 @@ namespace simnet::app
                     packetization.reassembly_timeout
                 );
 
-                for (auto& event : events) {
-                    if (auto const* ready = std::get_if<PeerSessionReady>(&event)) {
+                for (auto& event : events)
+                {
+                    if (auto const* ready = std::get_if<PeerSessionReady>(&event))
+                    {
                         connection_state = ClientConnectionState::SessionReady;
                         server_peer = ready->peer;
                         pause_state_received = false;
@@ -1465,7 +1567,8 @@ namespace simnet::app
                             TransportDelivery::ReliableSequenced,
                             join_bytes
                         );
-                        if (!joined.ok) {
+                        if (!joined.ok)
+                        {
                             log(LogCategory::Transport,
                                 LogLevel::Error,
                                 "client join request send failed: " + joined.error.message);
@@ -1473,11 +1576,14 @@ namespace simnet::app
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
                             break;
                         }
-                    } else if (auto const* packet = std::get_if<ReceivedPacket>(&event)) {
+                    }
+                    else if (auto const* packet = std::get_if<ReceivedPacket>(&event))
+                    {
                         auto valid = connection_state == ClientConnectionState::SessionReady;
-                        if (valid && packet->lane == app::control_lane) {
-                            valid = packet->delivery == TransportDelivery::ReliableSequenced
-                                && apply_application_control(
+                        if (valid && packet->lane == app::control_lane)
+                        {
+                            valid = packet->delivery == TransportDelivery::ReliableSequenced &&
+                                    apply_application_control(
                                         *packet,
                                         requested_role,
                                         authoritative_pause_state,
@@ -1486,48 +1592,55 @@ namespace simnet::app
                                         assigned_peer_id,
                                         player_id,
                                         *replication_csv
-                                );
-                        } else if (valid && packet->lane == app::snapshot_lane) {
+                                    );
+                        }
+                        else if (valid && packet->lane == app::snapshot_lane)
+                        {
                             effective_snapshot_delivery = packet->delivery;
-                            if (delivery == TransportDelivery::ReliableSequenced) {
+                            if (delivery == TransportDelivery::ReliableSequenced)
+                            {
                                 valid = packet->delivery == TransportDelivery::ReliableSequenced;
-                            } else if (packet->delivery == TransportDelivery::ReliableSequenced) {
+                            }
+                            else if (packet->delivery == TransportDelivery::ReliableSequenced)
+                            {
                                 ++reliable_promotion_count;
                             }
                             auto application_packet = ByteSpan{packet->payload};
                             auto packet_decompression = PacketDecompressionObservation{};
-                            if (valid && compression.mode == app::CompressionMode::PerPacket) {
+                            if (valid && compression.mode == app::CompressionMode::PerPacket)
+                            {
                                 packet_decompression = {
                                     .encoding = CompressionEncoding::Raw,
-                                    .input_bytes
-                                    = static_cast<std::uint32_t>(application_packet.size()),
-                                    .payload_bytes
-                                    = static_cast<std::uint32_t>(application_packet.size()),
-                                    .output_bytes
-                                    = static_cast<std::uint32_t>(application_packet.size()),
+                                    .input_bytes =
+                                        static_cast<std::uint32_t>(application_packet.size()),
+                                    .payload_bytes =
+                                        static_cast<std::uint32_t>(application_packet.size()),
+                                    .output_bytes =
+                                        static_cast<std::uint32_t>(application_packet.size()),
                                 };
-                                if (has_compression_envelope(application_packet)) {
+                                if (has_compression_envelope(application_packet))
+                                {
                                     auto const decompressed = decompress_bytes(
                                         decompressor,
                                         application_packet,
                                         {
-                                            .max_uncompressed_bytes
-                                            = packetization.max_payload_bytes,
+                                            .max_uncompressed_bytes =
+                                                packetization.max_payload_bytes,
                                             .max_output_bytes = local.transport.max_payload_bytes,
                                         },
                                         decompression_scratch
                                     );
-                                    compression_report.latest_input_bytes
-                                        = decompressed.input_bytes;
+                                    compression_report.latest_input_bytes =
+                                        decompressed.input_bytes;
                                     compression_report.latest_encoding = decompressed.encoding;
-                                    compression_report.latest_payload_bytes
-                                        = decompressed.encoded_payload_bytes;
-                                    compression_report.latest_envelope_bytes
-                                        = decompressed.envelope_bytes;
-                                    compression_report.latest_output_bytes
-                                        = decompressed.output_bytes;
-                                    compression_report.decompression_cpu_time
-                                        += decompressed.decompression_cpu_time;
+                                    compression_report.latest_payload_bytes =
+                                        decompressed.encoded_payload_bytes;
+                                    compression_report.latest_envelope_bytes =
+                                        decompressed.envelope_bytes;
+                                    compression_report.latest_output_bytes =
+                                        decompressed.output_bytes;
+                                    compression_report.decompression_cpu_time +=
+                                        decompressed.decompression_cpu_time;
                                     packet_decompression = {
                                         .encoding = decompressed.encoding,
                                         .input_bytes = decompressed.input_bytes,
@@ -1536,8 +1649,9 @@ namespace simnet::app
                                         .output_bytes = decompressed.output_bytes,
                                         .cpu_time = decompressed.decompression_cpu_time,
                                     };
-                                    if (!decompressed.valid
-                                        || decompressed.encoding != CompressionEncoding::Zstd) {
+                                    if (!decompressed.valid ||
+                                        decompressed.encoding != CompressionEncoding::Zstd)
+                                    {
                                         ++compression_report.invalid_payload_count;
                                         observe_client_receive_outcome(
                                             replication_measurements,
@@ -1554,44 +1668,48 @@ namespace simnet::app
                                                 .decompression_encoding = "invalid",
                                                 .decompression_result = "failed",
                                                 .compressed_bytes = decompressed.input_bytes,
-                                                .compression_payload_bytes
-                                                = decompressed.encoded_payload_bytes,
-                                                .compression_envelope_bytes
-                                                = decompressed.envelope_bytes,
+                                                .compression_payload_bytes =
+                                                    decompressed.encoded_payload_bytes,
+                                                .compression_envelope_bytes =
+                                                    decompressed.envelope_bytes,
                                                 .uncompressed_bytes = decompressed.output_bytes,
-                                                .decompression_cpu_time
-                                                = decompressed.decompression_cpu_time,
+                                                .decompression_cpu_time =
+                                                    decompressed.decompression_cpu_time,
                                             },
                                             ClientReplicationOutcome::DecompressionFailed,
                                             "per_packet_decompression_failed"
                                         );
                                         log(LogCategory::Transport,
                                             LogLevel::Warn,
-                                            "client rejected compressed snapshot packet: "
-                                                + decompressed.error);
+                                            "client rejected compressed snapshot packet: " +
+                                                decompressed.error);
                                         continue;
                                     }
                                     ++compression_report.compressed_packet_count;
                                     application_packet = decompression_scratch;
-                                } else {
+                                }
+                                else
+                                {
                                     ++compression_report.raw_packet_count;
                                 }
                             }
-                            auto reassembled = valid
-                                ? accept_group_packet(
-                                      packetization,
-                                      reassembly_state,
-                                      application_packet,
-                                      stats.raw_time
-                                  )
-                                : ReassemblyResult{
-                                      .kind = ReassemblyResultKind::Invalid,
-                                      .error = "snapshot delivery does not match configuration",
-                                  };
-                            if (reassembled.group_id != 0U
-                                && reassembled.kind != ReassemblyResultKind::Invalid
-                                && reassembled.kind != ReassemblyResultKind::LimitExceeded
-                                && reassembled.kind != ReassemblyResultKind::Stale) {
+                            auto reassembled =
+                                valid
+                                    ? accept_group_packet(
+                                          packetization,
+                                          reassembly_state,
+                                          application_packet,
+                                          stats.raw_time
+                                      )
+                                    : ReassemblyResult{
+                                          .kind = ReassemblyResultKind::Invalid,
+                                          .error = "snapshot delivery does not match configuration",
+                                      };
+                            if (reassembled.group_id != 0U &&
+                                reassembled.kind != ReassemblyResultKind::Invalid &&
+                                reassembled.kind != ReassemblyResultKind::LimitExceeded &&
+                                reassembled.kind != ReassemblyResultKind::Stale)
+                            {
                                 record_group_transport_bytes(
                                     pending_compression_groups,
                                     reassembled.group_id,
@@ -1604,36 +1722,46 @@ namespace simnet::app
                             }
                             auto receive_evidence = ClientReceiveEvidence{
                                 .group_id = reassembled.group_id,
-                                .received_outer_bytes
-                                = static_cast<std::uint32_t>(packet->payload.size()),
+                                .received_outer_bytes =
+                                    static_cast<std::uint32_t>(packet->payload.size()),
                                 .received_packet_count = 1U,
-                                .retained_incomplete_group_count
-                                = reassembly_state.report.incomplete_groups,
-                                .retained_incomplete_bytes
-                                = reassembly_state.report.retained_incomplete_bytes,
+                                .retained_incomplete_group_count =
+                                    reassembly_state.report.incomplete_groups,
+                                .retained_incomplete_bytes =
+                                    reassembly_state.report.retained_incomplete_bytes,
                             };
-                            if (reassembled.kind == ReassemblyResultKind::Incomplete) {
+                            if (reassembled.kind == ReassemblyResultKind::Incomplete)
+                            {
                                 receive_evidence.incomplete_packet_count = 1U;
-                            } else if (reassembled.kind == ReassemblyResultKind::Duplicate) {
+                            }
+                            else if (reassembled.kind == ReassemblyResultKind::Duplicate)
+                            {
                                 receive_evidence.duplicate_packet_count = 1U;
-                            } else if (reassembled.kind == ReassemblyResultKind::Stale) {
+                            }
+                            else if (reassembled.kind == ReassemblyResultKind::Stale)
+                            {
                                 receive_evidence.stale_packet_count = 1U;
-                            } else if (
-                                reassembled.kind == ReassemblyResultKind::Invalid
-                                || reassembled.kind == ReassemblyResultKind::LimitExceeded
-                            ) {
+                            }
+                            else if (
+                                reassembled.kind == ReassemblyResultKind::Invalid ||
+                                reassembled.kind == ReassemblyResultKind::LimitExceeded
+                            )
+                            {
                                 receive_evidence.invalid_packet_count = 1U;
                             }
                             auto const* pending_group = find_pending_group(
                                 pending_compression_groups,
                                 reassembled.group_id
                             );
-                            if (pending_group != nullptr) {
+                            if (pending_group != nullptr)
+                            {
                                 receive_evidence.group_wait_available = true;
-                                receive_evidence.group_wait_time
-                                    = steady_now_ns() - pending_group->evidence_first_received_time;
-                                if (compression.mode == app::CompressionMode::PerPacket) {
-                                    auto const narrow = [](std::uint64_t value) {
+                                receive_evidence.group_wait_time =
+                                    steady_now_ns() - pending_group->evidence_first_received_time;
+                                if (compression.mode == app::CompressionMode::PerPacket)
+                                {
+                                    auto const narrow = [](std::uint64_t value)
+                                    {
                                         return static_cast<std::uint32_t>(std::min(
                                             value,
                                             static_cast<std::uint64_t>(
@@ -1641,77 +1769,81 @@ namespace simnet::app
                                             )
                                         ));
                                     };
-                                    receive_evidence.decompression_encoding
-                                        = pending_group->zstd_packet_count != 0U
-                                            && pending_group->raw_packet_count != 0U
-                                        ? "mixed"
+                                    receive_evidence.decompression_encoding =
+                                        pending_group->zstd_packet_count != 0U &&
+                                                pending_group->raw_packet_count != 0U
+                                            ? "mixed"
                                         : pending_group->zstd_packet_count != 0U ? "zstd"
                                                                                  : "raw";
                                     receive_evidence.decompression_result = "success";
-                                    receive_evidence.compressed_bytes
-                                        = narrow(pending_group->compression_input_bytes);
-                                    receive_evidence.compression_payload_bytes
-                                        = narrow(pending_group->compression_payload_bytes);
-                                    receive_evidence.compression_envelope_bytes
-                                        = narrow(pending_group->compression_envelope_bytes);
-                                    receive_evidence.uncompressed_bytes
-                                        = narrow(pending_group->compression_output_bytes);
-                                    receive_evidence.decompression_cpu_time
-                                        = pending_group->decompression_cpu_time;
+                                    receive_evidence.compressed_bytes =
+                                        narrow(pending_group->compression_input_bytes);
+                                    receive_evidence.compression_payload_bytes =
+                                        narrow(pending_group->compression_payload_bytes);
+                                    receive_evidence.compression_envelope_bytes =
+                                        narrow(pending_group->compression_envelope_bytes);
+                                    receive_evidence.uncompressed_bytes =
+                                        narrow(pending_group->compression_output_bytes);
+                                    receive_evidence.decompression_cpu_time =
+                                        pending_group->decompression_cpu_time;
                                 }
                             }
-                            if (reassembled.kind == ReassemblyResultKind::Complete) {
+                            if (reassembled.kind == ReassemblyResultKind::Complete)
+                            {
                                 receive_evidence.group_id = reassembled.completed.group_id;
-                                receive_evidence.group_chunk_count
-                                    = reassembled.completed.chunk_count;
+                                receive_evidence.group_chunk_count =
+                                    reassembled.completed.chunk_count;
                                 auto encoded_bytes = ByteSpan{reassembled.completed.bytes};
-                                if (compression.mode == app::CompressionMode::WholeUpdate) {
+                                if (compression.mode == app::CompressionMode::WholeUpdate)
+                                {
                                     auto const limits = CompressionLimits{
                                         .max_uncompressed_bytes = packetization.max_group_bytes,
                                         .max_output_bytes = packetization.max_group_bytes,
                                     };
-                                    auto const decompressed = compression_dictionary.has_value()
-                                        ? decompress_bytes_with_dictionary(
-                                              decompressor,
-                                              compression_dictionary->dictionary,
-                                              encoded_bytes,
-                                              limits,
-                                              decompression_scratch
-                                          )
-                                        : decompress_bytes(
-                                              decompressor,
-                                              encoded_bytes,
-                                              limits,
-                                              decompression_scratch
-                                          );
-                                    compression_report.latest_input_bytes
-                                        = decompressed.input_bytes;
+                                    auto const decompressed =
+                                        compression_dictionary.has_value()
+                                            ? decompress_bytes_with_dictionary(
+                                                  decompressor,
+                                                  compression_dictionary->dictionary,
+                                                  encoded_bytes,
+                                                  limits,
+                                                  decompression_scratch
+                                              )
+                                            : decompress_bytes(
+                                                  decompressor,
+                                                  encoded_bytes,
+                                                  limits,
+                                                  decompression_scratch
+                                              );
+                                    compression_report.latest_input_bytes =
+                                        decompressed.input_bytes;
                                     compression_report.latest_encoding = decompressed.encoding;
-                                    compression_report.latest_payload_bytes
-                                        = decompressed.encoded_payload_bytes;
-                                    compression_report.latest_envelope_bytes
-                                        = decompressed.envelope_bytes;
-                                    compression_report.latest_output_bytes
-                                        = decompressed.output_bytes;
-                                    compression_report.decompression_cpu_time
-                                        += decompressed.decompression_cpu_time;
-                                    receive_evidence.decompression_encoding
-                                        = decompressed.encoding == CompressionEncoding::Raw ? "raw"
-                                        : decompressed.encoding
-                                            == CompressionEncoding::ZstdDictionary
-                                        ? "zstd_dictionary"
-                                        : "zstd";
-                                    receive_evidence.decompression_result
-                                        = decompressed.valid ? "success" : "failed";
+                                    compression_report.latest_payload_bytes =
+                                        decompressed.encoded_payload_bytes;
+                                    compression_report.latest_envelope_bytes =
+                                        decompressed.envelope_bytes;
+                                    compression_report.latest_output_bytes =
+                                        decompressed.output_bytes;
+                                    compression_report.decompression_cpu_time +=
+                                        decompressed.decompression_cpu_time;
+                                    receive_evidence.decompression_encoding =
+                                        decompressed.encoding == CompressionEncoding::Raw ? "raw"
+                                        : decompressed.encoding ==
+                                                CompressionEncoding::ZstdDictionary
+                                            ? "zstd_dictionary"
+                                            : "zstd";
+                                    receive_evidence.decompression_result =
+                                        decompressed.valid ? "success" : "failed";
                                     receive_evidence.compressed_bytes = decompressed.input_bytes;
-                                    receive_evidence.compression_payload_bytes
-                                        = decompressed.encoded_payload_bytes;
-                                    receive_evidence.compression_envelope_bytes
-                                        = decompressed.envelope_bytes;
+                                    receive_evidence.compression_payload_bytes =
+                                        decompressed.encoded_payload_bytes;
+                                    receive_evidence.compression_envelope_bytes =
+                                        decompressed.envelope_bytes;
                                     receive_evidence.uncompressed_bytes = decompressed.output_bytes;
-                                    receive_evidence.decompression_cpu_time
-                                        = decompressed.decompression_cpu_time;
-                                    if (!decompressed.valid) {
+                                    receive_evidence.decompression_cpu_time =
+                                        decompressed.decompression_cpu_time;
+                                    if (!decompressed.valid)
+                                    {
                                         ++compression_report.invalid_payload_count;
                                         observe_client_receive_outcome(
                                             replication_measurements,
@@ -1725,26 +1857,29 @@ namespace simnet::app
                                         );
                                         log(LogCategory::Transport,
                                             LogLevel::Warn,
-                                            "client rejected compressed snapshot group: "
-                                                + decompressed.error);
+                                            "client rejected compressed snapshot group: " +
+                                                decompressed.error);
                                         continue;
                                     }
-                                    if (decompressed.encoding == CompressionEncoding::Raw) {
+                                    if (decompressed.encoding == CompressionEncoding::Raw)
+                                    {
                                         ++compression_report.whole_update_raw_fallback_count;
                                     }
                                     encoded_bytes = decompression_scratch;
                                 }
-                                if (compression.mode == app::CompressionMode::None) {
-                                    receive_evidence.uncompressed_bytes
-                                        = static_cast<std::uint32_t>(encoded_bytes.size());
+                                if (compression.mode == app::CompressionMode::None)
+                                {
+                                    receive_evidence.uncompressed_bytes =
+                                        static_cast<std::uint32_t>(encoded_bytes.size());
                                 }
-                                auto const outer_bytes = reassembled.completed.group_id == 0U
-                                    ? static_cast<std::uint32_t>(packet->payload.size())
-                                    : group_transport_bytes(
-                                          pending_compression_groups,
-                                          reassembled.completed.group_id,
-                                          reassembled.completed.total_packet_bytes
-                                      );
+                                auto const outer_bytes =
+                                    reassembled.completed.group_id == 0U
+                                        ? static_cast<std::uint32_t>(packet->payload.size())
+                                        : group_transport_bytes(
+                                              pending_compression_groups,
+                                              reassembled.completed.group_id,
+                                              reassembled.completed.total_packet_bytes
+                                          );
                                 auto const apply_outcome = apply_packet(
                                     evidence_identity,
                                     assigned_peer_id,
@@ -1770,73 +1905,85 @@ namespace simnet::app
                                     latest_applied_deletes
                                 );
                                 valid = apply_outcome != ApplyPacketOutcome::Fatal;
-                                if (apply_outcome == ApplyPacketOutcome::Applied) {
-                                    compression_report.latest_completed_representation_bytes
-                                        = static_cast<std::uint32_t>(encoded_bytes.size());
-                                    compression_report.latest_completed_transport_bytes
-                                        = outer_bytes;
-                                    compression_report.canonical_entity_count
-                                        = snapshot_history.empty()
-                                        ? 0U
-                                        : static_cast<std::uint32_t>(
-                                              snapshot_history.back().snapshot.size()
-                                          );
+                                if (apply_outcome == ApplyPacketOutcome::Applied)
+                                {
+                                    compression_report.latest_completed_representation_bytes =
+                                        static_cast<std::uint32_t>(encoded_bytes.size());
+                                    compression_report.latest_completed_transport_bytes =
+                                        outer_bytes;
+                                    compression_report.canonical_entity_count =
+                                        snapshot_history.empty()
+                                            ? 0U
+                                            : static_cast<std::uint32_t>(
+                                                  snapshot_history.back().snapshot.size()
+                                              );
                                     std::erase_if(
                                         pending_compression_groups,
-                                        [&](PendingCompressionGroup const& group) {
+                                        [&](PendingCompressionGroup const& group)
+                                        {
                                             return group.group_id <= reassembled.completed.group_id;
                                         }
                                     );
-                                    if (compression.mode != app::CompressionMode::None
-                                        && !logged_compression_application) {
+                                    if (compression.mode != app::CompressionMode::None &&
+                                        !logged_compression_application)
+                                    {
                                         logged_compression_application = true;
                                         log(LogCategory::Transport,
                                             LogLevel::Info,
-                                            "client compressed group applied group_id="
-                                                + std::to_string(reassembled.completed.group_id)
-                                                + " compression_mode="
-                                                + std::string{app::compression_mode_name(
-                                                    compression.mode
-                                                )}
-                                                + " representation_bytes="
-                                                + std::to_string(encoded_bytes.size())
-                                                + " transport_bytes=" + std::to_string(outer_bytes)
-                                                + " compressed_packets="
-                                                + std::to_string(
+                                            "client compressed group applied group_id=" +
+                                                std::to_string(reassembled.completed.group_id) +
+                                                " compression_mode=" +
+                                                std::string{
+                                                    app::compression_mode_name(compression.mode)
+                                                } +
+                                                " representation_bytes=" +
+                                                std::to_string(encoded_bytes.size()) +
+                                                " transport_bytes=" + std::to_string(outer_bytes) +
+                                                " compressed_packets=" +
+                                                std::to_string(
                                                     compression_report.compressed_packet_count
-                                                )
-                                                + " raw_packets="
-                                                + std::to_string(
+                                                ) +
+                                                " raw_packets=" +
+                                                std::to_string(
                                                     compression_report.raw_packet_count
-                                                )
-                                                + " canonical_entities="
-                                                + std::to_string(
+                                                ) +
+                                                " canonical_entities=" +
+                                                std::to_string(
                                                     compression_report.canonical_entity_count
-                                                )
-                                                + " ack_sequence="
-                                                + std::to_string(
+                                                ) +
+                                                " ack_sequence=" +
+                                                std::to_string(
                                                     ack_tracker.value.newest_applied_snapshot
                                                 ));
                                     }
                                 }
-                            } else {
+                            }
+                            else
+                            {
                                 auto outcome = ClientReplicationOutcome::PacketInvalid;
                                 auto detail = std::string_view{"reassembly_invalid"};
-                                if (!valid) {
+                                if (!valid)
+                                {
                                     outcome = ClientReplicationOutcome::DeliveryMismatch;
                                     detail = "snapshot_delivery_mismatch";
-                                } else if (reassembled.kind == ReassemblyResultKind::Incomplete) {
+                                }
+                                else if (reassembled.kind == ReassemblyResultKind::Incomplete)
+                                {
                                     outcome = ClientReplicationOutcome::PacketIncomplete;
                                     detail = "group_incomplete";
-                                } else if (reassembled.kind == ReassemblyResultKind::Duplicate) {
+                                }
+                                else if (reassembled.kind == ReassemblyResultKind::Duplicate)
+                                {
                                     outcome = ClientReplicationOutcome::PacketDuplicate;
                                     detail = "duplicate_chunk";
-                                } else if (reassembled.kind == ReassemblyResultKind::Stale) {
+                                }
+                                else if (reassembled.kind == ReassemblyResultKind::Stale)
+                                {
                                     outcome = ClientReplicationOutcome::PacketStale;
                                     detail = "stale_group";
-                                } else if (
-                                    reassembled.kind == ReassemblyResultKind::LimitExceeded
-                                ) {
+                                }
+                                else if (reassembled.kind == ReassemblyResultKind::LimitExceeded)
+                                {
                                     detail = "reassembly_limit_exceeded";
                                 }
                                 observe_client_receive_outcome(
@@ -1850,13 +1997,16 @@ namespace simnet::app
                                     detail
                                 );
                             }
-                            if (reassembled.kind == ReassemblyResultKind::Invalid
-                                || reassembled.kind == ReassemblyResultKind::LimitExceeded) {
-                                if (compression.mode == app::CompressionMode::PerPacket
-                                    && reassembled.group_id != 0U) {
+                            if (reassembled.kind == ReassemblyResultKind::Invalid ||
+                                reassembled.kind == ReassemblyResultKind::LimitExceeded)
+                            {
+                                if (compression.mode == app::CompressionMode::PerPacket &&
+                                    reassembled.group_id != 0U)
+                                {
                                     std::erase_if(
                                         pending_compression_groups,
-                                        [&](PendingCompressionGroup const& group) {
+                                        [&](PendingCompressionGroup const& group)
+                                        {
                                             return group.group_id == reassembled.group_id;
                                         }
                                     );
@@ -1865,47 +2015,57 @@ namespace simnet::app
                                     LogLevel::Warn,
                                     "client rejected snapshot chunk: " + reassembled.error);
                             }
-                        } else if (valid) {
+                        }
+                        else if (valid)
+                        {
                             valid = false;
                         }
-                        if (!valid) {
+                        if (!valid)
+                        {
                             stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
                             break;
                         }
-                    } else if (auto const* disconnected = std::get_if<PeerDisconnected>(&event)) {
-                        auto const was_session_ready
-                            = connection_state == ClientConnectionState::SessionReady;
+                    }
+                    else if (auto const* disconnected = std::get_if<PeerDisconnected>(&event))
+                    {
+                        auto const was_session_ready =
+                            connection_state == ClientConnectionState::SessionReady;
                         connection_state = ClientConnectionState::Disconnected;
                         app::reset_player_input_delivery(player_input_delivery);
                         clear_reassembly_state(reassembly_state);
                         pending_compression_groups.clear();
-                        if (!was_session_ready && disconnected->code == DisconnectCode::Timeout) {
+                        if (!was_session_ready && disconnected->code == DisconnectCode::Timeout)
+                        {
                             stop_cause = ClientStopCause::ConnectionTimeout;
                             log(LogCategory::Transport,
                                 LogLevel::Error,
-                                "client connection or session handshake timed out peer="
-                                    + std::to_string(disconnected->peer));
-                        } else if (
-                            was_session_ready && disconnected->code == DisconnectCode::None
-                        ) {
+                                "client connection or session handshake timed out peer=" +
+                                    std::to_string(disconnected->peer));
+                        }
+                        else if (was_session_ready && disconnected->code == DisconnectCode::None)
+                        {
                             stop_cause = ClientStopCause::RemoteShutdown;
                             log(LogCategory::Transport,
                                 LogLevel::Info,
-                                "client received remote shutdown peer="
-                                    + std::to_string(disconnected->peer));
-                        } else if (was_session_ready) {
+                                "client received remote shutdown peer=" +
+                                    std::to_string(disconnected->peer));
+                        }
+                        else if (was_session_ready)
+                        {
                             stop_cause = ClientStopCause::ConnectionLost;
                             log(LogCategory::Transport,
                                 LogLevel::Error,
-                                "client connection lost peer="
-                                    + std::to_string(disconnected->peer));
-                        } else {
+                                "client connection lost peer=" +
+                                    std::to_string(disconnected->peer));
+                        }
+                        else
+                        {
                             stop_cause = ClientStopCause::ProtocolError;
                             log(LogCategory::Transport,
                                 LogLevel::Error,
-                                "client disconnected before session readiness peer="
-                                    + std::to_string(disconnected->peer));
+                                "client disconnected before session readiness peer=" +
+                                    std::to_string(disconnected->peer));
                         }
                         static_cast<void>(stop.request(
                             stop_cause == ClientStopCause::RemoteShutdown
@@ -1913,7 +2073,9 @@ namespace simnet::app
                                 : ShutdownReason::FatalError
                         ));
                         break;
-                    } else if (auto const* error = std::get_if<TransportErrorEvent>(&event)) {
+                    }
+                    else if (auto const* error = std::get_if<TransportErrorEvent>(&event))
+                    {
                         log(LogCategory::Transport,
                             LogLevel::Error,
                             "client transport error: " + error->message);
@@ -1923,15 +2085,17 @@ namespace simnet::app
                     }
                 }
 
-                if (replication_csv->needs_drain() && !replication_csv->drain()) {
+                if (replication_csv->needs_drain() && !replication_csv->drain())
+                {
                     throw std::runtime_error(
-                        "client replication CSV drain failed: "
-                        + std::string{replication_csv->error()}
+                        "client replication CSV drain failed: " +
+                        std::string{replication_csv->error()}
                     );
                 }
 
 #if defined(SIMNET_ENABLE_RENDER)
-                if (!stop.requested() && viewer.has_value()) {
+                if (!stop.requested() && viewer.has_value())
+                {
                     auto interpolation_alpha = 1.0;
                     auto const* displayed_snapshot = presentation_snapshot(
                         snapshot_history,
@@ -1942,42 +2106,51 @@ namespace simnet::app
                         pause_state_received && authoritative_pause_state,
                         interpolation_alpha
                     );
-                    if (displayed_snapshot == nullptr && snapshot_history.empty()) {
+                    if (displayed_snapshot == nullptr && snapshot_history.empty())
+                    {
                         displayed_snapshot = &empty_presentation;
                     }
-                    if (!snapshot_history.empty() && displayed_snapshot == nullptr) {
+                    if (!snapshot_history.empty() && displayed_snapshot == nullptr)
+                    {
                         log(LogCategory::Render,
                             LogLevel::Error,
                             "client presentation interpolation failed");
                         stop_cause = ClientStopCause::ProtocolError;
                         static_cast<void>(stop.request(ShutdownReason::FatalError));
-                    } else if (displayed_snapshot != nullptr) {
-                        auto const has_pair = snapshot_history.size() >= 2U
-                            && snapshot_history[snapshot_history.size() - 2U].snapshot.tick
-                                < snapshot_history.back().snapshot.tick;
-                        auto const interpolation_active = local.visualization.interpolation_enabled
-                            && !(pause_state_received && authoritative_pause_state) && has_pair;
+                    }
+                    else if (displayed_snapshot != nullptr)
+                    {
+                        auto const has_pair =
+                            snapshot_history.size() >= 2U &&
+                            snapshot_history[snapshot_history.size() - 2U].snapshot.tick <
+                                snapshot_history.back().snapshot.tick;
+                        auto const interpolation_active =
+                            local.visualization.interpolation_enabled &&
+                            !(pause_state_received && authoritative_pause_state) && has_pair;
                         auto const interpolation = RenderInterpolationInfo{
                             .enabled = local.visualization.interpolation_enabled,
                             .interpolating = interpolation_active,
-                            .from_tick = has_pair
-                                ? snapshot_history[snapshot_history.size() - 2U].snapshot.tick
-                                : displayed_snapshot->tick,
+                            .from_tick =
+                                has_pair
+                                    ? snapshot_history[snapshot_history.size() - 2U].snapshot.tick
+                                    : displayed_snapshot->tick,
                             .to_tick = snapshot_history.empty()
-                                ? displayed_snapshot->tick
-                                : snapshot_history.back().snapshot.tick,
+                                           ? displayed_snapshot->tick
+                                           : snapshot_history.back().snapshot.tick,
                             .alpha = interpolation_active ? interpolation_alpha : 1.0,
                         };
                         SIMNET_TRACE_PLOT("client.render.interpolation_alpha", interpolation.alpha);
-                        auto const sequence = latest_applied_sequence == 0
-                            ? std::optional<SequenceId>{}
-                            : std::optional<SequenceId>{latest_applied_sequence};
+                        auto const sequence =
+                            latest_applied_sequence == 0
+                                ? std::optional<SequenceId>{}
+                                : std::optional<SequenceId>{latest_applied_sequence};
                         auto viewer_result = ViewerResult{};
                         auto game_camera = requested_role == app::ClientRole::Player
-                            ? player_game_camera(*displayed_snapshot, player_id)
-                            : std::optional<GameCameraView>{};
+                                               ? player_game_camera(*displayed_snapshot, player_id)
+                                               : std::optional<GameCameraView>{};
                         auto stationary_observer_view = std::optional<StationaryObserverView>{};
-                        if (stationary_observer.has_value()) {
+                        if (stationary_observer.has_value())
+                        {
                             stationary_observer_view = StationaryObserverView{
                                 .position = stationary_observer->position,
                                 .forward = app::stationary_observer_forward(*stationary_observer),
@@ -1985,8 +2158,9 @@ namespace simnet::app
                                 .vertical_fov_degrees = stationary_observer->vertical_fov_degrees,
                             };
                         }
-                        if (requested_role == app::ClientRole::Player && join_accepted
-                            && game_camera.has_value() && !game_view_initialized) {
+                        if (requested_role == app::ClientRole::Player && join_accepted &&
+                            game_camera.has_value() && !game_view_initialized)
+                        {
                             viewer->set_camera_mode(CameraMode::Game);
                             game_view_initialized = true;
                         }
@@ -2032,10 +2206,12 @@ namespace simnet::app
                                 run_setup.view()
                             ));
                         }
-                        if (viewer_result.close_requested) {
+                        if (viewer_result.close_requested)
+                        {
                             static_cast<void>(stop.request(ShutdownReason::WindowClosed));
                         }
-                        if (stationary_observer.has_value()) {
+                        if (stationary_observer.has_value())
+                        {
                             apply_stationary_observer_rotation(
                                 *stationary_observer,
                                 viewer_result.stationary_observer_yaw_axis,
@@ -2043,8 +2219,8 @@ namespace simnet::app
                                 delta
                             );
                         }
-                        if (viewer_result.toggle_simulation_pause_requested
-                            && pause_state_received) {
+                        if (viewer_result.toggle_simulation_pause_requested && pause_state_received)
+                        {
                             auto const bytes = app::encode_app_message({
                                 .kind = app::AppMessageKind::PauseSetRequest,
                                 .paused = !authoritative_pause_state,
@@ -2054,7 +2230,8 @@ namespace simnet::app
                                 TransportDelivery::ReliableSequenced,
                                 bytes
                             );
-                            if (!sent.ok) {
+                            if (!sent.ok)
+                            {
                                 log(LogCategory::Transport,
                                     LogLevel::Error,
                                     "client pause request send failed: " + sent.error.message);
@@ -2062,9 +2239,10 @@ namespace simnet::app
                                 static_cast<void>(stop.request(ShutdownReason::FatalError));
                             }
                         }
-                        if (!stop.requested() && requested_role == app::ClientRole::Player) {
-                            auto const input_active
-                                = join_accepted && viewer_result.camera_mode == CameraMode::Game;
+                        if (!stop.requested() && requested_role == app::ClientRole::Player)
+                        {
+                            auto const input_active =
+                                join_accepted && viewer_result.camera_mode == CameraMode::Game;
                             app::set_desired_player_input(
                                 player_input_delivery,
                                 input_active ? player_input_message(viewer_result.player_input)
@@ -2075,30 +2253,35 @@ namespace simnet::app
                 }
 #endif
 
-                if (!stop.requested()) {
-                    auto const accepted_player_session
-                        = connection_state == ClientConnectionState::SessionReady
-                        && requested_role == app::ClientRole::Player && join_accepted;
+                if (!stop.requested())
+                {
+                    auto const accepted_player_session =
+                        connection_state == ClientConnectionState::SessionReady &&
+                        requested_role == app::ClientRole::Player && join_accepted;
                     auto const submission = app::plan_player_input_submission(
                         player_input_delivery,
                         accepted_player_session,
                         stats.raw_time
                     );
-                    if (submission.has_value()) {
+                    if (submission.has_value())
+                    {
                         auto const bytes = app::encode_player_input(submission->input);
                         auto const sent = transport.send(
                             app::input_lane,
                             TransportDelivery::UnreliableSequenced,
                             bytes
                         );
-                        if (!sent.ok) {
+                        if (!sent.ok)
+                        {
                             app::record_player_input_submission_failure(player_input_delivery);
                             log(LogCategory::Transport,
                                 LogLevel::Error,
                                 "client player-input send failed: " + sent.error.message);
                             stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
-                        } else {
+                        }
+                        else
+                        {
                             app::record_player_input_submission(
                                 player_input_delivery,
                                 *submission,
@@ -2108,20 +2291,24 @@ namespace simnet::app
                     }
                 }
 
-                if (!stop.requested() && stationary_observer.has_value() && join_accepted
-                    && pipeline.area_of_interest.mode != AreaOfInterestMode::None) {
+                if (!stop.requested() && stationary_observer.has_value() && join_accepted &&
+                    pipeline.area_of_interest.mode != AreaOfInterestMode::None)
+                {
                     auto const forward = app::stationary_observer_forward(*stationary_observer);
-                    auto const direction_changed = forward.x != last_observer_interest_forward.x
-                        || forward.y != last_observer_interest_forward.y
-                        || forward.z != last_observer_interest_forward.z;
-                    auto const since_last = last_observer_interest_send_time.has_value()
-                        ? stats.raw_time - *last_observer_interest_send_time
-                        : app::stationary_observer_interest_heartbeat_interval;
-                    auto const update_due = !last_observer_interest_send_time.has_value()
-                        || (direction_changed
-                            && since_last >= app::stationary_observer_interest_min_interval)
-                        || since_last >= app::stationary_observer_interest_heartbeat_interval;
-                    if (update_due) {
+                    auto const direction_changed = forward.x != last_observer_interest_forward.x ||
+                                                   forward.y != last_observer_interest_forward.y ||
+                                                   forward.z != last_observer_interest_forward.z;
+                    auto const since_last =
+                        last_observer_interest_send_time.has_value()
+                            ? stats.raw_time - *last_observer_interest_send_time
+                            : app::stationary_observer_interest_heartbeat_interval;
+                    auto const update_due =
+                        !last_observer_interest_send_time.has_value() ||
+                        (direction_changed &&
+                         since_last >= app::stationary_observer_interest_min_interval) ||
+                        since_last >= app::stationary_observer_interest_heartbeat_interval;
+                    if (update_due)
+                    {
                         auto const bytes = app::encode_stationary_observer_interest({
                             .position = stationary_observer->position,
                             .forward = forward,
@@ -2131,22 +2318,27 @@ namespace simnet::app
                             TransportDelivery::UnreliableSequenced,
                             bytes
                         );
-                        if (!sent.ok) {
+                        if (!sent.ok)
+                        {
                             log(LogCategory::Transport,
                                 LogLevel::Error,
                                 "client observer-interest send failed: " + sent.error.message);
                             stop_cause = ClientStopCause::ProtocolError;
                             static_cast<void>(stop.request(ShutdownReason::FatalError));
-                        } else {
+                        }
+                        else
+                        {
                             last_observer_interest_send_time = stats.raw_time;
                             last_observer_interest_forward = forward;
                         }
                     }
                 }
 
-                if (!stop.requested()) {
+                if (!stop.requested())
+                {
                     auto const limit = reached_runtime_limit(settings, stats);
-                    if (limit != ShutdownReason::None) {
+                    if (limit != ShutdownReason::None)
+                    {
                         static_cast<void>(stop.request(limit));
                     }
                 }
@@ -2154,69 +2346,82 @@ namespace simnet::app
             }
 
             transport.disconnect(DisconnectCode::None);
-            if (!replication_csv->close()) {
+            if (!replication_csv->close())
+            {
                 throw std::runtime_error(
                     "client replication CSV close failed: " + std::string{replication_csv->error()}
                 );
             }
             log_client_replication_measurements(replication_measurements);
-            auto const canonical_entities
-                = snapshot_history.empty() ? 0U : snapshot_history.back().snapshot.size();
-            auto const canonical_fingerprint = snapshot_history.empty()
-                ? 0U
-                : app::snapshot_diagnostic_fingerprint(snapshot_history.back().snapshot);
-            if (compression.mode == CompressionMode::WholeUpdate) {
+            auto const canonical_entities =
+                snapshot_history.empty() ? 0U : snapshot_history.back().snapshot.size();
+            auto const canonical_fingerprint =
+                snapshot_history.empty()
+                    ? 0U
+                    : app::snapshot_diagnostic_fingerprint(snapshot_history.back().snapshot);
+            if (compression.mode == CompressionMode::WholeUpdate)
+            {
                 log(LogCategory::Pipeline,
                     LogLevel::Info,
-                    "client whole-update compression dictionary="
-                        + std::string{compression_report.dictionary_name} + " dictionary_id="
-                        + std::to_string(compression_report.dictionary_id) + " sequence="
-                        + std::to_string(latest_applied_sequence) + " envelope_input_bytes="
-                        + std::to_string(compression_report.latest_input_bytes) + " payload_bytes="
-                        + std::to_string(compression_report.latest_payload_bytes)
-                        + " envelope_bytes="
-                        + std::to_string(compression_report.latest_envelope_bytes)
-                        + " output_bytes=" + std::to_string(compression_report.latest_output_bytes)
-                        + " raw_fallbacks="
-                        + std::to_string(compression_report.whole_update_raw_fallback_count)
-                        + " decompression_cpu_ns="
-                        + std::to_string(
+                    "client whole-update compression dictionary=" +
+                        std::string{compression_report.dictionary_name} +
+                        " dictionary_id=" + std::to_string(compression_report.dictionary_id) +
+                        " sequence=" + std::to_string(latest_applied_sequence) +
+                        " envelope_input_bytes=" +
+                        std::to_string(compression_report.latest_input_bytes) + " payload_bytes=" +
+                        std::to_string(compression_report.latest_payload_bytes) +
+                        " envelope_bytes=" +
+                        std::to_string(compression_report.latest_envelope_bytes) +
+                        " output_bytes=" + std::to_string(compression_report.latest_output_bytes) +
+                        " raw_fallbacks=" +
+                        std::to_string(compression_report.whole_update_raw_fallback_count) +
+                        " decompression_cpu_ns=" +
+                        std::to_string(
                             std::max(compression_report.decompression_cpu_time, Nanoseconds{})
                                 .count()
                         ));
             }
             log(LogCategory::Transport,
                 LogLevel::Info,
-                "client snapshot delivery mode=" + shared.snapshot_delivery.mode + " effective="
-                    + std::
-                        string{effective_snapshot_delivery.has_value() ? app::transport_delivery_name(*effective_snapshot_delivery) : "unavailable"}
-                    + " applied_sequence=" + std::to_string(latest_applied_sequence) + " peer_id="
-                    + std::to_string(assigned_peer_id) + " player_id=" + std::to_string(player_id)
-                    + " ack_sequence=" + std::to_string(ack_tracker.value.newest_applied_snapshot)
-                    + " canonical_entities=" + std::to_string(canonical_entities)
-                    + " canonical_fingerprint=" + std::to_string(canonical_fingerprint)
-                    + " sequence_gaps=" + std::to_string(sequence_gap_count) + " recovery_requests="
-                    + std::to_string(recovery_request_state.sent_count) + " reliable_promotions="
-                    + std::to_string(reliable_promotion_count) + " player_input_state_changes="
-                    + std::to_string(player_input_delivery.state_change_submission_count)
-                    + " player_input_heartbeats="
-                    + std::to_string(player_input_delivery.heartbeat_submission_count)
-                    + " player_input_failures="
-                    + std::to_string(player_input_delivery.failed_submission_count));
+                "client snapshot delivery mode=" + shared.snapshot_delivery.mode + " effective=" +
+                    std::string{
+                        effective_snapshot_delivery.has_value()
+                            ? app::transport_delivery_name(*effective_snapshot_delivery)
+                            : "unavailable"
+                    } +
+                    " applied_sequence=" + std::to_string(latest_applied_sequence) + " peer_id=" +
+                    std::to_string(assigned_peer_id) + " player_id=" + std::to_string(player_id) +
+                    " ack_sequence=" + std::to_string(ack_tracker.value.newest_applied_snapshot) +
+                    " canonical_entities=" + std::to_string(canonical_entities) +
+                    " canonical_fingerprint=" + std::to_string(canonical_fingerprint) +
+                    " sequence_gaps=" + std::to_string(sequence_gap_count) +
+                    " recovery_requests=" + std::to_string(recovery_request_state.sent_count) +
+                    " reliable_promotions=" + std::to_string(reliable_promotion_count) +
+                    " player_input_state_changes=" +
+                    std::to_string(player_input_delivery.state_change_submission_count) +
+                    " player_input_heartbeats=" +
+                    std::to_string(player_input_delivery.heartbeat_submission_count) +
+                    " player_input_failures=" +
+                    std::to_string(player_input_delivery.failed_submission_count));
             log(LogCategory::Simulation,
                 LogLevel::Info,
-                "client runtime stopped reason=" + std::string{shutdown_reason_name(stop.reason())}
-                    + " cause=" + std::string{client_stop_cause_name(stop_cause)} + " frames="
-                    + std::to_string(stats.frames) + " ticks=" + std::to_string(stats.ticks)
-                    + " runtime_ns=" + std::to_string(stats.raw_time.count()));
+                "client runtime stopped reason=" +
+                    std::string{shutdown_reason_name(stop.reason())} +
+                    " cause=" + std::string{client_stop_cause_name(stop_cause)} + " frames=" +
+                    std::to_string(stats.frames) + " ticks=" + std::to_string(stats.ticks) +
+                    " runtime_ns=" + std::to_string(stats.raw_time.count()));
             return stop.reason() == ShutdownReason::FatalError ? 1 : 0;
-        } catch (std::exception const& error) {
+        }
+        catch (std::exception const& error)
+        {
             auto close_error = std::string{};
-            if (replication_csv.has_value() && !replication_csv->close()) {
+            if (replication_csv.has_value() && !replication_csv->close())
+            {
                 close_error = std::string{replication_csv->error()};
             }
             std::cerr << "Client failed: " << error.what();
-            if (!close_error.empty()) {
+            if (!close_error.empty())
+            {
                 std::cerr << ". Evidence close failed: " << close_error;
             }
             std::cerr << '\n';

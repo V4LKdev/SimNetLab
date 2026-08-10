@@ -19,7 +19,8 @@ namespace
     {
         auto result = std::vector<simnet::Byte>{};
         result.reserve(text.size());
-        for (auto const value : text) {
+        for (auto const value : text)
+        {
             result.push_back(static_cast<simnet::Byte>(value));
         }
         return result;
@@ -44,7 +45,8 @@ namespace
     [[nodiscard]] std::vector<simnet::Byte> compressible_bytes()
     {
         auto result = std::vector<simnet::Byte>(4096U);
-        for (auto index = std::size_t{}; index < result.size(); ++index) {
+        for (auto index = std::size_t{}; index < result.size(); ++index)
+        {
             result[index] = static_cast<simnet::Byte>(index % 7U);
         }
         return result;
@@ -54,7 +56,8 @@ namespace
     {
         auto result = std::vector<simnet::Byte>(size);
         auto state = std::uint32_t{0x12345678U};
-        for (auto& value : result) {
+        for (auto& value : result)
+        {
             state = state * 1664525U + 1013904223U;
             value = static_cast<simnet::Byte>(state >> 24U);
         }
@@ -63,14 +66,16 @@ namespace
 
     [[nodiscard]] std::vector<simnet::Byte> dictionary_bytes()
     {
-        auto const path = std::filesystem::path{__FILE__}.parent_path().parent_path()
-            / "assets/compression/pipeline_v1.zdict";
+        auto const path = std::filesystem::path{__FILE__}.parent_path().parent_path() /
+                          "assets/compression/pipeline_v1.zdict";
         auto input = std::ifstream{path, std::ios::binary | std::ios::ate};
-        if (!input) {
+        if (!input)
+        {
             return {};
         }
         auto const size = input.tellg();
-        if (size <= 0) {
+        if (size <= 0)
+        {
             return {};
         }
         auto result = std::vector<simnet::Byte>(static_cast<std::size_t>(size));
@@ -85,7 +90,8 @@ namespace
     [[nodiscard]] std::uint64_t dictionary_fingerprint(simnet::ByteSpan bytes)
     {
         auto hash = std::uint64_t{14695981039346656037ULL};
-        for (auto const byte : bytes) {
+        for (auto const byte : bytes)
+        {
             hash ^= static_cast<std::uint8_t>(byte);
             hash *= 1099511628211ULL;
         }
@@ -132,7 +138,8 @@ TEST_CASE("Raw and Zstd envelopes roundtrip exactly", "[compression][roundtrip]"
 {
     auto compressor = simnet::ZstdCompressor{};
     auto decompressor = simnet::ZstdDecompressor{};
-    for (auto const& input : {bytes("x"), compressible_bytes()}) {
+    for (auto const& input : {bytes("x"), compressible_bytes()})
+    {
         auto envelope = std::vector<simnet::Byte>{};
         auto const encoded = simnet::compress_bytes(
             compressor,
@@ -148,14 +155,13 @@ TEST_CASE("Raw and Zstd envelopes roundtrip exactly", "[compression][roundtrip]"
         CHECK(encoded.encoded_payload_bytes + encoded.envelope_bytes == encoded.output_bytes);
         CHECK(simnet::has_compression_envelope(envelope));
         CHECK(
-            encoded.encoding
-            == (input.size() == 1U ? simnet::CompressionEncoding::Raw
-                                   : simnet::CompressionEncoding::Zstd)
+            encoded.encoding == (input.size() == 1U ? simnet::CompressionEncoding::Raw
+                                                    : simnet::CompressionEncoding::Zstd)
         );
 
         auto decoded_bytes = std::vector<simnet::Byte>{};
-        auto const decoded
-            = simnet::decompress_bytes(decompressor, envelope, limits(), decoded_bytes);
+        auto const decoded =
+            simnet::decompress_bytes(decompressor, envelope, limits(), decoded_bytes);
         REQUIRE(decoded.valid);
         CHECK(decoded.encoding == encoded.encoding);
         CHECK(decoded.output_bytes == input.size());
@@ -289,7 +295,8 @@ TEST_CASE("decompression rejects malformed envelope fields", "[compression][malf
     );
 
     auto output = std::vector<simnet::Byte>{};
-    for (auto mutation : {0U, 4U, 6U, 8U}) {
+    for (auto mutation : {0U, 4U, 6U, 8U})
+    {
         auto malformed = valid;
         malformed[mutation] ^= simnet::Byte{0x7FU};
         CHECK_FALSE(simnet::decompress_bytes(decompressor, malformed, limits(), output).valid);
@@ -364,8 +371,8 @@ TEST_CASE("unknown Zstd frame sizes are rejected without poisoning later input",
     REQUIRE(context != nullptr);
     REQUIRE_FALSE(ZSTD_isError(ZSTD_CCtx_setParameter(context, ZSTD_c_contentSizeFlag, 0)));
     auto frame = std::vector<simnet::Byte>(ZSTD_compressBound(input.size()));
-    auto const frame_size
-        = ZSTD_compress2(context, frame.data(), frame.size(), input.data(), input.size());
+    auto const frame_size =
+        ZSTD_compress2(context, frame.data(), frame.size(), input.data(), input.size());
     ZSTD_freeCCtx(context);
     REQUIRE_FALSE(ZSTD_isError(frame_size));
     frame.resize(frame_size);
@@ -439,7 +446,8 @@ TEST_CASE(
     CHECK(second == first);
 
     auto restored = std::vector<simnet::Byte>{};
-    for (auto iteration = 0; iteration < 3; ++iteration) {
+    for (auto iteration = 0; iteration < 3; ++iteration)
+    {
         auto const report = simnet::decompress_bytes_with_dictionary(
             decompressor,
             dictionary,
@@ -462,8 +470,8 @@ TEST_CASE(
     auto compressor = simnet::ZstdCompressor{};
     auto const input = compressible_bytes();
     auto envelope = std::vector<simnet::Byte>{};
-    auto const report
-        = simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), envelope);
+    auto const report =
+        simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), envelope);
     REQUIRE(report.valid);
     REQUIRE(report.encoding == simnet::CompressionEncoding::ZstdDictionary);
     REQUIRE(envelope.size() > simnet::compression_envelope_bytes);
@@ -478,8 +486,8 @@ TEST_CASE("dictionary mode has a truthful Raw envelope fallback", "[compression]
     auto compressor = simnet::ZstdCompressor{};
     auto const input = bytes("x");
     auto envelope = std::vector<simnet::Byte>{};
-    auto const report
-        = simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), envelope);
+    auto const report =
+        simnet::compress_bytes_with_dictionary(compressor, dictionary, input, limits(), envelope);
     REQUIRE(report.valid);
     CHECK(report.encoding == simnet::CompressionEncoding::Raw);
     CHECK(report.envelope_bytes == simnet::compression_envelope_bytes);
@@ -669,7 +677,8 @@ TEST_CASE(
     );
     CHECK(output == original);
 
-    auto reject = [&](std::vector<simnet::Byte> malformed, std::uint32_t maximum = 8192U) {
+    auto reject = [&](std::vector<simnet::Byte> malformed, std::uint32_t maximum = 8192U)
+    {
         CHECK_FALSE(
             simnet::decompress_bytes_with_dictionary(
                 decompressor,

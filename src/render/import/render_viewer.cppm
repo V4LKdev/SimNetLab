@@ -11,7 +11,7 @@ export namespace simnet
 {
     class Viewer
     {
-    public:
+      public:
         /// Empty output_directory saves screenshots in the current working directory.
         explicit Viewer(ViewerConfig config = {}, std::string output_directory = {});
         ~Viewer();
@@ -25,7 +25,7 @@ export namespace simnet
         [[nodiscard]] ViewerResult draw(RenderFrame const& frame);
         void set_camera_mode(CameraMode mode);
 
-    private:
+      private:
         class Impl;
         std::unique_ptr<Impl> impl_;
     };

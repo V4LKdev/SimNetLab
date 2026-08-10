@@ -45,10 +45,12 @@ namespace simnet
         [[nodiscard]] std::optional<std::string>
         unsupported_classification_error(SnapshotUpdate const& patch)
         {
-            for (auto const& entity : patch.upserts) {
-                if (!entity_kind_from_classification(entity.classification).has_value()) {
-                    return "unsupported entity classification "
-                        + std::to_string(entity.classification.value());
+            for (auto const& entity : patch.upserts)
+            {
+                if (!entity_kind_from_classification(entity.classification).has_value())
+                {
+                    return "unsupported entity classification " +
+                           std::to_string(entity.classification.value());
                 }
             }
             return std::nullopt;
@@ -84,7 +86,8 @@ namespace simnet
 
         void delete_entity_if_alive(flecs::world& world, flecs::entity_t entity_id)
         {
-            if (entity_id != 0 && ecs_is_alive(world.c_ptr(), entity_id)) {
+            if (entity_id != 0 && ecs_is_alive(world.c_ptr(), entity_id))
+            {
                 ecs_delete(world.c_ptr(), entity_id);
             }
         }
@@ -95,10 +98,12 @@ namespace simnet
             EntityNetId id
         ) noexcept
         {
-            while (delete_index < patch.deletes.size() && patch.deletes[delete_index] < id) {
+            while (delete_index < patch.deletes.size() && patch.deletes[delete_index] < id)
+            {
                 ++delete_index;
             }
-            if (delete_index < patch.deletes.size() && patch.deletes[delete_index] == id) {
+            if (delete_index < patch.deletes.size() && patch.deletes[delete_index] == id)
+            {
                 ++delete_index;
                 return true;
             }
@@ -156,8 +161,8 @@ namespace simnet
         )
         {
             auto report = initial_apply_report(patch);
-            auto const count
-                = static_cast<std::uint32_t>(world.get<ClientReplicationState>().size());
+            auto const count =
+                static_cast<std::uint32_t>(world.get<ClientReplicationState>().size());
             report.previous_entities = count;
             report.final_entities = count;
             report.valid = false;
@@ -186,12 +191,14 @@ namespace simnet
     {
         auto const& state = world.get<ClientReplicationState>();
         auto const position = std::lower_bound(state.ids.begin(), state.ids.end(), id);
-        if (position == state.ids.end() || *position != id) {
+        if (position == state.ids.end() || *position != id)
+        {
             return std::nullopt;
         }
         auto const offset = static_cast<std::size_t>(position - state.ids.begin());
         auto const entity = flecs::entity{world, state.entities[offset]};
-        if (!entity.is_alive() || !entity.has<EntityKindComponent>()) {
+        if (!entity.is_alive() || !entity.has<EntityKindComponent>())
+        {
             return std::nullopt;
         }
         return entity.get<EntityKindComponent>().value;
@@ -205,12 +212,14 @@ namespace simnet
         auto const& current_state = world.get<ClientReplicationState>();
         report.previous_entities = static_cast<std::uint32_t>(current_state.size());
         report.final_entities = report.previous_entities;
-        if (patch.tick < current_state.latest_tick) {
+        if (patch.tick < current_state.latest_tick)
+        {
             report.valid = false;
             report.error = "stale patch tick";
             return report;
         }
-        if (auto error = unsupported_classification_error(patch); error.has_value()) {
+        if (auto error = unsupported_classification_error(patch); error.has_value())
+        {
             report.valid = false;
             report.error = std::move(*error);
             return report;
@@ -218,7 +227,8 @@ namespace simnet
 
         auto& state = world.ensure<ClientReplicationState>();
 
-        if (patch.kind == SnapshotKind::Patch) {
+        if (patch.kind == SnapshotKind::Patch)
+        {
             auto next_state = ClientReplicationState{};
             next_state.reserve(state.size() + patch.upserts.size());
 
@@ -226,23 +236,27 @@ namespace simnet
             auto upsert_index = std::size_t{};
             auto delete_index = std::size_t{};
 
-            while (current_index < state.ids.size()) {
+            while (current_index < state.ids.size())
+            {
                 auto const current_id = state.ids[current_index];
 
-                while (upsert_before_current(patch, upsert_index, current_id)) {
+                while (upsert_before_current(patch, upsert_index, current_id))
+                {
                     auto const& boid = patch.upserts[upsert_index];
                     auto entity = make_replicated_entity(world, boid);
                     append_entity(next_state, boid.id, entity.id());
                     ++upsert_index;
                 }
 
-                if (delete_matches(patch, delete_index, current_id)) {
+                if (delete_matches(patch, delete_index, current_id))
+                {
                     delete_entity_if_alive(world, state.entities[current_index]);
                     ++current_index;
                     continue;
                 }
 
-                if (upsert_matches(patch, upsert_index, current_id)) {
+                if (upsert_matches(patch, upsert_index, current_id))
+                {
                     auto const& boid = patch.upserts[upsert_index];
                     update_replicated_entity(world, state.entities[current_index], boid);
                     append_entity(next_state, current_id, state.entities[current_index]);
@@ -255,7 +269,8 @@ namespace simnet
                 ++current_index;
             }
 
-            while (upsert_index < patch.upserts.size()) {
+            while (upsert_index < patch.upserts.size())
+            {
                 auto const& boid = patch.upserts[upsert_index];
                 auto entity = make_replicated_entity(world, boid);
                 append_entity(next_state, boid.id, entity.id());
@@ -270,14 +285,16 @@ namespace simnet
             return report;
         }
 
-        for (auto const entity_id : state.entities) {
+        for (auto const entity_id : state.entities)
+        {
             delete_entity_if_alive(world, entity_id);
         }
 
         auto next_state = ClientReplicationState{};
         next_state.reserve(patch.upserts.size());
 
-        for (auto const& boid : patch.upserts) {
+        for (auto const& boid : patch.upserts)
+        {
             auto entity = make_replicated_entity(world, boid);
             append_entity(next_state, boid.id, entity.id());
         }
@@ -293,7 +310,8 @@ namespace simnet
     ApplyPatchReport apply_client_snapshot_patch(flecs::world& world, SnapshotUpdate const& patch)
     {
         auto const validation = validate_client_snapshot_patch(patch);
-        if (!validation.valid) {
+        if (!validation.valid)
+        {
             return rejected_apply_report(world, patch, validation.message);
         }
         return apply_client_snapshot_patch_unchecked(world, patch);
@@ -304,7 +322,8 @@ namespace simnet
     {
         auto report = ClientSnapshotExtractionReport{.tick = tick};
         auto const& state = world.get<ClientReplicationState>();
-        if (state.ids.size() != state.entities.size()) {
+        if (state.ids.size() != state.entities.size())
+        {
             reset_failed_snapshot(out_snapshot, tick);
             report.valid = false;
             report.error = "client replication index sizes do not match";
@@ -314,9 +333,11 @@ namespace simnet
         out_snapshot.clear();
         out_snapshot.tick = tick;
         out_snapshot.reserve(state.size());
-        for (auto index_position = std::size_t{}; index_position < state.size(); ++index_position) {
+        for (auto index_position = std::size_t{}; index_position < state.size(); ++index_position)
+        {
             auto const entity_id = state.entities[index_position];
-            if (entity_id == 0 || !ecs_is_alive(world.c_ptr(), entity_id)) {
+            if (entity_id == 0 || !ecs_is_alive(world.c_ptr(), entity_id))
+            {
                 reset_failed_snapshot(out_snapshot, tick);
                 report.valid = false;
                 report.error = "client replication index references a dead entity";
@@ -324,8 +345,9 @@ namespace simnet
             }
 
             auto const entity = flecs::entity{world, entity_id};
-            if (!entity.has<EntityKindComponent>() || !entity.has<NetIdentity>()
-                || !entity.has<Position>() || !entity.has<Heading>() || !entity.has<Hue>()) {
+            if (!entity.has<EntityKindComponent>() || !entity.has<NetIdentity>() ||
+                !entity.has<Position>() || !entity.has<Heading>() || !entity.has<Hue>())
+            {
                 reset_failed_snapshot(out_snapshot, tick);
                 report.valid = false;
                 report.error = "client replicated entity is missing required components";
@@ -333,16 +355,18 @@ namespace simnet
             }
 
             auto const& identity = entity.get<NetIdentity>();
-            if (identity.id != state.ids[index_position]) {
+            if (identity.id != state.ids[index_position])
+            {
                 reset_failed_snapshot(out_snapshot, tick);
                 report.valid = false;
                 report.error = "client replication index identity does not match entity";
                 return report;
             }
 
-            auto const classification
-                = classification_from_entity_kind(entity.get<EntityKindComponent>().value);
-            if (!classification.has_value()) {
+            auto const classification =
+                classification_from_entity_kind(entity.get<EntityKindComponent>().value);
+            if (!classification.has_value())
+            {
                 reset_failed_snapshot(out_snapshot, tick);
                 report.valid = false;
                 report.error = "client replicated entity kind is unsupported";
@@ -357,7 +381,8 @@ namespace simnet
         }
 
         auto const validation = validate_world_snapshot(out_snapshot);
-        if (!validation.valid) {
+        if (!validation.valid)
+        {
             reset_failed_snapshot(out_snapshot, tick);
             report.valid = false;
             report.error = validation.message;

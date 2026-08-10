@@ -20,16 +20,20 @@ namespace simnet::transport_protocol
     DisconnectCode
     identity_mismatch(SessionIdentity const& actual, SessionIdentity const& expected) noexcept
     {
-        if (actual.application_protocol_version != expected.application_protocol_version) {
+        if (actual.application_protocol_version != expected.application_protocol_version)
+        {
             return DisconnectCode::ProtocolMismatch;
         }
-        if (actual.compatibility_fingerprint != expected.compatibility_fingerprint) {
+        if (actual.compatibility_fingerprint != expected.compatibility_fingerprint)
+        {
             return DisconnectCode::IncompatibleConfig;
         }
-        if (actual.application_wire_fingerprint != expected.application_wire_fingerprint) {
+        if (actual.application_wire_fingerprint != expected.application_wire_fingerprint)
+        {
             return DisconnectCode::IncompatibleWireProfile;
         }
-        if (actual.capabilities != expected.capabilities) {
+        if (actual.capabilities != expected.capabilities)
+        {
             return DisconnectCode::UnsupportedCapability;
         }
         return DisconnectCode::None;
@@ -47,7 +51,8 @@ namespace simnet::transport_protocol
 
     bool valid_delivery(TransportDelivery delivery) noexcept
     {
-        switch (delivery) {
+        switch (delivery)
+        {
             case TransportDelivery::ReliableSequenced:
             case TransportDelivery::UnreliableSequenced:
                 return true;
@@ -57,7 +62,8 @@ namespace simnet::transport_protocol
 
     bool valid_disconnect_code(DisconnectCode code) noexcept
     {
-        switch (code) {
+        switch (code)
+        {
             case DisconnectCode::None:
             case DisconnectCode::Timeout:
             case DisconnectCode::ProtocolMismatch:
@@ -99,7 +105,8 @@ namespace simnet::transport_protocol
 
     bool read_u8(Byte const* data, std::size_t size, std::size_t& offset, std::uint8_t& value)
     {
-        if (offset + 1U > size) {
+        if (offset + 1U > size)
+        {
             return false;
         }
         value = static_cast<std::uint8_t>(data[offset]);
@@ -111,7 +118,8 @@ namespace simnet::transport_protocol
     {
         std::uint8_t high{};
         std::uint8_t low{};
-        if (!read_u8(data, size, offset, high) || !read_u8(data, size, offset, low)) {
+        if (!read_u8(data, size, offset, high) || !read_u8(data, size, offset, low))
+        {
             return false;
         }
         value = static_cast<std::uint16_t>((static_cast<std::uint16_t>(high) << 8U) | low);
@@ -124,12 +132,13 @@ namespace simnet::transport_protocol
         std::uint8_t b{};
         std::uint8_t c{};
         std::uint8_t d{};
-        if (!read_u8(data, size, offset, a) || !read_u8(data, size, offset, b)
-            || !read_u8(data, size, offset, c) || !read_u8(data, size, offset, d)) {
+        if (!read_u8(data, size, offset, a) || !read_u8(data, size, offset, b) ||
+            !read_u8(data, size, offset, c) || !read_u8(data, size, offset, d))
+        {
             return false;
         }
-        value = (static_cast<std::uint32_t>(a) << 24U) | (static_cast<std::uint32_t>(b) << 16U)
-            | (static_cast<std::uint32_t>(c) << 8U) | static_cast<std::uint32_t>(d);
+        value = (static_cast<std::uint32_t>(a) << 24U) | (static_cast<std::uint32_t>(b) << 16U) |
+                (static_cast<std::uint32_t>(c) << 8U) | static_cast<std::uint32_t>(d);
         return true;
     }
 
@@ -137,7 +146,8 @@ namespace simnet::transport_protocol
     {
         std::uint32_t high{};
         std::uint32_t low{};
-        if (!read_u32(data, size, offset, high) || !read_u32(data, size, offset, low)) {
+        if (!read_u32(data, size, offset, high) || !read_u32(data, size, offset, low))
+        {
             return false;
         }
         value = (static_cast<std::uint64_t>(high) << 32U) | low;
@@ -147,12 +157,15 @@ namespace simnet::transport_protocol
     std::vector<Byte> encode_session_message(SessionMessage const& message)
     {
         auto payload = std::vector<Byte>{};
-        if (message.kind == SessionMessageKind::ClientHello) {
+        if (message.kind == SessionMessageKind::ClientHello)
+        {
             write_u32(payload, message.identity.application_protocol_version);
             write_u64(payload, message.identity.compatibility_fingerprint);
             write_u64(payload, message.identity.application_wire_fingerprint);
             write_u32(payload, message.identity.capabilities);
-        } else if (message.kind == SessionMessageKind::ServerReject) {
+        }
+        else if (message.kind == SessionMessageKind::ServerReject)
+        {
             write_u16(payload, static_cast<std::uint16_t>(message.reject_code));
         }
 
@@ -173,33 +186,39 @@ namespace simnet::transport_protocol
         std::uint16_t version{};
         std::uint8_t kind{};
         std::uint32_t payload_size{};
-        if (!read_u32(data, size, offset, magic) || !read_u16(data, size, offset, version)
-            || !read_u8(data, size, offset, kind) || !read_u32(data, size, offset, payload_size)) {
+        if (!read_u32(data, size, offset, magic) || !read_u16(data, size, offset, version) ||
+            !read_u8(data, size, offset, kind) || !read_u32(data, size, offset, payload_size))
+        {
             return false;
         }
-        if (magic != session_magic || version != session_version || offset + payload_size != size) {
+        if (magic != session_magic || version != session_version || offset + payload_size != size)
+        {
             return false;
         }
 
         message.kind = static_cast<SessionMessageKind>(kind);
-        if (message.kind == SessionMessageKind::ClientHello) {
-            return payload_size == 24U
-                && read_u32(data, size, offset, message.identity.application_protocol_version)
-                && read_u64(data, size, offset, message.identity.compatibility_fingerprint)
-                && read_u64(data, size, offset, message.identity.application_wire_fingerprint)
-                && read_u32(data, size, offset, message.identity.capabilities);
+        if (message.kind == SessionMessageKind::ClientHello)
+        {
+            return payload_size == 24U &&
+                   read_u32(data, size, offset, message.identity.application_protocol_version) &&
+                   read_u64(data, size, offset, message.identity.compatibility_fingerprint) &&
+                   read_u64(data, size, offset, message.identity.application_wire_fingerprint) &&
+                   read_u32(data, size, offset, message.identity.capabilities);
         }
-        if (message.kind == SessionMessageKind::ServerAccept) {
+        if (message.kind == SessionMessageKind::ServerAccept)
+        {
             return payload_size == 0U;
         }
-        if (message.kind == SessionMessageKind::ServerReject) {
+        if (message.kind == SessionMessageKind::ServerReject)
+        {
             auto code = std::uint16_t{};
-            if (payload_size != 2U || !read_u16(data, size, offset, code)) {
+            if (payload_size != 2U || !read_u16(data, size, offset, code))
+            {
                 return false;
             }
             message.reject_code = static_cast<DisconnectCode>(code);
-            return valid_disconnect_code(message.reject_code)
-                && message.reject_code != DisconnectCode::None;
+            return valid_disconnect_code(message.reject_code) &&
+                   message.reject_code != DisconnectCode::None;
         }
         return false;
     }

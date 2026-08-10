@@ -22,7 +22,7 @@ export namespace simnet
 
     class TransportClient
     {
-    public:
+      public:
         TransportClient();
         ~TransportClient();
 
@@ -47,7 +47,7 @@ export namespace simnet
         [[nodiscard]] TransportStats stats() const;
         [[nodiscard]] PeerStats server_stats() const;
 
-    private:
+      private:
         struct Impl;
         Impl* impl_{};
     };

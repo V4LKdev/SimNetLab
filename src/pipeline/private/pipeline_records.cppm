@@ -45,22 +45,27 @@ namespace simnet::pipeline_records
     /// Resolves the record layout for a given pipeline definition.
     [[nodiscard]] RecordLayout resolve_record_layout(PipelineDefinition const& pipeline) noexcept
     {
-        auto const bitpacked
-            = has_all_flags(pipeline.techniques, PipelineTechniqueFlags::BitPacking);
-        auto const quantized
-            = has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization);
-        auto const oct_heading
-            = has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading);
+        auto const bitpacked =
+            has_all_flags(pipeline.techniques, PipelineTechniqueFlags::BitPacking);
+        auto const quantized =
+            has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization);
+        auto const oct_heading =
+            has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading);
 
         auto record_bytes = pipeline_wire::raw_record_bytes;
         auto name = EntityRecordLayout::Raw;
-        if (bitpacked) {
+        if (bitpacked)
+        {
             record_bytes = pipeline_wire::bitpacked_quantized_oct_record_bytes;
             name = EntityRecordLayout::BitPackedQuantizedOctHeading;
-        } else if (oct_heading) {
+        }
+        else if (oct_heading)
+        {
             record_bytes = pipeline_wire::quantized_oct_record_bytes;
             name = EntityRecordLayout::QuantizedOctHeading;
-        } else if (quantized) {
+        }
+        else if (quantized)
+        {
             record_bytes = pipeline_wire::quantized_record_bytes;
             name = EntityRecordLayout::Quantized;
         }
@@ -99,7 +104,8 @@ namespace simnet::pipeline_records
         prepared.canonical.classification = classification;
         prepared.canonical.hue = hue;
 
-        if (!layout.quantized) {
+        if (!layout.quantized)
+        {
             prepared.position_tokens = {
                 std::bit_cast<std::uint32_t>(position.x),
                 std::bit_cast<std::uint32_t>(position.y),
@@ -158,11 +164,14 @@ namespace simnet::pipeline_records
             ),
         };
 
-        if (layout.oct_heading) {
+        if (layout.oct_heading)
+        {
             auto const [x, y] = pipeline_quantize::encode_oct_heading(heading);
             prepared.heading_tokens = {x, y, 0U};
             prepared.canonical.heading = pipeline_quantize::decode_oct_heading(x, y);
-        } else {
+        }
+        else
+        {
             prepared.heading_tokens = {
                 pipeline_quantize::quantize_snorm16(heading.x),
                 pipeline_quantize::quantize_snorm16(heading.y),
@@ -195,19 +204,19 @@ namespace simnet::pipeline_records
     ) noexcept
     {
         ++report.quality_sample_count;
-        if (report.layout == EntityRecordLayout::Raw) {
+        if (report.layout == EntityRecordLayout::Raw)
+        {
             return;
         }
 
-        auto const position_x
-            = static_cast<double>(source_position.x) - prepared.canonical.position.x;
-        auto const position_y
-            = static_cast<double>(source_position.y) - prepared.canonical.position.y;
-        auto const position_z
-            = static_cast<double>(source_position.z) - prepared.canonical.position.z;
-        auto const position_error = std::sqrt(
-            position_x * position_x + position_y * position_y + position_z * position_z
-        );
+        auto const position_x =
+            static_cast<double>(source_position.x) - prepared.canonical.position.x;
+        auto const position_y =
+            static_cast<double>(source_position.y) - prepared.canonical.position.y;
+        auto const position_z =
+            static_cast<double>(source_position.z) - prepared.canonical.position.z;
+        auto const position_error =
+            std::sqrt(position_x * position_x + position_y * position_y + position_z * position_z);
         report.position_error_sum += position_error;
         report.position_error_maximum = std::max(report.position_error_maximum, position_error);
 
@@ -221,8 +230,8 @@ namespace simnet::pipeline_records
         auto constexpr radians_to_degrees = 57.295779513082320876;
         auto const heading_error = std::acos(cosine) * radians_to_degrees;
         report.heading_angular_error_degrees_sum += heading_error;
-        report.heading_angular_error_degrees_maximum
-            = std::max(report.heading_angular_error_degrees_maximum, heading_error);
+        report.heading_angular_error_degrees_maximum =
+            std::max(report.heading_angular_error_degrees_maximum, heading_error);
     }
 
     [[nodiscard]] bool same_binary32(float left, float right) noexcept
@@ -237,15 +246,15 @@ namespace simnet::pipeline_records
         std::size_t baseline_index
     ) noexcept
     {
-        return current.id == baseline.ids[baseline_index]
-            && current.classification == baseline.classifications[baseline_index]
-            && same_binary32(current.position.x, baseline.positions[baseline_index].x)
-            && same_binary32(current.position.y, baseline.positions[baseline_index].y)
-            && same_binary32(current.position.z, baseline.positions[baseline_index].z)
-            && same_binary32(current.heading.x, baseline.headings[baseline_index].x)
-            && same_binary32(current.heading.y, baseline.headings[baseline_index].y)
-            && same_binary32(current.heading.z, baseline.headings[baseline_index].z)
-            && current.hue == baseline.hues[baseline_index];
+        return current.id == baseline.ids[baseline_index] &&
+               current.classification == baseline.classifications[baseline_index] &&
+               same_binary32(current.position.x, baseline.positions[baseline_index].x) &&
+               same_binary32(current.position.y, baseline.positions[baseline_index].y) &&
+               same_binary32(current.position.z, baseline.positions[baseline_index].z) &&
+               same_binary32(current.heading.x, baseline.headings[baseline_index].x) &&
+               same_binary32(current.heading.y, baseline.headings[baseline_index].y) &&
+               same_binary32(current.heading.z, baseline.headings[baseline_index].z) &&
+               current.hue == baseline.hues[baseline_index];
     }
 
     /// Returns the semantic fields that differ from one exact retained canonical entity.
@@ -256,20 +265,24 @@ namespace simnet::pipeline_records
     ) noexcept
     {
         auto mask = std::uint8_t{};
-        if (current.classification != baseline.classifications[baseline_index]) {
+        if (current.classification != baseline.classifications[baseline_index])
+        {
             mask |= pipeline_wire::classification_field_mask;
         }
-        if (!same_binary32(current.position.x, baseline.positions[baseline_index].x)
-            || !same_binary32(current.position.y, baseline.positions[baseline_index].y)
-            || !same_binary32(current.position.z, baseline.positions[baseline_index].z)) {
+        if (!same_binary32(current.position.x, baseline.positions[baseline_index].x) ||
+            !same_binary32(current.position.y, baseline.positions[baseline_index].y) ||
+            !same_binary32(current.position.z, baseline.positions[baseline_index].z))
+        {
             mask |= pipeline_wire::position_field_mask;
         }
-        if (!same_binary32(current.heading.x, baseline.headings[baseline_index].x)
-            || !same_binary32(current.heading.y, baseline.headings[baseline_index].y)
-            || !same_binary32(current.heading.z, baseline.headings[baseline_index].z)) {
+        if (!same_binary32(current.heading.x, baseline.headings[baseline_index].x) ||
+            !same_binary32(current.heading.y, baseline.headings[baseline_index].y) ||
+            !same_binary32(current.heading.z, baseline.headings[baseline_index].z))
+        {
             mask |= pipeline_wire::heading_field_mask;
         }
-        if (current.hue != baseline.hues[baseline_index]) {
+        if (current.hue != baseline.hues[baseline_index])
+        {
             mask |= pipeline_wire::hue_field_mask;
         }
         return mask;
@@ -279,17 +292,21 @@ namespace simnet::pipeline_records
     selected_field_bytes(RecordLayout const& layout, std::uint8_t mask) noexcept
     {
         auto bytes = std::uint32_t{};
-        if ((mask & pipeline_wire::classification_field_mask) != 0U) {
+        if ((mask & pipeline_wire::classification_field_mask) != 0U)
+        {
             bytes += pipeline_wire::u8_bytes;
         }
-        if ((mask & pipeline_wire::position_field_mask) != 0U) {
+        if ((mask & pipeline_wire::position_field_mask) != 0U)
+        {
             bytes += layout.quantized ? 3U * pipeline_wire::u16_bytes : pipeline_wire::vec3_bytes;
         }
-        if ((mask & pipeline_wire::heading_field_mask) != 0U) {
+        if ((mask & pipeline_wire::heading_field_mask) != 0U)
+        {
             bytes += layout.quantized ? (layout.oct_heading ? 2U : 3U) * pipeline_wire::u16_bytes
                                       : pipeline_wire::vec3_bytes;
         }
-        if ((mask & pipeline_wire::hue_field_mask) != 0U) {
+        if ((mask & pipeline_wire::hue_field_mask) != 0U)
+        {
             bytes += pipeline_wire::u8_bytes;
         }
         return bytes;
@@ -297,16 +314,20 @@ namespace simnet::pipeline_records
 
     void observe_field_mask(DeltaReport& report, std::uint8_t mask) noexcept
     {
-        if ((mask & pipeline_wire::classification_field_mask) != 0U) {
+        if ((mask & pipeline_wire::classification_field_mask) != 0U)
+        {
             ++report.classification_inclusion_count;
         }
-        if ((mask & pipeline_wire::position_field_mask) != 0U) {
+        if ((mask & pipeline_wire::position_field_mask) != 0U)
+        {
             ++report.position_inclusion_count;
         }
-        if ((mask & pipeline_wire::heading_field_mask) != 0U) {
+        if ((mask & pipeline_wire::heading_field_mask) != 0U)
+        {
             ++report.heading_inclusion_count;
         }
-        if ((mask & pipeline_wire::hue_field_mask) != 0U) {
+        if ((mask & pipeline_wire::hue_field_mask) != 0U)
+        {
             ++report.hue_inclusion_count;
         }
     }
@@ -319,8 +340,10 @@ namespace simnet::pipeline_records
         auto x = std::uint16_t{};
         auto y = std::uint16_t{};
         auto z = std::uint16_t{};
-        if (!pipeline_wire::read_u16(bytes, offset, x) || !pipeline_wire::read_u16(bytes, offset, y)
-            || !pipeline_wire::read_u16(bytes, offset, z)) {
+        if (!pipeline_wire::read_u16(bytes, offset, x) ||
+            !pipeline_wire::read_u16(bytes, offset, y) ||
+            !pipeline_wire::read_u16(bytes, offset, z))
+        {
             return false;
         }
 
@@ -339,8 +362,10 @@ namespace simnet::pipeline_records
         auto x = std::uint16_t{};
         auto y = std::uint16_t{};
         auto z = std::uint16_t{};
-        if (!pipeline_wire::read_u16(bytes, offset, x) || !pipeline_wire::read_u16(bytes, offset, y)
-            || !pipeline_wire::read_u16(bytes, offset, z)) {
+        if (!pipeline_wire::read_u16(bytes, offset, x) ||
+            !pipeline_wire::read_u16(bytes, offset, y) ||
+            !pipeline_wire::read_u16(bytes, offset, z))
+        {
             return false;
         }
 
@@ -361,8 +386,9 @@ namespace simnet::pipeline_records
     {
         auto x = std::uint16_t{};
         auto y = std::uint16_t{};
-        if (!pipeline_wire::read_u16(bytes, offset, x)
-            || !pipeline_wire::read_u16(bytes, offset, y)) {
+        if (!pipeline_wire::read_u16(bytes, offset, x) ||
+            !pipeline_wire::read_u16(bytes, offset, y))
+        {
             return false;
         }
 
@@ -397,14 +423,15 @@ namespace simnet::pipeline_records
         auto hx = std::uint32_t{};
         auto hy = std::uint32_t{};
         auto hue = std::uint32_t{};
-        if (!pipeline_bitpack::read_bits(reader, 32, id)
-            || !pipeline_bitpack::read_bits(reader, 8, classification)
-            || !pipeline_bitpack::read_bits(reader, 16, px)
-            || !pipeline_bitpack::read_bits(reader, 16, py)
-            || !pipeline_bitpack::read_bits(reader, 16, pz)
-            || !pipeline_bitpack::read_bits(reader, 16, hx)
-            || !pipeline_bitpack::read_bits(reader, 16, hy)
-            || !pipeline_bitpack::read_bits(reader, 8, hue)) {
+        if (!pipeline_bitpack::read_bits(reader, 32, id) ||
+            !pipeline_bitpack::read_bits(reader, 8, classification) ||
+            !pipeline_bitpack::read_bits(reader, 16, px) ||
+            !pipeline_bitpack::read_bits(reader, 16, py) ||
+            !pipeline_bitpack::read_bits(reader, 16, pz) ||
+            !pipeline_bitpack::read_bits(reader, 16, hx) ||
+            !pipeline_bitpack::read_bits(reader, 16, hy) ||
+            !pipeline_bitpack::read_bits(reader, 8, hue))
+        {
             return false;
         }
 
@@ -442,14 +469,16 @@ namespace simnet::pipeline_records
         PreparedRecord const& prepared
     )
     {
-        if (layout.bitpacked) {
+        if (layout.bitpacked)
+        {
             write_bitpacked_record(bytes, prepared);
             return;
         }
 
         pipeline_wire::write_u32(bytes, prepared.canonical.id);
         pipeline_wire::write_u8(bytes, prepared.canonical.classification.value());
-        if (layout.quantized) {
+        if (layout.quantized)
+        {
             pipeline_wire::write_u16(
                 bytes,
                 static_cast<std::uint16_t>(prepared.position_tokens[0])
@@ -462,7 +491,8 @@ namespace simnet::pipeline_records
                 bytes,
                 static_cast<std::uint16_t>(prepared.position_tokens[2])
             );
-            if (layout.oct_heading) {
+            if (layout.oct_heading)
+            {
                 pipeline_wire::write_u16(
                     bytes,
                     static_cast<std::uint16_t>(prepared.heading_tokens[0])
@@ -471,7 +501,9 @@ namespace simnet::pipeline_records
                     bytes,
                     static_cast<std::uint16_t>(prepared.heading_tokens[1])
                 );
-            } else {
+            }
+            else
+            {
                 pipeline_wire::write_u16(
                     bytes,
                     static_cast<std::uint16_t>(prepared.heading_tokens[0])
@@ -485,7 +517,9 @@ namespace simnet::pipeline_records
                     static_cast<std::uint16_t>(prepared.heading_tokens[2])
                 );
             }
-        } else {
+        }
+        else
+        {
             pipeline_wire::write_u32(bytes, prepared.position_tokens[0]);
             pipeline_wire::write_u32(bytes, prepared.position_tokens[1]);
             pipeline_wire::write_u32(bytes, prepared.position_tokens[2]);
@@ -504,36 +538,50 @@ namespace simnet::pipeline_records
         std::uint8_t mask
     )
     {
-        if ((mask & pipeline_wire::classification_field_mask) != 0U) {
+        if ((mask & pipeline_wire::classification_field_mask) != 0U)
+        {
             pipeline_wire::write_u8(bytes, prepared.canonical.classification.value());
         }
-        if ((mask & pipeline_wire::position_field_mask) != 0U) {
-            if (layout.quantized) {
-                for (auto const token : prepared.position_tokens) {
+        if ((mask & pipeline_wire::position_field_mask) != 0U)
+        {
+            if (layout.quantized)
+            {
+                for (auto const token : prepared.position_tokens)
+                {
                     pipeline_wire::write_u16(bytes, static_cast<std::uint16_t>(token));
                 }
-            } else {
-                for (auto const token : prepared.position_tokens) {
+            }
+            else
+            {
+                for (auto const token : prepared.position_tokens)
+                {
                     pipeline_wire::write_u32(bytes, token);
                 }
             }
         }
-        if ((mask & pipeline_wire::heading_field_mask) != 0U) {
-            if (layout.quantized) {
+        if ((mask & pipeline_wire::heading_field_mask) != 0U)
+        {
+            if (layout.quantized)
+            {
                 auto const token_count = layout.oct_heading ? 2U : 3U;
-                for (auto index = std::size_t{}; index < token_count; ++index) {
+                for (auto index = std::size_t{}; index < token_count; ++index)
+                {
                     pipeline_wire::write_u16(
                         bytes,
                         static_cast<std::uint16_t>(prepared.heading_tokens[index])
                     );
                 }
-            } else {
-                for (auto const token : prepared.heading_tokens) {
+            }
+            else
+            {
+                for (auto const token : prepared.heading_tokens)
+                {
                     pipeline_wire::write_u32(bytes, token);
                 }
             }
         }
-        if ((mask & pipeline_wire::hue_field_mask) != 0U) {
+        if ((mask & pipeline_wire::hue_field_mask) != 0U)
+        {
             pipeline_wire::write_u8(bytes, prepared.canonical.hue);
         }
     }
@@ -548,8 +596,8 @@ namespace simnet::pipeline_records
         pipeline_wire::write_u32(bytes, prepared.canonical.id);
         pipeline_wire::write_u8(bytes, selector);
         auto const fields = selector == pipeline_wire::spawn_record_selector
-            ? pipeline_wire::existing_field_mask
-            : selector;
+                                ? pipeline_wire::existing_field_mask
+                                : selector;
         write_prepared_fields(bytes, layout, prepared, fields);
     }
 
@@ -562,36 +610,52 @@ namespace simnet::pipeline_records
         EntityState& entity
     )
     {
-        if ((mask & pipeline_wire::classification_field_mask) != 0U) {
+        if ((mask & pipeline_wire::classification_field_mask) != 0U)
+        {
             auto classification = std::uint8_t{};
-            if (!pipeline_wire::read_u8(bytes, offset, classification)) {
+            if (!pipeline_wire::read_u8(bytes, offset, classification))
+            {
                 return false;
             }
             entity.classification = EntityClassification{classification};
         }
-        if ((mask & pipeline_wire::position_field_mask) != 0U) {
-            if (layout.quantized) {
-                if (!read_quantized_vec3(bytes, offset, layout.bounds, entity.position)) {
+        if ((mask & pipeline_wire::position_field_mask) != 0U)
+        {
+            if (layout.quantized)
+            {
+                if (!read_quantized_vec3(bytes, offset, layout.bounds, entity.position))
+                {
                     return false;
                 }
-            } else if (!pipeline_wire::read_vec3(bytes, offset, entity.position)) {
+            }
+            else if (!pipeline_wire::read_vec3(bytes, offset, entity.position))
+            {
                 return false;
             }
         }
-        if ((mask & pipeline_wire::heading_field_mask) != 0U) {
-            if (layout.quantized) {
-                if (layout.oct_heading) {
-                    if (!read_oct_heading(bytes, offset, entity.heading)) {
+        if ((mask & pipeline_wire::heading_field_mask) != 0U)
+        {
+            if (layout.quantized)
+            {
+                if (layout.oct_heading)
+                {
+                    if (!read_oct_heading(bytes, offset, entity.heading))
+                    {
                         return false;
                     }
-                } else if (!read_quantized_heading(bytes, offset, entity.heading)) {
+                }
+                else if (!read_quantized_heading(bytes, offset, entity.heading))
+                {
                     return false;
                 }
-            } else if (!pipeline_wire::read_vec3(bytes, offset, entity.heading)) {
+            }
+            else if (!pipeline_wire::read_vec3(bytes, offset, entity.heading))
+            {
                 return false;
             }
         }
-        if ((mask & pipeline_wire::hue_field_mask) != 0U) {
+        if ((mask & pipeline_wire::hue_field_mask) != 0U)
+        {
             return pipeline_wire::read_u8(bytes, offset, entity.hue);
         }
         return true;
@@ -601,46 +665,59 @@ namespace simnet::pipeline_records
     [[nodiscard]] bool
     read_record(ByteSpan bytes, std::size_t& offset, RecordLayout const& layout, EntityState& boid)
     {
-        if (layout.bitpacked) {
+        if (layout.bitpacked)
+        {
             auto const record_begin = offset;
             auto const record_end = record_begin + layout.record_bytes;
-            if (record_end > bytes.size()) {
+            if (record_end > bytes.size())
+            {
                 return false;
             }
             if (!read_bitpacked_record(
                     bytes.subspan(record_begin, layout.record_bytes),
                     layout.bounds,
                     boid
-                )) {
+                ))
+            {
                 return false;
             }
             offset = record_end;
             return true;
         }
 
-        if (!pipeline_wire::read_u32(bytes, offset, boid.id)) {
+        if (!pipeline_wire::read_u32(bytes, offset, boid.id))
+        {
             return false;
         }
         auto classification = std::uint8_t{};
-        if (!pipeline_wire::read_u8(bytes, offset, classification)) {
+        if (!pipeline_wire::read_u8(bytes, offset, classification))
+        {
             return false;
         }
         boid.classification = EntityClassification{classification};
-        if (layout.quantized) {
-            if (!read_quantized_vec3(bytes, offset, layout.bounds, boid.position)) {
+        if (layout.quantized)
+        {
+            if (!read_quantized_vec3(bytes, offset, layout.bounds, boid.position))
+            {
                 return false;
             }
-            if (layout.oct_heading) {
-                if (!read_oct_heading(bytes, offset, boid.heading)) {
+            if (layout.oct_heading)
+            {
+                if (!read_oct_heading(bytes, offset, boid.heading))
+                {
                     return false;
                 }
-            } else if (!read_quantized_heading(bytes, offset, boid.heading)) {
+            }
+            else if (!read_quantized_heading(bytes, offset, boid.heading))
+            {
                 return false;
             }
-        } else if (
-            !pipeline_wire::read_vec3(bytes, offset, boid.position)
-            || !pipeline_wire::read_vec3(bytes, offset, boid.heading)
-        ) {
+        }
+        else if (
+            !pipeline_wire::read_vec3(bytes, offset, boid.position) ||
+            !pipeline_wire::read_vec3(bytes, offset, boid.heading)
+        )
+        {
             return false;
         }
         return pipeline_wire::read_u8(bytes, offset, boid.hue);

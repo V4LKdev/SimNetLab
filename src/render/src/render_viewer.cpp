@@ -62,7 +62,8 @@ namespace
             0xf2f9, // reset
         };
         auto result = std::array<int, 95U + icon_codepoints.size()>{};
-        for (auto index = std::size_t{}; index < 95U; ++index) {
+        for (auto index = std::size_t{}; index < 95U; ++index)
+        {
             result[index] = static_cast<int>(32U + index);
         }
         std::copy(icon_codepoints.begin(), icon_codepoints.end(), result.begin() + 95);
@@ -84,8 +85,8 @@ namespace
     [[nodiscard]] std::filesystem::path next_screenshot_path(std::string const& output_directory)
     {
         auto const directory = output_directory.empty()
-            ? std::filesystem::current_path()
-            : std::filesystem::absolute(output_directory).lexically_normal();
+                                   ? std::filesystem::current_path()
+                                   : std::filesystem::absolute(output_directory).lexically_normal();
         std::filesystem::create_directories(directory);
         auto const stamp = std::chrono::duration_cast<std::chrono::microseconds>(
                                std::chrono::system_clock::now().time_since_epoch()
@@ -93,7 +94,8 @@ namespace
                                .count();
         auto const stem = "screenshot_" + std::to_string(stamp);
         auto candidate = directory / (stem + ".png");
-        for (auto suffix = std::uint32_t{1}; std::filesystem::exists(candidate); ++suffix) {
+        for (auto suffix = std::uint32_t{1}; std::filesystem::exists(candidate); ++suffix)
+        {
             candidate = directory / (stem + "_" + std::to_string(suffix) + ".png");
         }
         return candidate;
@@ -101,22 +103,27 @@ namespace
 
     void validate_config(simnet::ViewerConfig const& config)
     {
-        if (config.window_width == 0 || config.window_height == 0) {
+        if (config.window_width == 0 || config.window_height == 0)
+        {
             throw std::runtime_error("viewer window dimensions must be non-zero");
         }
-        if (config.panel_width >= config.window_width) {
+        if (config.panel_width >= config.window_width)
+        {
             throw std::runtime_error("viewer panel_width must be less than window_width");
         }
-        if (config.target_frame_rate == 0) {
+        if (config.target_frame_rate == 0)
+        {
             throw std::runtime_error("viewer target_frame_rate must be non-zero");
         }
-        if (config.entity_scale <= 0.0F || config.picking_radius <= 0.0F) {
+        if (config.entity_scale <= 0.0F || config.picking_radius <= 0.0F)
+        {
             throw std::runtime_error("viewer entity_scale and picking_radius must be positive");
         }
-        if (config.stationary_observer_interest_radius <= 0.0F
-            || config.stationary_observer_vertical_fov_degrees <= 0.0F
-            || config.stationary_observer_vertical_fov_degrees >= 180.0F
-            || config.max_visible_spatial_cells == 0U) {
+        if (config.stationary_observer_interest_radius <= 0.0F ||
+            config.stationary_observer_vertical_fov_degrees <= 0.0F ||
+            config.stationary_observer_vertical_fov_degrees >= 180.0F ||
+            config.max_visible_spatial_cells == 0U)
+        {
             throw std::runtime_error("viewer stationary observer and spatial settings are invalid");
         }
     }
@@ -134,7 +141,8 @@ namespace
     [[nodiscard]] simnet::Vec3f normalized_or_forward(simnet::Vec3f heading) noexcept
     {
         auto const length_squared = simnet::length_squared(heading);
-        if (!std::isfinite(length_squared) || length_squared <= 0.000001F) {
+        if (!std::isfinite(length_squared) || length_squared <= 0.000001F)
+        {
             return {0.0F, 0.0F, 1.0F};
         }
         return heading / std::sqrt(length_squared);
@@ -181,8 +189,9 @@ namespace
         mesh.normals = static_cast<float*>(MemAlloc(sizeof(float) * 12));
         mesh.texcoords = static_cast<float*>(MemAlloc(sizeof(float) * 8));
         mesh.indices = static_cast<unsigned short*>(MemAlloc(sizeof(unsigned short) * 12));
-        if (mesh.vertices == nullptr || mesh.normals == nullptr || mesh.texcoords == nullptr
-            || mesh.indices == nullptr) {
+        if (mesh.vertices == nullptr || mesh.normals == nullptr || mesh.texcoords == nullptr ||
+            mesh.indices == nullptr)
+        {
             throw std::runtime_error("failed to allocate directional entity mesh");
         }
 
@@ -226,7 +235,8 @@ namespace
 
     [[nodiscard]] Matrix mesh_correction(std::string const& path) noexcept
     {
-        if (std::filesystem::path{path}.filename() == "boid.obj") {
+        if (std::filesystem::path{path}.filename() == "boid.obj")
+        {
             // The reference boid already uses local +Z as forward and centimeter-sized
             // coordinates.
             return MatrixScale(0.05F, 0.05F, 0.05F);
@@ -236,10 +246,12 @@ namespace
 
     void bake_mesh_correction(Mesh& mesh, Matrix correction)
     {
-        if (mesh.vertices == nullptr || mesh.vertexCount <= 0) {
+        if (mesh.vertices == nullptr || mesh.vertexCount <= 0)
+        {
             return;
         }
-        for (auto index = 0; index < mesh.vertexCount; ++index) {
+        for (auto index = 0; index < mesh.vertexCount; ++index)
+        {
             auto const offset = index * 3;
             auto const corrected = Vector3Transform(
                 {mesh.vertices[offset], mesh.vertices[offset + 1], mesh.vertices[offset + 2]},
@@ -257,18 +269,20 @@ namespace
             0
         );
 
-        if (mesh.normals == nullptr) {
+        if (mesh.normals == nullptr)
+        {
             return;
         }
-        for (auto index = 0; index < mesh.vertexCount; ++index) {
+        for (auto index = 0; index < mesh.vertexCount; ++index)
+        {
             auto const offset = index * 3;
             auto const normal = Vector3{
-                correction.m0 * mesh.normals[offset] + correction.m4 * mesh.normals[offset + 1]
-                    + correction.m8 * mesh.normals[offset + 2],
-                correction.m1 * mesh.normals[offset] + correction.m5 * mesh.normals[offset + 1]
-                    + correction.m9 * mesh.normals[offset + 2],
-                correction.m2 * mesh.normals[offset] + correction.m6 * mesh.normals[offset + 1]
-                    + correction.m10 * mesh.normals[offset + 2],
+                correction.m0 * mesh.normals[offset] + correction.m4 * mesh.normals[offset + 1] +
+                    correction.m8 * mesh.normals[offset + 2],
+                correction.m1 * mesh.normals[offset] + correction.m5 * mesh.normals[offset + 1] +
+                    correction.m9 * mesh.normals[offset + 2],
+                correction.m2 * mesh.normals[offset] + correction.m6 * mesh.normals[offset + 1] +
+                    correction.m10 * mesh.normals[offset + 2],
             };
             auto const corrected = Vector3Normalize(normal);
             mesh.normals[offset] = corrected.x;
@@ -320,9 +334,8 @@ void main()
 namespace simnet
 {
     Viewer::Impl::Impl(ViewerConfig config, std::string output_directory)
-        : config_(std::move(config))
-        , output_directory_(std::move(output_directory))
-        , scene_rect_{
+        : config_(std::move(config)), output_directory_(std::move(output_directory)),
+          scene_rect_{
               .x = static_cast<int>(config_.panel_width),
               .y = 0,
               .width = static_cast<int>(config_.window_width - config_.panel_width),
@@ -330,7 +343,8 @@ namespace simnet
           }
     {
         validate_config(config_);
-        if (viewer_active) {
+        if (viewer_active)
+        {
             throw std::runtime_error("only one Viewer may be active per process");
         }
         SetTraceLogLevel(LOG_WARNING);
@@ -339,35 +353,42 @@ namespace simnet
             static_cast<int>(config_.window_height),
             config_.title.c_str()
         );
-        if (!IsWindowReady()) {
+        if (!IsWindowReady())
+        {
             throw std::runtime_error("failed to create viewer window");
         }
         static constexpr auto glyphs = viewer_glyphs();
-        font_
-            = LoadFontEx(SIMNET_NERD_FONT_PATH, 40, glyphs.data(), static_cast<int>(glyphs.size()));
-        if (font_.texture.id == 0) {
+        font_ =
+            LoadFontEx(SIMNET_NERD_FONT_PATH, 40, glyphs.data(), static_cast<int>(glyphs.size()));
+        if (font_.texture.id == 0)
+        {
             CloseWindow();
             throw std::runtime_error("failed to load viewer font");
         }
         SetTextureFilter(font_.texture, TEXTURE_FILTER_BILINEAR);
         SetTargetFPS(static_cast<int>(config_.target_frame_rate));
         scene_ = LoadRenderTexture(scene_rect_.width, scene_rect_.height);
-        if (scene_.texture.id == 0) {
+        if (scene_.texture.id == 0)
+        {
             CloseWindow();
             throw std::runtime_error("failed to create viewer scene render texture");
         }
         load_entity_model();
         shader_ = LoadShaderFromMemory(instancing_vertex_shader, instancing_fragment_shader);
-        instancing_available_ = shader_.id != 0 && model_.meshCount > 0 && model_.materialCount > 0
-            && model_.meshes != nullptr && model_.materials != nullptr
-            && model_.meshMaterial != nullptr;
-        if (instancing_available_) {
+        instancing_available_ = shader_.id != 0 && model_.meshCount > 0 &&
+                                model_.materialCount > 0 && model_.meshes != nullptr &&
+                                model_.materials != nullptr && model_.meshMaterial != nullptr;
+        if (instancing_available_)
+        {
             shader_.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(shader_, "mvp");
             shader_.locs[SHADER_LOC_COLOR_DIFFUSE] = GetShaderLocation(shader_, "colDiffuse");
-            for (int index = 0; index < model_.materialCount; ++index) {
+            for (int index = 0; index < model_.materialCount; ++index)
+            {
                 model_.materials[index].shader = shader_;
             }
-        } else {
+        }
+        else
+        {
             TraceLog(LOG_WARNING, "SimNet viewer instanced entity drawing is unavailable");
         }
         camera_.up = {0.0F, 1.0F, 0.0F};
@@ -378,19 +399,24 @@ namespace simnet
 
     Viewer::Impl::~Impl()
     {
-        if (model_.meshCount > 0) {
+        if (model_.meshCount > 0)
+        {
             UnloadModel(model_);
         }
-        if (shader_.id != 0) {
+        if (shader_.id != 0)
+        {
             UnloadShader(shader_);
         }
-        if (scene_.texture.id != 0) {
+        if (scene_.texture.id != 0)
+        {
             UnloadRenderTexture(scene_);
         }
-        if (font_.texture.id != 0) {
+        if (font_.texture.id != 0)
+        {
             UnloadFont(font_);
         }
-        if (IsWindowReady()) {
+        if (IsWindowReady())
+        {
             CloseWindow();
         }
         viewer_active = false;
@@ -417,9 +443,12 @@ namespace simnet
         auto const preparation_start = Clock::now();
         {
             SIMNET_TRACE_SCOPE_CATEGORY("render.instance_preparation", simnet::LogCategory::Render);
-            if (valid_entities) {
+            if (valid_entities)
+            {
                 prepare_instances(frame.entities, stats);
-            } else {
+            }
+            else
+            {
                 clear_instances();
             }
         }
@@ -454,7 +483,8 @@ namespace simnet
         draw_viewport_ui(frame, result);
         draw_help_overlay(frame);
         stats.viewer_cpu_time = elapsed_ns(viewer_cpu_start);
-        if (screenshot_requested) {
+        if (screenshot_requested)
+        {
             capture_screenshot();
         }
         {
@@ -481,7 +511,8 @@ namespace simnet
             "render.selected_trail_points",
             static_cast<double>(selected_trail_.size())
         );
-        if (frame.spatial.has_value()) {
+        if (frame.spatial.has_value())
+        {
             SIMNET_TRACE_PLOT(
                 "render.displayed_spatial_cells",
                 static_cast<double>(frame.spatial->cells.size())
@@ -493,8 +524,8 @@ namespace simnet
     void Viewer::Impl::set_camera_mode(CameraMode mode) noexcept
     {
         mode_ = mode == CameraMode::EntityFollow && !selected_entity_.has_value()
-            ? CameraMode::OverviewOrbit
-            : mode;
+                    ? CameraMode::OverviewOrbit
+                    : mode;
     }
 
     void Viewer::Impl::reset_active_camera(RenderFrame const& frame) noexcept
@@ -511,26 +542,33 @@ namespace simnet
             std::abs(bounds.max.z - bounds.min.z),
             1.0F,
         });
-        if (mode_ == CameraMode::EntityFollow && selected_entity_frame_.has_value()) {
+        if (mode_ == CameraMode::EntityFollow && selected_entity_frame_.has_value())
+        {
             reset_detail_camera(extent);
-        } else if (mode_ == CameraMode::OverviewOrbit) {
+        }
+        else if (mode_ == CameraMode::OverviewOrbit)
+        {
             reset_overview_camera(center);
         }
     }
 
     void Viewer::Impl::load_entity_model()
     {
-        if (!config_.entity_mesh_path.empty()) {
+        if (!config_.entity_mesh_path.empty())
+        {
             model_ = LoadModel(config_.entity_mesh_path.c_str());
-            if (model_.meshCount > 0 && model_.materialCount > 0 && model_.meshes != nullptr
-                && model_.materials != nullptr && model_.meshMaterial != nullptr) {
+            if (model_.meshCount > 0 && model_.materialCount > 0 && model_.meshes != nullptr &&
+                model_.materials != nullptr && model_.meshMaterial != nullptr)
+            {
                 auto const correction = mesh_correction(config_.entity_mesh_path);
-                for (int index = 0; index < model_.meshCount; ++index) {
+                for (int index = 0; index < model_.meshCount; ++index)
+                {
                     bake_mesh_correction(model_.meshes[index], correction);
                 }
                 return;
             }
-            if (model_.meshCount > 0) {
+            if (model_.meshCount > 0)
+            {
                 UnloadModel(model_);
                 model_ = {};
             }
@@ -543,12 +581,15 @@ namespace simnet
     [[nodiscard]] std::optional<Viewer::Impl::SelectedEntity>
     Viewer::Impl::find_selected_entity(RenderEntityView const& entities) const
     {
-        if (!selected_entity_.has_value() || !entities.valid()) {
+        if (!selected_entity_.has_value() || !entities.valid())
+        {
             return std::nullopt;
         }
-        for (std::size_t index = 0; index < entities.size(); ++index) {
-            if (entities.ids[index] == *selected_entity_ && finite(entities.positions[index])
-                && finite(entities.headings[index])) {
+        for (std::size_t index = 0; index < entities.size(); ++index)
+        {
+            if (entities.ids[index] == *selected_entity_ && finite(entities.positions[index]) &&
+                finite(entities.headings[index]))
+            {
                 return SelectedEntity{
                     .id = entities.ids[index],
                     .position = entities.positions[index],
@@ -562,10 +603,14 @@ namespace simnet
 
     void Viewer::Impl::clear_selection(ViewerResult& result, bool preserve_navigation_anchor)
     {
-        if (selected_entity_.has_value()) {
-            if (preserve_navigation_anchor) {
+        if (selected_entity_.has_value())
+        {
+            if (preserve_navigation_anchor)
+            {
                 navigation_anchor_ = selected_entity_;
-            } else {
+            }
+            else
+            {
                 navigation_anchor_.reset();
             }
             selected_entity_.reset();
@@ -593,61 +638,74 @@ namespace simnet
         });
         min_distance_ = std::max(minimum_distance, extent * 0.05F);
         max_distance_ = std::max(min_distance_ * 2.0F, extent * 4.0F);
-        if (!camera_initialized_) {
+        if (!camera_initialized_)
+        {
             reset_overview_camera(center);
             camera_initialized_ = true;
         }
 
-        if (mode_ == CameraMode::Game && !frame.game_camera.has_value()) {
+        if (mode_ == CameraMode::Game && !frame.game_camera.has_value())
+        {
             mode_ = CameraMode::OverviewOrbit;
         }
-        if (mode_ == CameraMode::StationaryObserver && !frame.stationary_observer.has_value()) {
+        if (mode_ == CameraMode::StationaryObserver && !frame.stationary_observer.has_value())
+        {
             mode_ = CameraMode::OverviewOrbit;
         }
-        if (frame.stationary_observer.has_value()) {
-            result.stationary_observer_yaw_axis
-                = (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F) - (IsKeyDown(KEY_RIGHT) ? 1.0F : 0.0F);
-            result.stationary_observer_pitch_axis
-                = (IsKeyDown(KEY_UP) ? 1.0F : 0.0F) - (IsKeyDown(KEY_DOWN) ? 1.0F : 0.0F);
+        if (frame.stationary_observer.has_value())
+        {
+            result.stationary_observer_yaw_axis =
+                (IsKeyDown(KEY_LEFT) ? 1.0F : 0.0F) - (IsKeyDown(KEY_RIGHT) ? 1.0F : 0.0F);
+            result.stationary_observer_pitch_axis =
+                (IsKeyDown(KEY_UP) ? 1.0F : 0.0F) - (IsKeyDown(KEY_DOWN) ? 1.0F : 0.0F);
         }
 
         selected_entity_frame_ = find_selected_entity(frame.entities);
-        if (selected_entity_.has_value() && !selected_entity_frame_.has_value()) {
+        if (selected_entity_.has_value() && !selected_entity_frame_.has_value())
+        {
             clear_selection(result, true);
         }
 
         auto const mouse = GetMousePosition();
-        auto const in_scene = mouse.x >= static_cast<float>(scene_rect_.x)
-            && mouse.x < static_cast<float>(scene_rect_.x + scene_rect_.width) && mouse.y >= 0.0F
-            && mouse.y < static_cast<float>(scene_rect_.height);
-        if ((mode_ == CameraMode::OverviewOrbit || mode_ == CameraMode::EntityFollow) && in_scene
-            && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+        auto const in_scene = mouse.x >= static_cast<float>(scene_rect_.x) &&
+                              mouse.x < static_cast<float>(scene_rect_.x + scene_rect_.width) &&
+                              mouse.y >= 0.0F && mouse.y < static_cast<float>(scene_rect_.height);
+        if ((mode_ == CameraMode::OverviewOrbit || mode_ == CameraMode::EntityFollow) && in_scene &&
+            IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
+        {
             auto const delta = GetMouseDelta();
             auto& yaw = mode_ == CameraMode::EntityFollow ? detail_yaw_ : overview_yaw_;
             auto& pitch = mode_ == CameraMode::EntityFollow ? detail_pitch_ : overview_pitch_;
             yaw -= delta.x * 0.006F;
             pitch = std::clamp(pitch + delta.y * 0.006F, min_pitch, max_pitch);
         }
-        if ((mode_ == CameraMode::OverviewOrbit || mode_ == CameraMode::EntityFollow) && in_scene) {
+        if ((mode_ == CameraMode::OverviewOrbit || mode_ == CameraMode::EntityFollow) && in_scene)
+        {
             auto const wheel = GetMouseWheelMove();
-            if (wheel != 0.0F) {
-                auto& distance
-                    = mode_ == CameraMode::EntityFollow ? detail_distance_ : overview_distance_;
-                auto const minimum
-                    = mode_ == CameraMode::EntityFollow ? detail_min_distance_ : min_distance_;
-                auto const maximum
-                    = mode_ == CameraMode::EntityFollow ? detail_max_distance_ : max_distance_;
+            if (wheel != 0.0F)
+            {
+                auto& distance =
+                    mode_ == CameraMode::EntityFollow ? detail_distance_ : overview_distance_;
+                auto const minimum =
+                    mode_ == CameraMode::EntityFollow ? detail_min_distance_ : min_distance_;
+                auto const maximum =
+                    mode_ == CameraMode::EntityFollow ? detail_max_distance_ : max_distance_;
                 distance = std::clamp(distance * (1.0F - wheel * 0.1F), minimum, maximum);
             }
         }
-        if (automatic_orbit_enabled_) {
-            if (mode_ == CameraMode::OverviewOrbit) {
+        if (automatic_orbit_enabled_)
+        {
+            if (mode_ == CameraMode::OverviewOrbit)
+            {
                 overview_yaw_ = advance_orbit_yaw(overview_yaw_, frame.info.frame_delta);
-            } else if (mode_ == CameraMode::EntityFollow) {
+            }
+            else if (mode_ == CameraMode::EntityFollow)
+            {
                 detail_yaw_ = advance_orbit_yaw(detail_yaw_, frame.info.frame_delta);
             }
         }
-        if (mode_ == CameraMode::Game && frame.game_camera.has_value()) {
+        if (mode_ == CameraMode::Game && frame.game_camera.has_value())
+        {
             camera_.position = to_raylib(frame.game_camera->position);
             camera_.target = to_raylib(frame.game_camera->target);
             camera_.up = to_raylib(frame.game_camera->up);
@@ -662,24 +720,29 @@ namespace simnet
                 .left_mouse = IsMouseButtonDown(MOUSE_BUTTON_LEFT),
                 .right_mouse = IsMouseButtonDown(MOUSE_BUTTON_RIGHT),
             };
-        } else if (
-            mode_ == CameraMode::StationaryObserver && frame.stationary_observer.has_value()
-        ) {
+        }
+        else if (mode_ == CameraMode::StationaryObserver && frame.stationary_observer.has_value())
+        {
             auto const forward = normalized_or_forward(frame.stationary_observer->forward);
             auto const basis = world_up_basis(forward);
             camera_.position = to_raylib(frame.stationary_observer->position);
             camera_.target = to_raylib(frame.stationary_observer->position + forward);
             camera_.up = to_raylib(basis.up);
             camera_.fovy = frame.stationary_observer->vertical_fov_degrees;
-        } else if (mode_ == CameraMode::EntityFollow && selected_entity_frame_.has_value()) {
+        }
+        else if (mode_ == CameraMode::EntityFollow && selected_entity_frame_.has_value())
+        {
             target_ = to_raylib(selected_entity_frame_->position);
             detail_min_distance_ = std::max(0.5F, config_.entity_scale * 1.5F);
             detail_max_distance_ = std::max(detail_min_distance_ * 4.0F, extent * 0.5F);
-            if (detail_distance_ <= 0.0F) {
+            if (detail_distance_ <= 0.0F)
+            {
                 reset_detail_camera(extent);
             }
             update_camera_position(detail_yaw_, detail_pitch_, detail_distance_);
-        } else {
+        }
+        else
+        {
             target_ = to_raylib(center);
             update_camera_position(overview_yaw_, overview_pitch_, overview_distance_);
             camera_.fovy = 55.0F;
@@ -718,10 +781,10 @@ namespace simnet
 
     [[nodiscard]] bool Viewer::Impl::mouse_in_scene(Vector2 mouse) const noexcept
     {
-        return mouse.x >= static_cast<float>(scene_rect_.x)
-            && mouse.x < static_cast<float>(scene_rect_.x + scene_rect_.width)
-            && mouse.y >= static_cast<float>(scene_rect_.y)
-            && mouse.y < static_cast<float>(scene_rect_.y + scene_rect_.height);
+        return mouse.x >= static_cast<float>(scene_rect_.x) &&
+               mouse.x < static_cast<float>(scene_rect_.x + scene_rect_.width) &&
+               mouse.y >= static_cast<float>(scene_rect_.y) &&
+               mouse.y < static_cast<float>(scene_rect_.y + scene_rect_.height);
     }
 
     [[nodiscard]] std::optional<float>
@@ -729,18 +792,21 @@ namespace simnet
     {
         auto const offset = Vector3Subtract(ray.position, center);
         auto const projection = Vector3DotProduct(offset, ray.direction);
-        auto const discriminant
-            = projection * projection - (Vector3DotProduct(offset, offset) - radius * radius);
-        if (discriminant < 0.0F) {
+        auto const discriminant =
+            projection * projection - (Vector3DotProduct(offset, offset) - radius * radius);
+        if (discriminant < 0.0F)
+        {
             return std::nullopt;
         }
         auto const root = std::sqrt(discriminant);
         auto const near_distance = -projection - root;
         auto const far_distance = -projection + root;
-        if (near_distance >= 0.0F) {
+        if (near_distance >= 0.0F)
+        {
             return near_distance;
         }
-        if (far_distance >= 0.0F) {
+        if (far_distance >= 0.0F)
+        {
             return far_distance;
         }
         return std::nullopt;
@@ -748,42 +814,49 @@ namespace simnet
 
     void Viewer::Impl::update_selection(RenderEntityView const& entities, ViewerResult& result)
     {
-        if (mode_ == CameraMode::Game) {
+        if (mode_ == CameraMode::Game)
+        {
             return;
         }
-        if (ui_.pointer_captured) {
+        if (ui_.pointer_captured)
+        {
             return;
         }
-        if (IsKeyPressed(KEY_LEFT_BRACKET)) {
+        if (IsKeyPressed(KEY_LEFT_BRACKET))
+        {
             select_adjacent_entity(entities, -1, result);
             return;
         }
-        if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
+        if (IsKeyPressed(KEY_RIGHT_BRACKET))
+        {
             select_adjacent_entity(entities, 1, result);
             return;
         }
         auto const mouse = GetMousePosition();
-        if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || !mouse_in_scene(mouse)
-            || !entities.valid()) {
+        if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || !mouse_in_scene(mouse) || !entities.valid())
+        {
             return;
         }
         auto const scene_mouse = Vector2{
             mouse.x - static_cast<float>(scene_rect_.x),
             mouse.y - static_cast<float>(scene_rect_.y),
         };
-        auto const ray
-            = GetScreenToWorldRayEx(scene_mouse, camera_, scene_rect_.width, scene_rect_.height);
+        auto const ray =
+            GetScreenToWorldRayEx(scene_mouse, camera_, scene_rect_.width, scene_rect_.height);
         auto nearest_distance = std::numeric_limits<float>::infinity();
         auto hit = std::optional<SelectedEntity>{};
-        for (std::size_t index = 0; index < entities.size(); ++index) {
+        for (std::size_t index = 0; index < entities.size(); ++index)
+        {
             auto const position = entities.positions[index];
             auto const heading = entities.headings[index];
-            if (!finite(position) || !finite(heading)) {
+            if (!finite(position) || !finite(heading))
+            {
                 continue;
             }
-            auto const distance
-                = ray_sphere_hit_distance(ray, to_raylib(position), config_.picking_radius);
-            if (distance.has_value() && *distance < nearest_distance) {
+            auto const distance =
+                ray_sphere_hit_distance(ray, to_raylib(position), config_.picking_radius);
+            if (distance.has_value() && *distance < nearest_distance)
+            {
                 nearest_distance = *distance;
                 hit = SelectedEntity{
                     .id = entities.ids[index],
@@ -793,7 +866,8 @@ namespace simnet
                 };
             }
         }
-        if (!hit.has_value()) {
+        if (!hit.has_value())
+        {
             return;
         }
         select_entity(*hit, result);
@@ -801,7 +875,8 @@ namespace simnet
 
     void Viewer::Impl::select_entity(SelectedEntity selected, ViewerResult& result)
     {
-        if (selected_entity_ != selected.id) {
+        if (selected_entity_ != selected.id)
+        {
             result.selected_entity_changed = true;
             selected_trail_.clear();
         }
@@ -816,18 +891,20 @@ namespace simnet
 
     void Viewer::Impl::update_selected_trail()
     {
-        if (!selected_entity_frame_.has_value()) {
+        if (!selected_entity_frame_.has_value())
+        {
             return;
         }
         auto const position = selected_entity_frame_->position;
         auto const minimum_distance = std::max(0.05F, config_.entity_scale * 0.15F);
-        if (!selected_trail_.empty()
-            && length_squared(position - selected_trail_.back())
-                < minimum_distance * minimum_distance) {
+        if (!selected_trail_.empty() &&
+            length_squared(position - selected_trail_.back()) < minimum_distance * minimum_distance)
+        {
             return;
         }
         selected_trail_.push_back(position);
-        if (selected_trail_.size() > selected_trail_max_points) {
+        if (selected_trail_.size() > selected_trail_max_points)
+        {
             selected_trail_.pop_front();
         }
     }
@@ -838,16 +915,19 @@ namespace simnet
         ViewerResult& result
     )
     {
-        if (!entities.valid()) {
+        if (!entities.valid())
+        {
             return;
         }
         auto const anchor = selected_entity_.has_value() ? selected_entity_ : navigation_anchor_;
         auto candidate = std::optional<SelectedEntity>{};
         auto wrapped = std::optional<SelectedEntity>{};
-        for (std::size_t index = 0; index < entities.size(); ++index) {
+        for (std::size_t index = 0; index < entities.size(); ++index)
+        {
             auto const position = entities.positions[index];
             auto const heading = entities.headings[index];
-            if (!finite(position) || !finite(heading)) {
+            if (!finite(position) || !finite(heading))
+            {
                 continue;
             }
             auto const current = SelectedEntity{
@@ -856,31 +936,38 @@ namespace simnet
                 .heading = heading,
                 .hue = entities.hues[index],
             };
-            if (!wrapped.has_value() || (direction > 0 && current.id < wrapped->id)
-                || (direction < 0 && current.id > wrapped->id)) {
+            if (!wrapped.has_value() || (direction > 0 && current.id < wrapped->id) ||
+                (direction < 0 && current.id > wrapped->id))
+            {
                 wrapped = current;
             }
-            if (anchor.has_value()
-                && ((direction > 0 && current.id > *anchor)
-                    || (direction < 0 && current.id < *anchor))
-                && (!candidate.has_value() || (direction > 0 && current.id < candidate->id)
-                    || (direction < 0 && current.id > candidate->id))) {
+            if (anchor.has_value() &&
+                ((direction > 0 && current.id > *anchor) ||
+                 (direction < 0 && current.id < *anchor)) &&
+                (!candidate.has_value() || (direction > 0 && current.id < candidate->id) ||
+                 (direction < 0 && current.id > candidate->id)))
+            {
                 candidate = current;
             }
         }
-        if (candidate.has_value()) {
+        if (candidate.has_value())
+        {
             select_entity(*candidate, result);
-        } else if (wrapped.has_value()) {
+        }
+        else if (wrapped.has_value())
+        {
             select_entity(*wrapped, result);
         }
     }
 
     void Viewer::Impl::capture_screenshot() const
     {
-        try {
+        try
+        {
             auto const path = next_screenshot_path(output_directory_);
             auto const raylib_path = path.lexically_relative(std::filesystem::current_path());
-            if (raylib_path.empty()) {
+            if (raylib_path.empty())
+            {
                 throw std::runtime_error(
                     "screenshot path cannot be expressed relative to the working directory"
                 );
@@ -889,7 +976,8 @@ namespace simnet
             rlDrawRenderBatchActive();
             TakeScreenshot(raylib_path.string().c_str());
             auto error = std::error_code{};
-            if (!std::filesystem::is_regular_file(path, error) || error) {
+            if (!std::filesystem::is_regular_file(path, error) || error)
+            {
                 log(LogCategory::Render,
                     LogLevel::Error,
                     "viewer screenshot failed path=" + path.string());
@@ -898,7 +986,9 @@ namespace simnet
             log(LogCategory::Render,
                 LogLevel::Info,
                 "viewer screenshot saved path=" + path.string());
-        } catch (std::exception const& error) {
+        }
+        catch (std::exception const& error)
+        {
             log(LogCategory::Render,
                 LogLevel::Error,
                 "viewer screenshot failed: " + std::string{error.what()});
@@ -916,7 +1006,8 @@ namespace simnet
 
     ViewerResult Viewer::draw(RenderFrame const& frame)
     {
-        if (!impl_) {
+        if (!impl_)
+        {
             throw std::runtime_error("cannot draw with a moved-from Viewer");
         }
         return impl_->draw(frame);
@@ -924,7 +1015,8 @@ namespace simnet
 
     void Viewer::set_camera_mode(CameraMode mode)
     {
-        if (!impl_) {
+        if (!impl_)
+        {
             throw std::runtime_error("cannot configure a moved-from Viewer");
         }
         impl_->set_camera_mode(mode);

@@ -39,7 +39,8 @@ export namespace simnet
     /// `accumulator` and `tick` start at zero.
     [[nodiscard]] constexpr FixedStepClock make_clock(const FixedStepSettings& settings) noexcept
     {
-        if (settings.tick_rate_hz <= 0.0) {
+        if (settings.tick_rate_hz <= 0.0)
+        {
             return {};
         }
 
@@ -56,7 +57,8 @@ export namespace simnet
     advance(FixedStepClock& state, Nanoseconds delta, const FixedStepSettings& settings) noexcept
     {
         // Refuse to run with a non-positive timestep
-        if (state.fixed_dt <= Nanoseconds{0}) {
+        if (state.fixed_dt <= Nanoseconds{0})
+        {
             return 0;
         }
 
@@ -65,8 +67,9 @@ export namespace simnet
         std::uint16_t steps_this_frame = 0;
 
         // Consume whole ticks, respecting the per-frame cap
-        while (state.accumulator >= state.fixed_dt
-               && steps_this_frame < settings.max_steps_per_frame) {
+        while (state.accumulator >= state.fixed_dt &&
+               steps_this_frame < settings.max_steps_per_frame)
+        {
             state.accumulator -= state.fixed_dt;
             ++state.tick;
             ++steps_this_frame;

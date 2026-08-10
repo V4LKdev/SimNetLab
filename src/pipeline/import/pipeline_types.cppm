@@ -16,13 +16,13 @@ export namespace simnet
     enum class PipelineTechniqueFlags : std::uint32_t
     {
         None = 0,
-        SendInterval = 1U << 0U, /// adjust snapshot cadence.
-        Incremental = 1U << 1U, /// partial round-robin upserts.
-        Quantization = 1U << 2U, /// position and heading quantization.
-        OctHeading = 1U << 3U, /// octahedral heading quantization.
-        Delta = 1U << 4U, /// baseline-relative patch selection.
+        SendInterval = 1U << 0U,   /// adjust snapshot cadence.
+        Incremental = 1U << 1U,    /// partial round-robin upserts.
+        Quantization = 1U << 2U,   /// position and heading quantization.
+        OctHeading = 1U << 3U,     /// octahedral heading quantization.
+        Delta = 1U << 4U,          /// baseline-relative patch selection.
         DeltaFieldMask = 1U << 5U, /// transmit only changed fields for existing Delta upserts.
-        BitPacking = 1U << 8U, /// bit-packed record layout.
+        BitPacking = 1U << 8U,     /// bit-packed record layout.
     };
 
     /// Result kind for an encode call.

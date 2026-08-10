@@ -8,11 +8,12 @@ TEST_CASE("runtime frame plans own frame delta acceptance", "[runtime]")
 {
     using namespace std::chrono_literals;
 
-    auto const settings = simnet::RuntimeSettings {
-        .fixed_step = {
-            .tick_rate_hz = 10.0,
-            .max_steps_per_frame = 5,
-        },
+    auto const settings = simnet::RuntimeSettings{
+        .fixed_step =
+            {
+                .tick_rate_hz = 10.0,
+                .max_steps_per_frame = 5,
+            },
         .max_frame_time = 250ms,
     };
 
@@ -74,10 +75,11 @@ TEST_CASE("runtime frame plans cap catch-up work independently", "[runtime]")
     using namespace std::chrono_literals;
 
     auto const settings = simnet::RuntimeSettings{
-        .fixed_step = {
-            .tick_rate_hz = 10.0,
-            .max_steps_per_frame = 2,
-        },
+        .fixed_step =
+            {
+                .tick_rate_hz = 10.0,
+                .max_steps_per_frame = 2,
+            },
         .max_frame_time = 1s,
         .max_frames = 2,
         .max_ticks = 3,

@@ -15,7 +15,8 @@ namespace
     {
         auto value = simnet::WorldSnapshot{};
         value.reserve(ids.size());
-        for (auto const id : ids) {
+        for (auto const id : ids)
+        {
             value.ids.push_back(id);
             value.classifications.push_back(simnet::EntityClassification{1U});
             value.positions.push_back({.x = static_cast<float>(id)});
@@ -39,14 +40,17 @@ TEST_CASE("sorted peer iteration remains complete across erasure", "[peer][deliv
     auto erased = std::vector<simnet::PeerId>{};
     simnet::app::detail::process_sorted_peer_states(
         peers,
-        [](Peer const& peer) {
+        [](Peer const& peer)
+        {
             return peer.joined;
         },
-        [&](Peer const& peer) {
+        [&](Peer const& peer)
+        {
             processed.push_back(peer.id);
             return peer.id != 2U;
         },
-        [&](Peer const& peer) {
+        [&](Peer const& peer)
+        {
             erased.push_back(peer.id);
         }
     );
@@ -69,12 +73,12 @@ TEST_CASE("peer admission rejects overflow without touching existing state", "[p
 
     auto const peers = std::vector<Peer>{{1U, 7U}, {2U, 11U}};
     CHECK(
-        simnet::app::detail::peer_admission(peers, 3U, 2U, &Peer::id)
-        == simnet::app::detail::PeerAdmission::Full
+        simnet::app::detail::peer_admission(peers, 3U, 2U, &Peer::id) ==
+        simnet::app::detail::PeerAdmission::Full
     );
     CHECK(
-        simnet::app::detail::peer_admission(peers, 2U, 2U, &Peer::id)
-        == simnet::app::detail::PeerAdmission::Duplicate
+        simnet::app::detail::peer_admission(peers, 2U, 2U, &Peer::id) ==
+        simnet::app::detail::PeerAdmission::Duplicate
     );
     REQUIRE(peers.size() == 2U);
     CHECK(peers[0].id == 1U);
@@ -102,15 +106,15 @@ TEST_CASE("submitted snapshots remain distinct from the acknowledged replica", "
     CHECK_FALSE(state.acknowledged.has_value());
 
     CHECK(
-        simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{2U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{2U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
     REQUIRE(state.acknowledged.has_value());
     CHECK(state.acknowledged->snapshot.ids == std::vector<simnet::EntityNetId>{1U, 7U});
     CHECK_FALSE(state.recovery_active);
     CHECK(
-        simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{3U})
-        == simnet::app::AckPromotionOutcome::Duplicate
+        simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{3U}) ==
+        simnet::app::AckPromotionOutcome::Duplicate
     );
 }
 
@@ -142,8 +146,8 @@ TEST_CASE("peer ACK and recovery state remain independent", "[peer][delivery][re
     );
 
     REQUIRE(
-        simnet::app::promote_snapshot_ack(first, 1U, simnet::Nanoseconds{2U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(first, 1U, simnet::Nanoseconds{2U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
     CHECK(first.latest_acknowledged_sequence == 1U);
     CHECK_FALSE(first.recovery_active);
@@ -282,8 +286,8 @@ TEST_CASE("canonical recovery upserts persist until an ACK proves their result",
         plan
     );
     REQUIRE(
-        simnet::app::promote_snapshot_ack(state, 4U, simnet::Nanoseconds{5U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(state, 4U, simnet::Nanoseconds{5U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
     CHECK(state.recovery_upserts.empty());
 }
@@ -293,8 +297,8 @@ TEST_CASE("missing and expired retained results enter bounded recovery", "[deliv
     auto state = simnet::app::SnapshotDeliveryState{};
     state.latest_submitted_sequence = 9U;
     CHECK(
-        simnet::app::promote_snapshot_ack(state, 8U, simnet::Nanoseconds{8U})
-        == simnet::app::AckPromotionOutcome::Missing
+        simnet::app::promote_snapshot_ack(state, 8U, simnet::Nanoseconds{8U}) ==
+        simnet::app::AckPromotionOutcome::Missing
     );
     CHECK(state.recovery_active);
     CHECK(state.recovery_reason == simnet::app::SnapshotRecoveryReason::MissingRetainedResult);
@@ -388,8 +392,8 @@ TEST_CASE("FullReplace recovery persists until a retained FullReplace is ACKed",
         patch_plan
     );
     REQUIRE(
-        simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{2U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{2U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
     CHECK(state.recovery_active);
 
@@ -405,8 +409,8 @@ TEST_CASE("FullReplace recovery persists until a retained FullReplace is ACKed",
         full_plan
     );
     REQUIRE(
-        simnet::app::promote_snapshot_ack(state, 2U, simnet::Nanoseconds{4U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(state, 2U, simnet::Nanoseconds{4U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
     CHECK_FALSE(state.recovery_active);
 }
@@ -414,9 +418,10 @@ TEST_CASE("FullReplace recovery persists until a retained FullReplace is ACKed",
 TEST_CASE("retained result count pressure rejects an evicted ACK", "[delivery]")
 {
     auto state = simnet::app::SnapshotDeliveryState{};
-    auto constexpr last_sequence
-        = static_cast<simnet::SequenceId>(simnet::app::maximum_retained_results + 1U);
-    for (auto sequence = simnet::SequenceId{1U}; sequence <= last_sequence; ++sequence) {
+    auto constexpr last_sequence =
+        static_cast<simnet::SequenceId>(simnet::app::maximum_retained_results + 1U);
+    for (auto sequence = simnet::SequenceId{1U}; sequence <= last_sequence; ++sequence)
+    {
         auto result = snapshot({sequence});
         auto const plan = simnet::app::plan_snapshot_retention(state, result);
         REQUIRE(plan.valid);
@@ -432,8 +437,8 @@ TEST_CASE("retained result count pressure rejects an evicted ACK", "[delivery]")
     CHECK(state.submitted.size() == simnet::app::maximum_retained_results);
     CHECK(state.submitted.front().sequence == 2U);
     CHECK(
-        simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{66U})
-        == simnet::app::AckPromotionOutcome::Missing
+        simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{66U}) ==
+        simnet::app::AckPromotionOutcome::Missing
     );
     CHECK(state.recovery_reason == simnet::app::SnapshotRecoveryReason::MissingRetainedResult);
 }
@@ -444,8 +449,9 @@ TEST_CASE(
 )
 {
     auto pipeline = simnet::PipelineDefinition{};
-    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental
-        | simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::DeltaFieldMask;
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental |
+                          simnet::PipelineTechniqueFlags::Delta |
+                          simnet::PipelineTechniqueFlags::DeltaFieldMask;
     pipeline.incremental.max_entities_per_update = 1U;
     auto encode_state = simnet::ClientReplicationState{};
     auto decode_state = simnet::ClientReplicationState{};
@@ -453,11 +459,13 @@ TEST_CASE(
     auto delivery = simnet::app::SnapshotDeliveryState{};
     auto recovery_ids = std::vector<simnet::EntityNetId>{};
 
-    auto commit = [&](simnet::EncodeOutput& encoded) {
-        auto const plan
-            = simnet::app::plan_snapshot_retention(delivery, encoded.resulting_snapshot);
+    auto commit = [&](simnet::EncodeOutput& encoded)
+    {
+        auto const plan =
+            simnet::app::plan_snapshot_retention(delivery, encoded.resulting_snapshot);
         REQUIRE(plan.valid);
-        if (encoded.report.snapshot_kind == simnet::SnapshotKind::Patch) {
+        if (encoded.report.snapshot_kind == simnet::SnapshotKind::Patch)
+        {
             REQUIRE(simnet::app::merge_recovery_upserts(delivery, scratch.logical_update));
         }
         simnet::app::commit_submitted_snapshot(
@@ -469,10 +477,12 @@ TEST_CASE(
             plan
         );
     };
-    auto encode_against_ack = [&](simnet::WorldSnapshot const& current) {
+    auto encode_against_ack = [&](simnet::WorldSnapshot const& current)
+    {
         REQUIRE(delivery.acknowledged.has_value());
         recovery_ids.clear();
-        for (auto const& upsert : delivery.recovery_upserts) {
+        for (auto const& upsert : delivery.recovery_upserts)
+        {
             recovery_ids.push_back(upsert.id);
         }
         return simnet::encode_snapshot(
@@ -487,15 +497,17 @@ TEST_CASE(
             }
         );
     };
-    auto decode_and_reconstruct = [&](simnet::EncodeOutput const& encoded,
-                                      simnet::WorldSnapshot const& baseline) {
+    auto decode_and_reconstruct =
+        [&](simnet::EncodeOutput const& encoded, simnet::WorldSnapshot const& baseline)
+    {
         auto decoded = simnet::decode_update(
             pipeline,
             decode_state,
             {
                 .bytes = encoded.update.bytes,
-                .baseline_snapshot
-                = encoded.report.snapshot_kind == simnet::SnapshotKind::Patch ? &baseline : nullptr,
+                .baseline_snapshot = encoded.report.snapshot_kind == simnet::SnapshotKind::Patch
+                                         ? &baseline
+                                         : nullptr,
                 .baseline_sequence = encoded.report.baseline_sequence,
             }
         );
@@ -523,8 +535,8 @@ TEST_CASE(
     auto client_baseline = decode_and_reconstruct(seed, initial);
     commit(seed);
     REQUIRE(
-        simnet::app::promote_snapshot_ack(delivery, 1U, simnet::Nanoseconds{1U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(delivery, 1U, simnet::Nanoseconds{1U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
 
     auto removed = snapshot({1U});
@@ -540,8 +552,8 @@ TEST_CASE(
     CHECK(after_delete.ids == std::vector<simnet::EntityNetId>{1U});
     commit(repeated_delete);
     REQUIRE(
-        simnet::app::promote_snapshot_ack(delivery, 3U, simnet::Nanoseconds{3U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(delivery, 3U, simnet::Nanoseconds{3U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
     client_baseline = after_delete;
 
@@ -563,8 +575,8 @@ TEST_CASE(
     CHECK(after_spawn.ids == std::vector<simnet::EntityNetId>{1U, 8U});
     commit(recovered_spawn);
     REQUIRE(
-        simnet::app::promote_snapshot_ack(delivery, 6U, simnet::Nanoseconds{6U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(delivery, 6U, simnet::Nanoseconds{6U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
     CHECK(delivery.recovery_upserts.empty());
     client_baseline = after_spawn;
@@ -572,8 +584,8 @@ TEST_CASE(
     auto left_again = snapshot({1U});
     left_again.tick = 7U;
     auto applied_but_unacknowledged_delete = encode_against_ack(left_again);
-    auto client_without_entity
-        = decode_and_reconstruct(applied_but_unacknowledged_delete, client_baseline);
+    auto client_without_entity =
+        decode_and_reconstruct(applied_but_unacknowledged_delete, client_baseline);
     REQUIRE(client_without_entity.ids == std::vector<simnet::EntityNetId>{1U});
     commit(applied_but_unacknowledged_delete);
 

@@ -127,14 +127,18 @@ namespace
                              const simnet::NetIdentity,
                              simnet::Position>()
                          .build();
-        query.each([&](simnet::EntityKindComponent const& kind,
-                       simnet::NetIdentity const& identity,
-                       simnet::Position& current) {
-            if (kind.value == simnet::EntityKind::Player && identity.id == id) {
-                current.value = position;
-                found = true;
+        query.each(
+            [&](simnet::EntityKindComponent const& kind,
+                simnet::NetIdentity const& identity,
+                simnet::Position& current)
+            {
+                if (kind.value == simnet::EntityKind::Player && identity.id == id)
+                {
+                    current.value = position;
+                    found = true;
+                }
             }
-        });
+        );
         REQUIRE(found);
     }
 
@@ -153,7 +157,8 @@ namespace
 
     void hash_u32(std::uint64_t& hash, std::uint32_t value)
     {
-        for (auto shift = 0U; shift < 32U; shift += 8U) {
+        for (auto shift = 0U; shift < 32U; shift += 8U)
+        {
             hash_byte(hash, static_cast<std::uint8_t>(value >> shift));
         }
     }
@@ -161,7 +166,8 @@ namespace
     [[nodiscard]] std::uint64_t canonical_hash(simnet::WorldSnapshot const& value)
     {
         auto hash = std::uint64_t{14695981039346656037ULL};
-        for (std::size_t index = 0; index < value.size(); ++index) {
+        for (std::size_t index = 0; index < value.size(); ++index)
+        {
             hash_u32(hash, value.ids[index]);
             hash_byte(hash, value.classifications[index].value());
             hash_u32(hash, std::bit_cast<std::uint32_t>(value.positions[index].x));
@@ -179,8 +185,10 @@ namespace
     {
         auto copy = simnet::WorldSnapshot{};
         copy.tick = value.tick;
-        for (std::size_t index = 0; index < value.size(); ++index) {
-            if (value.classifications[index] != simnet::boid_entity_classification) {
+        for (std::size_t index = 0; index < value.size(); ++index)
+        {
+            if (value.classifications[index] != simnet::boid_entity_classification)
+            {
                 continue;
             }
             copy.ids.push_back(value.ids[index]);
@@ -230,14 +238,16 @@ namespace
             simnet::Vec3f{0.0F, 0.0F, 1.0F},
             simnet::Vec3f{-1.0F, 0.0F, 0.0F},
         };
-        for (std::uint32_t index = 0; index < 256U; ++index) {
+        for (std::uint32_t index = 0; index < 256U; ++index)
+        {
             auto const x = static_cast<float>(index % 8U) * 3.0F - 10.5F;
             auto const y = static_cast<float>((index / 8U) % 8U) * 3.0F - 10.5F;
             auto const z = static_cast<float>(index / 64U) * 3.0F - 4.5F;
             boids.push_back(boid(index + 1U, {x, y, z}, headings[index % headings.size()]));
         }
         REQUIRE(simnet::append_authoritative_boids(world, boids).success());
-        if (lure_enabled || predator_enabled) {
+        if (lure_enabled || predator_enabled)
+        {
             auto const first_player = simnet::spawn_authoritative_player(world);
             auto const second_player = simnet::spawn_authoritative_player(world);
             REQUIRE(first_player != 0U);
@@ -245,10 +255,12 @@ namespace
             set_player_position(world, first_player, {-8.0F, 3.0F, 4.0F});
             set_player_position(world, second_player, {9.0F, -2.0F, -5.0F});
         }
-        if (thread_count > 1U) {
+        if (thread_count > 1U)
+        {
             world.set_threads(static_cast<std::int32_t>(thread_count));
         }
-        for (auto tick = 0U; tick < 120U; ++tick) {
+        for (auto tick = 0U; tick < 120U; ++tick)
+        {
             step(world, runtime);
         }
         return canonical_hash(snapshot(world, 120U));
@@ -463,10 +475,10 @@ TEST_CASE(
     auto const second_position = std::ranges::find(independently_moved.ids, second_player_id);
     REQUIRE(first_position != independently_moved.ids.end());
     REQUIRE(second_position != independently_moved.ids.end());
-    auto const first_offset
-        = static_cast<std::size_t>(std::distance(independently_moved.ids.begin(), first_position));
-    auto const second_offset
-        = static_cast<std::size_t>(std::distance(independently_moved.ids.begin(), second_position));
+    auto const first_offset =
+        static_cast<std::size_t>(std::distance(independently_moved.ids.begin(), first_position));
+    auto const second_offset =
+        static_cast<std::size_t>(std::distance(independently_moved.ids.begin(), second_position));
     CHECK(independently_moved.headings[first_offset].x < 0.0F);
     CHECK(independently_moved.headings[second_offset].x > 0.0F);
     REQUIRE(simnet::delete_authoritative_player(world, player_id));
@@ -475,8 +487,8 @@ TEST_CASE(
         std::ranges::find(after_first_disconnect.ids, player_id) == after_first_disconnect.ids.end()
     );
     CHECK(
-        std::ranges::find(after_first_disconnect.ids, second_player_id)
-        != after_first_disconnect.ids.end()
+        std::ranges::find(after_first_disconnect.ids, second_player_id) !=
+        after_first_disconnect.ids.end()
     );
     REQUIRE(simnet::delete_authoritative_player(world, second_player_id));
     CHECK_FALSE(simnet::set_authoritative_player_input(world, player_id, {}));
@@ -501,13 +513,14 @@ TEST_CASE("disabled Player influence preserves exact Boid results", "[boids][pla
     REQUIRE(simnet::append_authoritative_boids(player_world, initial).success());
     REQUIRE(simnet::spawn_authoritative_player(player_world) == 3U);
 
-    for (auto tick = 0U; tick < 30U; ++tick) {
+    for (auto tick = 0U; tick < 30U; ++tick)
+    {
         step(control_world, control_runtime);
         step(player_world, player_runtime);
     }
     CHECK(
-        canonical_boid_hash(snapshot(player_world, 30U))
-        == canonical_boid_hash(snapshot(control_world, 30U))
+        canonical_boid_hash(snapshot(player_world, 30U)) ==
+        canonical_boid_hash(snapshot(control_world, 30U))
     );
 }
 
@@ -516,8 +529,8 @@ TEST_CASE(
     "[boids][player][delivery][peer]"
 )
 {
-    auto recovered_runtime
-        = simnet::ServerGameRuntime{test_settings(), stationary_player_settings()};
+    auto recovered_runtime =
+        simnet::ServerGameRuntime{test_settings(), stationary_player_settings()};
     auto stuck_runtime = simnet::ServerGameRuntime{test_settings(), stationary_player_settings()};
     auto recovered_world = flecs::world{};
     auto stuck_world = flecs::world{};
@@ -566,10 +579,10 @@ TEST_CASE(
     auto const stuck_found = std::ranges::find(stuck.ids, stuck_other);
     REQUIRE(recovered_found != recovered.ids.end());
     REQUIRE(stuck_found != stuck.ids.end());
-    auto const recovered_index
-        = static_cast<std::size_t>(std::distance(recovered.ids.begin(), recovered_found));
-    auto const stuck_index
-        = static_cast<std::size_t>(std::distance(stuck.ids.begin(), stuck_found));
+    auto const recovered_index =
+        static_cast<std::size_t>(std::distance(recovered.ids.begin(), recovered_found));
+    auto const stuck_index =
+        static_cast<std::size_t>(std::distance(stuck.ids.begin(), stuck_found));
     CHECK(recovered.positions[recovered_index].x == stuck.positions[stuck_index].x);
     CHECK(recovered.positions[recovered_index].y == stuck.positions[stuck_index].y);
     CHECK(recovered.positions[recovered_index].z == stuck.positions[stuck_index].z);
@@ -630,7 +643,8 @@ TEST_CASE("Player lure and predator steer in their authoritative directions", "[
 
 TEST_CASE("Player influence has smooth compact support and finite overlap", "[boids][player]")
 {
-    auto lure_at = [](simnet::Vec3f player_position) {
+    auto lure_at = [](simnet::Vec3f player_position)
+    {
         auto settings = isolated_influence_settings();
         settings.player_lure = {.enabled = true, .radius = 10.0F, .max_acceleration = 5.0F};
         auto runtime = simnet::ServerGameRuntime{settings, stationary_player_settings()};
@@ -661,7 +675,8 @@ TEST_CASE("Player influence has smooth compact support and finite overlap", "[bo
     CHECK(outside.lure_source_count == 0U);
     CHECK(simnet::length_squared(outside.lure) == 0.0F);
 
-    auto predator_at = [](simnet::Vec3f player_position) {
+    auto predator_at = [](simnet::Vec3f player_position)
+    {
         auto settings = isolated_influence_settings();
         settings.player_predator = {
             .enabled = true,
@@ -858,7 +873,8 @@ TEST_CASE("player steering accelerates, damps, and respects angular limits", "[p
         )
     );
 
-    auto yaw_at = [&](simnet::Tick tick) {
+    auto yaw_at = [&](simnet::Tick tick)
+    {
         auto const state = snapshot(world, tick);
         REQUIRE(state.size() == 1U);
         return std::atan2(state.headings.front().x, state.headings.front().z);
@@ -870,7 +886,8 @@ TEST_CASE("player steering accelerates, damps, and respects angular limits", "[p
     CHECK(std::abs(previous_yaw) < 0.01F);
 
     auto previous_delta = std::abs(previous_yaw);
-    for (auto tick = simnet::Tick{2U}; tick <= 12U; ++tick) {
+    for (auto tick = simnet::Tick{2U}; tick <= 12U; ++tick)
+    {
         step(world, runtime);
         auto const yaw = yaw_at(tick);
         auto const delta = std::abs(yaw - previous_yaw);
@@ -885,7 +902,8 @@ TEST_CASE("player steering accelerates, damps, and respects angular limits", "[p
     auto released_delta = std::abs(yaw - previous_yaw);
     CHECK(released_delta < previous_delta);
     previous_yaw = yaw;
-    for (auto tick = simnet::Tick{14U}; tick <= 20U; ++tick) {
+    for (auto tick = simnet::Tick{14U}; tick <= 20U; ++tick)
+    {
         step(world, runtime);
         yaw = yaw_at(tick);
         auto const delta = std::abs(yaw - previous_yaw);
@@ -942,7 +960,8 @@ TEST_CASE("player yaw and pitch rates and pitch angle are bounded", "[player]")
     auto constexpr maximum_yaw_step = 0.017454F;
     auto constexpr maximum_pitch_step = 0.020945F;
     auto constexpr pitch_limit = 0.087267F;
-    for (auto tick = simnet::Tick{1U}; tick <= 20U; ++tick) {
+    for (auto tick = simnet::Tick{1U}; tick <= 20U; ++tick)
+    {
         step(world, runtime, delta_time);
         auto const state = snapshot(world, tick);
         REQUIRE(state.size() == 1U);

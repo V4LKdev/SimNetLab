@@ -23,7 +23,8 @@ namespace simnet::app::detail
     )
     {
         auto const found = std::ranges::lower_bound(peers, peer_id, {}, projection);
-        if (found != peers.end() && std::invoke(projection, *found) == peer_id) {
+        if (found != peers.end() && std::invoke(projection, *found) == peer_id)
+        {
             return PeerAdmission::Duplicate;
         }
         return peers.size() >= capacity ? PeerAdmission::Full : PeerAdmission::Accept;
@@ -39,8 +40,10 @@ namespace simnet::app::detail
     )
     {
         auto index = std::size_t{};
-        while (index < peers.size()) {
-            if (!is_joined(peers[index]) || process(peers[index])) {
+        while (index < peers.size())
+        {
+            if (!is_joined(peers[index]) || process(peers[index]))
+            {
                 ++index;
                 continue;
             }

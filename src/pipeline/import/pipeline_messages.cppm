@@ -65,7 +65,7 @@ export namespace simnet
         SequenceId baseline_sequence{};
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
 
-        bool valid{}; /// true when the encoded update passed all contract checks
+        bool valid{};        /// true when the encoded update passed all contract checks
         std::string error{}; /// error message when !valid
     };
 

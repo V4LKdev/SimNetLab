@@ -22,22 +22,25 @@ namespace
     {
         auto state = simnet::app::PlayerInputDeliveryState{};
         auto observed = std::vector<ObservedSubmission>{};
-        for (auto sample = std::uint64_t{};; ++sample) {
+        for (auto sample = std::uint64_t{};; ++sample)
+        {
             auto const now = simnet::Nanoseconds{
                 static_cast<std::int64_t>(sample * 1'000'000'000ULL / samples_per_second)
             };
-            if (now > simnet::Nanoseconds{900'000'000}) {
+            if (now > simnet::Nanoseconds{900'000'000})
+            {
                 break;
             }
-            auto const active
-                = now >= simnet::Nanoseconds{250'000'000} && now < simnet::Nanoseconds{550'000'000};
+            auto const active =
+                now >= simnet::Nanoseconds{250'000'000} && now < simnet::Nanoseconds{550'000'000};
             simnet::app::set_desired_player_input(
                 state,
                 {.buttons = active ? static_cast<std::uint8_t>(simnet::app::PlayerButton::W)
                                    : std::uint8_t{}}
             );
             auto const submission = simnet::app::plan_player_input_submission(state, true, now);
-            if (!submission.has_value()) {
+            if (!submission.has_value())
+            {
                 continue;
             }
             observed.push_back({
@@ -94,8 +97,9 @@ TEST_CASE(
     );
 
     auto const active_buttons = static_cast<std::uint8_t>(
-        static_cast<std::uint8_t>(PlayerButton::W) | static_cast<std::uint8_t>(PlayerButton::Shift)
-        | static_cast<std::uint8_t>(PlayerButton::LeftMouse)
+        static_cast<std::uint8_t>(PlayerButton::W) |
+        static_cast<std::uint8_t>(PlayerButton::Shift) |
+        static_cast<std::uint8_t>(PlayerButton::LeftMouse)
     );
     simnet::app::set_desired_player_input(state, {.buttons = active_buttons});
     auto active_change = simnet::app::plan_player_input_submission(
@@ -123,8 +127,8 @@ TEST_CASE(
         simnet::app::player_input_heartbeat_interval + simnet::Nanoseconds{1}
     );
 
-    auto const active_heartbeat_time
-        = simnet::app::player_input_heartbeat_interval * 2 + simnet::Nanoseconds{1};
+    auto const active_heartbeat_time =
+        simnet::app::player_input_heartbeat_interval * 2 + simnet::Nanoseconds{1};
     CHECK_FALSE(
         simnet::app::plan_player_input_submission(
             state,
@@ -133,8 +137,8 @@ TEST_CASE(
         )
             .has_value()
     );
-    auto active_heartbeat
-        = simnet::app::plan_player_input_submission(state, true, active_heartbeat_time);
+    auto active_heartbeat =
+        simnet::app::plan_player_input_submission(state, true, active_heartbeat_time);
     REQUIRE(active_heartbeat.has_value());
     CHECK(active_heartbeat->cause == PlayerInputSubmissionCause::Heartbeat);
     CHECK(active_heartbeat->input.buttons == active_buttons);
@@ -143,8 +147,8 @@ TEST_CASE(
     auto authoritative_input = active_heartbeat->input;
     auto const neutral_change_time = active_heartbeat_time + simnet::Nanoseconds{1};
     simnet::app::set_desired_player_input(state, {});
-    auto neutral_change
-        = simnet::app::plan_player_input_submission(state, true, neutral_change_time);
+    auto neutral_change =
+        simnet::app::plan_player_input_submission(state, true, neutral_change_time);
     REQUIRE(neutral_change.has_value());
     CHECK(neutral_change->cause == PlayerInputSubmissionCause::StateChange);
     CHECK(neutral_change->input.buttons == 0U);
@@ -155,8 +159,8 @@ TEST_CASE(
         simnet::app::plan_player_input_submission(
             state,
             true,
-            neutral_change_time + simnet::app::player_input_heartbeat_interval
-                - simnet::Nanoseconds{1}
+            neutral_change_time + simnet::app::player_input_heartbeat_interval -
+                simnet::Nanoseconds{1}
         )
             .has_value()
     );
@@ -226,7 +230,8 @@ TEST_CASE(
 TEST_CASE("Player input equality covers every semantic button", "[app_protocol][player]")
 {
     auto const neutral = simnet::app::PlayerInputMessage{};
-    for (auto bit = std::uint8_t{1U}; bit != 0U; bit = static_cast<std::uint8_t>(bit << 1U)) {
+    for (auto bit = std::uint8_t{1U}; bit != 0U; bit = static_cast<std::uint8_t>(bit << 1U))
+    {
         auto const input = simnet::app::PlayerInputMessage{.buttons = bit};
         CHECK_FALSE(simnet::app::same_player_input(neutral, input));
         CHECK(simnet::app::same_player_input(input, input));

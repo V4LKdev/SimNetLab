@@ -25,7 +25,8 @@ namespace
     [[nodiscard]] constexpr std::string_view
     entity_record_layout_name(EntityRecordLayout layout) noexcept
     {
-        switch (layout) {
+        switch (layout)
+        {
             case EntityRecordLayout::Raw:
                 return "raw";
             case EntityRecordLayout::Quantized:
@@ -42,7 +43,8 @@ namespace
     {
         char buffer[32]{};
         auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-        if (result.ec != std::errc{}) {
+        if (result.ec != std::errc{})
+        {
             throw std::runtime_error("failed to format boid CSV integer");
         }
         output.append(buffer, result.ptr);
@@ -58,7 +60,8 @@ namespace
             std::chars_format::general,
             std::numeric_limits<Value>::max_digits10
         );
-        if (result.ec != std::errc{}) {
+        if (result.ec != std::errc{})
+        {
             throw std::runtime_error("failed to format boid CSV floating-point value");
         }
         output.append(buffer, result.ptr);
@@ -66,9 +69,8 @@ namespace
 
     class BoidCsvRow
     {
-    public:
-        explicit BoidCsvRow(std::string& output)
-            : output_(output)
+      public:
+        explicit BoidCsvRow(std::string& output) : output_(output)
         {
             output_.clear();
         }
@@ -91,10 +93,11 @@ namespace
             append_floating_point(output_, value);
         }
 
-    private:
+      private:
         void separator()
         {
-            if (!first_) {
+            if (!first_)
+            {
                 output_.push_back(',');
             }
             first_ = false;
@@ -247,9 +250,10 @@ namespace simnet::app
         measurement.selected_entity_count = report.area_of_interest.retained_count;
         measurement.upsert_count = report.upsert_count;
         measurement.delete_count = report.delete_count;
-        if (measurement.area_of_interest_mode != "none") {
-            measurement.area_of_interest_source_status
-                = report.area_of_interest.source_available ? "available" : "unavailable";
+        if (measurement.area_of_interest_mode != "none")
+        {
+            measurement.area_of_interest_source_status =
+                report.area_of_interest.source_available ? "available" : "unavailable";
         }
         measurement.area_of_interest_candidate_count = report.area_of_interest.candidate_count;
         measurement.area_of_interest_culled_count = report.area_of_interest.culled_count;
@@ -289,8 +293,8 @@ namespace simnet::app
         measurement.position_error_sum = representation.position_error_sum;
         measurement.position_error_maximum = representation.position_error_maximum;
         measurement.heading_error_degrees_sum = representation.heading_angular_error_degrees_sum;
-        measurement.heading_error_degrees_maximum
-            = representation.heading_angular_error_degrees_maximum;
+        measurement.heading_error_degrees_maximum =
+            representation.heading_angular_error_degrees_maximum;
     }
 }
 
@@ -299,41 +303,47 @@ namespace simnet::app
     struct ServerBoidCsvWriter::Impl
     {
         explicit Impl(ServerBoidCsvWriterConfig writer_config)
-            : config(std::move(writer_config))
-            , interval(std::max<Tick>(1U, static_cast<Tick>(std::llround(config.tick_rate_hz))))
-            , last_tick(std::numeric_limits<Tick>::max())
+            : config(std::move(writer_config)),
+              interval(std::max<Tick>(1U, static_cast<Tick>(std::llround(config.tick_rate_hz)))),
+              last_tick(std::numeric_limits<Tick>::max())
         {
             buffer.reserve(server_boids_csv_buffer_capacity);
-            if (!config.enabled) {
+            if (!config.enabled)
+            {
                 return;
             }
             validate_evidence_run_context(config.run);
-            if (config.run.process_role != EvidenceProcessRole::Server) {
+            if (config.run.process_role != EvidenceProcessRole::Server)
+            {
                 throw std::invalid_argument("boid CSV process role must be Server");
             }
             std::filesystem::create_directories(config.output_directory);
-            path = config.output_directory
-                / ("server_boids_v1_" + std::to_string(config.run.process_started_unix_ns)
-                   + ".csv");
+            path =
+                config.output_directory /
+                ("server_boids_v1_" + std::to_string(config.run.process_started_unix_ns) + ".csv");
             file.emplace(path, server_boids_csv_header_v1);
         }
 
         void reject(std::string_view message)
         {
-            if (failure.empty()) {
+            if (failure.empty())
+            {
                 failure = message;
             }
         }
 
         void capture_file_failure()
         {
-            if (!file.has_value() || file->error().empty()) {
+            if (!file.has_value() || file->error().empty())
+            {
                 return;
             }
-            if (failure.find(file->error()) != std::string::npos) {
+            if (failure.find(file->error()) != std::string::npos)
+            {
                 return;
             }
-            if (!failure.empty()) {
+            if (!failure.empty())
+            {
                 failure += ". ";
             }
             failure += file->error();
@@ -343,14 +353,17 @@ namespace simnet::app
         {
             auto row = std::string{};
             row.reserve(768);
-            for (auto const& entry : buffer) {
+            for (auto const& entry : buffer)
+            {
                 format_row(row, config.run, entry);
-                if (!file->write_row(row)) {
+                if (!file->write_row(row))
+                {
                     capture_file_failure();
                     return false;
                 }
             }
-            if (!file->flush()) {
+            if (!file->flush())
+            {
                 capture_file_failure();
                 return false;
             }
@@ -376,24 +389,29 @@ namespace simnet::app
 
     ServerBoidCsvWriter::~ServerBoidCsvWriter()
     {
-        if (impl_) {
+        if (impl_)
+        {
             static_cast<void>(close());
         }
     }
 
     bool ServerBoidCsvWriter::sample(Tick tick, ServerGameStepReport const& report, bool force)
     {
-        if (!enabled()) {
+        if (!enabled())
+        {
             return true;
         }
-        if (impl_->closed) {
+        if (impl_->closed)
+        {
             impl_->reject("Server boid CSV submission attempted after close");
             return false;
         }
-        if (!impl_->failure.empty()) {
+        if (!impl_->failure.empty())
+        {
             return false;
         }
-        if ((!force && tick % impl_->interval != 0U) || impl_->last_tick == tick) {
+        if ((!force && tick % impl_->interval != 0U) || impl_->last_tick == tick)
+        {
             return true;
         }
         return sample(tick, report, capture_evidence_record_timestamp(impl_->config.run), force);
@@ -406,20 +424,25 @@ namespace simnet::app
         bool force
     )
     {
-        if (!impl_->config.enabled) {
+        if (!impl_->config.enabled)
+        {
             return true;
         }
-        if (impl_->closed) {
+        if (impl_->closed)
+        {
             impl_->reject("Server boid CSV submission attempted after close");
             return false;
         }
-        if (!impl_->failure.empty()) {
+        if (!impl_->failure.empty())
+        {
             return false;
         }
-        if ((!force && tick % impl_->interval != 0U) || impl_->last_tick == tick) {
+        if ((!force && tick % impl_->interval != 0U) || impl_->last_tick == tick)
+        {
             return true;
         }
-        if (impl_->buffer.size() == server_boids_csv_buffer_capacity) {
+        if (impl_->buffer.size() == server_boids_csv_buffer_capacity)
+        {
             impl_->failure = "Server boid CSV typed buffer overflow";
             return false;
         }
@@ -438,17 +461,21 @@ namespace simnet::app
 
     bool ServerBoidCsvWriter::drain()
     {
-        if (!impl_->config.enabled) {
+        if (!impl_->config.enabled)
+        {
             return true;
         }
-        if (impl_->closed) {
+        if (impl_->closed)
+        {
             impl_->reject("Server boid CSV drain attempted after close");
             return false;
         }
-        if (!impl_->failure.empty()) {
+        if (!impl_->failure.empty())
+        {
             return false;
         }
-        if (impl_->buffer.empty()) {
+        if (impl_->buffer.empty())
+        {
             return true;
         }
         return impl_->persist_buffer();
@@ -456,14 +483,17 @@ namespace simnet::app
 
     bool ServerBoidCsvWriter::close()
     {
-        if (impl_->closed) {
+        if (impl_->closed)
+        {
             return impl_->failure.empty();
         }
         auto success = true;
-        if (impl_->config.enabled && !impl_->buffer.empty() && !impl_->persist_buffer()) {
+        if (impl_->config.enabled && !impl_->buffer.empty() && !impl_->persist_buffer())
+        {
             success = false;
         }
-        if (impl_->file.has_value() && !impl_->file->close()) {
+        if (impl_->file.has_value() && !impl_->file->close())
+        {
             impl_->capture_file_failure();
             success = false;
         }

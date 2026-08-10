@@ -27,18 +27,21 @@ namespace
 
     [[nodiscard]] bool ascii_alphanumeric(char value) noexcept
     {
-        return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z')
-            || (value >= '0' && value <= '9');
+        return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
+               (value >= '0' && value <= '9');
     }
 
     [[nodiscard]] bool valid_run_id(std::string_view value) noexcept
     {
-        if (value.empty() || value.size() > 64U || !ascii_alphanumeric(value.front())) {
+        if (value.empty() || value.size() > 64U || !ascii_alphanumeric(value.front()))
+        {
             return false;
         }
-        for (auto const character : value) {
-            if (!ascii_alphanumeric(character) && character != '.' && character != '_'
-                && character != '-') {
+        for (auto const character : value)
+        {
+            if (!ascii_alphanumeric(character) && character != '.' && character != '_' &&
+                character != '-')
+            {
                 return false;
             }
         }
@@ -47,7 +50,8 @@ namespace
 
     [[nodiscard]] std::string_view process_role_name(EvidenceProcessRole role) noexcept
     {
-        switch (role) {
+        switch (role)
+        {
             case EvidenceProcessRole::Server:
                 return "server";
             case EvidenceProcessRole::Client:
@@ -62,7 +66,8 @@ namespace
                                std::chrono::system_clock::now().time_since_epoch()
         )
                                .count();
-        if (count < 0) {
+        if (count < 0)
+        {
             throw std::runtime_error("system clock precedes the Unix epoch");
         }
         return static_cast<std::uint64_t>(count);
@@ -71,19 +76,24 @@ namespace
     void append_csv_text(std::string& output, std::string_view value)
     {
         auto quote = false;
-        for (auto const character : value) {
-            if (character == ',' || character == '"' || character == '\r' || character == '\n') {
+        for (auto const character : value)
+        {
+            if (character == ',' || character == '"' || character == '\r' || character == '\n')
+            {
                 quote = true;
                 break;
             }
         }
-        if (!quote) {
+        if (!quote)
+        {
             output.append(value);
             return;
         }
         output.push_back('"');
-        for (auto const character : value) {
-            if (character == '"') {
+        for (auto const character : value)
+        {
+            if (character == '"')
+            {
                 output.push_back('"');
             }
             output.push_back(character);
@@ -100,7 +110,8 @@ namespace
     {
         char buffer[32]{};
         auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-        if (result.ec != std::errc{}) {
+        if (result.ec != std::errc{})
+        {
             throw std::runtime_error("failed to format CSV integer");
         }
         output.append(buffer, result.ptr);
@@ -110,7 +121,8 @@ namespace
     {
         char buffer[64]{};
         auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-        if (result.ec != std::errc{}) {
+        if (result.ec != std::errc{})
+        {
             throw std::runtime_error("failed to format CSV real value");
         }
         output.append(buffer, result.ptr);
@@ -118,9 +130,8 @@ namespace
 
     class CsvRow
     {
-    public:
-        explicit CsvRow(std::string& output)
-            : output_(output)
+      public:
+        explicit CsvRow(std::string& output) : output_(output)
         {
             output_.clear();
         }
@@ -143,10 +154,11 @@ namespace
             append_csv_real(output_, value);
         }
 
-    private:
+      private:
         void separator()
         {
-            if (!first_) {
+            if (!first_)
+            {
                 output_.push_back(',');
             }
             first_ = false;
@@ -158,7 +170,8 @@ namespace
 
     [[nodiscard]] std::string_view snapshot_kind_name(SnapshotKind kind) noexcept
     {
-        switch (kind) {
+        switch (kind)
+        {
             case SnapshotKind::FullReplace:
                 return "full_replace";
             case SnapshotKind::Patch:
@@ -169,7 +182,8 @@ namespace
 
     [[nodiscard]] std::string_view server_outcome_name(ServerReplicationOutcome outcome) noexcept
     {
-        switch (outcome) {
+        switch (outcome)
+        {
             case ServerReplicationOutcome::SnapshotExtractionFailed:
                 return "snapshot_extraction_failed";
             case ServerReplicationOutcome::Skipped:
@@ -186,7 +200,8 @@ namespace
 
     [[nodiscard]] std::string_view client_outcome_name(ClientReplicationOutcome outcome) noexcept
     {
-        switch (outcome) {
+        switch (outcome)
+        {
             case ClientReplicationOutcome::PacketIncomplete:
                 return "packet_incomplete";
             case ClientReplicationOutcome::PacketDuplicate:
@@ -235,33 +250,39 @@ namespace
             : config(std::move(writer_config))
         {
             buffer.reserve(replication_csv_buffer_capacity);
-            if (!config.enabled) {
+            if (!config.enabled)
+            {
                 return;
             }
             validate_evidence_run_context(config.run);
-            if (config.run.process_role != required_role) {
+            if (config.run.process_role != required_role)
+            {
                 throw std::invalid_argument("replication CSV process role does not match writer");
             }
             std::filesystem::create_directories(config.output_directory);
-            path = config.output_directory
-                / (std::string{filename_prefix} + std::to_string(config.run.process_started_unix_ns)
-                   + ".csv");
+            path = config.output_directory /
+                   (std::string{filename_prefix} +
+                    std::to_string(config.run.process_started_unix_ns) + ".csv");
             file.emplace(path, header);
         }
 
         [[nodiscard]] bool submit(Measurement const& measurement, EvidenceRecordTimestamp timestamp)
         {
-            if (!config.enabled) {
+            if (!config.enabled)
+            {
                 return true;
             }
-            if (closed) {
+            if (closed)
+            {
                 reject("replication CSV submission attempted after close");
                 return false;
             }
-            if (!failure.empty()) {
+            if (!failure.empty())
+            {
                 return false;
             }
-            if (buffer.size() == replication_csv_buffer_capacity) {
+            if (buffer.size() == replication_csv_buffer_capacity)
+            {
                 failure = "replication CSV typed buffer overflow";
                 return false;
             }
@@ -276,20 +297,24 @@ namespace
 
         void reject(std::string_view message)
         {
-            if (failure.empty()) {
+            if (failure.empty())
+            {
                 failure = message;
             }
         }
 
         void capture_file_failure()
         {
-            if (!file.has_value() || file->error().empty()) {
+            if (!file.has_value() || file->error().empty())
+            {
                 return;
             }
-            if (failure.find(file->error()) != std::string::npos) {
+            if (failure.find(file->error()) != std::string::npos)
+            {
                 return;
             }
-            if (!failure.empty()) {
+            if (!failure.empty())
+            {
                 failure += ". ";
             }
             failure += file->error();
@@ -517,14 +542,17 @@ namespace
     {
         auto row = std::string{};
         row.reserve(2048);
-        for (auto const& entry : state.buffer) {
+        for (auto const& entry : state.buffer)
+        {
             format_server_row(row, state.config.run, entry);
-            if (!state.file->write_row(row)) {
+            if (!state.file->write_row(row))
+            {
                 state.capture_file_failure();
                 return false;
             }
         }
-        if (!state.file->flush()) {
+        if (!state.file->flush())
+        {
             state.capture_file_failure();
             return false;
         }
@@ -539,14 +567,17 @@ namespace
     {
         auto row = std::string{};
         row.reserve(1536);
-        for (auto const& entry : state.buffer) {
+        for (auto const& entry : state.buffer)
+        {
             format_client_row(row, state.config.run, accepted_gameplay_role, entry);
-            if (!state.file->write_row(row)) {
+            if (!state.file->write_row(row))
+            {
                 state.capture_file_failure();
                 return false;
             }
         }
-        if (!state.file->flush()) {
+        if (!state.file->flush())
+        {
             state.capture_file_failure();
             return false;
         }
@@ -567,11 +598,14 @@ namespace simnet
             .process_started_unix_ns = system_time_unix_ns(),
             .monotonic_start = std::chrono::steady_clock::now(),
         };
-        if (supplied_run_id.has_value()) {
+        if (supplied_run_id.has_value())
+        {
             context.run_id = *supplied_run_id;
-        } else {
-            context.run_id = std::string{process_role_name(process_role)} + '-'
-                + std::to_string(context.process_started_unix_ns);
+        }
+        else
+        {
+            context.run_id = std::string{process_role_name(process_role)} + '-' +
+                             std::to_string(context.process_started_unix_ns);
         }
         validate_evidence_run_context(context);
         return context;
@@ -579,7 +613,8 @@ namespace simnet
 
     void validate_evidence_run_context(EvidenceRunContext const& context)
     {
-        if (!valid_run_id(context.run_id)) {
+        if (!valid_run_id(context.run_id))
+        {
             throw std::invalid_argument(
                 "run ID must match [A-Za-z0-9][A-Za-z0-9._-]* and contain 1 to 64 ASCII characters"
             );
@@ -592,7 +627,8 @@ namespace simnet
                                  std::chrono::steady_clock::now() - context.monotonic_start
         )
                                  .count();
-        if (elapsed < 0) {
+        if (elapsed < 0)
+        {
             throw std::runtime_error("monotonic clock precedes process evidence start");
         }
         return {
@@ -614,7 +650,8 @@ namespace simnet
     {
         impl_->path = std::move(path);
         impl_->stream.open(impl_->path, std::ios::out | std::ios::noreplace);
-        if (!impl_->stream) {
+        if (!impl_->stream)
+        {
             throw std::runtime_error(
                 "failed to exclusively create evidence CSV: " + impl_->path.string()
             );
@@ -622,7 +659,8 @@ namespace simnet
         impl_->stream.imbue(std::locale::classic());
         impl_->stream.write(header.data(), static_cast<std::streamsize>(header.size()));
         impl_->stream.put('\n');
-        if (!impl_->stream) {
+        if (!impl_->stream)
+        {
             impl_->failure = "failed to write evidence CSV header: " + impl_->path.string();
             static_cast<void>(close());
             throw std::runtime_error(impl_->failure);
@@ -631,26 +669,31 @@ namespace simnet
 
     EvidenceCsvFile::~EvidenceCsvFile()
     {
-        if (impl_) {
+        if (impl_)
+        {
             static_cast<void>(close());
         }
     }
 
     bool EvidenceCsvFile::write_row(std::string_view row)
     {
-        if (impl_->closed) {
-            if (impl_->failure.empty()) {
-                impl_->failure
-                    = "evidence CSV row write attempted after close: " + impl_->path.string();
+        if (impl_->closed)
+        {
+            if (impl_->failure.empty())
+            {
+                impl_->failure =
+                    "evidence CSV row write attempted after close: " + impl_->path.string();
             }
             return false;
         }
-        if (!healthy()) {
+        if (!healthy())
+        {
             return false;
         }
         impl_->stream.write(row.data(), static_cast<std::streamsize>(row.size()));
         impl_->stream.put('\n');
-        if (!impl_->stream) {
+        if (!impl_->stream)
+        {
             impl_->failure = "failed to write evidence CSV row: " + impl_->path.string();
             return false;
         }
@@ -659,18 +702,22 @@ namespace simnet
 
     bool EvidenceCsvFile::flush()
     {
-        if (impl_->closed) {
-            if (impl_->failure.empty()) {
-                impl_->failure
-                    = "evidence CSV flush attempted after close: " + impl_->path.string();
+        if (impl_->closed)
+        {
+            if (impl_->failure.empty())
+            {
+                impl_->failure =
+                    "evidence CSV flush attempted after close: " + impl_->path.string();
             }
             return false;
         }
-        if (!healthy()) {
+        if (!healthy())
+        {
             return false;
         }
         impl_->stream.flush();
-        if (!impl_->stream) {
+        if (!impl_->stream)
+        {
             impl_->failure = "failed to flush evidence CSV: " + impl_->path.string();
             return false;
         }
@@ -679,12 +726,14 @@ namespace simnet
 
     bool EvidenceCsvFile::close()
     {
-        if (impl_->closed) {
+        if (impl_->closed)
+        {
             return healthy();
         }
         auto const flushed = flush();
         impl_->stream.close();
-        if (impl_->stream.fail() && impl_->failure.empty()) {
+        if (impl_->stream.fail() && impl_->failure.empty())
+        {
             impl_->failure = "failed to close evidence CSV: " + impl_->path.string();
         }
         impl_->closed = true;
@@ -733,14 +782,16 @@ namespace simnet
 
     ServerReplicationCsvWriter::~ServerReplicationCsvWriter()
     {
-        if (impl_) {
+        if (impl_)
+        {
             static_cast<void>(close());
         }
     }
 
     bool ServerReplicationCsvWriter::submit(ServerReplicationMeasurement const& measurement)
     {
-        if (!enabled()) {
+        if (!enabled())
+        {
             return true;
         }
         return submit(measurement, capture_evidence_record_timestamp(impl_->state.config.run));
@@ -762,17 +813,21 @@ namespace simnet
     bool ServerReplicationCsvWriter::drain()
     {
         auto& state = impl_->state;
-        if (!state.config.enabled) {
+        if (!state.config.enabled)
+        {
             return true;
         }
-        if (state.closed) {
+        if (state.closed)
+        {
             state.reject("server replication CSV drain attempted after close");
             return false;
         }
-        if (!state.failure.empty()) {
+        if (!state.failure.empty())
+        {
             return false;
         }
-        if (state.buffer.empty()) {
+        if (state.buffer.empty())
+        {
             return true;
         }
         return persist_server_rows(state);
@@ -781,14 +836,17 @@ namespace simnet
     bool ServerReplicationCsvWriter::close()
     {
         auto& state = impl_->state;
-        if (state.closed) {
+        if (state.closed)
+        {
             return state.failure.empty();
         }
         auto success = true;
-        if (state.config.enabled && !state.buffer.empty() && !persist_server_rows(state)) {
+        if (state.config.enabled && !state.buffer.empty() && !persist_server_rows(state))
+        {
             success = false;
         }
-        if (state.file.has_value() && !state.file->close()) {
+        if (state.file.has_value() && !state.file->close())
+        {
             state.capture_file_failure();
             success = false;
         }
@@ -849,29 +907,35 @@ namespace simnet
 
     ClientReplicationCsvWriter::~ClientReplicationCsvWriter()
     {
-        if (impl_) {
+        if (impl_)
+        {
             static_cast<void>(close());
         }
     }
 
     bool ClientReplicationCsvWriter::set_accepted_gameplay_role(std::string_view role)
     {
-        if (!enabled()) {
+        if (!enabled())
+        {
             return true;
         }
         auto& state = impl_->state;
-        if (state.closed) {
+        if (state.closed)
+        {
             state.reject("client replication CSV accepted role set after close");
             return false;
         }
-        if (!state.failure.empty()) {
+        if (!state.failure.empty())
+        {
             return false;
         }
-        if (role != "player" && role != "stationary_observer") {
+        if (role != "player" && role != "stationary_observer")
+        {
             state.reject("client replication CSV received an invalid accepted role");
             return false;
         }
-        if (!impl_->accepted_gameplay_role.empty() && impl_->accepted_gameplay_role != role) {
+        if (!impl_->accepted_gameplay_role.empty() && impl_->accepted_gameplay_role != role)
+        {
             state.reject("client replication CSV accepted role changed during the run");
             return false;
         }
@@ -881,7 +945,8 @@ namespace simnet
 
     bool ClientReplicationCsvWriter::submit(ClientReplicationMeasurement const& measurement)
     {
-        if (!enabled()) {
+        if (!enabled())
+        {
             return true;
         }
         return submit(measurement, capture_evidence_record_timestamp(impl_->state.config.run));
@@ -903,20 +968,25 @@ namespace simnet
     bool ClientReplicationCsvWriter::drain()
     {
         auto& state = impl_->state;
-        if (!state.config.enabled) {
+        if (!state.config.enabled)
+        {
             return true;
         }
-        if (state.closed) {
+        if (state.closed)
+        {
             state.reject("client replication CSV drain attempted after close");
             return false;
         }
-        if (!state.failure.empty()) {
+        if (!state.failure.empty())
+        {
             return false;
         }
-        if (state.buffer.empty()) {
+        if (state.buffer.empty())
+        {
             return true;
         }
-        if (impl_->accepted_gameplay_role.empty()) {
+        if (impl_->accepted_gameplay_role.empty())
+        {
             state.reject("client replication CSV has records without an accepted gameplay role");
             return false;
         }
@@ -926,21 +996,27 @@ namespace simnet
     bool ClientReplicationCsvWriter::close()
     {
         auto& state = impl_->state;
-        if (state.closed) {
+        if (state.closed)
+        {
             return state.failure.empty();
         }
         auto success = true;
-        if (state.config.enabled && !state.buffer.empty()) {
-            if (impl_->accepted_gameplay_role.empty()) {
+        if (state.config.enabled && !state.buffer.empty())
+        {
+            if (impl_->accepted_gameplay_role.empty())
+            {
                 state.reject(
                     "client replication CSV has records without an accepted gameplay role"
                 );
                 success = false;
-            } else if (!persist_client_rows(state, impl_->accepted_gameplay_role)) {
+            }
+            else if (!persist_client_rows(state, impl_->accepted_gameplay_role))
+            {
                 success = false;
             }
         }
-        if (state.file.has_value() && !state.file->close()) {
+        if (state.file.has_value() && !state.file->close())
+        {
             state.capture_file_failure();
             success = false;
         }

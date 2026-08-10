@@ -33,14 +33,16 @@ namespace simnet
 
     Nanoseconds sample_frame_delta(RuntimeFrameTimer& timer, Nanoseconds now) noexcept
     {
-        if (!timer.initialized) {
+        if (!timer.initialized)
+        {
             reset_frame_timer(timer, now);
             return Nanoseconds{};
         }
 
         auto const previous = timer.previous;
         timer.previous = now;
-        if (now <= previous) {
+        if (now <= previous)
+        {
             return Nanoseconds{};
         }
         return now - previous;
@@ -65,7 +67,8 @@ namespace simnet
         };
 
         auto accepted_delta = std::max(raw_delta, Nanoseconds{});
-        if (accepted_delta > settings.max_frame_time) {
+        if (accepted_delta > settings.max_frame_time)
+        {
             plan.frame_delta_clamped = true;
             plan.clamped_time = accepted_delta - settings.max_frame_time;
             accepted_delta = settings.max_frame_time;
@@ -73,11 +76,12 @@ namespace simnet
         plan.accepted_delta = accepted_delta;
 
         auto step_settings = settings.fixed_step;
-        if (settings.max_ticks != 0U) {
-            auto const remaining_ticks
-                = clock.tick < settings.max_ticks ? settings.max_ticks - clock.tick : Tick{};
-            auto const bounded_remaining
-                = std::min<Tick>(remaining_ticks, std::numeric_limits<std::uint16_t>::max());
+        if (settings.max_ticks != 0U)
+        {
+            auto const remaining_ticks =
+                clock.tick < settings.max_ticks ? settings.max_ticks - clock.tick : Tick{};
+            auto const bounded_remaining =
+                std::min<Tick>(remaining_ticks, std::numeric_limits<std::uint16_t>::max());
             step_settings.max_steps_per_frame = std::min(
                 step_settings.max_steps_per_frame,
                 static_cast<std::uint16_t>(bounded_remaining)
@@ -85,7 +89,8 @@ namespace simnet
         }
 
         plan.step_count = advance(clock, accepted_delta, step_settings);
-        if (clock.fixed_dt > Nanoseconds{} && clock.accumulator >= clock.fixed_dt) {
+        if (clock.fixed_dt > Nanoseconds{} && clock.accumulator >= clock.fixed_dt)
+        {
             plan.step_limit_reached = true;
             auto const retained_remainder = clock.accumulator % clock.fixed_dt;
             plan.dropped_time = clock.accumulator - retained_remainder;
@@ -93,9 +98,10 @@ namespace simnet
         }
 
         plan.accumulator = clock.accumulator;
-        if (clock.fixed_dt > Nanoseconds{}) {
-            plan.interpolation_alpha = static_cast<double>(clock.accumulator.count())
-                / static_cast<double>(clock.fixed_dt.count());
+        if (clock.fixed_dt > Nanoseconds{})
+        {
+            plan.interpolation_alpha = static_cast<double>(clock.accumulator.count()) /
+                                       static_cast<double>(clock.fixed_dt.count());
         }
 
         ++stats.frames;
@@ -111,13 +117,16 @@ namespace simnet
     ShutdownReason
     reached_runtime_limit(RuntimeSettings const& settings, RuntimeStats const& stats) noexcept
     {
-        if (settings.max_ticks != 0U && stats.ticks >= settings.max_ticks) {
+        if (settings.max_ticks != 0U && stats.ticks >= settings.max_ticks)
+        {
             return ShutdownReason::TickLimit;
         }
-        if (settings.max_frames != 0U && stats.frames >= settings.max_frames) {
+        if (settings.max_frames != 0U && stats.frames >= settings.max_frames)
+        {
             return ShutdownReason::FrameLimit;
         }
-        if (settings.max_runtime > Nanoseconds{} && stats.raw_time >= settings.max_runtime) {
+        if (settings.max_runtime > Nanoseconds{} && stats.raw_time >= settings.max_runtime)
+        {
             return ShutdownReason::RuntimeLimit;
         }
         return ShutdownReason::None;

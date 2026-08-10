@@ -40,12 +40,12 @@ namespace
 {
     class TemporaryDirectory
     {
-    public:
+      public:
         TemporaryDirectory()
         {
             auto const stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-            path_ = std::filesystem::temp_directory_path()
-                / ("simnet_tel003_" + std::to_string(stamp));
+            path_ =
+                std::filesystem::temp_directory_path() / ("simnet_tel003_" + std::to_string(stamp));
             std::filesystem::create_directories(path_);
         }
 
@@ -60,7 +60,7 @@ namespace
             return path_;
         }
 
-    private:
+      private:
         std::filesystem::path path_{};
     };
 
@@ -69,7 +69,8 @@ namespace
         auto input = std::ifstream{path};
         auto lines = std::vector<std::string>{};
         auto line = std::string{};
-        while (std::getline(input, line)) {
+        while (std::getline(input, line))
+        {
             lines.push_back(line);
         }
         return lines;
@@ -80,19 +81,28 @@ namespace
         auto fields = std::vector<std::string>{};
         auto field = std::string{};
         auto quoted = false;
-        for (auto index = std::size_t{}; index < text.size(); ++index) {
+        for (auto index = std::size_t{}; index < text.size(); ++index)
+        {
             auto const character = text[index];
-            if (character == '"') {
-                if (quoted && index + 1U < text.size() && text[index + 1U] == '"') {
+            if (character == '"')
+            {
+                if (quoted && index + 1U < text.size() && text[index + 1U] == '"')
+                {
                     field.push_back('"');
                     ++index;
-                } else {
+                }
+                else
+                {
                     quoted = !quoted;
                 }
-            } else if (character == ',' && !quoted) {
+            }
+            else if (character == ',' && !quoted)
+            {
                 fields.push_back(std::move(field));
                 field.clear();
-            } else {
+            }
+            else
+            {
                 field.push_back(character);
             }
         }
@@ -116,8 +126,8 @@ namespace
 
 TEST_CASE("evidence run IDs are validated or honestly process local", "[telemetry][csv]")
 {
-    auto const supplied
-        = simnet::make_evidence_run_context(simnet::EvidenceProcessRole::Server, "Study_01-A");
+    auto const supplied =
+        simnet::make_evidence_run_context(simnet::EvidenceProcessRole::Server, "Study_01-A");
     CHECK(supplied.run_id == "Study_01-A");
     CHECK(supplied.process_started_unix_ns > 0);
 
@@ -125,7 +135,8 @@ TEST_CASE("evidence run IDs are validated or honestly process local", "[telemetr
     CHECK(generated.run_id == "client-" + std::to_string(generated.process_started_unix_ns));
 
     for (auto const invalid :
-         {"", "-bad", "=formula", "comma,value", "quote\"value", "space value", "line\nvalue"}) {
+         {"", "-bad", "=formula", "comma,value", "quote\"value", "space value", "line\nvalue"})
+    {
         CHECK_THROWS(
             simnet::make_evidence_run_context(simnet::EvidenceProcessRole::Server, invalid)
         );
@@ -430,7 +441,8 @@ TEST_CASE("replication CSV disabling and failures are explicit", "[telemetry][cs
             .process_started_unix_ns = 301,
         },
     }};
-    for (auto index = std::size_t{}; index < simnet::replication_csv_buffer_capacity; ++index) {
+    for (auto index = std::size_t{}; index < simnet::replication_csv_buffer_capacity; ++index)
+    {
         REQUIRE(writer.submit(
             {},
             {.recorded_at_unix_ns = index, .elapsed_since_process_start_ns = index}

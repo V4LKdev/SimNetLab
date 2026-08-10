@@ -26,7 +26,8 @@ export namespace simnet
     [[nodiscard]] constexpr std::optional<EntityClassification>
     classification_from_entity_kind(EntityKind kind) noexcept
     {
-        switch (kind) {
+        switch (kind)
+        {
             case EntityKind::Boid:
                 return boid_entity_classification;
             case EntityKind::Player:
@@ -39,10 +40,12 @@ export namespace simnet
     [[nodiscard]] constexpr std::optional<EntityKind>
     entity_kind_from_classification(EntityClassification classification) noexcept
     {
-        if (classification == boid_entity_classification) {
+        if (classification == boid_entity_classification)
+        {
             return EntityKind::Boid;
         }
-        if (classification == player_entity_classification) {
+        if (classification == player_entity_classification)
+        {
             return EntityKind::Player;
         }
         return std::nullopt;

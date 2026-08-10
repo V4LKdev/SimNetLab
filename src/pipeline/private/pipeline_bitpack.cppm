@@ -26,14 +26,16 @@ namespace simnet::pipeline_bitpack
     /// Writes 'bit-count' bits from the MSB of 'value'.
     void write_bits(BitWriter& writer, std::uint32_t value, std::uint8_t bit_count)
     {
-        for (auto bit_index = bit_count; bit_index > 0U; --bit_index) {
+        for (auto bit_index = bit_count; bit_index > 0U; --bit_index)
+        {
 
             auto const bit = static_cast<std::uint8_t>((value >> (bit_index - 1U)) & 1U);
             writer.scratch = static_cast<std::uint8_t>((writer.scratch << 1U) | bit);
 
             ++writer.used_bits;
 
-            if (writer.used_bits == 8U) {
+            if (writer.used_bits == 8U)
+            {
                 writer.bytes.push_back(static_cast<Byte>(writer.scratch));
                 writer.scratch = 0;
                 writer.used_bits = 0;
@@ -44,7 +46,8 @@ namespace simnet::pipeline_bitpack
     /// Flushes any remaining bits in the scratch byte to the vector, padding with zeros if necessary.
     void flush_bits(BitWriter& writer)
     {
-        if (writer.used_bits == 0U) {
+        if (writer.used_bits == 0U)
+        {
             return;
         }
 
@@ -67,12 +70,14 @@ namespace simnet::pipeline_bitpack
     /// Advances the bit offset by 'bit_count'. Returns false if the read would overflow.
     [[nodiscard]] bool read_bits(BitReader& reader, std::uint8_t bit_count, std::uint32_t& value)
     {
-        if (reader.bit_offset + bit_count > reader.bytes.size() * 8U) {
+        if (reader.bit_offset + bit_count > reader.bytes.size() * 8U)
+        {
             return false;
         }
 
         value = 0;
-        for (std::uint8_t index = 0; index < bit_count; ++index) {
+        for (std::uint8_t index = 0; index < bit_count; ++index)
+        {
 
             auto const absolute_bit = reader.bit_offset + index;
             auto const byte_index = absolute_bit / 8U;

@@ -16,12 +16,12 @@ namespace simnet::spatial_detail
 {
     [[nodiscard]] inline bool valid_grid(SpatialGrid const& grid) noexcept
     {
-        return grid.dim_x > 0U && grid.dim_y > 0U && grid.dim_z > 0U
-            && grid.settings.cell_size > 0.0F && is_finite(grid.settings.bounds.min)
-            && is_finite(grid.settings.bounds.max)
-            && grid.settings.bounds.max.x > grid.settings.bounds.min.x
-            && grid.settings.bounds.max.y > grid.settings.bounds.min.y
-            && grid.settings.bounds.max.z > grid.settings.bounds.min.z;
+        return grid.dim_x > 0U && grid.dim_y > 0U && grid.dim_z > 0U &&
+               grid.settings.cell_size > 0.0F && is_finite(grid.settings.bounds.min) &&
+               is_finite(grid.settings.bounds.max) &&
+               grid.settings.bounds.max.x > grid.settings.bounds.min.x &&
+               grid.settings.bounds.max.y > grid.settings.bounds.min.y &&
+               grid.settings.bounds.max.z > grid.settings.bounds.min.z;
     }
 
     // Keep this coordinate/key logic in sync with spatial_build.cpp until query templates can share private detail.
@@ -31,12 +31,14 @@ namespace simnet::spatial_detail
         auto const relative = (value - min) / cell_size;
         auto const cell = static_cast<std::int64_t>(std::floor(relative));
 
-        if (cell <= 0) {
+        if (cell <= 0)
+        {
             return 0;
         }
 
         auto const max_cell = static_cast<std::int64_t>(dimension - 1U);
-        if (cell >= max_cell) {
+        if (cell >= max_cell)
+        {
             return dimension - 1U;
         }
 
@@ -70,7 +72,8 @@ namespace simnet::spatial_detail
     find_cell_range(SpatialGrid const& grid, CellKey key) noexcept
     {
         auto const found = std::ranges::lower_bound(grid.occupied_cells, key, {}, &CellRange::key);
-        if (found == grid.occupied_cells.end() || found->key != key) {
+        if (found == grid.occupied_cells.end() || found->key != key)
+        {
             return nullptr;
         }
         return &*found;
@@ -78,34 +81,39 @@ namespace simnet::spatial_detail
 
     [[nodiscard]] inline bool intersects(Aabb3f lhs, Aabb3f rhs) noexcept
     {
-        return lhs.min.x <= rhs.max.x && lhs.max.x >= rhs.min.x && lhs.min.y <= rhs.max.y
-            && lhs.max.y >= rhs.min.y && lhs.min.z <= rhs.max.z && lhs.max.z >= rhs.min.z;
+        return lhs.min.x <= rhs.max.x && lhs.max.x >= rhs.min.x && lhs.min.y <= rhs.max.y &&
+               lhs.max.y >= rhs.min.y && lhs.min.z <= rhs.max.z && lhs.max.z >= rhs.min.z;
     }
 
     inline void validate_query_grid(SpatialGrid const& grid)
     {
-        if (!valid_grid(grid)) {
+        if (!valid_grid(grid))
+        {
             throw std::runtime_error("invalid spatial grid query state");
         }
     }
 
     inline void validate_radius_query(Vec3f center, float radius)
     {
-        if (!is_finite(center)) {
+        if (!is_finite(center))
+        {
             throw std::runtime_error("spatial radius query center contains a non-finite component");
         }
-        if (!std::isfinite(radius) || radius < 0.0F) {
+        if (!std::isfinite(radius) || radius < 0.0F)
+        {
             throw std::runtime_error("spatial radius query radius must be finite and non-negative");
         }
     }
 
     inline void validate_aabb_query(Aabb3f bounds)
     {
-        if (!is_finite(bounds.min) || !is_finite(bounds.max)) {
+        if (!is_finite(bounds.min) || !is_finite(bounds.max))
+        {
             throw std::runtime_error("spatial AABB query contains a non-finite component");
         }
-        if (bounds.max.x < bounds.min.x || bounds.max.y < bounds.min.y
-            || bounds.max.z < bounds.min.z) {
+        if (bounds.max.x < bounds.min.x || bounds.max.y < bounds.min.y ||
+            bounds.max.z < bounds.min.z)
+        {
             throw std::runtime_error("spatial AABB query bounds are inverted");
         }
     }
@@ -126,7 +134,8 @@ export namespace simnet
             .max = center + Vec3f{radius, radius, radius},
         };
 
-        if (!spatial_detail::intersects(grid.settings.bounds, query_bounds)) {
+        if (!spatial_detail::intersects(grid.settings.bounds, query_bounds))
+        {
             return 0U;
         }
 
@@ -168,9 +177,12 @@ export namespace simnet
         );
 
         auto count = std::uint32_t{};
-        for (auto z = min_z;; ++z) {
-            for (auto y = min_y;; ++y) {
-                for (auto x = min_x;; ++x) {
+        for (auto z = min_z;; ++z)
+        {
+            for (auto y = min_y;; ++y)
+            {
+                for (auto x = min_x;; ++x)
+                {
                     auto const coord = CellCoord{
                         .x = static_cast<std::int32_t>(x),
                         .y = static_cast<std::int32_t>(y),
@@ -179,15 +191,18 @@ export namespace simnet
                     callback(coord);
                     ++count;
 
-                    if (x == max_x) {
+                    if (x == max_x)
+                    {
                         break;
                     }
                 }
-                if (y == max_y) {
+                if (y == max_y)
+                {
                     break;
                 }
             }
-            if (z == max_z) {
+            if (z == max_z)
+            {
                 break;
             }
         }
@@ -207,26 +222,36 @@ export namespace simnet
     )
     {
         auto const radius_squared = radius * radius;
-        return for_each_radius_cell(grid, center, radius, [&](CellCoord coord) {
-            auto const key = spatial_detail::cell_key_from_coord(grid, coord);
-            auto const* range = spatial_detail::find_cell_range(grid, key);
-            if (range == nullptr) {
-                return;
-            }
-
-            auto const end = range->begin + range->count;
-            for (auto entry_index = range->begin; entry_index < end; ++entry_index) {
-                auto const source_index = grid.entries[entry_index].source_index;
-                if (source_index >= positions.size()) {
-                    continue;
+        return for_each_radius_cell(
+            grid,
+            center,
+            radius,
+            [&](CellCoord coord)
+            {
+                auto const key = spatial_detail::cell_key_from_coord(grid, coord);
+                auto const* range = spatial_detail::find_cell_range(grid, key);
+                if (range == nullptr)
+                {
+                    return;
                 }
 
-                auto const offset = positions[source_index] - center;
-                if (length_squared(offset) <= radius_squared) {
-                    callback(source_index);
+                auto const end = range->begin + range->count;
+                for (auto entry_index = range->begin; entry_index < end; ++entry_index)
+                {
+                    auto const source_index = grid.entries[entry_index].source_index;
+                    if (source_index >= positions.size())
+                    {
+                        continue;
+                    }
+
+                    auto const offset = positions[source_index] - center;
+                    if (length_squared(offset) <= radius_squared)
+                    {
+                        callback(source_index);
+                    }
                 }
             }
-        });
+        );
     }
 
     /// Calls callback with source indices whose positions are inside the bounds.
@@ -242,7 +267,8 @@ export namespace simnet
         spatial_detail::validate_query_grid(grid);
         spatial_detail::validate_aabb_query(bounds);
 
-        if (!spatial_detail::intersects(grid.settings.bounds, bounds)) {
+        if (!spatial_detail::intersects(grid.settings.bounds, bounds))
+        {
             return;
         }
 
@@ -283,9 +309,12 @@ export namespace simnet
             grid.dim_z
         );
 
-        for (auto z = min_z;; ++z) {
-            for (auto y = min_y;; ++y) {
-                for (auto x = min_x;; ++x) {
+        for (auto z = min_z;; ++z)
+        {
+            for (auto y = min_y;; ++y)
+            {
+                for (auto x = min_x;; ++x)
+                {
                     auto const key = spatial_detail::cell_key_from_coord(
                         grid,
                         {
@@ -295,31 +324,38 @@ export namespace simnet
                         }
                     );
                     auto const* range = spatial_detail::find_cell_range(grid, key);
-                    if (range == nullptr) {
-                        if (x == max_x) {
+                    if (range == nullptr)
+                    {
+                        if (x == max_x)
+                        {
                             break;
                         }
                         continue;
                     }
 
                     auto const end = range->begin + range->count;
-                    for (auto entry_index = range->begin; entry_index < end; ++entry_index) {
+                    for (auto entry_index = range->begin; entry_index < end; ++entry_index)
+                    {
                         auto const source_index = grid.entries[entry_index].source_index;
-                        if (source_index < positions.size()
-                            && contains(bounds, positions[source_index])) {
+                        if (source_index < positions.size() &&
+                            contains(bounds, positions[source_index]))
+                        {
                             callback(source_index);
                         }
                     }
 
-                    if (x == max_x) {
+                    if (x == max_x)
+                    {
                         break;
                     }
                 }
-                if (y == max_y) {
+                if (y == max_y)
+                {
                     break;
                 }
             }
-            if (z == max_z) {
+            if (z == max_z)
+            {
                 break;
             }
         }

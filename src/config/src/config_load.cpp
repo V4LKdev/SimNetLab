@@ -35,7 +35,8 @@ namespace
     {
         static_assert(std::is_trivially_copyable_v<Value>);
         auto const* bytes = reinterpret_cast<unsigned char const*>(&value);
-        for (std::size_t index = 0; index < sizeof(Value); ++index) {
+        for (std::size_t index = 0; index < sizeof(Value); ++index)
+        {
             hash ^= bytes[index];
             hash *= fnv_prime;
         }
@@ -43,7 +44,8 @@ namespace
 
     void hash_string(std::uint64_t& hash, std::string_view value) noexcept
     {
-        for (char character : value) {
+        for (char character : value)
+        {
             hash ^= static_cast<unsigned char>(character);
             hash *= fnv_prime;
         }
@@ -57,14 +59,16 @@ namespace
 
     void hash_canonical_u32(std::uint64_t& hash, std::uint32_t value) noexcept
     {
-        for (auto shift = 24; shift >= 0; shift -= 8) {
+        for (auto shift = 24; shift >= 0; shift -= 8)
+        {
             hash_canonical_byte(hash, static_cast<std::uint8_t>(value >> shift));
         }
     }
 
     void hash_canonical_u64(std::uint64_t& hash, std::uint64_t value) noexcept
     {
-        for (auto shift = 56; shift >= 0; shift -= 8) {
+        for (auto shift = 56; shift >= 0; shift -= 8)
+        {
             hash_canonical_byte(hash, static_cast<std::uint8_t>(value >> shift));
         }
     }
@@ -87,13 +91,17 @@ namespace
     template <typename Value> void read_optional(Json const& object, char const* key, Value& value)
     {
         auto const found = object.find(key);
-        if (found == object.end()) {
+        if (found == object.end())
+        {
             return;
         }
 
-        try {
+        try
+        {
             value = found->get<Value>();
-        } catch (nlohmann::json::exception const& error) {
+        }
+        catch (nlohmann::json::exception const& error)
+        {
             throw std::runtime_error(
                 std::string{"invalid config field '"} + key + "': " + error.what()
             );
@@ -103,16 +111,19 @@ namespace
     void read_optional_u32(Json const& object, char const* key, std::uint32_t& value)
     {
         auto const found = object.find(key);
-        if (found == object.end()) {
+        if (found == object.end())
+        {
             return;
         }
-        if (!found->is_number_unsigned()) {
+        if (!found->is_number_unsigned())
+        {
             throw std::runtime_error(
                 std::string{"invalid config field '"} + key + "': expected unsigned integer"
             );
         }
         auto const parsed = found->get<std::uint64_t>();
-        if (parsed > std::numeric_limits<std::uint32_t>::max()) {
+        if (parsed > std::numeric_limits<std::uint32_t>::max())
+        {
             throw std::runtime_error(
                 std::string{"invalid config field '"} + key + "': value exceeds uint32 range"
             );
@@ -123,10 +134,12 @@ namespace
     Json const* optional_object(Json const& object, char const* key)
     {
         auto const found = object.find(key);
-        if (found == object.end()) {
+        if (found == object.end())
+        {
             return nullptr;
         }
-        if (!found->is_object()) {
+        if (!found->is_object())
+        {
             throw std::runtime_error(
                 std::string{"invalid config section '"} + key + "': expected object"
             );
@@ -137,13 +150,17 @@ namespace
     Json load_json(std::filesystem::path const& path)
     {
         std::ifstream file{path};
-        if (!file) {
+        if (!file)
+        {
             throw std::runtime_error("failed to open config file: " + path.string());
         }
 
-        try {
+        try
+        {
             return Json::parse(file);
-        } catch (nlohmann::json::exception const& error) {
+        }
+        catch (nlohmann::json::exception const& error)
+        {
             throw std::runtime_error(
                 "failed to parse config file '" + path.string() + "': " + error.what()
             );
@@ -152,14 +169,16 @@ namespace
 
     void validate_root(Json const& json)
     {
-        if (!json.is_object()) {
+        if (!json.is_object())
+        {
             throw std::runtime_error("invalid config root: expected object");
         }
     }
 
     void validate_positive(char const* name, double value)
     {
-        if (value <= 0.0) {
+        if (value <= 0.0)
+        {
             throw std::runtime_error(
                 std::string{"invalid config field '"} + name + "': expected positive value"
             );
@@ -168,7 +187,8 @@ namespace
 
     void validate_positive(char const* name, float value)
     {
-        if (value <= 0.0F) {
+        if (value <= 0.0F)
+        {
             throw std::runtime_error(
                 std::string{"invalid config field '"} + name + "': expected positive value"
             );
@@ -177,7 +197,8 @@ namespace
 
     void validate_non_zero(char const* name, std::uint32_t value)
     {
-        if (value == 0U) {
+        if (value == 0U)
+        {
             throw std::runtime_error(
                 std::string{"invalid config field '"} + name + "': expected non-zero value"
             );
@@ -190,8 +211,10 @@ namespace
         std::initializer_list<std::string_view> allowed
     )
     {
-        for (auto const option : allowed) {
-            if (value == option) {
+        for (auto const option : allowed)
+        {
+            if (value == option)
+            {
                 return;
             }
         }
@@ -230,48 +253,55 @@ namespace
         simnet::PlayerInfluenceForceConfig& config
     )
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "enabled" && key != "radius" && key != "max_acceleration") {
+            if (key != "enabled" && key != "radius" && key != "max_acceleration")
+            {
                 throw std::runtime_error(
-                    "invalid config field 'boids." + std::string{field_name} + "." + key
-                    + "': unknown field"
+                    "invalid config field 'boids." + std::string{field_name} + "." + key +
+                    "': unknown field"
                 );
             }
         }
-        if (!json.contains("enabled")) {
+        if (!json.contains("enabled"))
+        {
             throw std::runtime_error(
-                "invalid config field 'boids." + std::string{field_name}
-                + ".enabled': field is required"
+                "invalid config field 'boids." + std::string{field_name} +
+                ".enabled': field is required"
             );
         }
         read_optional(json, "enabled", config.enabled);
         auto const has_radius = json.contains("radius");
         auto const has_max_acceleration = json.contains("max_acceleration");
-        if (!config.enabled) {
-            if (has_radius || has_max_acceleration) {
+        if (!config.enabled)
+        {
+            if (has_radius || has_max_acceleration)
+            {
                 throw std::runtime_error(
-                    "invalid config section 'boids." + std::string{field_name}
-                    + "': disabled influence rejects active fields"
+                    "invalid config section 'boids." + std::string{field_name} +
+                    "': disabled influence rejects active fields"
                 );
             }
             config.radius = 0.0F;
             config.max_acceleration = 0.0F;
             return;
         }
-        if (!has_radius || !has_max_acceleration) {
+        if (!has_radius || !has_max_acceleration)
+        {
             throw std::runtime_error(
-                "invalid config section 'boids." + std::string{field_name}
-                + "': enabled influence requires radius and max_acceleration"
+                "invalid config section 'boids." + std::string{field_name} +
+                "': enabled influence requires radius and max_acceleration"
             );
         }
         read_optional(json, "radius", config.radius);
         read_optional(json, "max_acceleration", config.max_acceleration);
-        if (!std::isfinite(config.radius) || config.radius <= 0.0F
-            || !std::isfinite(config.max_acceleration) || config.max_acceleration <= 0.0F) {
+        if (!std::isfinite(config.radius) || config.radius <= 0.0F ||
+            !std::isfinite(config.max_acceleration) || config.max_acceleration <= 0.0F)
+        {
             throw std::runtime_error(
-                "invalid config section 'boids." + std::string{field_name}
-                + "': active values must be finite and positive"
+                "invalid config section 'boids." + std::string{field_name} +
+                "': active values must be finite and positive"
             );
         }
     }
@@ -311,15 +341,18 @@ namespace
         read_optional(json, "wander_frequency_hz", config.wander_frequency_hz);
         read_optional(json, "hue_assimilation_rate", config.hue_assimilation_rate);
         read_optional(json, "hue_drift_rate", config.hue_drift_rate);
-        if (auto const* section = optional_object(json, "player_lure")) {
+        if (auto const* section = optional_object(json, "player_lure"))
+        {
             apply_player_influence_force(*section, "player_lure", config.player_lure);
         }
-        if (auto const* section = optional_object(json, "player_predator")) {
+        if (auto const* section = optional_object(json, "player_predator"))
+        {
             apply_player_influence_force(*section, "player_predator", config.player_predator);
         }
 
-        if (config.min_speed < 0.0F || config.min_speed > config.cruise_speed
-            || config.cruise_speed > config.max_speed) {
+        if (config.min_speed < 0.0F || config.min_speed > config.cruise_speed ||
+            config.cruise_speed > config.max_speed)
+        {
             throw std::runtime_error(
                 "invalid boids speed limits: expected 0 <= min_speed <= cruise_speed <= max_speed"
             );
@@ -329,7 +362,8 @@ namespace
         validate_positive("boids.separation_radius", config.separation_radius);
         validate_positive("boids.alignment_radius", config.alignment_radius);
         validate_positive("boids.cohesion_radius", config.cohesion_radius);
-        if (config.field_of_view_degrees <= 0.0F || config.field_of_view_degrees > 360.0F) {
+        if (config.field_of_view_degrees <= 0.0F || config.field_of_view_degrees > 360.0F)
+        {
             throw std::runtime_error(
                 "invalid config field 'boids.field_of_view_degrees': expected (0, 360]"
             );
@@ -339,9 +373,10 @@ namespace
             config.containment_prediction_seconds
         );
         validate_positive("boids.containment_margin", config.containment_margin);
-        if (config.separation_acceleration < 0.0F || config.containment_acceleration < 0.0F
-            || config.alignment_acceleration < 0.0F || config.cohesion_acceleration < 0.0F
-            || config.wander_acceleration < 0.0F) {
+        if (config.separation_acceleration < 0.0F || config.containment_acceleration < 0.0F ||
+            config.alignment_acceleration < 0.0F || config.cohesion_acceleration < 0.0F ||
+            config.wander_acceleration < 0.0F)
+        {
             throw std::runtime_error(
                 "invalid boids rule acceleration: expected non-negative values"
             );
@@ -353,24 +388,27 @@ namespace
 
     void validate_player_influence_forces(simnet::SharedConfig const& config)
     {
-        auto validate
-            = [&](char const* field_name, simnet::PlayerInfluenceForceConfig const& force) {
-                  if (!force.enabled) {
-                      return;
-                  }
-                  if (force.radius > config.simulation.world_half * 2.0F) {
-                      throw std::runtime_error(
-                          "invalid config field 'boids." + std::string{field_name}
-                          + ".radius': expected no greater than twice simulation.world_half"
-                      );
-                  }
-                  if (force.max_acceleration > config.boids.max_acceleration) {
-                      throw std::runtime_error(
-                          "invalid config field 'boids." + std::string{field_name}
-                          + ".max_acceleration': expected no greater than boids.max_acceleration"
-                      );
-                  }
-              };
+        auto validate = [&](char const* field_name, simnet::PlayerInfluenceForceConfig const& force)
+        {
+            if (!force.enabled)
+            {
+                return;
+            }
+            if (force.radius > config.simulation.world_half * 2.0F)
+            {
+                throw std::runtime_error(
+                    "invalid config field 'boids." + std::string{field_name} +
+                    ".radius': expected no greater than twice simulation.world_half"
+                );
+            }
+            if (force.max_acceleration > config.boids.max_acceleration)
+            {
+                throw std::runtime_error(
+                    "invalid config field 'boids." + std::string{field_name} +
+                    ".max_acceleration': expected no greater than boids.max_acceleration"
+                );
+            }
+        };
         validate("player_lure", config.boids.player_lure);
         validate("player_predator", config.boids.player_predator);
     }
@@ -388,18 +426,19 @@ namespace
         read_optional(json, "max_yaw_rate_degrees", config.max_yaw_rate_degrees);
         read_optional(json, "max_pitch_rate_degrees", config.max_pitch_rate_degrees);
         read_optional(json, "pitch_limit_degrees", config.pitch_limit_degrees);
-        if (!std::isfinite(config.slow_speed) || !std::isfinite(config.cruise_speed)
-            || !std::isfinite(config.boost_speed) || !std::isfinite(config.speed_change_rate)
-            || !std::isfinite(config.yaw_acceleration_degrees)
-            || !std::isfinite(config.pitch_acceleration_degrees)
-            || !std::isfinite(config.yaw_damping) || !std::isfinite(config.pitch_damping)
-            || !std::isfinite(config.max_yaw_rate_degrees)
-            || !std::isfinite(config.max_pitch_rate_degrees)
-            || !std::isfinite(config.pitch_limit_degrees) || config.slow_speed < 0.0F
-            || config.slow_speed > config.cruise_speed
-            || config.cruise_speed > config.boost_speed) {
+        if (!std::isfinite(config.slow_speed) || !std::isfinite(config.cruise_speed) ||
+            !std::isfinite(config.boost_speed) || !std::isfinite(config.speed_change_rate) ||
+            !std::isfinite(config.yaw_acceleration_degrees) ||
+            !std::isfinite(config.pitch_acceleration_degrees) ||
+            !std::isfinite(config.yaw_damping) || !std::isfinite(config.pitch_damping) ||
+            !std::isfinite(config.max_yaw_rate_degrees) ||
+            !std::isfinite(config.max_pitch_rate_degrees) ||
+            !std::isfinite(config.pitch_limit_degrees) || config.slow_speed < 0.0F ||
+            config.slow_speed > config.cruise_speed || config.cruise_speed > config.boost_speed)
+        {
             throw std::runtime_error(
-                "invalid player speed limits: expected 0 <= slow_speed <= cruise_speed <= boost_speed"
+                "invalid player speed limits: expected 0 <= slow_speed <= cruise_speed <= "
+                "boost_speed"
             );
         }
         validate_positive("player.boost_speed", config.boost_speed);
@@ -410,7 +449,8 @@ namespace
         validate_positive("player.pitch_damping", config.pitch_damping);
         validate_positive("player.max_yaw_rate_degrees", config.max_yaw_rate_degrees);
         validate_positive("player.max_pitch_rate_degrees", config.max_pitch_rate_degrees);
-        if (config.pitch_limit_degrees <= 0.0F || config.pitch_limit_degrees > 85.0F) {
+        if (config.pitch_limit_degrees <= 0.0F || config.pitch_limit_degrees > 85.0F)
+        {
             throw std::runtime_error(
                 "invalid config field 'player.pitch_limit_degrees': expected (0, 85]"
             );
@@ -422,27 +462,36 @@ namespace
         read_optional(json, "role", config.role);
         read_optional(json, "stationary_observer_position", config.stationary_observer_position);
         validate_one_of("gameplay.role", config.role, {"stationary_observer", "player"});
-        if (!std::ranges::all_of(config.stationary_observer_position, [](float value) {
-                return std::isfinite(value);
-            })) {
+        if (!std::ranges::all_of(
+                config.stationary_observer_position,
+                [](float value)
+                {
+                    return std::isfinite(value);
+                }
+            ))
+        {
             throw std::runtime_error(
-                "invalid config field 'gameplay.stationary_observer_position': expected finite values"
+                "invalid config field 'gameplay.stationary_observer_position': expected finite "
+                "values"
             );
         }
     }
 
     void apply_synthetic(Json const& json, simnet::SyntheticWorkloadConfig& config)
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "pattern" && key != "entity_change_fraction" && key != "field_change_mode") {
+            if (key != "pattern" && key != "entity_change_fraction" && key != "field_change_mode")
+            {
                 throw std::runtime_error(
                     "invalid config field 'synthetic." + key + "': unknown field"
                 );
             }
         }
-        if (!json.contains("pattern") || !json.contains("entity_change_fraction")
-            || !json.contains("field_change_mode")) {
+        if (!json.contains("pattern") || !json.contains("entity_change_fraction") ||
+            !json.contains("field_change_mode"))
+        {
             throw std::runtime_error(
                 "invalid synthetic configuration: pattern, entity_change_fraction, and "
                 "field_change_mode are required"
@@ -458,8 +507,9 @@ namespace
             config.field_change_mode,
             {"all", "transform", "position_only", "heading_only"}
         );
-        if (!std::isfinite(config.entity_change_fraction) || config.entity_change_fraction < 0.0
-            || config.entity_change_fraction > 1.0) {
+        if (!std::isfinite(config.entity_change_fraction) || config.entity_change_fraction < 0.0 ||
+            config.entity_change_fraction > 1.0)
+        {
             throw std::runtime_error(
                 "invalid config field 'synthetic.entity_change_fraction': expected finite [0, 1]"
             );
@@ -468,9 +518,11 @@ namespace
 
     void apply_area_of_interest(Json const& json, simnet::AreaOfInterestConfig& config)
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "mode" && key != "radius" && key != "fov_degrees") {
+            if (key != "mode" && key != "radius" && key != "fov_degrees")
+            {
                 throw std::runtime_error(
                     "invalid config field 'pipeline.area_of_interest." + key + "': unknown field"
                 );
@@ -481,8 +533,10 @@ namespace
         validate_one_of("pipeline.area_of_interest.mode", config.mode, {"none", "radius", "fov"});
         auto const has_radius = json.contains("radius");
         auto const has_fov = json.contains("fov_degrees");
-        if (config.mode == "none") {
-            if (has_radius || has_fov) {
+        if (config.mode == "none")
+        {
+            if (has_radius || has_fov)
+            {
                 throw std::runtime_error(
                     "invalid pipeline.area_of_interest: none mode accepts no geometry fields"
                 );
@@ -490,19 +544,24 @@ namespace
             return;
         }
 
-        if (!has_radius) {
+        if (!has_radius)
+        {
             throw std::runtime_error(
                 "invalid pipeline.area_of_interest: active mode requires radius"
             );
         }
         read_optional(json, "radius", config.radius);
-        if (!std::isfinite(config.radius) || config.radius <= 0.0F) {
+        if (!std::isfinite(config.radius) || config.radius <= 0.0F)
+        {
             throw std::runtime_error(
-                "invalid config field 'pipeline.area_of_interest.radius': expected positive finite value"
+                "invalid config field 'pipeline.area_of_interest.radius': expected positive finite "
+                "value"
             );
         }
-        if (config.mode == "radius") {
-            if (has_fov) {
+        if (config.mode == "radius")
+        {
+            if (has_fov)
+            {
                 throw std::runtime_error(
                     "invalid pipeline.area_of_interest: radius mode accepts no FOV field"
                 );
@@ -510,14 +569,16 @@ namespace
             return;
         }
 
-        if (!has_fov) {
+        if (!has_fov)
+        {
             throw std::runtime_error(
                 "invalid pipeline.area_of_interest: fov mode requires fov_degrees"
             );
         }
         read_optional(json, "fov_degrees", config.fov_degrees);
-        if (!std::isfinite(config.fov_degrees) || config.fov_degrees <= 0.0F
-            || config.fov_degrees > 180.0F) {
+        if (!std::isfinite(config.fov_degrees) || config.fov_degrees <= 0.0F ||
+            config.fov_degrees > 180.0F)
+        {
             throw std::runtime_error(
                 "invalid config field 'pipeline.area_of_interest.fov_degrees': expected (0, 180]"
             );
@@ -526,10 +587,12 @@ namespace
 
     void apply_level_of_detail(Json const& json, simnet::LevelOfDetailConfig& config)
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "mode" && key != "near_distance" && key != "medium_distance"
-                && key != "medium_interval_ticks" && key != "far_interval_ticks") {
+            if (key != "mode" && key != "near_distance" && key != "medium_distance" &&
+                key != "medium_interval_ticks" && key != "far_interval_ticks")
+            {
                 throw std::runtime_error(
                     "invalid config field 'pipeline.level_of_detail." + key + "': unknown field"
                 );
@@ -542,15 +605,18 @@ namespace
         auto const has_medium = json.contains("medium_distance");
         auto const has_medium_interval = json.contains("medium_interval_ticks");
         auto const has_far_interval = json.contains("far_interval_ticks");
-        if (config.mode == "none") {
-            if (has_near || has_medium || has_medium_interval || has_far_interval) {
+        if (config.mode == "none")
+        {
+            if (has_near || has_medium || has_medium_interval || has_far_interval)
+            {
                 throw std::runtime_error(
                     "invalid pipeline.level_of_detail: none mode accepts no band fields"
                 );
             }
             return;
         }
-        if (!has_near || !has_medium || !has_medium_interval || !has_far_interval) {
+        if (!has_near || !has_medium || !has_medium_interval || !has_far_interval)
+        {
             throw std::runtime_error(
                 "invalid pipeline.level_of_detail: distance_bands requires every band field"
             );
@@ -560,24 +626,28 @@ namespace
         read_optional(json, "medium_distance", config.medium_distance);
         read_optional(json, "medium_interval_ticks", config.medium_interval_ticks);
         read_optional(json, "far_interval_ticks", config.far_interval_ticks);
-        if (!std::isfinite(config.near_distance) || config.near_distance <= 0.0F
-            || !std::isfinite(config.medium_distance) || config.medium_distance <= 0.0F) {
+        if (!std::isfinite(config.near_distance) || config.near_distance <= 0.0F ||
+            !std::isfinite(config.medium_distance) || config.medium_distance <= 0.0F)
+        {
             throw std::runtime_error(
                 "invalid pipeline.level_of_detail: distances must be positive and finite"
             );
         }
-        if (config.near_distance >= config.medium_distance) {
+        if (config.near_distance >= config.medium_distance)
+        {
             throw std::runtime_error(
                 "invalid pipeline.level_of_detail: near_distance must be below medium_distance"
             );
         }
-        if (config.medium_interval_ticks < 2U) {
+        if (config.medium_interval_ticks < 2U)
+        {
             throw std::runtime_error(
                 "invalid pipeline.level_of_detail: medium interval must be at least 2"
             );
         }
-        if (config.far_interval_ticks <= config.medium_interval_ticks
-            || config.far_interval_ticks > 65'535U) {
+        if (config.far_interval_ticks <= config.medium_interval_ticks ||
+            config.far_interval_ticks > 65'535U)
+        {
             throw std::runtime_error(
                 "invalid pipeline.level_of_detail: far interval must be greater and at most 65535"
             );
@@ -586,13 +656,15 @@ namespace
 
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "send_interval_ticks" && key != "enable_incremental"
-                && key != "enable_quantization" && key != "enable_oct_heading"
-                && key != "enable_delta" && key != "enable_delta_field_mask"
-                && key != "enable_bit_packing" && key != "area_of_interest"
-                && key != "level_of_detail") {
+            if (key != "send_interval_ticks" && key != "enable_incremental" &&
+                key != "enable_quantization" && key != "enable_oct_heading" &&
+                key != "enable_delta" && key != "enable_delta_field_mask" &&
+                key != "enable_bit_packing" && key != "area_of_interest" &&
+                key != "level_of_detail")
+            {
                 throw std::runtime_error(
                     "invalid config field 'pipeline." + key + "': unknown field"
                 );
@@ -606,35 +678,43 @@ namespace
         read_optional(json, "enable_delta_field_mask", config.enable_delta_field_mask);
         read_optional(json, "enable_bit_packing", config.enable_bit_packing);
         validate_non_zero("pipeline.send_interval_ticks", config.send_interval_ticks);
-        if (config.enable_oct_heading && !config.enable_quantization) {
+        if (config.enable_oct_heading && !config.enable_quantization)
+        {
             throw std::runtime_error(
                 "invalid pipeline configuration: oct heading requires quantization"
             );
         }
-        if (config.enable_bit_packing
-            && (!config.enable_quantization || !config.enable_oct_heading)) {
+        if (config.enable_bit_packing &&
+            (!config.enable_quantization || !config.enable_oct_heading))
+        {
             throw std::runtime_error(
                 "invalid pipeline configuration: bit packing requires quantization and oct heading"
             );
         }
-        if (config.enable_delta_field_mask && !config.enable_delta) {
+        if (config.enable_delta_field_mask && !config.enable_delta)
+        {
             throw std::runtime_error(
                 "invalid pipeline configuration: delta field mask requires Delta"
             );
         }
-        if (auto const* section = optional_object(json, "area_of_interest")) {
+        if (auto const* section = optional_object(json, "area_of_interest"))
+        {
             apply_area_of_interest(*section, config.area_of_interest);
         }
-        if (auto const* section = optional_object(json, "level_of_detail")) {
+        if (auto const* section = optional_object(json, "level_of_detail"))
+        {
             apply_level_of_detail(*section, config.level_of_detail);
         }
-        if (config.level_of_detail.mode == "distance_bands") {
-            if (config.area_of_interest.mode == "none") {
+        if (config.level_of_detail.mode == "distance_bands")
+        {
+            if (config.area_of_interest.mode == "none")
+            {
                 throw std::runtime_error(
                     "invalid pipeline.level_of_detail: distance_bands requires radius or FOV AOI"
                 );
             }
-            if (config.level_of_detail.medium_distance >= config.area_of_interest.radius) {
+            if (config.level_of_detail.medium_distance >= config.area_of_interest.radius)
+            {
                 throw std::runtime_error(
                     "invalid pipeline.level_of_detail: medium_distance must be below AOI radius"
                 );
@@ -644,11 +724,13 @@ namespace
 
     void apply_packetization(Json const& json, simnet::PacketizationConfig& config)
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "enabled" && key != "max_payload_bytes" && key != "max_update_bytes"
-                && key != "max_chunks_per_update" && key != "max_in_flight_updates"
-                && key != "max_incomplete_bytes" && key != "reassembly_timeout_ms") {
+            if (key != "enabled" && key != "max_payload_bytes" && key != "max_update_bytes" &&
+                key != "max_chunks_per_update" && key != "max_in_flight_updates" &&
+                key != "max_incomplete_bytes" && key != "reassembly_timeout_ms")
+            {
                 throw std::runtime_error(
                     "invalid config field 'packetization." + key + "': unknown field"
                 );
@@ -678,9 +760,11 @@ namespace
 
     void apply_compression(Json const& json, simnet::CompressionConfig& config)
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "mode" && key != "level" && key != "dictionary") {
+            if (key != "mode" && key != "level" && key != "dictionary")
+            {
                 throw std::runtime_error(
                     "invalid config field 'compression." + key + "': unknown field"
                 );
@@ -690,35 +774,43 @@ namespace
         auto const has_level = json.contains("level");
         auto const has_dictionary = json.contains("dictionary");
         read_optional(json, "mode", config.mode);
-        if (config.mode == "none") {
-            if (has_level || has_dictionary) {
+        if (config.mode == "none")
+        {
+            if (has_level || has_dictionary)
+            {
                 throw std::runtime_error(
                     "invalid compression config: none mode accepts no level or dictionary"
                 );
             }
             return;
         }
-        if (config.mode != "whole_update" && config.mode != "per_packet") {
+        if (config.mode != "whole_update" && config.mode != "per_packet")
+        {
             throw std::runtime_error(
-                "invalid config field 'compression.mode': expected none, whole_update, or per_packet"
+                "invalid config field 'compression.mode': expected none, whole_update, or "
+                "per_packet"
             );
         }
-        if (!has_level) {
+        if (!has_level)
+        {
             throw std::runtime_error("invalid compression config: active mode requires level");
         }
         read_optional(json, "level", config.level);
         read_optional(json, "dictionary", config.dictionary);
-        if (config.level < 1 || config.level > 19) {
+        if (config.level < 1 || config.level > 19)
+        {
             throw std::runtime_error(
                 "invalid config field 'compression.level': expected integer in [1, 19]"
             );
         }
-        if (config.dictionary != "none" && config.dictionary != "pipeline_v1") {
+        if (config.dictionary != "none" && config.dictionary != "pipeline_v1")
+        {
             throw std::runtime_error(
                 "invalid config field 'compression.dictionary': expected none or pipeline_v1"
             );
         }
-        if (config.mode == "per_packet" && config.dictionary != "none") {
+        if (config.mode == "per_packet" && config.dictionary != "none")
+        {
             throw std::runtime_error(
                 "invalid compression config: per_packet mode does not support dictionaries"
             );
@@ -727,16 +819,19 @@ namespace
 
     void apply_snapshot_delivery(Json const& json, simnet::SnapshotDeliveryConfig& config)
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "mode" && key != "full_replace_after_unacknowledged_updates") {
+            if (key != "mode" && key != "full_replace_after_unacknowledged_updates")
+            {
                 throw std::runtime_error(
                     "invalid config field 'snapshot_delivery." + key + "': unknown field"
                 );
             }
         }
 
-        if (!json.contains("mode") || !json.contains("full_replace_after_unacknowledged_updates")) {
+        if (!json.contains("mode") || !json.contains("full_replace_after_unacknowledged_updates"))
+        {
             throw std::runtime_error(
                 "invalid snapshot_delivery config: mode and recovery threshold are required"
             );
@@ -752,20 +847,24 @@ namespace
             config.mode,
             {"reliable_sequenced", "unreliable_sequenced"}
         );
-        if (config.full_replace_after_unacknowledged_updates == 0U
-            || config.full_replace_after_unacknowledged_updates >= 64U) {
+        if (config.full_replace_after_unacknowledged_updates == 0U ||
+            config.full_replace_after_unacknowledged_updates >= 64U)
+        {
             throw std::runtime_error(
-                "invalid config field 'snapshot_delivery.full_replace_after_unacknowledged_updates': expected 1..63"
+                "invalid config field "
+                "'snapshot_delivery.full_replace_after_unacknowledged_updates': expected 1..63"
             );
         }
     }
 
     void apply_transport(Json const& json, simnet::TransportConfig& config)
     {
-        for (auto const& [key, value] : json.items()) {
+        for (auto const& [key, value] : json.items())
+        {
             static_cast<void>(value);
-            if (key != "host" && key != "port" && key != "max_clients" && key != "max_payload_bytes"
-                && key != "send_size_policy") {
+            if (key != "host" && key != "port" && key != "max_clients" &&
+                key != "max_payload_bytes" && key != "send_size_policy")
+            {
                 throw std::runtime_error(
                     "invalid config field 'transport." + key + "': unknown field"
                 );
@@ -777,13 +876,15 @@ namespace
         read_optional(json, "max_payload_bytes", config.max_payload_bytes);
         read_optional(json, "send_size_policy", config.send_size_policy);
 
-        if (config.port == 0) {
+        if (config.port == 0)
+        {
             throw std::runtime_error(
                 "invalid config field 'transport.port': expected non-zero port"
             );
         }
         validate_non_zero("transport.max_clients", config.max_clients);
-        if (config.max_clients > 64U) {
+        if (config.max_clients > 64U)
+        {
             throw std::runtime_error(
                 "invalid config field 'transport.max_clients': expected 1..64"
             );
@@ -800,7 +901,8 @@ namespace
     {
         read_optional(json, "thread_count", config.thread_count);
         validate_non_zero("flecs.thread_count", config.thread_count);
-        if (config.thread_count > 64U) {
+        if (config.thread_count > 64U)
+        {
             throw std::runtime_error("invalid config field 'flecs.thread_count': expected 1..64");
         }
     }
@@ -828,39 +930,48 @@ namespace
         read_optional(json, "max_visible_spatial_cells", config.max_visible_spatial_cells);
         read_optional(json, "entity_mesh_path", config.entity_mesh_path);
 
-        if (config.window_width == 0 || config.window_height == 0) {
+        if (config.window_width == 0 || config.window_height == 0)
+        {
             throw std::runtime_error(
                 "invalid visualization dimensions: expected non-zero width and height"
             );
         }
-        if (config.panel_width >= config.window_width) {
+        if (config.panel_width >= config.window_width)
+        {
             throw std::runtime_error(
                 "invalid visualization panel_width: expected less than window_width"
             );
         }
-        if (config.target_fps == 0) {
+        if (config.target_fps == 0)
+        {
             throw std::runtime_error("invalid visualization target_fps: expected non-zero value");
         }
-        if (config.entity_scale <= 0.0F) {
+        if (config.entity_scale <= 0.0F)
+        {
             throw std::runtime_error("invalid visualization entity_scale: expected positive value");
         }
-        if (config.picking_radius <= 0.0F) {
+        if (config.picking_radius <= 0.0F)
+        {
             throw std::runtime_error(
                 "invalid visualization picking_radius: expected positive value"
             );
         }
-        if (config.stationary_observer_interest_radius <= 0.0F) {
+        if (config.stationary_observer_interest_radius <= 0.0F)
+        {
             throw std::runtime_error(
                 "invalid visualization stationary_observer_interest_radius: expected positive value"
             );
         }
-        if (config.stationary_observer_vertical_fov_degrees <= 0.0F
-            || config.stationary_observer_vertical_fov_degrees >= 180.0F) {
+        if (config.stationary_observer_vertical_fov_degrees <= 0.0F ||
+            config.stationary_observer_vertical_fov_degrees >= 180.0F)
+        {
             throw std::runtime_error(
-                "invalid visualization stationary_observer_vertical_fov_degrees: expected range (0, 180)"
+                "invalid visualization stationary_observer_vertical_fov_degrees: expected range "
+                "(0, 180)"
             );
         }
-        if (config.max_visible_spatial_cells == 0U) {
+        if (config.max_visible_spatial_cells == 0U)
+        {
             throw std::runtime_error(
                 "invalid visualization max_visible_spatial_cells: expected non-zero value"
             );
@@ -894,7 +1005,8 @@ namespace
         read_optional(json, "enabled", config.enabled);
         read_optional(json, "repetitions", config.repetitions);
 
-        if (auto const* section = optional_object(json, "load_ramp")) {
+        if (auto const* section = optional_object(json, "load_ramp"))
+        {
             apply_load_ramp(*section, config.load_ramp);
         }
     }
@@ -906,35 +1018,45 @@ namespace
         // Missing fields intentionally keep their typed defaults.
         auto config = simnet::default_shared_config();
 
-        if (auto const* section = optional_object(json, "run")) {
+        if (auto const* section = optional_object(json, "run"))
+        {
             apply_run(*section, config.run);
         }
-        if (auto const* section = optional_object(json, "simulation")) {
+        if (auto const* section = optional_object(json, "simulation"))
+        {
             apply_simulation(*section, config.simulation);
         }
-        if (auto const* section = optional_object(json, "spatial")) {
+        if (auto const* section = optional_object(json, "spatial"))
+        {
             apply_spatial(*section, config.spatial);
         }
-        if (auto const* section = optional_object(json, "boids")) {
+        if (auto const* section = optional_object(json, "boids"))
+        {
             apply_boids(*section, config.boids);
         }
-        if (auto const* section = optional_object(json, "player")) {
+        if (auto const* section = optional_object(json, "player"))
+        {
             apply_player(*section, config.player);
         }
-        if (auto const* section = optional_object(json, "synthetic")) {
+        if (auto const* section = optional_object(json, "synthetic"))
+        {
             config.synthetic.emplace();
             apply_synthetic(*section, *config.synthetic);
         }
-        if (auto const* section = optional_object(json, "pipeline")) {
+        if (auto const* section = optional_object(json, "pipeline"))
+        {
             apply_pipeline(*section, config.pipeline);
         }
-        if (auto const* section = optional_object(json, "snapshot_delivery")) {
+        if (auto const* section = optional_object(json, "snapshot_delivery"))
+        {
             apply_snapshot_delivery(*section, config.snapshot_delivery);
         }
-        if (auto const* section = optional_object(json, "compression")) {
+        if (auto const* section = optional_object(json, "compression"))
+        {
             apply_compression(*section, config.compression);
         }
-        if (auto const* section = optional_object(json, "packetization")) {
+        if (auto const* section = optional_object(json, "packetization"))
+        {
             apply_packetization(*section, config.packetization);
         }
 
@@ -950,19 +1072,24 @@ namespace
         // Server-local config owns transport, telemetry, and benchmark knobs.
         auto config = simnet::default_server_config();
 
-        if (auto const* section = optional_object(json, "transport")) {
+        if (auto const* section = optional_object(json, "transport"))
+        {
             apply_transport(*section, config.transport);
         }
-        if (auto const* section = optional_object(json, "flecs")) {
+        if (auto const* section = optional_object(json, "flecs"))
+        {
             apply_flecs(*section, config.flecs);
         }
-        if (auto const* section = optional_object(json, "visualization")) {
+        if (auto const* section = optional_object(json, "visualization"))
+        {
             apply_visualization(*section, config.visualization);
         }
-        if (auto const* section = optional_object(json, "telemetry")) {
+        if (auto const* section = optional_object(json, "telemetry"))
+        {
             apply_telemetry(*section, config.telemetry);
         }
-        if (auto const* section = optional_object(json, "benchmark")) {
+        if (auto const* section = optional_object(json, "benchmark"))
+        {
             apply_benchmark(*section, config.benchmark);
         }
 
@@ -976,16 +1103,20 @@ namespace
         // Client-local config owns transport, telemetry, and rendering knobs.
         auto config = simnet::default_client_config();
 
-        if (auto const* section = optional_object(json, "transport")) {
+        if (auto const* section = optional_object(json, "transport"))
+        {
             apply_transport(*section, config.transport);
         }
-        if (auto const* section = optional_object(json, "gameplay")) {
+        if (auto const* section = optional_object(json, "gameplay"))
+        {
             apply_gameplay(*section, config.gameplay);
         }
-        if (auto const* section = optional_object(json, "visualization")) {
+        if (auto const* section = optional_object(json, "visualization"))
+        {
             apply_visualization(*section, config.visualization);
         }
-        if (auto const* section = optional_object(json, "telemetry")) {
+        if (auto const* section = optional_object(json, "telemetry"))
+        {
             apply_telemetry(*section, config.telemetry);
         }
 
@@ -1043,7 +1174,8 @@ namespace
         hash_bytes(hash, config.player.max_yaw_rate_degrees);
         hash_bytes(hash, config.player.max_pitch_rate_degrees);
         hash_bytes(hash, config.player.pitch_limit_degrees);
-        if (config.synthetic.has_value()) {
+        if (config.synthetic.has_value())
+        {
             hash_string(hash, "synthetic_workload");
             hash_string(hash, config.synthetic->pattern);
             hash_bytes(hash, config.synthetic->entity_change_fraction);
@@ -1054,7 +1186,8 @@ namespace
         hash_bytes(hash, config.pipeline.enable_quantization);
         hash_bytes(hash, config.pipeline.enable_oct_heading);
         hash_bytes(hash, config.pipeline.enable_delta);
-        if (config.pipeline.enable_delta_field_mask) {
+        if (config.pipeline.enable_delta_field_mask)
+        {
             hash_string(hash, "delta_field_mask");
             hash_bytes(hash, config.pipeline.enable_delta_field_mask);
         }
@@ -1071,7 +1204,8 @@ namespace
         hash_bytes(hash, config.snapshot_delivery.full_replace_after_unacknowledged_updates);
         hash_string(hash, config.compression.mode);
         hash_bytes(hash, config.compression.level);
-        if (config.compression.dictionary != "none") {
+        if (config.compression.dictionary != "none")
+        {
             hash_string(hash, config.compression.dictionary);
         }
         hash_bytes(hash, config.packetization.enabled);
@@ -1137,7 +1271,8 @@ namespace
         hash_canonical_float(hash, config.player.max_yaw_rate_degrees);
         hash_canonical_float(hash, config.player.max_pitch_rate_degrees);
         hash_canonical_float(hash, config.player.pitch_limit_degrees);
-        if (config.synthetic.has_value()) {
+        if (config.synthetic.has_value())
+        {
             hash_string(hash, "synthetic_workload");
             hash_string(hash, config.synthetic->pattern);
             hash_canonical_double(hash, config.synthetic->entity_change_fraction);
@@ -1148,7 +1283,8 @@ namespace
         hash_canonical_bool(hash, config.pipeline.enable_quantization);
         hash_canonical_bool(hash, config.pipeline.enable_oct_heading);
         hash_canonical_bool(hash, config.pipeline.enable_delta);
-        if (config.pipeline.enable_delta_field_mask) {
+        if (config.pipeline.enable_delta_field_mask)
+        {
             hash_string(hash, "delta_field_mask");
             hash_canonical_bool(hash, config.pipeline.enable_delta_field_mask);
         }
@@ -1168,7 +1304,8 @@ namespace
         );
         hash_string(hash, config.compression.mode);
         hash_canonical_u32(hash, static_cast<std::uint32_t>(config.compression.level));
-        if (config.compression.dictionary != "none") {
+        if (config.compression.dictionary != "none")
+        {
             hash_string(hash, config.compression.dictionary);
         }
         hash_canonical_bool(hash, config.packetization.enabled);
@@ -1291,7 +1428,8 @@ namespace simnet
         hash_shared_native(hash, shared);
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
         hash_string(hash, local.gameplay.role);
-        for (auto const value : local.gameplay.stationary_observer_position) {
+        for (auto const value : local.gameplay.stationary_observer_position)
+        {
             hash_bytes(hash, value);
         }
         hash_visualization(hash, local.visualization);

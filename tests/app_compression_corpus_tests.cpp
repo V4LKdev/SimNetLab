@@ -27,14 +27,14 @@ namespace
 {
     class CorpusTemporaryDirectory
     {
-    public:
+      public:
         CorpusTemporaryDirectory()
         {
             static auto next_id = std::atomic_uint64_t{};
             auto const stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-            path_ = std::filesystem::temp_directory_path()
-                / ("simnet_compression_corpus_" + std::to_string(stamp) + "_"
-                   + std::to_string(next_id.fetch_add(1U)));
+            path_ = std::filesystem::temp_directory_path() /
+                    ("simnet_compression_corpus_" + std::to_string(stamp) + "_" +
+                     std::to_string(next_id.fetch_add(1U)));
             std::filesystem::create_directories(path_);
         }
 
@@ -49,7 +49,7 @@ namespace
             return path_;
         }
 
-    private:
+      private:
         std::filesystem::path path_{};
     };
 
@@ -67,7 +67,8 @@ namespace
     {
         auto bytes = std::vector<simnet::Byte>{};
         bytes.reserve(text.size());
-        for (auto const value : text) {
+        for (auto const value : text)
+        {
             bytes.push_back(static_cast<simnet::Byte>(static_cast<unsigned char>(value)));
         }
         return bytes;
@@ -76,11 +77,13 @@ namespace
     [[nodiscard]] std::vector<simnet::Byte> read_bytes(std::filesystem::path const& path)
     {
         auto input = std::ifstream{path, std::ios::binary | std::ios::ate};
-        if (!input) {
+        if (!input)
+        {
             return {};
         }
         auto const end = input.tellg();
-        if (end <= 0) {
+        if (end <= 0)
+        {
             return {};
         }
         auto bytes = std::vector<simnet::Byte>(static_cast<std::size_t>(end));
@@ -94,7 +97,8 @@ namespace
         auto input = std::ifstream{path};
         auto lines = std::vector<std::string>{};
         auto line = std::string{};
-        while (std::getline(input, line)) {
+        while (std::getline(input, line))
+        {
             lines.push_back(line);
         }
         return lines;
@@ -118,12 +122,13 @@ namespace
     [[nodiscard]] simnet::PipelineDefinition manifest_pipeline()
     {
         return {
-            .techniques = simnet::PipelineTechniqueFlags::SendInterval
-                | simnet::PipelineTechniqueFlags::Incremental
-                | simnet::PipelineTechniqueFlags::Quantization
-                | simnet::PipelineTechniqueFlags::OctHeading | simnet::PipelineTechniqueFlags::Delta
-                | simnet::PipelineTechniqueFlags::DeltaFieldMask
-                | simnet::PipelineTechniqueFlags::BitPacking,
+            .techniques = simnet::PipelineTechniqueFlags::SendInterval |
+                          simnet::PipelineTechniqueFlags::Incremental |
+                          simnet::PipelineTechniqueFlags::Quantization |
+                          simnet::PipelineTechniqueFlags::OctHeading |
+                          simnet::PipelineTechniqueFlags::Delta |
+                          simnet::PipelineTechniqueFlags::DeltaFieldMask |
+                          simnet::PipelineTechniqueFlags::BitPacking,
             .area_of_interest = {.mode = simnet::AreaOfInterestMode::Fov},
             .level_of_detail = {.mode = simnet::LevelOfDetailMode::DistanceBands},
         };
@@ -134,15 +139,17 @@ namespace
         return {
             .kind = simnet::EncodeResultKind::Update,
             .update = {.sequence = 4U, .bytes = bytes_from("abc")},
-            .report = {
-                .tick = 9U,
-                .sequence = 4U,
-                .baseline_sequence = 3U,
-                .snapshot_kind = simnet::SnapshotKind::Patch,
-                .representation = {
-                    .layout = simnet::EntityRecordLayout::QuantizedOctHeading,
+            .report =
+                {
+                    .tick = 9U,
+                    .sequence = 4U,
+                    .baseline_sequence = 3U,
+                    .snapshot_kind = simnet::SnapshotKind::Patch,
+                    .representation =
+                        {
+                            .layout = simnet::EntityRecordLayout::QuantizedOctHeading,
+                        },
                 },
-            },
             .resulting_snapshot = make_snapshot(9U),
         };
     }
@@ -173,9 +180,9 @@ TEST_CASE(
     auto temporary = CorpusTemporaryDirectory{};
     auto const output_directory = temporary.path() / "capture";
     auto pipeline = simnet::PipelineDefinition{
-        .techniques = simnet::PipelineTechniqueFlags::Quantization
-            | simnet::PipelineTechniqueFlags::OctHeading
-            | simnet::PipelineTechniqueFlags::BitPacking,
+        .techniques = simnet::PipelineTechniqueFlags::Quantization |
+                      simnet::PipelineTechniqueFlags::OctHeading |
+                      simnet::PipelineTechniqueFlags::BitPacking,
     };
     auto state = simnet::ClientReplicationState{};
     auto scratch = simnet::PipelineScratch{};
@@ -221,15 +228,14 @@ TEST_CASE(
     REQUIRE(lines.size() == 3U);
     CHECK(lines[0] == simnet::app::compression_corpus_manifest_header_v1);
     CHECK(
-        lines[1]
-        == "1,corpus-run,3,9,4,3,patch,quantized_oct_heading,1,1,1,1,1,1,1,fov,"
-           "distance_bands,41001,2,5,3,"
-           "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad,"
-           "sample_peer_3_sequence_4_tick_9.bin"
+        lines[1] == "1,corpus-run,3,9,4,3,patch,quantized_oct_heading,1,1,1,1,1,1,1,fov,"
+                    "distance_bands,41001,2,5,3,"
+                    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad,"
+                    "sample_peer_3_sequence_4_tick_9.bin"
     );
     CHECK(
-        lines[2].find("ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb")
-        != std::string::npos
+        lines[2].find("ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb") !=
+        std::string::npos
     );
 }
 
@@ -256,8 +262,8 @@ TEST_CASE(
     );
     CHECK(read_bytes(sentinel_path) == bytes_from("keep"));
     CHECK(
-        std::filesystem::directory_iterator{output_directory}
-        != std::filesystem::directory_iterator{}
+        std::filesystem::directory_iterator{output_directory} !=
+        std::filesystem::directory_iterator{}
     );
 }
 

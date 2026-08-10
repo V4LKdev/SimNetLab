@@ -34,7 +34,8 @@ namespace
     [[nodiscard]] std::vector<simnet::Byte> bytes(std::size_t count, std::uint8_t seed = 0U)
     {
         auto result = std::vector<simnet::Byte>(count);
-        for (auto index = std::size_t{}; index < count; ++index) {
+        for (auto index = std::size_t{}; index < count; ++index)
+        {
             result[index] = static_cast<simnet::Byte>(seed + index);
         }
         return result;
@@ -59,7 +60,8 @@ namespace
         auto snapshot = simnet::WorldSnapshot{};
         snapshot.tick = 12U;
         snapshot.reserve(30U);
-        for (auto index = std::uint32_t{}; index < 30U; ++index) {
+        for (auto index = std::uint32_t{}; index < 30U; ++index)
+        {
             snapshot.ids.push_back(index + 1U);
             snapshot.classifications.push_back(
                 simnet::EntityClassification{static_cast<std::uint8_t>((index % 3U) + 1U)}
@@ -80,22 +82,24 @@ namespace
     [[nodiscard]] bool
     same_snapshot(simnet::WorldSnapshot const& left, simnet::WorldSnapshot const& right)
     {
-        auto const vectors_match = [](std::vector<simnet::Vec3f> const& first,
-                                      std::vector<simnet::Vec3f> const& second) {
-            return first.size() == second.size()
-                && std::equal(
+        auto const vectors_match =
+            [](std::vector<simnet::Vec3f> const& first, std::vector<simnet::Vec3f> const& second)
+        {
+            return first.size() == second.size() &&
+                   std::equal(
                        first.begin(),
                        first.end(),
                        second.begin(),
-                       [](simnet::Vec3f const& a, simnet::Vec3f const& b) {
+                       [](simnet::Vec3f const& a, simnet::Vec3f const& b)
+                       {
                            return a.x == b.x && a.y == b.y && a.z == b.z;
                        }
-                );
+                   );
         };
-        return left.tick == right.tick && left.ids == right.ids
-            && left.classifications == right.classifications
-            && vectors_match(left.positions, right.positions)
-            && vectors_match(left.headings, right.headings) && left.hues == right.hues;
+        return left.tick == right.tick && left.ids == right.ids &&
+               left.classifications == right.classifications &&
+               vectors_match(left.positions, right.positions) &&
+               vectors_match(left.headings, right.headings) && left.hues == right.hues;
     }
 
     [[nodiscard]] std::vector<std::vector<simnet::Byte>> packets(
@@ -105,12 +109,13 @@ namespace
     )
     {
         auto prepared = simnet::PreparedByteGroup{};
-        auto const report
-            = simnet::prepare_byte_group(config, group_id, std::move(payload), prepared);
+        auto const report =
+            simnet::prepare_byte_group(config, group_id, std::move(payload), prepared);
         REQUIRE(report.outcome == simnet::GroupPreparationOutcome::Prepared);
         auto result = std::vector<std::vector<simnet::Byte>>{};
         auto scratch = std::vector<simnet::Byte>{};
-        for (auto index = std::uint16_t{}; index < prepared.chunk_count; ++index) {
+        for (auto index = std::uint16_t{}; index < prepared.chunk_count; ++index)
+        {
             auto const view = simnet::serialize_group_chunk(config, prepared, index, scratch);
             result.emplace_back(view.begin(), view.end());
         }
@@ -125,7 +130,8 @@ namespace
     )
     {
         auto result = simnet::ReassemblyResult{};
-        for (auto const index : order) {
+        for (auto const index : order)
+        {
             result = simnet::accept_group_packet(
                 config,
                 state,
@@ -167,7 +173,8 @@ TEST_CASE("disabled packetization preserves one bounded opaque payload", "[packe
 TEST_CASE("enabled packetization handles one and many chunks", "[packetization]")
 {
     auto const config = settings();
-    for (auto const count : {20U, 120U}) {
+    for (auto const count : {20U, 120U})
+    {
         auto const source = bytes(count);
         auto const group_packets = packets(config, count, source);
         auto order = std::vector<std::size_t>(group_packets.size());
@@ -186,8 +193,8 @@ TEST_CASE("packet header uses the fixed network-order schema", "[packetization][
     auto const config = settings();
     auto prepared = simnet::PreparedByteGroup{};
     REQUIRE(
-        simnet::prepare_byte_group(config, 0x01020304U, bytes(20U), prepared).outcome
-        == simnet::GroupPreparationOutcome::Prepared
+        simnet::prepare_byte_group(config, 0x01020304U, bytes(20U), prepared).outcome ==
+        simnet::GroupPreparationOutcome::Prepared
     );
     auto scratch = std::vector<simnet::Byte>{};
     auto const packet = simnet::serialize_group_chunk(config, prepared, 0U, scratch);
@@ -245,11 +252,11 @@ TEST_CASE("duplicates are idempotent or invalidate only their group", "[packetiz
     auto const config = settings();
     auto const group_packets = packets(config, 9U, bytes(100U));
     auto state = simnet::ReassemblyState{};
-    auto first
-        = simnet::accept_group_packet(config, state, group_packets[0], simnet::Nanoseconds{});
+    auto first =
+        simnet::accept_group_packet(config, state, group_packets[0], simnet::Nanoseconds{});
     REQUIRE(first.kind == simnet::ReassemblyResultKind::Incomplete);
-    auto duplicate
-        = simnet::accept_group_packet(config, state, group_packets[0], simnet::Nanoseconds{});
+    auto duplicate =
+        simnet::accept_group_packet(config, state, group_packets[0], simnet::Nanoseconds{});
     CHECK(duplicate.kind == simnet::ReassemblyResultKind::Duplicate);
     CHECK(state.report.duplicate_chunks == 1U);
 
@@ -269,10 +276,13 @@ TEST_CASE("missing chunks expire without blocking a valid retry", "[packetizatio
 {
     auto const config = settings();
     auto const group_packets = packets(config, 11U, bytes(120U));
-    for (auto const missing : {0U, 1U, 3U}) {
+    for (auto const missing : {0U, 1U, 3U})
+    {
         auto state = simnet::ReassemblyState{};
-        for (auto index = std::size_t{}; index < group_packets.size(); ++index) {
-            if (index != missing) {
+        for (auto index = std::size_t{}; index < group_packets.size(); ++index)
+        {
+            if (index != missing)
+            {
                 auto const result = simnet::accept_group_packet(
                     config,
                     state,
@@ -297,12 +307,13 @@ TEST_CASE("invalid packet headers do not poison later traffic", "[packetization]
 {
     auto const config = settings();
     auto const valid_packets = packets(config, 13U, bytes(80U));
-    for (auto offset : {0U, 4U, 6U, 13U, 15U, 17U, 21U}) {
+    for (auto offset : {0U, 4U, 6U, 13U, 15U, 17U, 21U})
+    {
         auto invalid = valid_packets.front();
         invalid[offset] = simnet::Byte{0xFFU};
         auto state = simnet::ReassemblyState{};
-        auto const rejected
-            = simnet::accept_group_packet(config, state, invalid, simnet::Nanoseconds{});
+        auto const rejected =
+            simnet::accept_group_packet(config, state, invalid, simnet::Nanoseconds{});
         CHECK(rejected.kind == simnet::ReassemblyResultKind::Invalid);
     }
 
@@ -310,8 +321,8 @@ TEST_CASE("invalid packet headers do not poison later traffic", "[packetization]
     auto truncated = valid_packets.front();
     truncated.resize(simnet::packet_header_bytes - 1U);
     CHECK(
-        simnet::accept_group_packet(config, state, truncated, simnet::Nanoseconds{}).kind
-        == simnet::ReassemblyResultKind::Invalid
+        simnet::accept_group_packet(config, state, truncated, simnet::Nanoseconds{}).kind ==
+        simnet::ReassemblyResultKind::Invalid
     );
     auto order = std::vector<std::size_t>(valid_packets.size());
     std::iota(order.begin(), order.end(), 0U);
@@ -324,12 +335,12 @@ TEST_CASE("header bounds reject explicit malformed fields", "[packetization][mal
 {
     auto const config = settings();
     auto const valid_packets = packets(config, 14U, bytes(100U));
-    auto reject = [&](std::vector<simnet::Byte> packet) {
+    auto reject = [&](std::vector<simnet::Byte> packet)
+    {
         auto state = simnet::ReassemblyState{};
         CHECK(
             simnet::accept_group_packet(config, state, std::move(packet), simnet::Nanoseconds{})
-                .kind
-            == simnet::ReassemblyResultKind::Invalid
+                .kind == simnet::ReassemblyResultKind::Invalid
         );
         CHECK(state.incomplete.empty());
     };
@@ -367,18 +378,18 @@ TEST_CASE("conflicting metadata destroys only the affected assembly", "[packetiz
     auto const second = packets(config, 16U, bytes(100U));
     auto state = simnet::ReassemblyState{};
     REQUIRE(
-        simnet::accept_group_packet(config, state, first[0], simnet::Nanoseconds{}).kind
-        == simnet::ReassemblyResultKind::Incomplete
+        simnet::accept_group_packet(config, state, first[0], simnet::Nanoseconds{}).kind ==
+        simnet::ReassemblyResultKind::Incomplete
     );
     REQUIRE(
-        simnet::accept_group_packet(config, state, second[0], simnet::Nanoseconds{}).kind
-        == simnet::ReassemblyResultKind::Incomplete
+        simnet::accept_group_packet(config, state, second[0], simnet::Nanoseconds{}).kind ==
+        simnet::ReassemblyResultKind::Incomplete
     );
     auto conflict = first[1];
     write_u32(conflict, 17U, 101U);
     CHECK(
-        simnet::accept_group_packet(config, state, conflict, simnet::Nanoseconds{}).kind
-        == simnet::ReassemblyResultKind::Invalid
+        simnet::accept_group_packet(config, state, conflict, simnet::Nanoseconds{}).kind ==
+        simnet::ReassemblyResultKind::Invalid
     );
     REQUIRE(state.incomplete.size() == 1U);
     CHECK(state.incomplete.front().group_id == 16U);
@@ -395,13 +406,12 @@ TEST_CASE("reassembly enforces in-flight and byte budgets without eviction", "[p
         auto const second_packets = packets(config, 21U, bytes(100U));
         auto state = simnet::ReassemblyState{};
         REQUIRE(
-            simnet::accept_group_packet(config, state, first_packets[0], simnet::Nanoseconds{}).kind
-            == simnet::ReassemblyResultKind::Incomplete
+            simnet::accept_group_packet(config, state, first_packets[0], simnet::Nanoseconds{})
+                .kind == simnet::ReassemblyResultKind::Incomplete
         );
         CHECK(
             simnet::accept_group_packet(config, state, second_packets[0], simnet::Nanoseconds{})
-                .kind
-            == simnet::ReassemblyResultKind::LimitExceeded
+                .kind == simnet::ReassemblyResultKind::LimitExceeded
         );
         CHECK(state.incomplete.size() == 1U);
         CHECK(state.incomplete.front().group_id == 20U);
@@ -416,14 +426,13 @@ TEST_CASE("reassembly enforces in-flight and byte budgets without eviction", "[p
         auto const second_packets = packets(config, 23U, bytes(100U));
         auto state = simnet::ReassemblyState{};
         REQUIRE(
-            simnet::accept_group_packet(config, state, first_packets[0], simnet::Nanoseconds{}).kind
-            == simnet::ReassemblyResultKind::Incomplete
+            simnet::accept_group_packet(config, state, first_packets[0], simnet::Nanoseconds{})
+                .kind == simnet::ReassemblyResultKind::Incomplete
         );
         CHECK(state.report.retained_incomplete_bytes == 100U);
         CHECK(
             simnet::accept_group_packet(config, state, second_packets[0], simnet::Nanoseconds{})
-                .kind
-            == simnet::ReassemblyResultKind::LimitExceeded
+                .kind == simnet::ReassemblyResultKind::LimitExceeded
         );
         CHECK(state.report.retained_incomplete_bytes == 100U);
         CHECK(state.incomplete.front().group_id == 22U);
@@ -436,14 +445,14 @@ TEST_CASE("canonical commit rejects stale groups and clears older assemblies", "
     auto const older = packets(config, 30U, bytes(100U));
     auto state = simnet::ReassemblyState{};
     REQUIRE(
-        simnet::accept_group_packet(config, state, older[0], simnet::Nanoseconds{}).kind
-        == simnet::ReassemblyResultKind::Incomplete
+        simnet::accept_group_packet(config, state, older[0], simnet::Nanoseconds{}).kind ==
+        simnet::ReassemblyResultKind::Incomplete
     );
     simnet::commit_reassembled_group(state, 31U);
     CHECK(state.incomplete.empty());
     CHECK(
-        simnet::accept_group_packet(config, state, older[0], simnet::Nanoseconds{}).kind
-        == simnet::ReassemblyResultKind::Stale
+        simnet::accept_group_packet(config, state, older[0], simnet::Nanoseconds{}).kind ==
+        simnet::ReassemblyResultKind::Stale
     );
     simnet::clear_reassembly_state(state);
     CHECK(state.latest_committed_group == 0U);
@@ -468,8 +477,8 @@ TEST_CASE("settings reject arithmetic and allocation bound attacks", "[packetiza
     config = settings();
     auto prepared = simnet::PreparedByteGroup{};
     REQUIRE(
-        simnet::prepare_byte_group(config, 1U, bytes(40U), prepared).outcome
-        == simnet::GroupPreparationOutcome::Prepared
+        simnet::prepare_byte_group(config, 1U, bytes(40U), prepared).outcome ==
+        simnet::GroupPreparationOutcome::Prepared
     );
     ++prepared.chunk_count;
     auto scratch = std::vector<simnet::Byte>{};
@@ -490,7 +499,8 @@ TEST_CASE(
     auto candidates = std::vector<std::uint32_t>(source_snapshot.size());
     std::iota(candidates.begin(), candidates.end(), 0U);
 
-    for (auto const mode : {simnet::AreaOfInterestMode::Radius, simnet::AreaOfInterestMode::Fov}) {
+    for (auto const mode : {simnet::AreaOfInterestMode::Radius, simnet::AreaOfInterestMode::Fov})
+    {
         auto pipeline = simnet::PipelineDefinition{};
         pipeline.area_of_interest = {
             .mode = mode,
@@ -518,14 +528,15 @@ TEST_CASE(
         config.max_group_bytes = 4096U;
         config.max_chunks_per_group = 128U;
         config.max_incomplete_bytes = 8192U;
-        auto group_packets
-            = packets(config, encoded.update.sequence, std::move(encoded.update.bytes));
+        auto group_packets =
+            packets(config, encoded.update.sequence, std::move(encoded.update.bytes));
         REQUIRE(group_packets.size() > 1U);
 
         auto reassembly = simnet::ReassemblyState{};
         auto live_decode_state = simnet::ClientReplicationState{};
         auto ack = simnet::app::SnapshotAck{};
-        for (auto index = std::size_t{}; index + 1U < group_packets.size(); ++index) {
+        for (auto index = std::size_t{}; index + 1U < group_packets.size(); ++index)
+        {
             CHECK(
                 simnet::accept_group_packet(
                     config,
@@ -533,8 +544,7 @@ TEST_CASE(
                     group_packets[index],
                     simnet::Nanoseconds{}
                 )
-                    .kind
-                == simnet::ReassemblyResultKind::Incomplete
+                    .kind == simnet::ReassemblyResultKind::Incomplete
             );
             CHECK(live_decode_state.latest_remote_sequence == 0U);
             CHECK(ack.newest_received_snapshot == 0U);
@@ -597,8 +607,7 @@ TEST_CASE(
             std::move(first.update.bytes),
             prepared
         )
-            .outcome
-        == simnet::GroupPreparationOutcome::Prepared
+            .outcome == simnet::GroupPreparationOutcome::Prepared
     );
     REQUIRE(prepared.chunk_count > 1U);
     auto serialization_scratch = std::vector<simnet::Byte>{};
@@ -607,8 +616,8 @@ TEST_CASE(
     CHECK(live_state.next_sequence == 1U);
     CHECK(candidate_state.next_sequence == 2U);
     auto retry_scratch = simnet::PipelineScratch{};
-    auto retry
-        = simnet::encode_snapshot(pipeline, live_state, retry_scratch, {.snapshot = &source});
+    auto retry =
+        simnet::encode_snapshot(pipeline, live_state, retry_scratch, {.snapshot = &source});
     REQUIRE(retry.kind == simnet::EncodeResultKind::Update);
     CHECK(retry.update.sequence == first.update.sequence);
     CHECK(same_snapshot(retry.resulting_snapshot, first.resulting_snapshot));
@@ -628,7 +637,8 @@ TEST_CASE(
     auto transport_packets = std::vector<std::vector<simnet::Byte>>{};
     auto compressed_count = std::uint32_t{};
     auto raw_count = std::uint32_t{};
-    for (auto const& packet : group_packets) {
+    for (auto const& packet : group_packets)
+    {
         auto output = std::vector<simnet::Byte>{};
         auto const report = simnet::compress_bytes(
             compressor,
@@ -642,9 +652,12 @@ TEST_CASE(
             output
         );
         REQUIRE(report.valid);
-        if (report.encoding == simnet::CompressionEncoding::Zstd) {
+        if (report.encoding == simnet::CompressionEncoding::Zstd)
+        {
             ++compressed_count;
-        } else {
+        }
+        else
+        {
             ++raw_count;
         }
         transport_packets.push_back(std::move(output));
@@ -656,9 +669,11 @@ TEST_CASE(
     auto decompression_scratch = std::vector<simnet::Byte>{};
     auto state = simnet::ReassemblyState{};
     auto result = simnet::ReassemblyResult{};
-    for (auto const index : {1U, 0U}) {
+    for (auto const index : {1U, 0U})
+    {
         auto application_packet = simnet::ByteSpan{transport_packets[index]};
-        if (simnet::has_compression_envelope(application_packet)) {
+        if (simnet::has_compression_envelope(application_packet))
+        {
             auto const report = simnet::decompress_bytes(
                 decompressor,
                 application_packet,
@@ -818,8 +833,8 @@ TEST_CASE(
         restored
     );
     REQUIRE(decoded.valid);
-    auto const completed
-        = simnet::accept_group_packet(config, state, restored, simnet::Nanoseconds{100U});
+    auto const completed =
+        simnet::accept_group_packet(config, state, restored, simnet::Nanoseconds{100U});
     REQUIRE(completed.kind == simnet::ReassemblyResultKind::Complete);
     CHECK(completed.completed.bytes == source);
 }
@@ -834,8 +849,8 @@ TEST_CASE(
     auto live_state = simnet::ClientReplicationState{};
     auto candidate_state = live_state;
     auto scratch = simnet::PipelineScratch{};
-    auto const encoded
-        = simnet::encode_snapshot(pipeline, candidate_state, scratch, {.snapshot = &source});
+    auto const encoded =
+        simnet::encode_snapshot(pipeline, candidate_state, scratch, {.snapshot = &source});
     REQUIRE(encoded.kind == simnet::EncodeResultKind::Update);
     REQUIRE(candidate_state.next_sequence == 2U);
 
@@ -978,7 +993,8 @@ TEST_CASE(
         }
     );
     source.tick = 13U;
-    for (auto& position : source.positions) {
+    for (auto& position : source.positions)
+    {
         position.y += 1.0F;
     }
     auto const encoded = simnet::encode_snapshot(
@@ -1006,14 +1022,16 @@ TEST_CASE(
         .dictionary = "pipeline_v1",
     });
     REQUIRE(dictionary.has_value());
-    for (auto const treatment : {0, 1, 2}) {
+    for (auto const treatment : {0, 1, 2})
+    {
         auto const whole_update = treatment != 0;
         auto const use_dictionary = treatment == 2;
         auto compressor = simnet::ZstdCompressor{};
         auto decompressor = simnet::ZstdDecompressor{};
         auto compressed_group = std::vector<simnet::Byte>{};
         auto group_source = encoded.update.bytes;
-        if (whole_update) {
+        if (whole_update)
+        {
             auto const limits = simnet::CompressionLimits{
                 .max_uncompressed_bytes = 4096U,
                 .max_output_bytes = 4096U,
@@ -1038,8 +1056,10 @@ TEST_CASE(
         }
 
         auto transport_packets = packets(config, encoded.update.sequence, group_source);
-        if (!whole_update) {
-            for (auto& packet : transport_packets) {
+        if (!whole_update)
+        {
+            for (auto& packet : transport_packets)
+            {
                 auto compressed_packet = std::vector<simnet::Byte>{};
                 auto const report = simnet::compress_bytes(
                     compressor,
@@ -1060,9 +1080,11 @@ TEST_CASE(
         auto reassembly = simnet::ReassemblyState{};
         auto completed = simnet::ReassemblyResult{};
         auto packet_scratch = std::vector<simnet::Byte>{};
-        for (auto index = transport_packets.size(); index > 0U; --index) {
+        for (auto index = transport_packets.size(); index > 0U; --index)
+        {
             auto packet = simnet::ByteSpan{transport_packets[index - 1U]};
-            if (!whole_update && simnet::has_compression_envelope(packet)) {
+            if (!whole_update && simnet::has_compression_envelope(packet))
+            {
                 auto const report = simnet::decompress_bytes(
                     decompressor,
                     packet,
@@ -1075,31 +1097,32 @@ TEST_CASE(
                 REQUIRE(report.valid);
                 packet = packet_scratch;
             }
-            completed = simnet::accept_group_packet(
-                config,
-                reassembly,
-                packet,
-                simnet::Nanoseconds{100U}
-            );
+            completed =
+                simnet::accept_group_packet(config, reassembly, packet, simnet::Nanoseconds{100U});
         }
         REQUIRE(completed.kind == simnet::ReassemblyResultKind::Complete);
 
         auto decoded_group = simnet::ByteSpan{completed.completed.bytes};
         auto decoded_scratch = std::vector<simnet::Byte>{};
-        if (whole_update) {
+        if (whole_update)
+        {
             auto const limits = simnet::CompressionLimits{
                 .max_uncompressed_bytes = 4096U,
                 .max_output_bytes = 4096U,
             };
-            auto const report = use_dictionary
-                ? simnet::decompress_bytes_with_dictionary(
-                      decompressor,
-                      dictionary->dictionary,
-                      decoded_group,
-                      limits,
-                      decoded_scratch
-                  )
-                : simnet::decompress_bytes(decompressor, decoded_group, limits, decoded_scratch);
+            auto const report = use_dictionary ? simnet::decompress_bytes_with_dictionary(
+                                                     decompressor,
+                                                     dictionary->dictionary,
+                                                     decoded_group,
+                                                     limits,
+                                                     decoded_scratch
+                                                 )
+                                               : simnet::decompress_bytes(
+                                                     decompressor,
+                                                     decoded_group,
+                                                     limits,
+                                                     decoded_scratch
+                                                 );
             REQUIRE(report.valid);
             decoded_group = decoded_scratch;
         }

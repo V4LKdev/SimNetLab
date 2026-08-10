@@ -17,9 +17,11 @@ namespace
     cell_contents(simnet::SpatialGrid const& grid, std::span<const simnet::EntityNetId> ids)
     {
         auto result = CellContents{};
-        for (auto const& cell : grid.occupied_cells) {
+        for (auto const& cell : grid.occupied_cells)
+        {
             auto cell_ids = std::vector<simnet::EntityNetId>{};
-            for (auto offset = std::uint32_t{}; offset < cell.count; ++offset) {
+            for (auto offset = std::uint32_t{}; offset < cell.count; ++offset)
+            {
                 cell_ids.push_back(ids[grid.entries[cell.begin + offset].source_index]);
             }
             result.emplace_back(cell.key, std::move(cell_ids));
@@ -42,9 +44,10 @@ TEST_CASE("spatial occupied cell keys map back to bounded world cells", "[spatia
     simnet::build_spatial_grid_serial(grid, scratch, positions);
 
     REQUIRE(grid.occupied_cells.size() == 2U);
-    for (auto const& occupied : grid.occupied_cells) {
-        auto const bounds_for_cell
-            = simnet::cell_bounds(grid, simnet::cell_coord_from_key(grid, occupied.key));
+    for (auto const& occupied : grid.occupied_cells)
+    {
+        auto const bounds_for_cell =
+            simnet::cell_bounds(grid, simnet::cell_coord_from_key(grid, occupied.key));
         auto const position = positions[grid.entries[occupied.begin].source_index];
         CHECK(position.x >= bounds_for_cell.min.x);
         CHECK(position.x <= bounds_for_cell.max.x);
@@ -81,12 +84,11 @@ TEST_CASE("bounded spatial build matches comparison ordering", "[spatial]")
     CHECK(grid.occupied_cells[1].key == 42U);
     CHECK(grid.occupied_cells[2].key == 63U);
     CHECK(
-        cell_contents(grid, ids)
-        == CellContents{
-            {0U, {10U, 20U}},
-            {42U, {30U}},
-            {63U, {40U}},
-        }
+        cell_contents(grid, ids) == CellContents{
+                                        {0U, {10U, 20U}},
+                                        {42U, {30U}},
+                                        {63U, {40U}},
+                                    }
     );
     CHECK(scratch.dense_cell_counts.size() == 64U);
 }
@@ -119,8 +121,8 @@ TEST_CASE("bounded spatial output is independent of input order when IDs are sup
     auto second_grid = simnet::SpatialGrid{};
     auto first_scratch = simnet::SpatialGridScratch{};
     auto second_scratch = simnet::SpatialGridScratch{};
-    auto const settings
-        = simnet::make_spatial_grid_settings(simnet::make_centered_bounds(10.0F), 5.0F);
+    auto const settings =
+        simnet::make_spatial_grid_settings(simnet::make_centered_bounds(10.0F), 5.0F);
     simnet::resize_spatial_grid(first_grid, settings);
     simnet::resize_spatial_grid(second_grid, settings);
 
@@ -167,11 +169,10 @@ TEST_CASE("oversized spatial grid uses deterministic comparison-sort fallback", 
     CHECK(scratch.dense_cell_counts.empty());
     REQUIRE(grid.occupied_cells.size() == 2U);
     CHECK(
-        cell_contents(grid, ids)
-        == CellContents{
-            {4'291U, {10U, 30U}},
-            {274'624U, {20U}},
-        }
+        cell_contents(grid, ids) == CellContents{
+                                        {4'291U, {10U, 30U}},
+                                        {274'624U, {20U}},
+                                    }
     );
 }
 
@@ -198,22 +199,28 @@ TEST_CASE("serial spatial builds are deterministic and transactional", "[spatial
     auto const previous_cells = grid.occupied_cells;
     auto const previous_stats = grid.stats;
 
-    auto const matches_previous = [&] {
-        if (grid.entries.size() != previous_entries.size()
-            || grid.occupied_cells.size() != previous_cells.size()) {
+    auto const matches_previous = [&]
+    {
+        if (grid.entries.size() != previous_entries.size() ||
+            grid.occupied_cells.size() != previous_cells.size())
+        {
             return false;
         }
-        for (std::size_t index = 0; index < grid.entries.size(); ++index) {
-            if (grid.entries[index].key != previous_entries[index].key
-                || grid.entries[index].source_index != previous_entries[index].source_index) {
+        for (std::size_t index = 0; index < grid.entries.size(); ++index)
+        {
+            if (grid.entries[index].key != previous_entries[index].key ||
+                grid.entries[index].source_index != previous_entries[index].source_index)
+            {
                 return false;
             }
         }
-        for (std::size_t index = 0; index < grid.occupied_cells.size(); ++index) {
+        for (std::size_t index = 0; index < grid.occupied_cells.size(); ++index)
+        {
             auto const& current = grid.occupied_cells[index];
             auto const& previous = previous_cells[index];
-            if (current.key != previous.key || current.begin != previous.begin
-                || current.count != previous.count) {
+            if (current.key != previous.key || current.begin != previous.begin ||
+                current.count != previous.count)
+            {
                 return false;
             }
         }
@@ -286,15 +293,26 @@ TEST_CASE("radius queries expose the exact inspected bounded cells", "[spatial][
     simnet::build_spatial_grid_serial(grid, scratch, positions);
 
     auto enumerated = std::vector<simnet::CellCoord>{};
-    auto const enumerated_count
-        = simnet::for_each_radius_cell(grid, positions[0], 6.0F, [&](simnet::CellCoord coord) {
-              enumerated.push_back(coord);
-          });
+    auto const enumerated_count = simnet::for_each_radius_cell(
+        grid,
+        positions[0],
+        6.0F,
+        [&](simnet::CellCoord coord)
+        {
+            enumerated.push_back(coord);
+        }
+    );
     auto queried_indices = std::vector<std::uint32_t>{};
-    auto const queried_count
-        = simnet::query_radius(grid, positions, positions[0], 6.0F, [&](std::uint32_t index) {
-              queried_indices.push_back(index);
-          });
+    auto const queried_count = simnet::query_radius(
+        grid,
+        positions,
+        positions[0],
+        6.0F,
+        [&](std::uint32_t index)
+        {
+            queried_indices.push_back(index);
+        }
+    );
 
     CHECK(enumerated_count == 8U);
     CHECK(queried_count == enumerated_count);

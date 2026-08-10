@@ -52,9 +52,9 @@ namespace simnet::pipeline_signature
     decode_relevant_technique_mask(PipelineDefinition const& pipeline) noexcept
     {
         auto constexpr mask = static_cast<std::uint32_t>(
-            PipelineTechniqueFlags::Incremental | PipelineTechniqueFlags::Quantization
-            | PipelineTechniqueFlags::OctHeading | PipelineTechniqueFlags::Delta
-            | PipelineTechniqueFlags::DeltaFieldMask | PipelineTechniqueFlags::BitPacking
+            PipelineTechniqueFlags::Incremental | PipelineTechniqueFlags::Quantization |
+            PipelineTechniqueFlags::OctHeading | PipelineTechniqueFlags::Delta |
+            PipelineTechniqueFlags::DeltaFieldMask | PipelineTechniqueFlags::BitPacking
         );
         return static_cast<std::uint32_t>(pipeline.techniques) & mask;
     }
@@ -69,7 +69,8 @@ namespace simnet::pipeline_signature
         update_signature_u16(signature, pipeline_wire::encoded_update_schema(pipeline));
         update_signature_u32(signature, decode_relevant_technique_mask(pipeline));
 
-        if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization)) {
+        if (has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization))
+        {
             auto const bounds = pipeline.quantization.position_bounds;
             update_signature_f32(signature, bounds.min.x);
             update_signature_f32(signature, bounds.min.y);

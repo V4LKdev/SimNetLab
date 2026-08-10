@@ -57,7 +57,8 @@ namespace
     [[nodiscard]] bool
     read_u8(simnet::ByteSpan bytes, std::size_t& offset, std::uint8_t& value) noexcept
     {
-        if (offset >= bytes.size()) {
+        if (offset >= bytes.size())
+        {
             return false;
         }
         value = static_cast<std::uint8_t>(bytes[offset++]);
@@ -69,7 +70,8 @@ namespace
     {
         std::uint8_t high{};
         std::uint8_t low{};
-        if (!read_u8(bytes, offset, high) || !read_u8(bytes, offset, low)) {
+        if (!read_u8(bytes, offset, high) || !read_u8(bytes, offset, low))
+        {
             return false;
         }
         value = static_cast<std::uint16_t>(static_cast<std::uint16_t>(high) << 8U) | low;
@@ -81,7 +83,8 @@ namespace
     {
         std::uint16_t high{};
         std::uint16_t low{};
-        if (!read_u16(bytes, offset, high) || !read_u16(bytes, offset, low)) {
+        if (!read_u16(bytes, offset, high) || !read_u16(bytes, offset, low))
+        {
             return false;
         }
         value = (static_cast<std::uint32_t>(high) << 16U) | low;
@@ -91,13 +94,13 @@ namespace
     [[nodiscard]] bool read_header(simnet::ByteSpan bytes, PacketHeader& header) noexcept
     {
         auto offset = std::size_t{};
-        return read_u32(bytes, offset, header.magic) && read_u16(bytes, offset, header.protocol)
-            && read_u16(bytes, offset, header.schema) && read_u8(bytes, offset, header.kind)
-            && read_u32(bytes, offset, header.group_id)
-            && read_u16(bytes, offset, header.chunk_index)
-            && read_u16(bytes, offset, header.chunk_count)
-            && read_u32(bytes, offset, header.group_bytes)
-            && read_u32(bytes, offset, header.chunk_bytes) && offset == simnet::packet_header_bytes;
+        return read_u32(bytes, offset, header.magic) && read_u16(bytes, offset, header.protocol) &&
+               read_u16(bytes, offset, header.schema) && read_u8(bytes, offset, header.kind) &&
+               read_u32(bytes, offset, header.group_id) &&
+               read_u16(bytes, offset, header.chunk_index) &&
+               read_u16(bytes, offset, header.chunk_count) &&
+               read_u32(bytes, offset, header.group_bytes) &&
+               read_u32(bytes, offset, header.chunk_bytes) && offset == simnet::packet_header_bytes;
     }
 
     [[nodiscard]] std::uint64_t ceiling_divide(std::uint64_t value, std::uint64_t divisor)
@@ -109,7 +112,8 @@ namespace
     {
         state.report.incomplete_groups = static_cast<std::uint32_t>(state.incomplete.size());
         auto bytes = std::uint64_t{};
-        for (auto const& group : state.incomplete) {
+        for (auto const& group : state.incomplete)
+        {
             bytes += group.group_bytes;
         }
         state.report.retained_incomplete_bytes = static_cast<std::uint32_t>(bytes);
@@ -136,37 +140,46 @@ namespace simnet
 {
     void validate_packetization_settings(PacketizationSettings const& settings)
     {
-        if (settings.max_payload_bytes == 0U || settings.max_group_bytes == 0U) {
+        if (settings.max_payload_bytes == 0U || settings.max_group_bytes == 0U)
+        {
             throw std::runtime_error("packetization byte limits must be positive");
         }
-        if (settings.max_group_bytes > maximum_packetized_group_bytes) {
+        if (settings.max_group_bytes > maximum_packetized_group_bytes)
+        {
             throw std::runtime_error("packetization group limit exceeds implementation bound");
         }
-        if (settings.max_chunks_per_group == 0U
-            || settings.max_chunks_per_group > maximum_chunks_per_group) {
+        if (settings.max_chunks_per_group == 0U ||
+            settings.max_chunks_per_group > maximum_chunks_per_group)
+        {
             throw std::runtime_error("packetization chunk limit exceeds implementation bound");
         }
-        if (settings.max_in_flight_groups == 0U
-            || settings.max_in_flight_groups > maximum_in_flight_groups) {
+        if (settings.max_in_flight_groups == 0U ||
+            settings.max_in_flight_groups > maximum_in_flight_groups)
+        {
             throw std::runtime_error("packetization in-flight limit exceeds implementation bound");
         }
-        if (settings.max_incomplete_bytes < settings.max_group_bytes
-            || settings.max_incomplete_bytes > maximum_incomplete_group_bytes) {
+        if (settings.max_incomplete_bytes < settings.max_group_bytes ||
+            settings.max_incomplete_bytes > maximum_incomplete_group_bytes)
+        {
             throw std::runtime_error("packetization incomplete byte budget is invalid");
         }
-        if (settings.reassembly_timeout.count() <= 0) {
+        if (settings.reassembly_timeout.count() <= 0)
+        {
             throw std::runtime_error("packetization reassembly timeout must be positive");
         }
-        if (!settings.enabled) {
+        if (!settings.enabled)
+        {
             return;
         }
-        if (settings.max_payload_bytes <= packet_header_bytes) {
+        if (settings.max_payload_bytes <= packet_header_bytes)
+        {
             throw std::runtime_error("packetization payload limit cannot fit header and payload");
         }
         auto const capacity = settings.max_payload_bytes - packet_header_bytes;
-        auto const maximum_encodable
-            = static_cast<std::uint64_t>(capacity) * settings.max_chunks_per_group;
-        if (settings.max_group_bytes > maximum_encodable) {
+        auto const maximum_encodable =
+            static_cast<std::uint64_t>(capacity) * settings.max_chunks_per_group;
+        if (settings.max_group_bytes > maximum_encodable)
+        {
             throw std::runtime_error("packetization group limit exceeds configured chunk capacity");
         }
     }
@@ -182,11 +195,13 @@ namespace simnet
         auto report = PacketizationReport{
             .group_id = group_id,
         };
-        if (group_id == 0U) {
+        if (group_id == 0U)
+        {
             report.error = "packet group id 0 is reserved";
             return report;
         }
-        if (bytes.empty() || bytes.size() > settings.max_group_bytes) {
+        if (bytes.empty() || bytes.size() > settings.max_group_bytes)
+        {
             report.error = "packet group byte count is outside configured bounds";
             return report;
         }
@@ -194,23 +209,28 @@ namespace simnet
 
         auto capacity = settings.max_payload_bytes;
         auto count = std::uint64_t{1U};
-        if (settings.enabled) {
+        if (settings.enabled)
+        {
             capacity -= packet_header_bytes;
             count = ceiling_divide(bytes.size(), capacity);
-            if (count == 0U || count > settings.max_chunks_per_group
-                || count > std::numeric_limits<std::uint16_t>::max()) {
+            if (count == 0U || count > settings.max_chunks_per_group ||
+                count > std::numeric_limits<std::uint16_t>::max())
+            {
                 report.error = "packet group chunk count is outside configured bounds";
                 return report;
             }
-        } else if (bytes.size() > settings.max_payload_bytes) {
+        }
+        else if (bytes.size() > settings.max_payload_bytes)
+        {
             report.error = "disabled packetization payload exceeds hard payload limit";
             return report;
         }
 
         auto const total_headers = settings.enabled ? count * packet_header_bytes : 0U;
         auto const total_packet_bytes = total_headers + bytes.size();
-        if (total_headers > std::numeric_limits<std::uint32_t>::max()
-            || total_packet_bytes > std::numeric_limits<std::uint32_t>::max()) {
+        if (total_headers > std::numeric_limits<std::uint32_t>::max() ||
+            total_packet_bytes > std::numeric_limits<std::uint32_t>::max())
+        {
             report.error = "packet group aggregate byte count exceeds uint32 range";
             return report;
         }
@@ -238,28 +258,31 @@ namespace simnet
     {
         validate_packetization_settings(settings);
         auto const expected_capacity = settings.enabled
-            ? settings.max_payload_bytes - packet_header_bytes
-            : settings.max_payload_bytes;
+                                           ? settings.max_payload_bytes - packet_header_bytes
+                                           : settings.max_payload_bytes;
         auto const expected_count = settings.enabled
-            ? ceiling_divide(prepared.bytes.size(), expected_capacity)
-            : std::uint64_t{1U};
+                                        ? ceiling_divide(prepared.bytes.size(), expected_capacity)
+                                        : std::uint64_t{1U};
         auto const expected_headers = settings.enabled ? expected_count * packet_header_bytes : 0U;
         auto const expected_total = expected_headers + prepared.bytes.size();
-        if (prepared.report.outcome != GroupPreparationOutcome::Prepared || prepared.group_id == 0U
-            || prepared.bytes.empty() || prepared.bytes.size() > settings.max_group_bytes
-            || (!settings.enabled && prepared.bytes.size() > settings.max_payload_bytes)
-            || prepared.chunk_payload_capacity != expected_capacity || expected_count == 0U
-            || expected_count > settings.max_chunks_per_group
-            || expected_count > std::numeric_limits<std::uint16_t>::max()
-            || prepared.chunk_count != expected_count || chunk_index >= prepared.chunk_count
-            || prepared.report.group_id != prepared.group_id
-            || prepared.report.group_bytes != prepared.bytes.size()
-            || prepared.report.chunk_count != expected_count
-            || prepared.report.total_header_bytes != expected_headers
-            || prepared.report.total_packet_bytes != expected_total) {
+        if (prepared.report.outcome != GroupPreparationOutcome::Prepared ||
+            prepared.group_id == 0U || prepared.bytes.empty() ||
+            prepared.bytes.size() > settings.max_group_bytes ||
+            (!settings.enabled && prepared.bytes.size() > settings.max_payload_bytes) ||
+            prepared.chunk_payload_capacity != expected_capacity || expected_count == 0U ||
+            expected_count > settings.max_chunks_per_group ||
+            expected_count > std::numeric_limits<std::uint16_t>::max() ||
+            prepared.chunk_count != expected_count || chunk_index >= prepared.chunk_count ||
+            prepared.report.group_id != prepared.group_id ||
+            prepared.report.group_bytes != prepared.bytes.size() ||
+            prepared.report.chunk_count != expected_count ||
+            prepared.report.total_header_bytes != expected_headers ||
+            prepared.report.total_packet_bytes != expected_total)
+        {
             throw std::runtime_error("prepared packet group metadata is invalid");
         }
-        if (!settings.enabled) {
+        if (!settings.enabled)
+        {
             return prepared.bytes;
         }
 
@@ -292,10 +315,14 @@ namespace simnet
     ) noexcept
     {
         auto const before = state.incomplete.size();
-        std::erase_if(state.incomplete, [&](IncompleteByteGroup const& group) {
-            return now >= group.first_received_time
-                && now - group.first_received_time >= settings.reassembly_timeout;
-        });
+        std::erase_if(
+            state.incomplete,
+            [&](IncompleteByteGroup const& group)
+            {
+                return now >= group.first_received_time &&
+                       now - group.first_received_time >= settings.reassembly_timeout;
+            }
+        );
         state.report.expired_groups += before - state.incomplete.size();
         update_current_report(state);
     }
@@ -311,9 +338,11 @@ namespace simnet
         ++state.report.received_chunks;
         expire_incomplete_groups(settings, state, now);
 
-        if (!settings.enabled) {
-            if (packet.empty() || packet.size() > settings.max_payload_bytes
-                || packet.size() > settings.max_group_bytes) {
+        if (!settings.enabled)
+        {
+            if (packet.empty() || packet.size() > settings.max_payload_bytes ||
+                packet.size() > settings.max_group_bytes)
+            {
                 ++state.report.invalid_groups;
                 return {
                     .kind = ReassemblyResultKind::Invalid,
@@ -335,28 +364,32 @@ namespace simnet
 
         auto const bytes = packet;
         auto header = PacketHeader{};
-        if (bytes.size() < packet_header_bytes || !read_header(bytes, header)) {
+        if (bytes.size() < packet_header_bytes || !read_header(bytes, header))
+        {
             ++state.report.invalid_groups;
             return {
                 .kind = ReassemblyResultKind::Invalid,
                 .error = "packet is shorter than the complete header"
             };
         }
-        if (header.magic != packet_magic || header.protocol != packet_protocol_version
-            || header.schema != packet_schema_version || header.kind != byte_group_chunk_kind) {
+        if (header.magic != packet_magic || header.protocol != packet_protocol_version ||
+            header.schema != packet_schema_version || header.kind != byte_group_chunk_kind)
+        {
             ++state.report.invalid_groups;
             return {
                 .kind = ReassemblyResultKind::Invalid,
                 .error = "packet header identity or version is invalid"
             };
         }
-        auto reject_group = [&](std::string error) {
+        auto reject_group = [&](std::string error)
+        {
             auto const found = std::ranges::find(
                 state.incomplete,
                 header.group_id,
                 &IncompleteByteGroup::group_id
             );
-            if (found != state.incomplete.end()) {
+            if (found != state.incomplete.end())
+            {
                 state.incomplete.erase(found);
                 update_current_report(state);
             }
@@ -367,15 +400,17 @@ namespace simnet
                 .error = std::move(error),
             };
         };
-        if (header.group_id == 0U || header.group_bytes == 0U
-            || header.group_bytes > settings.max_group_bytes || header.chunk_count == 0U
-            || header.chunk_count > settings.max_chunks_per_group
-            || header.chunk_index >= header.chunk_count
-            || header.chunk_bytes != bytes.size() - packet_header_bytes
-            || bytes.size() > settings.max_payload_bytes) {
+        if (header.group_id == 0U || header.group_bytes == 0U ||
+            header.group_bytes > settings.max_group_bytes || header.chunk_count == 0U ||
+            header.chunk_count > settings.max_chunks_per_group ||
+            header.chunk_index >= header.chunk_count ||
+            header.chunk_bytes != bytes.size() - packet_header_bytes ||
+            bytes.size() > settings.max_payload_bytes)
+        {
             return reject_group("packet header fields are outside configured bounds");
         }
-        if (header.group_id <= state.latest_committed_group) {
+        if (header.group_id <= state.latest_committed_group)
+        {
             ++state.report.stale_groups;
             return {.kind = ReassemblyResultKind::Stale, .group_id = header.group_id};
         }
@@ -383,22 +418,25 @@ namespace simnet
         auto const capacity = settings.max_payload_bytes - packet_header_bytes;
         auto const expected_count = ceiling_divide(header.group_bytes, capacity);
         auto const expected_offset = static_cast<std::uint64_t>(header.chunk_index) * capacity;
-        if (expected_count != header.chunk_count || expected_offset >= header.group_bytes) {
+        if (expected_count != header.chunk_count || expected_offset >= header.group_bytes)
+        {
             return reject_group("packet chunk count or offset is inconsistent");
         }
         auto const expected_bytes = std::min<std::uint64_t>(
             capacity,
             static_cast<std::uint64_t>(header.group_bytes) - expected_offset
         );
-        if (header.chunk_bytes != expected_bytes) {
+        if (header.chunk_bytes != expected_bytes)
+        {
             return reject_group("packet chunk payload size is inconsistent");
         }
 
-        auto found
-            = std::ranges::find(state.incomplete, header.group_id, &IncompleteByteGroup::group_id);
-        if (found != state.incomplete.end()
-            && (found->group_bytes != header.group_bytes || found->chunk_count != header.chunk_count
-                || found->chunk_payload_capacity != capacity)) {
+        auto found =
+            std::ranges::find(state.incomplete, header.group_id, &IncompleteByteGroup::group_id);
+        if (found != state.incomplete.end() &&
+            (found->group_bytes != header.group_bytes || found->chunk_count != header.chunk_count ||
+             found->chunk_payload_capacity != capacity))
+        {
             state.incomplete.erase(found);
             ++state.report.invalid_groups;
             update_current_report(state);
@@ -408,11 +446,14 @@ namespace simnet
                 .error = "packet metadata conflicts with the incomplete group"
             };
         }
-        if (found == state.incomplete.end()) {
-            auto const retained = static_cast<std::uint64_t>(state.report.retained_incomplete_bytes)
-                + header.group_bytes;
-            if (state.incomplete.size() >= settings.max_in_flight_groups
-                || retained > settings.max_incomplete_bytes) {
+        if (found == state.incomplete.end())
+        {
+            auto const retained =
+                static_cast<std::uint64_t>(state.report.retained_incomplete_bytes) +
+                header.group_bytes;
+            if (state.incomplete.size() >= settings.max_in_flight_groups ||
+                retained > settings.max_incomplete_bytes)
+            {
                 return {
                     .kind = ReassemblyResultKind::LimitExceeded,
                     .group_id = header.group_id,
@@ -437,13 +478,15 @@ namespace simnet
 
         auto const payload = bytes.subspan(packet_header_bytes);
         auto const offset = static_cast<std::size_t>(expected_offset);
-        if (chunk_received(*found, header.chunk_index)) {
+        if (chunk_received(*found, header.chunk_index))
+        {
             auto const matches = std::equal(
                 payload.begin(),
                 payload.end(),
                 found->bytes.begin() + static_cast<std::ptrdiff_t>(offset)
             );
-            if (!matches) {
+            if (!matches)
+            {
                 state.incomplete.erase(found);
                 ++state.report.invalid_groups;
                 update_current_report(state);
@@ -464,21 +507,23 @@ namespace simnet
         );
         mark_chunk_received(*found, header.chunk_index);
         ++state.report.unique_chunks;
-        if (found->received_count != found->chunk_count) {
+        if (found->received_count != found->chunk_count)
+        {
             return {.kind = ReassemblyResultKind::Incomplete, .group_id = header.group_id};
         }
 
         auto completed = CompletedByteGroup{
             .group_id = found->group_id,
             .chunk_count = found->chunk_count,
-            .total_packet_bytes = found->group_bytes
-                + static_cast<std::uint32_t>(found->chunk_count) * packet_header_bytes,
+            .total_packet_bytes =
+                found->group_bytes +
+                static_cast<std::uint32_t>(found->chunk_count) * packet_header_bytes,
             .bytes = std::move(found->bytes),
         };
         state.incomplete.erase(found);
         ++state.report.completed_groups;
-        state.report.latest_completed_group_bytes
-            = static_cast<std::uint32_t>(completed.bytes.size());
+        state.report.latest_completed_group_bytes =
+            static_cast<std::uint32_t>(completed.bytes.size());
         update_current_report(state);
         return {
             .kind = ReassemblyResultKind::Complete,
@@ -489,13 +534,18 @@ namespace simnet
 
     void commit_reassembled_group(ReassemblyState& state, PacketGroupId group_id) noexcept
     {
-        if (group_id <= state.latest_committed_group) {
+        if (group_id <= state.latest_committed_group)
+        {
             return;
         }
         state.latest_committed_group = group_id;
-        std::erase_if(state.incomplete, [group_id](IncompleteByteGroup const& group) {
-            return group.group_id < group_id;
-        });
+        std::erase_if(
+            state.incomplete,
+            [group_id](IncompleteByteGroup const& group)
+            {
+                return group.group_id < group_id;
+            }
+        );
         update_current_report(state);
     }
 

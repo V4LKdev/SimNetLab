@@ -95,8 +95,8 @@ TEST_CASE("replicated entity id zero is rejected", "[snapshot][validation]")
     reconstructed.headings.front() = {0.0F, 1.0F, 0.0F};
     reconstructed.hues.front() = 213U;
     auto const reconstructed_before = reconstructed;
-    auto const reconstruction
-        = simnet::reconstruct_world_snapshot(&baseline, invalid_reconstruction, reconstructed);
+    auto const reconstruction =
+        simnet::reconstruct_world_snapshot(&baseline, invalid_reconstruction, reconstructed);
     CHECK_FALSE(reconstruction.valid);
     CHECK(reconstructed.tick == reconstructed_before.tick);
     CHECK(reconstructed.ids == reconstructed_before.ids);
@@ -166,8 +166,8 @@ TEST_CASE("validated Patch reconstruction still requires a baseline", "[snapshot
     reconstructed.tick = 91U;
     auto const reconstructed_before = reconstructed;
 
-    auto const result
-        = simnet::reconstruct_world_snapshot_unchecked(nullptr, update, reconstructed);
+    auto const result =
+        simnet::reconstruct_world_snapshot_unchecked(nullptr, update, reconstructed);
     CHECK_FALSE(result.valid);
     CHECK(result.message == "snapshot patch requires a baseline");
     CHECK(reconstructed.tick == reconstructed_before.tick);

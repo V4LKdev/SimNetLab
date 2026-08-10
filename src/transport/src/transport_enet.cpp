@@ -51,16 +51,18 @@ namespace simnet
         [[nodiscard]] bool
         payload_size_allowed(std::size_t size, TransportLimits const& limits) noexcept
         {
-            if (size > max_reassembled_payload_bytes) {
+            if (size > max_reassembled_payload_bytes)
+            {
                 return false;
             }
-            return limits.size_policy != SendSizePolicy::EnforceLimit
-                || size <= limits.max_payload_bytes;
+            return limits.size_policy != SendSizePolicy::EnforceLimit ||
+                   size <= limits.max_payload_bytes;
         }
 
         [[nodiscard]] ENetPacketFlag delivery_flags(TransportDelivery delivery) noexcept
         {
-            switch (delivery) {
+            switch (delivery)
+            {
                 case TransportDelivery::ReliableSequenced:
                     return ENET_PACKET_FLAG_RELIABLE;
                 case TransportDelivery::UnreliableSequenced:
@@ -71,7 +73,8 @@ namespace simnet
 
         [[nodiscard]] TransportDelivery packet_delivery(ENetPacket const& packet) noexcept
         {
-            if ((packet.flags & ENET_PACKET_FLAG_RELIABLE) != 0U) {
+            if ((packet.flags & ENET_PACKET_FLAG_RELIABLE) != 0U)
+            {
                 return TransportDelivery::ReliableSequenced;
             }
             return TransportDelivery::UnreliableSequenced;
@@ -80,7 +83,8 @@ namespace simnet
         [[nodiscard]] std::size_t unfragmented_payload_limit(ENetPeer const& peer) noexcept
         {
             auto overhead = sizeof(ENetProtocolHeader) + sizeof(ENetProtocolSendFragment);
-            if (peer.host->checksum != nullptr) {
+            if (peer.host->checksum != nullptr)
+            {
                 overhead += sizeof(enet_uint32);
             }
             return peer.mtu > overhead ? peer.mtu - overhead : 0U;
@@ -105,7 +109,8 @@ namespace simnet
 
             ~EnetRuntime()
             {
-                if (initialized) {
+                if (initialized)
+                {
                     enet_deinitialize();
                 }
             }
@@ -122,14 +127,14 @@ namespace simnet
         [[nodiscard]] TransportResult require_enet()
         {
             return enet_runtime().initialized
-                ? ok()
-                : fail(TransportErrorCode::BackendError, "ENet initialization failed");
+                       ? ok()
+                       : fail(TransportErrorCode::BackendError, "ENet initialization failed");
         }
 
         [[nodiscard]] bool set_enet_address_host(ENetAddress& address, std::string const& host)
         {
-            return enet_address_set_host_ip(&address, host.c_str()) == 0
-                || enet_address_set_host(&address, host.c_str()) == 0;
+            return enet_address_set_host_ip(&address, host.c_str()) == 0 ||
+                   enet_address_set_host(&address, host.c_str()) == 0;
         }
 
         void add_send_stats(TransportStats& stats, TransportLane lane, std::size_t bytes)
@@ -159,16 +164,19 @@ namespace simnet
             std::span<Byte const> payload
         )
         {
-            if (!valid_lane(lane)) {
+            if (!valid_lane(lane))
+            {
                 ++stats.send_failures;
                 return fail(TransportErrorCode::InvalidLane, "invalid transport lane");
             }
-            if (!valid_delivery(delivery)) {
+            if (!valid_delivery(delivery))
+            {
                 ++stats.send_failures;
                 return fail(TransportErrorCode::InvalidDelivery, "invalid transport delivery mode");
             }
-            if (limits.size_policy == SendSizePolicy::EnforceLimit
-                && payload.size() > limits.max_payload_bytes) {
+            if (limits.size_policy == SendSizePolicy::EnforceLimit &&
+                payload.size() > limits.max_payload_bytes)
+            {
                 ++stats.send_failures;
                 ++stats.oversize_drops;
                 return fail(
@@ -176,7 +184,8 @@ namespace simnet
                     "transport payload exceeds configured limit"
                 );
             }
-            if (payload.size() > max_reassembled_payload_bytes) {
+            if (payload.size() > max_reassembled_payload_bytes)
+            {
                 ++stats.send_failures;
                 ++stats.oversize_drops;
                 return fail(
@@ -184,8 +193,9 @@ namespace simnet
                     "transport payload exceeds hard payload limit"
                 );
             }
-            if (delivery == TransportDelivery::UnreliableSequenced
-                && payload.size() > unfragmented_payload_limit(*peer)) {
+            if (delivery == TransportDelivery::UnreliableSequenced &&
+                payload.size() > unfragmented_payload_limit(*peer))
+            {
                 ++stats.send_failures;
                 ++stats.oversize_drops;
                 return fail(
@@ -194,13 +204,15 @@ namespace simnet
                 );
             }
 
-            auto* packet
-                = enet_packet_create(payload.data(), payload.size(), delivery_flags(delivery));
-            if (packet == nullptr) {
+            auto* packet =
+                enet_packet_create(payload.data(), payload.size(), delivery_flags(delivery));
+            if (packet == nullptr)
+            {
                 ++stats.send_failures;
                 return fail(TransportErrorCode::BackendError, "ENet packet allocation failed");
             }
-            if (enet_peer_send(peer, lane_index(lane), packet) != 0) {
+            if (enet_peer_send(peer, lane_index(lane), packet) != 0)
+            {
                 enet_packet_destroy(packet);
                 ++stats.send_failures;
                 return fail(TransportErrorCode::BackendError, "ENet send failed");
@@ -212,13 +224,14 @@ namespace simnet
 
         [[nodiscard]] PeerStats make_peer_stats(ENetPeer const* peer) noexcept
         {
-            if (peer == nullptr) {
+            if (peer == nullptr)
+            {
                 return {};
             }
             return {
                 .rtt_ms = static_cast<double>(peer->roundTripTime),
-                .packet_loss_ratio = static_cast<double>(peer->packetLoss)
-                    / static_cast<double>(ENET_PEER_PACKET_LOSS_SCALE),
+                .packet_loss_ratio = static_cast<double>(peer->packetLoss) /
+                                     static_cast<double>(ENET_PEER_PACKET_LOSS_SCALE),
                 .reliable_bytes_in_flight = peer->reliableDataInTransit,
                 .waiting_bytes = peer->totalWaitingData,
                 .mtu = peer->mtu,
@@ -237,7 +250,7 @@ namespace simnet
 
     struct TransportServer::Impl
     {
-    public:
+      public:
         ~Impl()
         {
             stop();
@@ -245,7 +258,8 @@ namespace simnet
 
         TransportResult start(TransportServerSettings const& settings)
         {
-            if (host_ != nullptr) {
+            if (host_ != nullptr)
+            {
                 return fail(
                     TransportErrorCode::AlreadyStarted,
                     "transport server is already started"
@@ -257,10 +271,12 @@ namespace simnet
             expired_peer_ids_.clear();
             next_peer_id_ = 1;
 
-            if (auto ready = require_enet(); !ready.ok) {
+            if (auto ready = require_enet(); !ready.ok)
+            {
                 return ready;
             }
-            if (settings.port == 0 || settings.max_peers == 0) {
+            if (settings.port == 0 || settings.max_peers == 0)
+            {
                 return fail(
                     TransportErrorCode::InvalidAddress,
                     "server transport port and max_peers must be non-zero"
@@ -269,13 +285,15 @@ namespace simnet
             expired_peer_ids_.reserve(settings.max_peers);
 
             auto address = ENetAddress{.host = ENET_HOST_ANY, .port = settings.port};
-            if (!settings.bind_address.empty()
-                && !set_enet_address_host(address, settings.bind_address)) {
+            if (!settings.bind_address.empty() &&
+                !set_enet_address_host(address, settings.bind_address))
+            {
                 return fail(TransportErrorCode::InvalidAddress, "invalid server bind address");
             }
 
             host_ = enet_host_create(&address, settings.max_peers, channel_count, 0, 0);
-            if (host_ == nullptr) {
+            if (host_ == nullptr)
+            {
                 return fail(TransportErrorCode::BackendError, "failed to create ENet server host");
             }
             return ok();
@@ -283,7 +301,8 @@ namespace simnet
 
         void stop() noexcept
         {
-            if (host_ != nullptr) {
+            if (host_ != nullptr)
+            {
                 enet_host_destroy(host_);
                 host_ = nullptr;
             }
@@ -297,22 +316,27 @@ namespace simnet
 
         TransportResult poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
         {
-            if (host_ == nullptr) {
+            if (host_ == nullptr)
+            {
                 return fail(TransportErrorCode::NotStarted, "transport server is not started");
             }
 
             auto event = ENetEvent{};
             auto wait_ms = timeout_ms;
-            for (;;) {
+            for (;;)
+            {
                 auto const service_result = enet_host_service(host_, &event, wait_ms);
-                if (service_result < 0) {
+                if (service_result < 0)
+                {
                     return fail(TransportErrorCode::BackendError, "ENet server service failed");
                 }
-                if (service_result == 0) {
+                if (service_result == 0)
+                {
                     break;
                 }
                 wait_ms = 0;
-                if (event.type == ENET_EVENT_TYPE_CONNECT) {
+                if (event.type == ENET_EVENT_TYPE_CONNECT)
+                {
                     auto const id = next_peer_id_++;
                     set_peer_id(event.peer, id);
                     peers_.push_back({
@@ -321,10 +345,14 @@ namespace simnet
                         .connected_at = std::chrono::steady_clock::now(),
                     });
                     out_events.push_back(PeerConnected{.peer = id});
-                } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+                }
+                else if (event.type == ENET_EVENT_TYPE_RECEIVE)
+                {
                     handle_receive(event, out_events);
                     enet_packet_destroy(event.packet);
-                } else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
+                }
+                else if (event.type == ENET_EVENT_TYPE_DISCONNECT)
+                {
                     auto const id = event_peer_id(event.peer);
                     ++counters_.disconnects;
                     out_events.push_back(
@@ -338,7 +366,8 @@ namespace simnet
                         std::remove_if(
                             peers_.begin(),
                             peers_.end(),
-                            [id](PeerSlot const& slot) {
+                            [id](PeerSlot const& slot)
+                            {
                                 return slot.id == id;
                             }
                         ),
@@ -353,14 +382,17 @@ namespace simnet
 
         TransportResult send(SendPacket const& packet)
         {
-            if (host_ == nullptr) {
+            if (host_ == nullptr)
+            {
                 return fail(TransportErrorCode::NotStarted, "transport server is not started");
             }
             auto* slot = find(packet.peer);
-            if (slot == nullptr) {
+            if (slot == nullptr)
+            {
                 return fail(TransportErrorCode::PeerNotFound, "transport peer was not found");
             }
-            if (!slot->session_ready) {
+            if (!slot->session_ready)
+            {
                 return fail(
                     TransportErrorCode::PeerNotReady,
                     "transport peer session is not ready"
@@ -378,9 +410,10 @@ namespace simnet
 
         void disconnect(PeerId peer, DisconnectCode code) noexcept
         {
-            if (auto* slot = find(peer); slot != nullptr && slot->peer != nullptr) {
-                auto const safe_code
-                    = valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
+            if (auto* slot = find(peer); slot != nullptr && slot->peer != nullptr)
+            {
+                auto const safe_code =
+                    valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
                 enet_peer_disconnect_later(slot->peer, static_cast<std::uint32_t>(safe_code));
             }
         }
@@ -396,20 +429,28 @@ namespace simnet
             return slot == nullptr ? PeerStats{} : make_peer_stats(slot->peer);
         }
 
-    private:
+      private:
         [[nodiscard]] PeerSlot* find(PeerId id) noexcept
         {
-            auto found = std::ranges::find_if(peers_, [id](PeerSlot const& slot) {
-                return slot.id == id;
-            });
+            auto found = std::ranges::find_if(
+                peers_,
+                [id](PeerSlot const& slot)
+                {
+                    return slot.id == id;
+                }
+            );
             return found == peers_.end() ? nullptr : &*found;
         }
 
         [[nodiscard]] PeerSlot const* find(PeerId id) const noexcept
         {
-            auto found = std::ranges::find_if(peers_, [id](PeerSlot const& slot) {
-                return slot.id == id;
-            });
+            auto found = std::ranges::find_if(
+                peers_,
+                [id](PeerSlot const& slot)
+                {
+                    return slot.id == id;
+                }
+            );
             return found == peers_.end() ? nullptr : &*found;
         }
 
@@ -435,7 +476,8 @@ namespace simnet
             std::vector<TransportEvent>& events
         )
         {
-            if (slot.session_ready) {
+            if (slot.session_ready)
+            {
                 events.push_back(
                     TransportErrorEvent{
                         .message = "duplicate ClientHello after session ready",
@@ -446,7 +488,8 @@ namespace simnet
             }
 
             auto const mismatch = identity_mismatch(message.identity, settings_.expected_identity);
-            if (mismatch != DisconnectCode::None) {
+            if (mismatch != DisconnectCode::None)
+            {
                 static_cast<void>(send_session(
                     slot.peer,
                     {
@@ -464,7 +507,8 @@ namespace simnet
             }
 
             auto accepted = send_session(slot.peer, {.kind = SessionMessageKind::ServerAccept});
-            if (!accepted.ok) {
+            if (!accepted.ok)
+            {
                 events.push_back(
                     TransportErrorEvent{
                         .message = accepted.error.message,
@@ -481,7 +525,8 @@ namespace simnet
         {
             auto const peer = event_peer_id(event.peer);
             auto const lane = static_cast<TransportLane>(event.channelID);
-            if (!valid_lane(lane)) {
+            if (!valid_lane(lane))
+            {
                 out_events.push_back(
                     TransportErrorEvent{
                         .message = "received packet on invalid ENet channel",
@@ -490,12 +535,13 @@ namespace simnet
                 return;
             }
             auto* slot = find(peer);
-            auto const handshake_packet
-                = slot != nullptr && !slot->session_ready && lane == TransportLane::Lane0;
-            auto const size_allowed = handshake_packet
-                ? event.packet->dataLength <= max_session_message_bytes
-                : payload_size_allowed(event.packet->dataLength, settings_.limits);
-            if (!size_allowed) {
+            auto const handshake_packet =
+                slot != nullptr && !slot->session_ready && lane == TransportLane::Lane0;
+            auto const size_allowed =
+                handshake_packet ? event.packet->dataLength <= max_session_message_bytes
+                                 : payload_size_allowed(event.packet->dataLength, settings_.limits);
+            if (!size_allowed)
+            {
                 ++counters_.oversize_drops;
                 out_events.push_back(
                     TransportErrorEvent{
@@ -507,25 +553,32 @@ namespace simnet
             }
             add_receive_stats(counters_, lane, event.packet->dataLength);
 
-            if (slot == nullptr) {
+            if (slot == nullptr)
+            {
                 return;
             }
-            if (!slot->session_ready) {
+            if (!slot->session_ready)
+            {
                 auto message = SessionMessage{};
                 auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
-                if (lane != TransportLane::Lane0
-                    || !decode_session_message(data, event.packet->dataLength, message)
-                    || message.kind != SessionMessageKind::ClientHello) {
+                if (lane != TransportLane::Lane0 ||
+                    !decode_session_message(data, event.packet->dataLength, message) ||
+                    message.kind != SessionMessageKind::ClientHello)
+                {
                     out_events.push_back(
                         TransportErrorEvent{
                             .message = "invalid client session message",
                         }
                     );
                     disconnect(peer, DisconnectCode::ProtocolMismatch);
-                } else {
+                }
+                else
+                {
                     handle_client_hello(*slot, message, out_events);
                 }
-            } else {
+            }
+            else
+            {
                 auto payload = std::vector<Byte>(event.packet->dataLength);
                 std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
                 out_events.push_back(
@@ -543,8 +596,10 @@ namespace simnet
         {
             auto const now = std::chrono::steady_clock::now();
             expired_peer_ids_.clear();
-            for (auto const& slot : peers_) {
-                if (!slot.session_ready && now - slot.connected_at >= handshake_timeout) {
+            for (auto const& slot : peers_)
+            {
+                if (!slot.session_ready && now - slot.connected_at >= handshake_timeout)
+                {
                     enet_peer_disconnect_now(
                         slot.peer,
                         static_cast<std::uint32_t>(DisconnectCode::Timeout)
@@ -565,9 +620,10 @@ namespace simnet
                 std::remove_if(
                     peers_.begin(),
                     peers_.end(),
-                    [this](PeerSlot const& slot) {
-                        return std::ranges::find(expired_peer_ids_, slot.id)
-                            != expired_peer_ids_.end();
+                    [this](PeerSlot const& slot)
+                    {
+                        return std::ranges::find(expired_peer_ids_, slot.id) !=
+                               expired_peer_ids_.end();
                     }
                 ),
                 peers_.end()
@@ -584,7 +640,7 @@ namespace simnet
 
     struct TransportClient::Impl
     {
-    public:
+      public:
         ~Impl()
         {
             disconnect(DisconnectCode::None);
@@ -592,7 +648,8 @@ namespace simnet
 
         TransportResult connect(TransportClientSettings const& settings)
         {
-            if (host_ != nullptr) {
+            if (host_ != nullptr)
+            {
                 return fail(
                     TransportErrorCode::AlreadyStarted,
                     "transport client is already connected or connecting"
@@ -603,10 +660,12 @@ namespace simnet
             transport_connected_ = false;
             session_ready_ = false;
 
-            if (auto ready = require_enet(); !ready.ok) {
+            if (auto ready = require_enet(); !ready.ok)
+            {
                 return ready;
             }
-            if (settings.server_port == 0 || settings.server_address.empty()) {
+            if (settings.server_port == 0 || settings.server_address.empty())
+            {
                 return fail(
                     TransportErrorCode::InvalidAddress,
                     "client server address and port are required"
@@ -614,7 +673,8 @@ namespace simnet
             }
 
             host_ = enet_host_create(nullptr, 1, channel_count, 0, 0);
-            if (host_ == nullptr) {
+            if (host_ == nullptr)
+            {
                 return fail(TransportErrorCode::BackendError, "failed to create ENet client host");
             }
 
@@ -622,13 +682,15 @@ namespace simnet
                 .host = 0,
                 .port = settings.server_port,
             };
-            if (!set_enet_address_host(address, settings.server_address)) {
+            if (!set_enet_address_host(address, settings.server_address))
+            {
                 disconnect(DisconnectCode::None);
                 return fail(TransportErrorCode::InvalidAddress, "invalid server address");
             }
 
             server_ = enet_host_connect(host_, &address, channel_count, 0);
-            if (server_ == nullptr) {
+            if (server_ == nullptr)
+            {
                 disconnect(DisconnectCode::None);
                 return fail(
                     TransportErrorCode::ConnectionFailed,
@@ -642,37 +704,43 @@ namespace simnet
 
         void disconnect(DisconnectCode code) noexcept
         {
-            if (server_ != nullptr) {
+            if (server_ != nullptr)
+            {
                 auto* disconnecting_peer = server_;
-                auto const safe_code
-                    = valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
+                auto const safe_code =
+                    valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
                 enet_peer_disconnect(disconnecting_peer, static_cast<std::uint32_t>(safe_code));
                 enet_host_flush(host_);
 
                 auto event = ENetEvent{};
-                auto const deadline
-                    = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
-                while (std::chrono::steady_clock::now() < deadline) {
+                auto const deadline =
+                    std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+                while (std::chrono::steady_clock::now() < deadline)
+                {
                     auto const remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
                         deadline - std::chrono::steady_clock::now()
                     );
-                    auto const timeout
-                        = static_cast<std::uint32_t>(std::max<std::int64_t>(remaining.count(), 0));
+                    auto const timeout =
+                        static_cast<std::uint32_t>(std::max<std::int64_t>(remaining.count(), 0));
                     auto const service_result = enet_host_service(host_, &event, timeout);
-                    if (service_result <= 0) {
+                    if (service_result <= 0)
+                    {
                         break;
                     }
-                    if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+                    if (event.type == ENET_EVENT_TYPE_RECEIVE)
+                    {
                         enet_packet_destroy(event.packet);
                     }
-                    if (event.type == ENET_EVENT_TYPE_DISCONNECT
-                        && event.peer == disconnecting_peer) {
+                    if (event.type == ENET_EVENT_TYPE_DISCONNECT &&
+                        event.peer == disconnecting_peer)
+                    {
                         break;
                     }
                 }
                 server_ = nullptr;
             }
-            if (host_ != nullptr) {
+            if (host_ != nullptr)
+            {
                 enet_host_destroy(host_);
                 host_ = nullptr;
             }
@@ -697,22 +765,27 @@ namespace simnet
 
         TransportResult poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
         {
-            if (host_ == nullptr) {
+            if (host_ == nullptr)
+            {
                 return fail(TransportErrorCode::NotStarted, "transport client is not connected");
             }
 
             auto event = ENetEvent{};
             auto wait_ms = timeout_ms;
-            for (;;) {
+            for (;;)
+            {
                 auto const service_result = enet_host_service(host_, &event, wait_ms);
-                if (service_result < 0) {
+                if (service_result < 0)
+                {
                     return fail(TransportErrorCode::BackendError, "ENet client service failed");
                 }
-                if (service_result == 0) {
+                if (service_result == 0)
+                {
                     break;
                 }
                 wait_ms = 0;
-                if (event.type == ENET_EVENT_TYPE_CONNECT) {
+                if (event.type == ENET_EVENT_TYPE_CONNECT)
+                {
                     transport_connected_ = true;
                     out_events.push_back(
                         PeerConnected{
@@ -723,17 +796,22 @@ namespace simnet
                         .kind = SessionMessageKind::ClientHello,
                         .identity = settings_.identity,
                     });
-                    if (!sent.ok) {
+                    if (!sent.ok)
+                    {
                         out_events.push_back(
                             TransportErrorEvent{
                                 .message = sent.error.message,
                             }
                         );
                     }
-                } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+                }
+                else if (event.type == ENET_EVENT_TYPE_RECEIVE)
+                {
                     handle_receive(event, out_events);
                     enet_packet_destroy(event.packet);
-                } else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
+                }
+                else if (event.type == ENET_EVENT_TYPE_DISCONNECT)
+                {
                     ++counters_.disconnects;
                     out_events.push_back(
                         PeerDisconnected{
@@ -754,10 +832,12 @@ namespace simnet
         TransportResult
         send(TransportLane lane, TransportDelivery delivery, std::span<Byte const> payload)
         {
-            if (host_ == nullptr || server_ == nullptr) {
+            if (host_ == nullptr || server_ == nullptr)
+            {
                 return fail(TransportErrorCode::NotStarted, "transport client is not connected");
             }
-            if (!session_ready_) {
+            if (!session_ready_)
+            {
                 return fail(
                     TransportErrorCode::PeerNotReady,
                     "transport server session is not ready"
@@ -776,7 +856,7 @@ namespace simnet
             return make_peer_stats(server_);
         }
 
-    private:
+      private:
         [[nodiscard]] TransportResult
         send_session(SessionMessage const& message, TransportLane lane = TransportLane::Lane0)
         {
@@ -797,7 +877,8 @@ namespace simnet
         void handle_receive(ENetEvent const& event, std::vector<TransportEvent>& out_events)
         {
             auto const lane = static_cast<TransportLane>(event.channelID);
-            if (!valid_lane(lane)) {
+            if (!valid_lane(lane))
+            {
                 out_events.push_back(
                     TransportErrorEvent{
                         .message = "received packet on invalid ENet channel",
@@ -806,10 +887,11 @@ namespace simnet
                 return;
             }
             auto const handshake_packet = !session_ready_ && lane == TransportLane::Lane0;
-            auto const size_allowed = handshake_packet
-                ? event.packet->dataLength <= max_session_message_bytes
-                : payload_size_allowed(event.packet->dataLength, settings_.limits);
-            if (!size_allowed) {
+            auto const size_allowed =
+                handshake_packet ? event.packet->dataLength <= max_session_message_bytes
+                                 : payload_size_allowed(event.packet->dataLength, settings_.limits);
+            if (!size_allowed)
+            {
                 ++counters_.oversize_drops;
                 out_events.push_back(
                     TransportErrorEvent{
@@ -820,8 +902,8 @@ namespace simnet
                     PeerDisconnected{
                         .peer = server_peer_id,
                         .code = DisconnectCode::ProtocolMismatch,
-                        .native_reason
-                        = static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch),
+                        .native_reason =
+                            static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch),
                     }
                 );
                 ++counters_.disconnects;
@@ -836,18 +918,23 @@ namespace simnet
             }
             add_receive_stats(counters_, lane, event.packet->dataLength);
 
-            if (!session_ready_) {
+            if (!session_ready_)
+            {
                 auto message = SessionMessage{};
                 auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
-                if (lane != TransportLane::Lane0
-                    || !decode_session_message(data, event.packet->dataLength, message)) {
+                if (lane != TransportLane::Lane0 ||
+                    !decode_session_message(data, event.packet->dataLength, message))
+                {
                     out_events.push_back(
                         TransportErrorEvent{
                             .message = "invalid server session message",
                         }
                     );
-                } else if (message.kind == SessionMessageKind::ServerAccept) {
-                    if (!session_ready_) {
+                }
+                else if (message.kind == SessionMessageKind::ServerAccept)
+                {
+                    if (!session_ready_)
+                    {
                         session_ready_ = true;
                         out_events.push_back(
                             PeerSessionReady{
@@ -855,7 +942,9 @@ namespace simnet
                             }
                         );
                     }
-                } else if (message.kind == SessionMessageKind::ServerReject) {
+                }
+                else if (message.kind == SessionMessageKind::ServerReject)
+                {
                     out_events.push_back(
                         TransportErrorEvent{
                             .message = "server rejected transport session",
@@ -876,7 +965,9 @@ namespace simnet
                     server_ = nullptr;
                     transport_connected_ = false;
                     session_ready_ = false;
-                } else {
+                }
+                else
+                {
                     out_events.push_back(
                         TransportErrorEvent{
                             .message = "invalid server control message",
@@ -890,7 +981,9 @@ namespace simnet
                     transport_connected_ = false;
                     session_ready_ = false;
                 }
-            } else {
+            }
+            else
+            {
                 auto payload = std::vector<Byte>(event.packet->dataLength);
                 std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
                 out_events.push_back(
@@ -906,8 +999,9 @@ namespace simnet
 
         void expire_pending_session(std::vector<TransportEvent>& out_events)
         {
-            if (server_ == nullptr || session_ready_
-                || std::chrono::steady_clock::now() - connect_started_at_ < handshake_timeout) {
+            if (server_ == nullptr || session_ready_ ||
+                std::chrono::steady_clock::now() - connect_started_at_ < handshake_timeout)
+            {
                 return;
             }
             enet_peer_disconnect_now(server_, static_cast<std::uint32_t>(DisconnectCode::Timeout));
@@ -933,8 +1027,7 @@ namespace simnet
         std::chrono::steady_clock::time_point connect_started_at_{};
     };
 
-    TransportServer::TransportServer()
-        : impl_(new Impl{})
+    TransportServer::TransportServer() : impl_(new Impl{})
     {
     }
 
@@ -951,7 +1044,8 @@ namespace simnet
 
     TransportServer& TransportServer::operator=(TransportServer&& other) noexcept
     {
-        if (this != &other) {
+        if (this != &other)
+        {
             stop();
             delete impl_;
             impl_ = std::exchange(other.impl_, nullptr);
@@ -961,7 +1055,8 @@ namespace simnet
 
     TransportResult TransportServer::start(TransportServerSettings const& settings)
     {
-        if (impl_ == nullptr || impl_->is_running()) {
+        if (impl_ == nullptr || impl_->is_running())
+        {
             return fail(TransportErrorCode::AlreadyStarted, "transport server is already started");
         }
         return impl_->start(settings);
@@ -969,7 +1064,8 @@ namespace simnet
 
     void TransportServer::stop() noexcept
     {
-        if (impl_ != nullptr) {
+        if (impl_ != nullptr)
+        {
             impl_->stop();
         }
     }
@@ -982,7 +1078,8 @@ namespace simnet
     TransportResult
     TransportServer::poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
     {
-        if (impl_ == nullptr) {
+        if (impl_ == nullptr)
+        {
             return fail(TransportErrorCode::NotStarted, "transport server is not started");
         }
         return impl_->poll(out_events, timeout_ms);
@@ -990,7 +1087,8 @@ namespace simnet
 
     TransportResult TransportServer::send(SendPacket const& packet)
     {
-        if (impl_ == nullptr) {
+        if (impl_ == nullptr)
+        {
             return fail(TransportErrorCode::NotStarted, "transport server is not started");
         }
         return impl_->send(packet);
@@ -998,7 +1096,8 @@ namespace simnet
 
     void TransportServer::disconnect(PeerId peer, DisconnectCode code) noexcept
     {
-        if (impl_ != nullptr) {
+        if (impl_ != nullptr)
+        {
             impl_->disconnect(peer, code);
         }
     }
@@ -1013,8 +1112,7 @@ namespace simnet
         return impl_ == nullptr ? PeerStats{} : impl_->peer_stats(peer);
     }
 
-    TransportClient::TransportClient()
-        : impl_(new Impl{})
+    TransportClient::TransportClient() : impl_(new Impl{})
     {
     }
 
@@ -1031,7 +1129,8 @@ namespace simnet
 
     TransportClient& TransportClient::operator=(TransportClient&& other) noexcept
     {
-        if (this != &other) {
+        if (this != &other)
+        {
             disconnect(DisconnectCode::None);
             delete impl_;
             impl_ = std::exchange(other.impl_, nullptr);
@@ -1041,7 +1140,8 @@ namespace simnet
 
     TransportResult TransportClient::connect(TransportClientSettings const& settings)
     {
-        if (impl_ == nullptr || impl_->is_started()) {
+        if (impl_ == nullptr || impl_->is_started())
+        {
             return fail(
                 TransportErrorCode::AlreadyStarted,
                 "transport client is already connected or connecting"
@@ -1052,7 +1152,8 @@ namespace simnet
 
     void TransportClient::disconnect(DisconnectCode code) noexcept
     {
-        if (impl_ != nullptr) {
+        if (impl_ != nullptr)
+        {
             impl_->disconnect(code);
         }
     }
@@ -1070,7 +1171,8 @@ namespace simnet
     TransportResult
     TransportClient::poll(std::vector<TransportEvent>& out_events, std::uint32_t timeout_ms)
     {
-        if (impl_ == nullptr) {
+        if (impl_ == nullptr)
+        {
             return fail(TransportErrorCode::NotStarted, "transport client is not connected");
         }
         return impl_->poll(out_events, timeout_ms);
@@ -1082,7 +1184,8 @@ namespace simnet
         std::span<Byte const> payload
     )
     {
-        if (impl_ == nullptr) {
+        if (impl_ == nullptr)
+        {
             return fail(TransportErrorCode::NotStarted, "transport client is not connected");
         }
         return impl_->send(lane, delivery, payload);

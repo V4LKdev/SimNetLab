@@ -28,7 +28,8 @@ TEST_CASE("application role and pause messages round-trip exactly", "[app_protoc
                  .peer_id = 7U,
                  .player_id = 42U,
              },
-         }) {
+         })
+    {
         auto const bytes = simnet::app::encode_app_message(message);
         auto decoded = simnet::app::AppMessage{};
         REQUIRE(simnet::app::decode_app_message(bytes, decoded));
@@ -115,27 +116,26 @@ TEST_CASE(
         .player_id = 0x10203040U,
     });
     CHECK(
-        bytes
-        == std::vector<simnet::Byte>{
-            static_cast<simnet::Byte>(simnet::app::AppMessageKind::JoinAccepted),
-            simnet::Byte{2U},
-            simnet::Byte{1U},
-            simnet::Byte{0x12U},
-            simnet::Byte{0x34U},
-            simnet::Byte{0x10U},
-            simnet::Byte{0x20U},
-            simnet::Byte{0x30U},
-            simnet::Byte{0x40U},
-        }
+        bytes == std::vector<simnet::Byte>{
+                     static_cast<simnet::Byte>(simnet::app::AppMessageKind::JoinAccepted),
+                     simnet::Byte{2U},
+                     simnet::Byte{1U},
+                     simnet::Byte{0x12U},
+                     simnet::Byte{0x34U},
+                     simnet::Byte{0x10U},
+                     simnet::Byte{0x20U},
+                     simnet::Byte{0x30U},
+                     simnet::Byte{0x40U},
+                 }
     );
 }
 
 TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
 {
     auto const input = simnet::app::PlayerInputMessage{
-        .buttons = static_cast<std::uint8_t>(simnet::app::PlayerButton::W)
-            | static_cast<std::uint8_t>(simnet::app::PlayerButton::Shift)
-            | static_cast<std::uint8_t>(simnet::app::PlayerButton::LeftMouse),
+        .buttons = static_cast<std::uint8_t>(simnet::app::PlayerButton::W) |
+                   static_cast<std::uint8_t>(simnet::app::PlayerButton::Shift) |
+                   static_cast<std::uint8_t>(simnet::app::PlayerButton::LeftMouse),
     };
     auto const bytes = simnet::app::encode_player_input(input);
     REQUIRE(bytes.size() == 3U);
@@ -182,8 +182,8 @@ TEST_CASE("snapshot recovery request is versioned and transactional", "[app_prot
     auto const bytes = simnet::app::encode_snapshot_recovery_request(expected);
     REQUIRE(bytes.size() == 10U);
     CHECK(
-        simnet::app::decode_app_message_kind(bytes)
-        == simnet::app::AppMessageKind::SnapshotRecoveryRequest
+        simnet::app::decode_app_message_kind(bytes) ==
+        simnet::app::AppMessageKind::SnapshotRecoveryRequest
     );
     auto decoded = simnet::app::SnapshotRecoveryRequest{};
     REQUIRE(simnet::app::decode_snapshot_recovery_request(bytes, decoded));
@@ -222,7 +222,8 @@ TEST_CASE(
     CHECK(decoded.forward.y == 0.0F);
     CHECK(decoded.forward.z == 1.0F);
 
-    auto reject = [&](std::vector<simnet::Byte> malformed) {
+    auto reject = [&](std::vector<simnet::Byte> malformed)
+    {
         auto destination = simnet::app::StationaryObserverInterestMessage{
             .position = {9.0F, 8.0F, 7.0F},
             .forward = {.x = 1.0F},
@@ -270,8 +271,7 @@ TEST_CASE(
             state,
             initial,
             simnet::Nanoseconds{100'000'000}
-        )
-        == simnet::app::StationaryObserverInterestResult::Accepted
+        ) == simnet::app::StationaryObserverInterestResult::Accepted
     );
     auto rotated = initial;
     rotated.forward = {.x = 1.0F};
@@ -280,8 +280,7 @@ TEST_CASE(
             state,
             rotated,
             simnet::Nanoseconds{120'000'000}
-        )
-        == simnet::app::StationaryObserverInterestResult::RateLimited
+        ) == simnet::app::StationaryObserverInterestResult::RateLimited
     );
     CHECK(state.forward.z == 1.0F);
     CHECK(
@@ -289,8 +288,7 @@ TEST_CASE(
             state,
             rotated,
             simnet::Nanoseconds{150'000'000}
-        )
-        == simnet::app::StationaryObserverInterestResult::Accepted
+        ) == simnet::app::StationaryObserverInterestResult::Accepted
     );
     auto translated = rotated;
     translated.position.x = 2.0F;
@@ -299,8 +297,7 @@ TEST_CASE(
             state,
             translated,
             simnet::Nanoseconds{250'000'000}
-        )
-        == simnet::app::StationaryObserverInterestResult::PositionChanged
+        ) == simnet::app::StationaryObserverInterestResult::PositionChanged
     );
     CHECK(state.position.x == 1.0F);
 }

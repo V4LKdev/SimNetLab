@@ -37,8 +37,8 @@ export namespace simnet
 
         [[nodiscard]] bool valid() const noexcept
         {
-            return ids.size() == positions.size() && ids.size() == headings.size()
-                && ids.size() == hues.size();
+            return ids.size() == positions.size() && ids.size() == headings.size() &&
+                   ids.size() == hues.size();
         }
 
         [[nodiscard]] std::size_t size() const noexcept

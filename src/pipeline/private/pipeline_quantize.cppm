@@ -59,7 +59,8 @@ namespace simnet::pipeline_quantize
         value.y *= inv_l1;
         value.z *= inv_l1;
 
-        if (value.z < 0.0F) {
+        if (value.z < 0.0F)
+        {
             auto const old_x = value.x;
             auto const old_y = value.y;
             value.x = (1.0F - std::abs(old_y)) * sign_not_zero(old_x);
@@ -80,7 +81,8 @@ namespace simnet::pipeline_quantize
         };
         value.z = 1.0F - std::abs(value.x) - std::abs(value.y);
 
-        if (value.z < 0.0F) {
+        if (value.z < 0.0F)
+        {
             auto const old_x = value.x;
             auto const old_y = value.y;
             value.x = (1.0F - std::abs(old_y)) * sign_not_zero(old_x);

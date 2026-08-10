@@ -101,10 +101,10 @@ namespace
 
     [[nodiscard]] bool valid_boid_state(simnet::EntityState const& boid) noexcept
     {
-        return boid.id != 0U && boid.classification == simnet::boid_entity_classification
-            && simnet::is_finite(boid.position) && simnet::is_finite(boid.heading)
-            && std::abs(simnet::length(boid.heading) - 1.0F)
-            <= simnet::heading_normalization_tolerance;
+        return boid.id != 0U && boid.classification == simnet::boid_entity_classification &&
+               simnet::is_finite(boid.position) && simnet::is_finite(boid.heading) &&
+               std::abs(simnet::length(boid.heading) - 1.0F) <=
+                   simnet::heading_normalization_tolerance;
     }
 
     [[nodiscard]] auto
@@ -116,8 +116,8 @@ namespace
     [[nodiscard]] simnet::EntityNetId next_entity_id(simnet::EntityNetId id) noexcept
     {
         return id == std::numeric_limits<simnet::EntityNetId>::max()
-            ? 0U
-            : static_cast<simnet::EntityNetId>(id + 1U);
+                   ? 0U
+                   : static_cast<simnet::EntityNetId>(id + 1U);
     }
 
     void set_authoritative_boid_components(flecs::entity entity, simnet::EntityState const& boid)
@@ -145,10 +145,12 @@ namespace
     void remap_rows(flecs::world& world, AuthoritativeReplicationIndex const& index, std::size_t)
     {
         auto row = std::uint32_t{};
-        for (auto const entity_id : index.entities) {
+        for (auto const entity_id : index.entities)
+        {
             auto entity = flecs::entity{world, entity_id};
-            if (entity.has<FlockRow>()
-                && entity.get<simnet::EntityKindComponent>().value == simnet::EntityKind::Boid) {
+            if (entity.has<FlockRow>() &&
+                entity.get<simnet::EntityKindComponent>().value == simnet::EntityKind::Boid)
+            {
                 entity.set<FlockRow>({.value = row++});
             }
         }
@@ -244,8 +246,7 @@ namespace simnet
         };
 
         explicit Impl(BoidSimulationSettings value, PlayerMovementSettings player_value)
-            : settings(value)
-            , player_settings(player_value)
+            : settings(value), player_settings(player_value)
         {
         }
 
@@ -349,11 +350,13 @@ namespace
     [[nodiscard]] simnet::Vec3f clamp_length(simnet::Vec3f value, float maximum) noexcept
     {
         auto const squared = simnet::length_squared(value);
-        if (maximum <= 0.0F || squared <= vector_epsilon_squared) {
+        if (maximum <= 0.0F || squared <= vector_epsilon_squared)
+        {
             return maximum <= 0.0F ? simnet::Vec3f{} : value;
         }
         auto const maximum_squared = maximum * maximum;
-        if (squared <= maximum_squared) {
+        if (squared <= maximum_squared)
+        {
             return value;
         }
         return value * (maximum / std::sqrt(squared));
@@ -367,14 +370,17 @@ namespace
     ) noexcept
     {
         auto const speed_squared = simnet::length_squared(velocity);
-        if (speed_squared <= vector_epsilon_squared) {
+        if (speed_squared <= vector_epsilon_squared)
+        {
             return minimum > 0.0F ? fallback_heading * minimum : simnet::Vec3f{};
         }
         auto const speed = std::sqrt(speed_squared);
-        if (speed > maximum) {
+        if (speed > maximum)
+        {
             return velocity * (maximum / speed);
         }
-        if (speed < minimum) {
+        if (speed < minimum)
+        {
             return velocity * (minimum / speed);
         }
         return velocity;
@@ -403,7 +409,8 @@ namespace
     [[nodiscard]] float wrap_hue(float hue) noexcept
     {
         hue -= std::floor(hue);
-        if (hue < 0.0F || hue >= 1.0F) {
+        if (hue < 0.0F || hue >= 1.0F)
+        {
             return 0.0F;
         }
         return hue;
@@ -429,12 +436,13 @@ namespace
     ) noexcept
     {
         auto const key = settings.seed ^ (static_cast<std::uint64_t>(id) << 32U);
-        auto const phase = static_cast<float>(tick) * delta_time * settings.wander_frequency_hz
-            + unit_hash_component(key ^ 0x243f6a8885a308d3ULL);
+        auto const phase = static_cast<float>(tick) * delta_time * settings.wander_frequency_hz +
+                           unit_hash_component(key ^ 0x243f6a8885a308d3ULL);
         auto const segment = static_cast<std::uint64_t>(std::floor(phase));
         auto interpolation = phase - std::floor(phase);
         interpolation = interpolation * interpolation * (3.0F - 2.0F * interpolation);
-        auto component = [&](std::uint64_t salt) {
+        auto component = [&](std::uint64_t salt)
+        {
             auto const current = signed_hash_component(key ^ salt ^ segment);
             auto const next = signed_hash_component(key ^ salt ^ (segment + 1U));
             return current + (next - current) * interpolation;
@@ -445,7 +453,8 @@ namespace
             component(0x082efa98ec4e6c89ULL),
         };
         auto lateral = raw - heading * simnet::dot(raw, heading);
-        if (simnet::length_squared(lateral) <= vector_epsilon_squared) {
+        if (simnet::length_squared(lateral) <= vector_epsilon_squared)
+        {
             auto const axis = std::abs(heading.y) < 0.9F ? simnet::Vec3f{0.0F, 1.0F, 0.0F}
                                                          : simnet::Vec3f{1.0F, 0.0F, 0.0F};
             lateral = {
@@ -459,11 +468,13 @@ namespace
 
     [[nodiscard]] std::array<simnet::Vec3f, 256> const& hue_unit_table()
     {
-        static auto const table = [] {
+        static auto const table = []
+        {
             auto result = std::array<simnet::Vec3f, 256>{};
-            for (auto index = std::size_t{}; index < result.size(); ++index) {
-                auto const angle
-                    = static_cast<float>(index) / 256.0F * 2.0F * std::numbers::pi_v<float>;
+            for (auto index = std::size_t{}; index < result.size(); ++index)
+            {
+                auto const angle =
+                    static_cast<float>(index) / 256.0F * 2.0F * std::numbers::pi_v<float>;
                 result[index] = {std::cos(angle), std::sin(angle), 0.0F};
             }
             return result;
@@ -493,7 +504,8 @@ namespace
         simnet::ServerGameRuntime::Impl::Neighbor const& rhs
     ) noexcept
     {
-        if (lhs.distance_squared != rhs.distance_squared) {
+        if (lhs.distance_squared != rhs.distance_squared)
+        {
             return lhs.distance_squared < rhs.distance_squared;
         }
         return lhs.id < rhs.id;
@@ -514,12 +526,14 @@ namespace
         std::uint32_t maximum
     )
     {
-        if (scratch.neighbors.size() < maximum) {
+        if (scratch.neighbors.size() < maximum)
+        {
             scratch.neighbors.push_back(candidate);
             std::push_heap(scratch.neighbors.begin(), scratch.neighbors.end(), neighbor_better);
             return;
         }
-        if (!neighbor_better(candidate, scratch.neighbors.front())) {
+        if (!neighbor_better(candidate, scratch.neighbors.front()))
+        {
             return;
         }
         std::pop_heap(scratch.neighbors.begin(), scratch.neighbors.end(), neighbor_better);
@@ -532,12 +546,14 @@ namespace
     {
         auto result = 0.0F;
         auto const lower_distance = predicted - minimum;
-        if (lower_distance < margin) {
+        if (lower_distance < margin)
+        {
             auto const factor = std::clamp((margin - lower_distance) / margin, 0.0F, 1.0F);
             result += factor * factor;
         }
         auto const upper_distance = maximum - predicted;
-        if (upper_distance < margin) {
+        if (upper_distance < margin)
+        {
             auto const factor = std::clamp((margin - upper_distance) / margin, 0.0F, 1.0F);
             result -= factor * factor;
         }
@@ -565,16 +581,20 @@ namespace
 
     [[nodiscard]] bool hard_guard_axis(float half, float& position, float& velocity) noexcept
     {
-        if (position < -half) {
+        if (position < -half)
+        {
             position = -half;
-            if (velocity < 0.0F) {
+            if (velocity < 0.0F)
+            {
                 velocity = 0.0F;
             }
             return true;
         }
-        if (position > half) {
+        if (position > half)
+        {
             position = half;
-            if (velocity > 0.0F) {
+            if (velocity > 0.0F)
+            {
                 velocity = 0.0F;
             }
             return true;
@@ -599,45 +619,54 @@ namespace
         auto result = PlayerInfluenceEvaluation{};
         auto lure_direction_sum = simnet::Vec3f{};
         auto predator_direction_sum = simnet::Vec3f{};
-        auto const lure_radius_squared
-            = runtime.settings.player_lure.radius * runtime.settings.player_lure.radius;
-        auto const predator_radius_squared
-            = runtime.settings.player_predator.radius * runtime.settings.player_predator.radius;
+        auto const lure_radius_squared =
+            runtime.settings.player_lure.radius * runtime.settings.player_lure.radius;
+        auto const predator_radius_squared =
+            runtime.settings.player_predator.radius * runtime.settings.player_predator.radius;
 
-        for (auto const& source : runtime.player_influence_sources) {
+        for (auto const& source : runtime.player_influence_sources)
+        {
             auto const toward_player = source.position - boid_position;
             auto const distance_squared = simnet::length_squared(toward_player);
-            if (runtime.settings.player_lure.enabled && distance_squared <= lure_radius_squared) {
+            if (runtime.settings.player_lure.enabled && distance_squared <= lure_radius_squared)
+            {
                 ++result.lure_source_count;
-                if (distance_squared > 0.0F) {
-                    auto const weight
-                        = std::clamp(1.0F - distance_squared / lure_radius_squared, 0.0F, 1.0F);
-                    lure_direction_sum = lure_direction_sum
-                        + toward_player * (weight / std::sqrt(distance_squared));
+                if (distance_squared > 0.0F)
+                {
+                    auto const weight =
+                        std::clamp(1.0F - distance_squared / lure_radius_squared, 0.0F, 1.0F);
+                    lure_direction_sum =
+                        lure_direction_sum + toward_player * (weight / std::sqrt(distance_squared));
                 }
             }
-            if (runtime.settings.player_predator.enabled
-                && distance_squared <= predator_radius_squared) {
+            if (runtime.settings.player_predator.enabled &&
+                distance_squared <= predator_radius_squared)
+            {
                 ++result.predator_source_count;
-                auto const weight
-                    = std::clamp(1.0F - distance_squared / predator_radius_squared, 0.0F, 1.0F);
-                if (distance_squared == 0.0F) {
-                    predator_direction_sum
-                        = predator_direction_sum + overlap_direction(boid_id, source.id) * weight;
-                } else {
-                    predator_direction_sum = predator_direction_sum
-                        - toward_player * (weight / std::sqrt(distance_squared));
+                auto const weight =
+                    std::clamp(1.0F - distance_squared / predator_radius_squared, 0.0F, 1.0F);
+                if (distance_squared == 0.0F)
+                {
+                    predator_direction_sum =
+                        predator_direction_sum + overlap_direction(boid_id, source.id) * weight;
+                }
+                else
+                {
+                    predator_direction_sum = predator_direction_sum -
+                                             toward_player * (weight / std::sqrt(distance_squared));
                 }
             }
         }
 
-        if (runtime.settings.player_lure.enabled) {
+        if (runtime.settings.player_lure.enabled)
+        {
             result.lure = clamp_length(
                 lure_direction_sum * runtime.settings.player_lure.max_acceleration,
                 runtime.settings.player_lure.max_acceleration
             );
         }
-        if (runtime.settings.player_predator.enabled) {
+        if (runtime.settings.player_predator.enabled)
+        {
             result.predator = clamp_length(
                 predator_direction_sum * runtime.settings.player_predator.max_acceleration,
                 runtime.settings.player_predator.max_acceleration
@@ -669,13 +698,15 @@ namespace
             current.positions,
             position,
             query_radius(settings),
-            [&](std::uint32_t candidate_row) {
-                if (candidate_row == row) {
+            [&](std::uint32_t candidate_row)
+            {
+                if (candidate_row == row)
+                {
                     return;
                 }
                 ++raw_candidate_count;
-                auto const distance_squared
-                    = simnet::length_squared(current.positions[candidate_row] - position);
+                auto const distance_squared =
+                    simnet::length_squared(current.positions[candidate_row] - position);
                 keep_neighbor(
                     scratch,
                     {
@@ -699,44 +730,53 @@ namespace
         auto cohesion_count = std::uint32_t{};
         auto hue_count = std::uint32_t{};
         auto overlap_recovery = false;
-        auto const separation_radius_squared
-            = settings.separation_radius * settings.separation_radius;
+        auto const separation_radius_squared =
+            settings.separation_radius * settings.separation_radius;
         auto const alignment_radius_squared = settings.alignment_radius * settings.alignment_radius;
         auto const cohesion_radius_squared = settings.cohesion_radius * settings.cohesion_radius;
-        auto const half_fov_radians
-            = settings.field_of_view_degrees * std::numbers::pi_v<float> / 360.0F;
+        auto const half_fov_radians =
+            settings.field_of_view_degrees * std::numbers::pi_v<float> / 360.0F;
         auto const fov_cosine = std::cos(half_fov_radians);
 
-        for (auto const& neighbor : scratch.neighbors) {
+        for (auto const& neighbor : scratch.neighbors)
+        {
             auto const offset = current.positions[neighbor.row] - position;
-            if (settings.enable_separation
-                && neighbor.distance_squared <= separation_radius_squared) {
-                if (neighbor.distance_squared <= overlap_epsilon_squared) {
+            if (settings.enable_separation &&
+                neighbor.distance_squared <= separation_radius_squared)
+            {
+                if (neighbor.distance_squared <= overlap_epsilon_squared)
+                {
                     separation_sum = separation_sum + overlap_direction(id, neighbor.id);
                     ++scratch.overlap_recoveries;
                     overlap_recovery = true;
-                } else {
-                    separation_sum = separation_sum
-                        - offset / std::max(neighbor.distance_squared, overlap_epsilon_squared);
+                }
+                else
+                {
+                    separation_sum =
+                        separation_sum -
+                        offset / std::max(neighbor.distance_squared, overlap_epsilon_squared);
                 }
                 ++separation_count;
             }
 
-            auto const accepted_by_fov = settings.field_of_view_degrees >= 360.0F
-                || simnet::dot(heading, offset)
-                    >= fov_cosine * std::sqrt(neighbor.distance_squared);
-            if (settings.enable_alignment && accepted_by_fov
-                && neighbor.distance_squared <= alignment_radius_squared) {
+            auto const accepted_by_fov =
+                settings.field_of_view_degrees >= 360.0F ||
+                simnet::dot(heading, offset) >= fov_cosine * std::sqrt(neighbor.distance_squared);
+            if (settings.enable_alignment && accepted_by_fov &&
+                neighbor.distance_squared <= alignment_radius_squared)
+            {
                 alignment_velocity = alignment_velocity + current.velocities[neighbor.row];
                 ++alignment_count;
             }
-            if (settings.enable_cohesion && accepted_by_fov
-                && neighbor.distance_squared <= cohesion_radius_squared) {
+            if (settings.enable_cohesion && accepted_by_fov &&
+                neighbor.distance_squared <= cohesion_radius_squared)
+            {
                 cohesion_position = cohesion_position + current.positions[neighbor.row];
                 ++cohesion_count;
             }
-            if ((settings.enable_hue_assimilation || settings.enable_hue_drift) && accepted_by_fov
-                && neighbor.distance_squared <= cohesion_radius_squared) {
+            if ((settings.enable_hue_assimilation || settings.enable_hue_drift) &&
+                accepted_by_fov && neighbor.distance_squared <= cohesion_radius_squared)
+            {
                 hue_x += current.hue_units[neighbor.row].x;
                 hue_y += current.hue_units[neighbor.row].y;
                 ++hue_count;
@@ -744,50 +784,56 @@ namespace
         }
 
         auto separation = simnet::Vec3f{};
-        if (separation_count != 0U
-            && simnet::length_squared(separation_sum) > vector_epsilon_squared) {
+        if (separation_count != 0U &&
+            simnet::length_squared(separation_sum) > vector_epsilon_squared)
+        {
             auto const desired = simnet::normalize_or(separation_sum, heading) * settings.max_speed;
             separation = clamp_length(desired - velocity, settings.separation_acceleration);
         }
 
         auto alignment = simnet::Vec3f{};
-        if (alignment_count != 0U) {
+        if (alignment_count != 0U)
+        {
             auto const average = alignment_velocity / static_cast<float>(alignment_count);
             alignment = clamp_length(average - velocity, settings.alignment_acceleration);
         }
 
         auto cohesion = simnet::Vec3f{};
-        if (cohesion_count != 0U) {
+        if (cohesion_count != 0U)
+        {
             auto const centroid = cohesion_position / static_cast<float>(cohesion_count);
-            auto const desired
-                = simnet::normalize_or(centroid - position, heading) * settings.cruise_speed;
+            auto const desired =
+                simnet::normalize_or(centroid - position, heading) * settings.cruise_speed;
             cohesion = clamp_length(desired - velocity, settings.cohesion_acceleration);
         }
 
         auto const containment = settings.enable_containment
-            ? containment_acceleration(runtime, position, velocity)
-            : simnet::Vec3f{};
+                                     ? containment_acceleration(runtime, position, velocity)
+                                     : simnet::Vec3f{};
         auto const wander = settings.enable_wander && settings.wander_acceleration > 0.0F
-            ? deterministic_wander(settings, id, heading, tick, delta_time)
-            : simnet::Vec3f{};
+                                ? deterministic_wander(settings, id, heading, tick, delta_time)
+                                : simnet::Vec3f{};
         auto player_influence = PlayerInfluenceEvaluation{};
         auto acceleration = simnet::Vec3f{};
-        if (!settings.player_lure.enabled && !settings.player_predator.enabled) {
+        if (!settings.player_lure.enabled && !settings.player_predator.enabled)
+        {
             auto const safety = clamp_length(separation + containment, settings.max_acceleration);
-            auto const remaining
-                = std::max(0.0F, settings.max_acceleration - simnet::length(safety));
+            auto const remaining =
+                std::max(0.0F, settings.max_acceleration - simnet::length(safety));
             auto const social = clamp_length(alignment + cohesion + wander, remaining);
             acceleration = safety + social;
-        } else {
+        }
+        else
+        {
             player_influence = evaluate_player_influence(runtime, id, position);
             auto const safety = clamp_length(
                 separation + player_influence.predator + containment,
                 settings.max_acceleration
             );
-            auto const remaining
-                = std::max(0.0F, settings.max_acceleration - simnet::length(safety));
-            auto const social
-                = clamp_length(alignment + cohesion + player_influence.lure + wander, remaining);
+            auto const remaining =
+                std::max(0.0F, settings.max_acceleration - simnet::length(safety));
+            auto const social =
+                clamp_length(alignment + cohesion + player_influence.lure + wander, remaining);
             acceleration = safety + social;
         }
 
@@ -796,17 +842,21 @@ namespace
         auto applied_hue_step = 0.0F;
         auto hue_assimilation_active = false;
         auto hue_drift_active = false;
-        if (settings.enable_hue_assimilation && hue_count != 0U) {
+        if (settings.enable_hue_assimilation && hue_count != 0U)
+        {
             hue_assimilation_active = true;
-            if (hue_x != 0.0F || hue_y != 0.0F) {
-                hue_target
-                    = wrap_hue(std::atan2(hue_y, hue_x) / (2.0F * std::numbers::pi_v<float>));
+            if (hue_x != 0.0F || hue_y != 0.0F)
+            {
+                hue_target =
+                    wrap_hue(std::atan2(hue_y, hue_x) / (2.0F * std::numbers::pi_v<float>));
             }
             auto const delta = hue_delta(current_hue, hue_target);
             auto const maximum_step = settings.hue_assimilation_rate * delta_time;
             applied_hue_step = std::clamp(delta, -maximum_step, maximum_step);
             next_hue = wrap_hue(current_hue + applied_hue_step);
-        } else if (settings.enable_hue_drift && hue_count == 0U) {
+        }
+        else if (settings.enable_hue_drift && hue_count == 0U)
+        {
             hue_drift_active = true;
             hue_target = deterministic_hue_target(settings.seed, id);
             auto const delta = hue_delta(current_hue, hue_target);
@@ -826,14 +876,15 @@ namespace
         guarded = hard_guard_axis(settings.world_half, next_position.x, next_velocity.x) || guarded;
         guarded = hard_guard_axis(settings.world_half, next_position.y, next_velocity.y) || guarded;
         guarded = hard_guard_axis(settings.world_half, next_position.z, next_velocity.z) || guarded;
-        if (guarded) {
+        if (guarded)
+        {
             ++scratch.wall_guards;
         }
         auto const next_heading = simnet::normalize_or(next_velocity, heading);
 
         auto const acceleration_squared = simnet::length_squared(acceleration);
-        auto const maximum_acceleration_squared
-            = settings.max_acceleration * settings.max_acceleration;
+        auto const maximum_acceleration_squared =
+            settings.max_acceleration * settings.max_acceleration;
         return {
             .next_position = next_position,
             .next_velocity = next_velocity,
@@ -861,8 +912,8 @@ namespace
             .predator_source_count = player_influence.predator_source_count,
             .neighbor_cap_hit = raw_candidate_count > settings.max_neighbors,
             .overlap_recovery = overlap_recovery,
-            .acceleration_saturated
-            = acceleration_squared >= maximum_acceleration_squared * (1.0F - 1.0e-5F),
+            .acceleration_saturated =
+                acceleration_squared >= maximum_acceleration_squared * (1.0F - 1.0e-5F),
             .wall_guard = guarded,
             .wander_active = settings.enable_wander && settings.wander_acceleration > 0.0F,
             .hue_assimilation_active = hue_assimilation_active,
@@ -882,7 +933,8 @@ namespace
             runtime.grid,
             runtime.current.positions[row],
             query_radius(runtime.settings),
-            [&](simnet::CellCoord coord) {
+            [&](simnet::CellCoord coord)
+            {
                 queried_cell_bounds.push_back(simnet::cell_bounds(runtime.grid, coord));
             }
         );
@@ -897,8 +949,8 @@ namespace
             .alignment_neighbor_count = evaluation.alignment_neighbor_count,
             .cohesion_neighbor_count = evaluation.cohesion_neighbor_count,
             .hue_neighbor_count = evaluation.hue_neighbor_count,
-            .current_cell
-            = simnet::cell_coord_for_position(runtime.grid, runtime.current.positions[row]),
+            .current_cell =
+                simnet::cell_coord_for_position(runtime.grid, runtime.current.positions[row]),
             .queried_cell_bounds = std::move(queried_cell_bounds),
             .separation_radius = runtime.settings.separation_radius,
             .alignment_radius = runtime.settings.alignment_radius,
@@ -936,8 +988,8 @@ namespace
         float delta_time
     )
     {
-        auto const evaluation
-            = evaluate_boid_row(runtime, scratch, row, delta_time, runtime.evaluation_tick);
+        auto const evaluation =
+            evaluate_boid_row(runtime, scratch, row, delta_time, runtime.evaluation_tick);
         auto const speed = simnet::length(evaluation.next_velocity);
         auto const acceleration = simnet::length(evaluation.acceleration);
         ++scratch.processed_boids;
@@ -945,13 +997,14 @@ namespace
         scratch.retained_neighbor_total += evaluation.retained_neighbor_count;
         scratch.separation_neighbor_total += evaluation.separation_neighbor_count;
         scratch.social_neighbor_total += evaluation.alignment_neighbor_count;
-        scratch.raw_candidate_max
-            = std::max(scratch.raw_candidate_max, evaluation.raw_candidate_count);
-        scratch.retained_neighbor_max
-            = std::max(scratch.retained_neighbor_max, evaluation.retained_neighbor_count);
-        if (!scratch.neighbors.empty()) {
-            scratch.nearest_neighbor_distance_total
-                += std::sqrt(scratch.neighbors.front().distance_squared);
+        scratch.raw_candidate_max =
+            std::max(scratch.raw_candidate_max, evaluation.raw_candidate_count);
+        scratch.retained_neighbor_max =
+            std::max(scratch.retained_neighbor_max, evaluation.retained_neighbor_count);
+        if (!scratch.neighbors.empty())
+        {
+            scratch.nearest_neighbor_distance_total +=
+                std::sqrt(scratch.neighbors.front().distance_squared);
             ++scratch.nearest_neighbor_samples;
         }
         scratch.speed_total += speed;
@@ -970,71 +1023,79 @@ namespace
         runtime.next.hues[row] = evaluation.next_hue;
         runtime.next.written[row] = 1U;
 
-        if (runtime.selected_id == runtime.current.ids[row]) {
+        if (runtime.selected_id == runtime.current.ids[row])
+        {
             scratch.selected = make_selected_debug(runtime, row, evaluation);
         }
     }
 
     [[nodiscard]] bool valid_settings(simnet::BoidSimulationSettings const& settings) noexcept
     {
-        auto const valid_player_influence = [&](simnet::PlayerInfluenceForceSettings const& force) {
-            if (!force.enabled) {
+        auto const valid_player_influence = [&](simnet::PlayerInfluenceForceSettings const& force)
+        {
+            if (!force.enabled)
+            {
                 return force.radius == 0.0F && force.max_acceleration == 0.0F;
             }
-            return std::isfinite(force.radius) && force.radius > 0.0F
-                && force.radius <= settings.world_half * 2.0F
-                && std::isfinite(force.max_acceleration) && force.max_acceleration > 0.0F
-                && force.max_acceleration <= settings.max_acceleration;
+            return std::isfinite(force.radius) && force.radius > 0.0F &&
+                   force.radius <= settings.world_half * 2.0F &&
+                   std::isfinite(force.max_acceleration) && force.max_acceleration > 0.0F &&
+                   force.max_acceleration <= settings.max_acceleration;
         };
-        return std::isfinite(settings.world_half) && settings.world_half > 0.0F
-            && std::isfinite(settings.cell_size) && settings.cell_size > 0.0F
-            && settings.max_neighbors > 0U && std::isfinite(settings.min_speed)
-            && settings.min_speed >= 0.0F && std::isfinite(settings.cruise_speed)
-            && std::isfinite(settings.max_speed) && settings.max_speed > 0.0F
-            && settings.min_speed <= settings.cruise_speed
-            && settings.cruise_speed <= settings.max_speed
-            && std::isfinite(settings.max_acceleration) && settings.max_acceleration > 0.0F
-            && std::isfinite(settings.separation_radius) && settings.separation_radius > 0.0F
-            && std::isfinite(settings.alignment_radius) && settings.alignment_radius > 0.0F
-            && std::isfinite(settings.cohesion_radius) && settings.cohesion_radius > 0.0F
-            && std::isfinite(settings.field_of_view_degrees)
-            && settings.field_of_view_degrees > 0.0F && settings.field_of_view_degrees <= 360.0F
-            && std::isfinite(settings.containment_prediction_seconds)
-            && settings.containment_prediction_seconds > 0.0F
-            && std::isfinite(settings.containment_margin) && settings.containment_margin > 0.0F
-            && std::isfinite(settings.separation_acceleration)
-            && settings.separation_acceleration >= 0.0F
-            && std::isfinite(settings.containment_acceleration)
-            && settings.containment_acceleration >= 0.0F
-            && std::isfinite(settings.alignment_acceleration)
-            && settings.alignment_acceleration >= 0.0F
-            && std::isfinite(settings.cohesion_acceleration)
-            && settings.cohesion_acceleration >= 0.0F && std::isfinite(settings.wander_acceleration)
-            && settings.wander_acceleration >= 0.0F && std::isfinite(settings.wander_frequency_hz)
-            && settings.wander_frequency_hz > 0.0F && std::isfinite(settings.hue_assimilation_rate)
-            && settings.hue_assimilation_rate > 0.0F && std::isfinite(settings.hue_drift_rate)
-            && settings.hue_drift_rate > 0.0F && valid_player_influence(settings.player_lure)
-            && valid_player_influence(settings.player_predator);
+        return std::isfinite(settings.world_half) && settings.world_half > 0.0F &&
+               std::isfinite(settings.cell_size) && settings.cell_size > 0.0F &&
+               settings.max_neighbors > 0U && std::isfinite(settings.min_speed) &&
+               settings.min_speed >= 0.0F && std::isfinite(settings.cruise_speed) &&
+               std::isfinite(settings.max_speed) && settings.max_speed > 0.0F &&
+               settings.min_speed <= settings.cruise_speed &&
+               settings.cruise_speed <= settings.max_speed &&
+               std::isfinite(settings.max_acceleration) && settings.max_acceleration > 0.0F &&
+               std::isfinite(settings.separation_radius) && settings.separation_radius > 0.0F &&
+               std::isfinite(settings.alignment_radius) && settings.alignment_radius > 0.0F &&
+               std::isfinite(settings.cohesion_radius) && settings.cohesion_radius > 0.0F &&
+               std::isfinite(settings.field_of_view_degrees) &&
+               settings.field_of_view_degrees > 0.0F && settings.field_of_view_degrees <= 360.0F &&
+               std::isfinite(settings.containment_prediction_seconds) &&
+               settings.containment_prediction_seconds > 0.0F &&
+               std::isfinite(settings.containment_margin) && settings.containment_margin > 0.0F &&
+               std::isfinite(settings.separation_acceleration) &&
+               settings.separation_acceleration >= 0.0F &&
+               std::isfinite(settings.containment_acceleration) &&
+               settings.containment_acceleration >= 0.0F &&
+               std::isfinite(settings.alignment_acceleration) &&
+               settings.alignment_acceleration >= 0.0F &&
+               std::isfinite(settings.cohesion_acceleration) &&
+               settings.cohesion_acceleration >= 0.0F &&
+               std::isfinite(settings.wander_acceleration) &&
+               settings.wander_acceleration >= 0.0F &&
+               std::isfinite(settings.wander_frequency_hz) && settings.wander_frequency_hz > 0.0F &&
+               std::isfinite(settings.hue_assimilation_rate) &&
+               settings.hue_assimilation_rate > 0.0F && std::isfinite(settings.hue_drift_rate) &&
+               settings.hue_drift_rate > 0.0F && valid_player_influence(settings.player_lure) &&
+               valid_player_influence(settings.player_predator);
     }
 
     [[nodiscard]] bool
     valid_player_settings(simnet::PlayerMovementSettings const& settings) noexcept
     {
-        return std::isfinite(settings.world_half) && settings.world_half > 0.0F
-            && std::isfinite(settings.slow_speed) && settings.slow_speed >= 0.0F
-            && std::isfinite(settings.cruise_speed) && settings.cruise_speed >= settings.slow_speed
-            && std::isfinite(settings.boost_speed) && settings.boost_speed >= settings.cruise_speed
-            && std::isfinite(settings.speed_change_rate) && settings.speed_change_rate > 0.0F
-            && std::isfinite(settings.yaw_acceleration_degrees)
-            && settings.yaw_acceleration_degrees > 0.0F
-            && std::isfinite(settings.pitch_acceleration_degrees)
-            && settings.pitch_acceleration_degrees > 0.0F && std::isfinite(settings.yaw_damping)
-            && settings.yaw_damping > 0.0F && std::isfinite(settings.pitch_damping)
-            && settings.pitch_damping > 0.0F && std::isfinite(settings.max_yaw_rate_degrees)
-            && settings.max_yaw_rate_degrees > 0.0F
-            && std::isfinite(settings.max_pitch_rate_degrees)
-            && settings.max_pitch_rate_degrees > 0.0F && std::isfinite(settings.pitch_limit_degrees)
-            && settings.pitch_limit_degrees > 0.0F && settings.pitch_limit_degrees <= 85.0F;
+        return std::isfinite(settings.world_half) && settings.world_half > 0.0F &&
+               std::isfinite(settings.slow_speed) && settings.slow_speed >= 0.0F &&
+               std::isfinite(settings.cruise_speed) &&
+               settings.cruise_speed >= settings.slow_speed &&
+               std::isfinite(settings.boost_speed) &&
+               settings.boost_speed >= settings.cruise_speed &&
+               std::isfinite(settings.speed_change_rate) && settings.speed_change_rate > 0.0F &&
+               std::isfinite(settings.yaw_acceleration_degrees) &&
+               settings.yaw_acceleration_degrees > 0.0F &&
+               std::isfinite(settings.pitch_acceleration_degrees) &&
+               settings.pitch_acceleration_degrees > 0.0F && std::isfinite(settings.yaw_damping) &&
+               settings.yaw_damping > 0.0F && std::isfinite(settings.pitch_damping) &&
+               settings.pitch_damping > 0.0F && std::isfinite(settings.max_yaw_rate_degrees) &&
+               settings.max_yaw_rate_degrees > 0.0F &&
+               std::isfinite(settings.max_pitch_rate_degrees) &&
+               settings.max_pitch_rate_degrees > 0.0F &&
+               std::isfinite(settings.pitch_limit_degrees) && settings.pitch_limit_degrees > 0.0F &&
+               settings.pitch_limit_degrees <= 85.0F;
     }
 }
 
@@ -1042,7 +1103,8 @@ namespace simnet
 {
     std::string_view authoritative_spawn_error_name(AuthoritativeSpawnError error) noexcept
     {
-        switch (error) {
+        switch (error)
+        {
             case AuthoritativeSpawnError::None:
                 return "none";
             case AuthoritativeSpawnError::CountOutOfRange:
@@ -1069,10 +1131,12 @@ namespace simnet
     )
         : impl_(std::make_unique<Impl>(settings, player_settings))
     {
-        if (!valid_settings(settings)) {
+        if (!valid_settings(settings))
+        {
             throw std::invalid_argument("invalid authoritative boid simulation settings");
         }
-        if (!valid_player_settings(player_settings)) {
+        if (!valid_player_settings(player_settings))
+        {
             throw std::invalid_argument("invalid authoritative player movement settings");
         }
         resize_spatial_grid(
@@ -1088,21 +1152,24 @@ namespace simnet
 
     void ServerGameRuntime::select_boid(std::optional<EntityNetId> id)
     {
-        if (impl_->selected_id == id && impl_->selected_debug.has_value()) {
+        if (impl_->selected_id == id && impl_->selected_debug.has_value())
+        {
             return;
         }
         impl_->selected_id = id;
         impl_->selected_debug.reset();
-        if (!id.has_value() || !impl_->phase_valid || impl_->last_delta_time <= 0.0F) {
+        if (!id.has_value() || !impl_->phase_valid || impl_->last_delta_time <= 0.0F)
+        {
             return;
         }
 
         auto const found = std::ranges::lower_bound(impl_->current.ids, *id);
-        if (found == impl_->current.ids.end() || *found != *id) {
+        if (found == impl_->current.ids.end() || *found != *id)
+        {
             return;
         }
-        auto const row
-            = static_cast<std::uint32_t>(std::distance(impl_->current.ids.begin(), found));
+        auto const row =
+            static_cast<std::uint32_t>(std::distance(impl_->current.ids.begin(), found));
         impl_->inspection.neighbors.clear();
         impl_->inspection.overlap_recoveries = 0U;
         impl_->inspection.wall_guards = 0U;
@@ -1133,13 +1200,14 @@ namespace simnet
         auto const& index = world.get<AuthoritativeReplicationIndex>();
         impl.report = {};
         impl.prepared = false;
-        if (!valid_index(index)) {
+        if (!valid_index(index))
+        {
             impl.report.valid = false;
             impl.report.error = "authoritative replication index is invalid";
             return false;
         }
-        if (index.ids.size()
-            > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+        if (index.ids.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()))
+        {
             impl.report.valid = false;
             impl.report.error = "authoritative entity count exceeds simulation row range";
             return false;
@@ -1151,19 +1219,22 @@ namespace simnet
         impl.next.resize(entity_count);
         impl.capture_seen.resize(entity_count);
         impl.player_influence_sources.clear();
-        if (impl.settings.player_lure.enabled || impl.settings.player_predator.enabled) {
+        if (impl.settings.player_lure.enabled || impl.settings.player_predator.enabled)
+        {
             impl.player_influence_sources.reserve(index.ids.size() - index.boid_count);
         }
         impl.workers.resize(worker_count);
-        for (auto& worker : impl.workers) {
+        for (auto& worker : impl.workers)
+        {
             worker.neighbors.reserve(impl.settings.max_neighbors);
         }
         impl.inspection.neighbors.reserve(impl.settings.max_neighbors);
         prepare_spatial_grid_scratch(impl.grid_scratch, entity_count, 1U);
-        auto const dense_cell_count = static_cast<std::uint64_t>(impl.grid.dim_x)
-            * static_cast<std::uint64_t>(impl.grid.dim_y)
-            * static_cast<std::uint64_t>(impl.grid.dim_z);
-        if (dense_cell_count <= 262144U) {
+        auto const dense_cell_count = static_cast<std::uint64_t>(impl.grid.dim_x) *
+                                      static_cast<std::uint64_t>(impl.grid.dim_y) *
+                                      static_cast<std::uint64_t>(impl.grid.dim_z);
+        if (dense_cell_count <= 262144U)
+        {
             auto const cell_count = static_cast<std::size_t>(dense_cell_count);
             impl.grid_scratch.dense_cell_keys.resize(entity_count);
             impl.grid_scratch.dense_cell_counts.resize(cell_count);
@@ -1216,19 +1287,18 @@ namespace simnet
         auto const player_phase = world.entity("simnet::PlayerMovementPhase")
                                       .add(flecs::Phase)
                                       .depends_on(flecs::OnUpdate);
-        auto const capture_phase
-            = world.entity("simnet::FlockCapturePhase").add(flecs::Phase).depends_on(player_phase);
-        auto const grid_phase
-            = world.entity("simnet::FlockGridPhase").add(flecs::Phase).depends_on(capture_phase);
-        auto const compute_phase
-            = world.entity("simnet::FlockComputePhase").add(flecs::Phase).depends_on(grid_phase);
-        auto const validate_phase = world.entity("simnet::FlockValidatePhase")
-                                        .add(flecs::Phase)
-                                        .depends_on(compute_phase);
-        auto const commit_phase
-            = world.entity("simnet::FlockCommitPhase").add(flecs::Phase).depends_on(validate_phase);
-        auto const report_phase
-            = world.entity("simnet::FlockReportPhase").add(flecs::Phase).depends_on(commit_phase);
+        auto const capture_phase =
+            world.entity("simnet::FlockCapturePhase").add(flecs::Phase).depends_on(player_phase);
+        auto const grid_phase =
+            world.entity("simnet::FlockGridPhase").add(flecs::Phase).depends_on(capture_phase);
+        auto const compute_phase =
+            world.entity("simnet::FlockComputePhase").add(flecs::Phase).depends_on(grid_phase);
+        auto const validate_phase =
+            world.entity("simnet::FlockValidatePhase").add(flecs::Phase).depends_on(compute_phase);
+        auto const commit_phase =
+            world.entity("simnet::FlockCommitPhase").add(flecs::Phase).depends_on(validate_phase);
+        auto const report_phase =
+            world.entity("simnet::FlockReportPhase").add(flecs::Phase).depends_on(commit_phase);
 
         world
             .system<
@@ -1238,391 +1308,457 @@ namespace simnet
                 PlayerMotion,
                 const PlayerLatestInput>("simnet::PlayerMovement")
             .kind(player_phase)
-            .each([impl](
-                      flecs::iter& iterator,
-                      std::size_t,
-                      EntityKindComponent const& kind,
-                      Position& position,
-                      Heading& heading,
-                      PlayerMotion& motion,
-                      PlayerLatestInput const& latest_input
-                  ) {
-                if (kind.value != EntityKind::Player) {
-                    return;
+            .each(
+                [impl](
+                    flecs::iter& iterator,
+                    std::size_t,
+                    EntityKindComponent const& kind,
+                    Position& position,
+                    Heading& heading,
+                    PlayerMotion& motion,
+                    PlayerLatestInput const& latest_input
+                )
+                {
+                    if (kind.value != EntityKind::Player)
+                    {
+                        return;
+                    }
+                    auto const delta_time = iterator.delta_time();
+                    auto const& settings = impl->player_settings;
+                    auto const& input = latest_input.value;
+                    // Raylib uses a right-handed world. With +Z forward and +Y up,
+                    // the fish's local right is -X and its local left is +X.
+                    auto const yaw_axis =
+                        (input.yaw_left ? 1.0F : 0.0F) + (input.yaw_right ? -1.0F : 0.0F);
+                    auto const pitch_axis =
+                        static_cast<float>(input.pitch_up) - static_cast<float>(input.pitch_down);
+                    auto constexpr degrees_to_radians = std::numbers::pi_v<float> / 180.0F;
+                    auto next_motion = motion;
+                    if (yaw_axis != 0.0F)
+                    {
+                        next_motion.yaw_velocity += yaw_axis * settings.yaw_acceleration_degrees *
+                                                    degrees_to_radians * delta_time;
+                    }
+                    else
+                    {
+                        next_motion.yaw_velocity *= std::exp(-settings.yaw_damping * delta_time);
+                    }
+                    if (pitch_axis != 0.0F)
+                    {
+                        next_motion.pitch_velocity += pitch_axis *
+                                                      settings.pitch_acceleration_degrees *
+                                                      degrees_to_radians * delta_time;
+                    }
+                    else
+                    {
+                        next_motion.pitch_velocity *=
+                            std::exp(-settings.pitch_damping * delta_time);
+                    }
+                    next_motion.yaw_velocity = std::clamp(
+                        next_motion.yaw_velocity,
+                        -settings.max_yaw_rate_degrees * degrees_to_radians,
+                        settings.max_yaw_rate_degrees * degrees_to_radians
+                    );
+                    next_motion.pitch_velocity = std::clamp(
+                        next_motion.pitch_velocity,
+                        -settings.max_pitch_rate_degrees * degrees_to_radians,
+                        settings.max_pitch_rate_degrees * degrees_to_radians
+                    );
+                    next_motion.yaw += next_motion.yaw_velocity * delta_time;
+                    auto const pitch_limit = settings.pitch_limit_degrees * degrees_to_radians;
+                    auto const unclamped_pitch =
+                        next_motion.pitch + next_motion.pitch_velocity * delta_time;
+                    next_motion.pitch = std::clamp(unclamped_pitch, -pitch_limit, pitch_limit);
+                    if (next_motion.pitch != unclamped_pitch &&
+                        std::signbit(next_motion.pitch_velocity) == std::signbit(next_motion.pitch))
+                    {
+                        next_motion.pitch_velocity = 0.0F;
+                    }
+                    auto target_speed = settings.cruise_speed;
+                    if (input.accelerate != input.decelerate)
+                    {
+                        target_speed =
+                            input.accelerate ? settings.boost_speed : settings.slow_speed;
+                    }
+                    auto const speed_step = settings.speed_change_rate * delta_time;
+                    next_motion.speed +=
+                        std::clamp(target_speed - next_motion.speed, -speed_step, speed_step);
+                    auto const cosine_pitch = std::cos(next_motion.pitch);
+                    auto const next_heading = normalize_or(
+                        Vec3f{
+                            .x = std::sin(next_motion.yaw) * cosine_pitch,
+                            .y = std::sin(next_motion.pitch),
+                            .z = std::cos(next_motion.yaw) * cosine_pitch,
+                        },
+                        heading.value
+                    );
+                    auto next_position =
+                        position.value + next_heading * (next_motion.speed * delta_time);
+                    next_position.x =
+                        std::clamp(next_position.x, -settings.world_half, settings.world_half);
+                    next_position.y =
+                        std::clamp(next_position.y, -settings.world_half, settings.world_half);
+                    next_position.z =
+                        std::clamp(next_position.z, -settings.world_half, settings.world_half);
+                    if (is_finite(next_position) && is_finite(next_heading) &&
+                        is_normalized_heading(next_heading) && std::isfinite(next_motion.speed) &&
+                        std::isfinite(next_motion.yaw) && std::isfinite(next_motion.pitch) &&
+                        std::isfinite(next_motion.yaw_velocity) &&
+                        std::isfinite(next_motion.pitch_velocity))
+                    {
+                        position.value = next_position;
+                        heading.value = next_heading;
+                        motion = next_motion;
+                    }
                 }
-                auto const delta_time = iterator.delta_time();
-                auto const& settings = impl->player_settings;
-                auto const& input = latest_input.value;
-                // Raylib uses a right-handed world. With +Z forward and +Y up,
-                // the fish's local right is -X and its local left is +X.
-                auto const yaw_axis
-                    = (input.yaw_left ? 1.0F : 0.0F) + (input.yaw_right ? -1.0F : 0.0F);
-                auto const pitch_axis
-                    = static_cast<float>(input.pitch_up) - static_cast<float>(input.pitch_down);
-                auto constexpr degrees_to_radians = std::numbers::pi_v<float> / 180.0F;
-                auto next_motion = motion;
-                if (yaw_axis != 0.0F) {
-                    next_motion.yaw_velocity += yaw_axis * settings.yaw_acceleration_degrees
-                        * degrees_to_radians * delta_time;
-                } else {
-                    next_motion.yaw_velocity *= std::exp(-settings.yaw_damping * delta_time);
-                }
-                if (pitch_axis != 0.0F) {
-                    next_motion.pitch_velocity += pitch_axis * settings.pitch_acceleration_degrees
-                        * degrees_to_radians * delta_time;
-                } else {
-                    next_motion.pitch_velocity *= std::exp(-settings.pitch_damping * delta_time);
-                }
-                next_motion.yaw_velocity = std::clamp(
-                    next_motion.yaw_velocity,
-                    -settings.max_yaw_rate_degrees * degrees_to_radians,
-                    settings.max_yaw_rate_degrees * degrees_to_radians
-                );
-                next_motion.pitch_velocity = std::clamp(
-                    next_motion.pitch_velocity,
-                    -settings.max_pitch_rate_degrees * degrees_to_radians,
-                    settings.max_pitch_rate_degrees * degrees_to_radians
-                );
-                next_motion.yaw += next_motion.yaw_velocity * delta_time;
-                auto const pitch_limit = settings.pitch_limit_degrees * degrees_to_radians;
-                auto const unclamped_pitch
-                    = next_motion.pitch + next_motion.pitch_velocity * delta_time;
-                next_motion.pitch = std::clamp(unclamped_pitch, -pitch_limit, pitch_limit);
-                if (next_motion.pitch != unclamped_pitch
-                    && std::signbit(next_motion.pitch_velocity)
-                        == std::signbit(next_motion.pitch)) {
-                    next_motion.pitch_velocity = 0.0F;
-                }
-                auto target_speed = settings.cruise_speed;
-                if (input.accelerate != input.decelerate) {
-                    target_speed = input.accelerate ? settings.boost_speed : settings.slow_speed;
-                }
-                auto const speed_step = settings.speed_change_rate * delta_time;
-                next_motion.speed
-                    += std::clamp(target_speed - next_motion.speed, -speed_step, speed_step);
-                auto const cosine_pitch = std::cos(next_motion.pitch);
-                auto const next_heading = normalize_or(
-                    Vec3f{
-                        .x = std::sin(next_motion.yaw) * cosine_pitch,
-                        .y = std::sin(next_motion.pitch),
-                        .z = std::cos(next_motion.yaw) * cosine_pitch,
-                    },
-                    heading.value
-                );
-                auto next_position
-                    = position.value + next_heading * (next_motion.speed * delta_time);
-                next_position.x
-                    = std::clamp(next_position.x, -settings.world_half, settings.world_half);
-                next_position.y
-                    = std::clamp(next_position.y, -settings.world_half, settings.world_half);
-                next_position.z
-                    = std::clamp(next_position.z, -settings.world_half, settings.world_half);
-                if (is_finite(next_position) && is_finite(next_heading)
-                    && is_normalized_heading(next_heading) && std::isfinite(next_motion.speed)
-                    && std::isfinite(next_motion.yaw) && std::isfinite(next_motion.pitch)
-                    && std::isfinite(next_motion.yaw_velocity)
-                    && std::isfinite(next_motion.pitch_velocity)) {
-                    position.value = next_position;
-                    heading.value = next_heading;
-                    motion = next_motion;
-                }
-            });
+            );
 
         world.system<>("simnet::FlockCapture")
             .kind(capture_phase)
-            .run([impl](flecs::iter& system_iterator) {
-                while (system_iterator.next()) {
-                    SIMNET_TRACE_SCOPE_CATEGORY(
-                        "game_server.flock.capture",
-                        LogCategory::Simulation
-                    );
-                    impl->progress_started = Clock::now();
-                    auto const phase_started = Clock::now();
-                    impl->last_delta_time = system_iterator.delta_time();
-                    impl->evaluation_tick = impl->completed_tick_count;
-                    impl->report = {};
-                    impl->report.entity_count
-                        = static_cast<std::uint32_t>(impl->prepared_entity_count);
-                    impl->phase_valid = impl->prepared;
-                    impl->selected_debug.reset();
-                    std::ranges::fill(impl->next.written, std::uint8_t{});
-                    for (auto& worker : impl->workers) {
-                        worker.neighbors.clear();
-                        worker.selected.reset();
-                        reset_worker_diagnostics(worker);
-                    }
-                    if (!impl->phase_valid) {
-                        impl->report.valid = false;
-                        impl->report.error = "Server game runtime was not prepared before progress";
-                        impl->report.phases.capture_ms = elapsed_ms(phase_started);
-                        continue;
-                    }
+            .run(
+                [impl](flecs::iter& system_iterator)
+                {
+                    while (system_iterator.next())
+                    {
+                        SIMNET_TRACE_SCOPE_CATEGORY(
+                            "game_server.flock.capture",
+                            LogCategory::Simulation
+                        );
+                        impl->progress_started = Clock::now();
+                        auto const phase_started = Clock::now();
+                        impl->last_delta_time = system_iterator.delta_time();
+                        impl->evaluation_tick = impl->completed_tick_count;
+                        impl->report = {};
+                        impl->report.entity_count =
+                            static_cast<std::uint32_t>(impl->prepared_entity_count);
+                        impl->phase_valid = impl->prepared;
+                        impl->selected_debug.reset();
+                        std::ranges::fill(impl->next.written, std::uint8_t{});
+                        for (auto& worker : impl->workers)
+                        {
+                            worker.neighbors.clear();
+                            worker.selected.reset();
+                            reset_worker_diagnostics(worker);
+                        }
+                        if (!impl->phase_valid)
+                        {
+                            impl->report.valid = false;
+                            impl->report.error =
+                                "Server game runtime was not prepared before progress";
+                            impl->report.phases.capture_ms = elapsed_ms(phase_started);
+                            continue;
+                        }
 
-                    std::ranges::fill(impl->capture_seen, std::uint8_t{});
-                    auto const query_world = system_iterator.world();
-                    impl->player_influence_sources.clear();
-                    if (impl->settings.player_lure.enabled
-                        || impl->settings.player_predator.enabled) {
-                        auto const& index = query_world.get<AuthoritativeReplicationIndex>();
-                        auto previous_player_id = EntityNetId{};
-                        for (std::size_t offset = 0; offset < index.ids.size(); ++offset) {
-                            auto entity = flecs::entity{query_world, index.entities[offset]};
-                            if (!entity.is_alive() || !entity.has<EntityKindComponent>()) {
-                                impl->phase_valid = false;
-                                impl->report.error
-                                    = "authoritative Player influence index contains invalid state";
-                                break;
-                            }
-                            if (entity.get<EntityKindComponent>().value != EntityKind::Player) {
-                                continue;
-                            }
-                            if (!entity.has<NetIdentity>() || !entity.has<Position>()) {
-                                impl->phase_valid = false;
-                                impl->report.error
-                                    = "authoritative Player influence source is incomplete";
-                                break;
-                            }
-                            auto const id = entity.get<NetIdentity>().id;
-                            auto const position = entity.get<Position>().value;
-                            if (id == 0U || id != index.ids[offset]
-                                || (previous_player_id != 0U && id <= previous_player_id)
-                                || !is_finite(position)) {
-                                impl->phase_valid = false;
-                                impl->report.error
-                                    = "authoritative Player influence source is invalid";
-                                break;
-                            }
-                            impl->player_influence_sources.push_back({
-                                .id = id,
-                                .position = position,
-                            });
-                            previous_player_id = id;
-                        }
-                    }
-                    auto const capture_query
-                        = query_world.query(query_world.entity(impl->capture_query_entity));
-                    capture_query.run([&](flecs::iter& query_iterator) {
-                        while (query_iterator.next() && impl->phase_valid) {
-                            auto const kinds = query_iterator.field<const EntityKindComponent>(0);
-                            auto const identities = query_iterator.field<const NetIdentity>(1);
-                            auto const positions = query_iterator.field<const Position>(2);
-                            auto const headings = query_iterator.field<const Heading>(3);
-                            auto const velocities = query_iterator.field<const Velocity>(4);
-                            auto const hues = query_iterator.field<const HueState>(5);
-                            auto const quantized_hues = query_iterator.field<const Hue>(6);
-                            auto const rows = query_iterator.field<const FlockRow>(7);
-                            for (auto query_row : query_iterator) {
-                                auto const row = rows[query_row].value;
-                                if (row >= impl->prepared_entity_count
-                                    || impl->capture_seen[row] != 0U) {
+                        std::ranges::fill(impl->capture_seen, std::uint8_t{});
+                        auto const query_world = system_iterator.world();
+                        impl->player_influence_sources.clear();
+                        if (impl->settings.player_lure.enabled ||
+                            impl->settings.player_predator.enabled)
+                        {
+                            auto const& index = query_world.get<AuthoritativeReplicationIndex>();
+                            auto previous_player_id = EntityNetId{};
+                            for (std::size_t offset = 0; offset < index.ids.size(); ++offset)
+                            {
+                                auto entity = flecs::entity{query_world, index.entities[offset]};
+                                if (!entity.is_alive() || !entity.has<EntityKindComponent>())
+                                {
                                     impl->phase_valid = false;
-                                    impl->report.error
-                                        = "invalid or duplicate authoritative flock row";
+                                    impl->report.error = "authoritative Player influence index "
+                                                         "contains invalid state";
                                     break;
                                 }
-                                auto const id = identities[query_row].id;
-                                auto const position = positions[query_row].value;
-                                auto const heading = headings[query_row].value;
-                                auto const velocity = velocities[query_row].value;
-                                auto const hue = hues[query_row].value;
-                                if (kinds[query_row].value != EntityKind::Boid || id == 0U
-                                    || !is_finite(position) || !is_finite(heading)
-                                    || !is_normalized_heading(heading) || !is_finite(velocity)
-                                    || !std::isfinite(hue) || hue < 0.0F || hue >= 1.0F) {
+                                if (entity.get<EntityKindComponent>().value != EntityKind::Player)
+                                {
+                                    continue;
+                                }
+                                if (!entity.has<NetIdentity>() || !entity.has<Position>())
+                                {
                                     impl->phase_valid = false;
-                                    impl->report.error
-                                        = "authoritative boid capture contains invalid state";
+                                    impl->report.error =
+                                        "authoritative Player influence source is incomplete";
                                     break;
                                 }
-                                impl->capture_seen[row] = 1U;
-                                impl->current.ids[row] = id;
-                                impl->current.positions[row] = position;
-                                impl->current.headings[row] = heading;
-                                impl->current.velocities[row] = velocity;
-                                impl->current.hues[row] = hue;
-                                impl->current.hue_units[row]
-                                    = hue_unit_table()[quantized_hues[query_row].value];
+                                auto const id = entity.get<NetIdentity>().id;
+                                auto const position = entity.get<Position>().value;
+                                if (id == 0U || id != index.ids[offset] ||
+                                    (previous_player_id != 0U && id <= previous_player_id) ||
+                                    !is_finite(position))
+                                {
+                                    impl->phase_valid = false;
+                                    impl->report.error =
+                                        "authoritative Player influence source is invalid";
+                                    break;
+                                }
+                                impl->player_influence_sources.push_back({
+                                    .id = id,
+                                    .position = position,
+                                });
+                                previous_player_id = id;
                             }
                         }
-                    });
-                    if (impl->phase_valid
-                        && (!std::ranges::all_of(
-                                impl->capture_seen,
-                                [](std::uint8_t value) {
-                                    return value != 0U;
+                        auto const capture_query =
+                            query_world.query(query_world.entity(impl->capture_query_entity));
+                        capture_query.run(
+                            [&](flecs::iter& query_iterator)
+                            {
+                                while (query_iterator.next() && impl->phase_valid)
+                                {
+                                    auto const kinds =
+                                        query_iterator.field<const EntityKindComponent>(0);
+                                    auto const identities =
+                                        query_iterator.field<const NetIdentity>(1);
+                                    auto const positions = query_iterator.field<const Position>(2);
+                                    auto const headings = query_iterator.field<const Heading>(3);
+                                    auto const velocities = query_iterator.field<const Velocity>(4);
+                                    auto const hues = query_iterator.field<const HueState>(5);
+                                    auto const quantized_hues = query_iterator.field<const Hue>(6);
+                                    auto const rows = query_iterator.field<const FlockRow>(7);
+                                    for (auto query_row : query_iterator)
+                                    {
+                                        auto const row = rows[query_row].value;
+                                        if (row >= impl->prepared_entity_count ||
+                                            impl->capture_seen[row] != 0U)
+                                        {
+                                            impl->phase_valid = false;
+                                            impl->report.error =
+                                                "invalid or duplicate authoritative flock row";
+                                            break;
+                                        }
+                                        auto const id = identities[query_row].id;
+                                        auto const position = positions[query_row].value;
+                                        auto const heading = headings[query_row].value;
+                                        auto const velocity = velocities[query_row].value;
+                                        auto const hue = hues[query_row].value;
+                                        if (kinds[query_row].value != EntityKind::Boid ||
+                                            id == 0U || !is_finite(position) ||
+                                            !is_finite(heading) ||
+                                            !is_normalized_heading(heading) ||
+                                            !is_finite(velocity) || !std::isfinite(hue) ||
+                                            hue < 0.0F || hue >= 1.0F)
+                                        {
+                                            impl->phase_valid = false;
+                                            impl->report.error =
+                                                "authoritative boid capture contains invalid state";
+                                            break;
+                                        }
+                                        impl->capture_seen[row] = 1U;
+                                        impl->current.ids[row] = id;
+                                        impl->current.positions[row] = position;
+                                        impl->current.headings[row] = heading;
+                                        impl->current.velocities[row] = velocity;
+                                        impl->current.hues[row] = hue;
+                                        impl->current.hue_units[row] =
+                                            hue_unit_table()[quantized_hues[query_row].value];
+                                    }
                                 }
-                            )
-                            || !std::ranges::is_sorted(impl->current.ids))) {
-                        impl->phase_valid = false;
-                        impl->report.error
-                            = "authoritative capture does not match ascending runtime rows";
+                            }
+                        );
+                        if (impl->phase_valid && (!std::ranges::all_of(
+                                                      impl->capture_seen,
+                                                      [](std::uint8_t value)
+                                                      {
+                                                          return value != 0U;
+                                                      }
+                                                  ) ||
+                                                  !std::ranges::is_sorted(impl->current.ids)))
+                        {
+                            impl->phase_valid = false;
+                            impl->report.error =
+                                "authoritative capture does not match ascending runtime rows";
+                        }
+                        impl->report.valid = impl->phase_valid;
+                        impl->report.phases.capture_ms = elapsed_ms(phase_started);
                     }
-                    impl->report.valid = impl->phase_valid;
-                    impl->report.phases.capture_ms = elapsed_ms(phase_started);
                 }
-            });
+            );
 
         world.system<>("simnet::FlockGridBuild")
             .kind(grid_phase)
-            .run([impl](flecs::iter& system_iterator) {
-                while (system_iterator.next()) {
-                    if (!impl->phase_valid) {
+            .run(
+                [impl](flecs::iter& system_iterator)
+                {
+                    while (system_iterator.next())
+                    {
+                        if (!impl->phase_valid)
+                        {
+                            impl->compute_started = Clock::now();
+                            continue;
+                        }
+                        SIMNET_TRACE_SCOPE_CATEGORY("game_server.flock.grid", LogCategory::Spatial);
+                        auto const phase_started = Clock::now();
+                        try
+                        {
+                            build_spatial_grid_serial(
+                                impl->grid,
+                                impl->grid_scratch,
+                                impl->current.positions,
+                                impl->current.ids
+                            );
+                            SIMNET_TRACE_PLOT(
+                                "boids.grid.occupied_cells",
+                                static_cast<double>(impl->grid.stats.occupied_cell_count)
+                            );
+                            SIMNET_TRACE_PLOT(
+                                "boids.grid.max_occupancy",
+                                static_cast<double>(impl->grid.stats.max_cell_occupancy)
+                            );
+                            SIMNET_TRACE_PLOT(
+                                "boids.grid.average_load",
+                                static_cast<double>(impl->grid.stats.average_occupied_cell_load)
+                            );
+                        }
+                        catch (std::exception const& error)
+                        {
+                            impl->phase_valid = false;
+                            impl->report.valid = false;
+                            impl->report.error = error.what();
+                        }
+                        impl->report.phases.grid_ms = elapsed_ms(phase_started);
                         impl->compute_started = Clock::now();
-                        continue;
                     }
-                    SIMNET_TRACE_SCOPE_CATEGORY("game_server.flock.grid", LogCategory::Spatial);
-                    auto const phase_started = Clock::now();
-                    try {
-                        build_spatial_grid_serial(
-                            impl->grid,
-                            impl->grid_scratch,
-                            impl->current.positions,
-                            impl->current.ids
-                        );
-                        SIMNET_TRACE_PLOT(
-                            "boids.grid.occupied_cells",
-                            static_cast<double>(impl->grid.stats.occupied_cell_count)
-                        );
-                        SIMNET_TRACE_PLOT(
-                            "boids.grid.max_occupancy",
-                            static_cast<double>(impl->grid.stats.max_cell_occupancy)
-                        );
-                        SIMNET_TRACE_PLOT(
-                            "boids.grid.average_load",
-                            static_cast<double>(impl->grid.stats.average_occupied_cell_load)
-                        );
-                    } catch (std::exception const& error) {
-                        impl->phase_valid = false;
-                        impl->report.valid = false;
-                        impl->report.error = error.what();
-                    }
-                    impl->report.phases.grid_ms = elapsed_ms(phase_started);
-                    impl->compute_started = Clock::now();
                 }
-            });
+            );
 
         world.system<const FlockRow>("simnet::FlockCompute")
             .kind(compute_phase)
             .multi_threaded()
-            .each([impl](flecs::iter& iterator, std::size_t, FlockRow const& flock_row) {
-                if (!impl->phase_valid) {
-                    return;
+            .each(
+                [impl](flecs::iter& iterator, std::size_t, FlockRow const& flock_row)
+                {
+                    if (!impl->phase_valid)
+                    {
+                        return;
+                    }
+                    auto const stage = iterator.world().get_stage_id();
+                    if (stage < 0 || static_cast<std::size_t>(stage) >= impl->workers.size() ||
+                        flock_row.value >= impl->prepared_entity_count)
+                    {
+                        return;
+                    }
+                    compute_boid_row(
+                        *impl,
+                        impl->workers[static_cast<std::size_t>(stage)],
+                        flock_row.value,
+                        iterator.delta_time()
+                    );
                 }
-                auto const stage = iterator.world().get_stage_id();
-                if (stage < 0 || static_cast<std::size_t>(stage) >= impl->workers.size()
-                    || flock_row.value >= impl->prepared_entity_count) {
-                    return;
-                }
-                compute_boid_row(
-                    *impl,
-                    impl->workers[static_cast<std::size_t>(stage)],
-                    flock_row.value,
-                    iterator.delta_time()
-                );
-            });
+            );
 
         world.system<>("simnet::FlockValidate")
             .kind(validate_phase)
-            .run([impl](flecs::iter& system_iterator) {
-                while (system_iterator.next()) {
-                    SIMNET_TRACE_SCOPE_CATEGORY(
-                        "game_server.flock.validate",
-                        LogCategory::Simulation
-                    );
-                    impl->report.phases.compute_ms = elapsed_ms(impl->compute_started);
-                    auto const phase_started = Clock::now();
-                    if (impl->phase_valid) {
-                        for (std::size_t row = 0; row < impl->prepared_entity_count; ++row) {
-                            if (impl->next.written[row] == 0U
-                                || !is_finite(impl->next.positions[row])
-                                || !is_finite(impl->next.velocities[row])
-                                || !is_finite(impl->next.headings[row])
-                                || !is_normalized_heading(impl->next.headings[row])
-                                || !std::isfinite(impl->next.hues[row])
-                                || impl->next.hues[row] < 0.0F || impl->next.hues[row] >= 1.0F) {
-                                impl->phase_valid = false;
-                                impl->report.error = "computed boid state failed validation";
-                                break;
+            .run(
+                [impl](flecs::iter& system_iterator)
+                {
+                    while (system_iterator.next())
+                    {
+                        SIMNET_TRACE_SCOPE_CATEGORY(
+                            "game_server.flock.validate",
+                            LogCategory::Simulation
+                        );
+                        impl->report.phases.compute_ms = elapsed_ms(impl->compute_started);
+                        auto const phase_started = Clock::now();
+                        if (impl->phase_valid)
+                        {
+                            for (std::size_t row = 0; row < impl->prepared_entity_count; ++row)
+                            {
+                                if (impl->next.written[row] == 0U ||
+                                    !is_finite(impl->next.positions[row]) ||
+                                    !is_finite(impl->next.velocities[row]) ||
+                                    !is_finite(impl->next.headings[row]) ||
+                                    !is_normalized_heading(impl->next.headings[row]) ||
+                                    !std::isfinite(impl->next.hues[row]) ||
+                                    impl->next.hues[row] < 0.0F || impl->next.hues[row] >= 1.0F)
+                                {
+                                    impl->phase_valid = false;
+                                    impl->report.error = "computed boid state failed validation";
+                                    break;
+                                }
                             }
                         }
-                    }
 
-                    auto processed_boids = std::uint64_t{};
-                    auto nearest_neighbor_samples = std::uint64_t{};
-                    auto heading_total = Vec3f{};
-                    impl->report.diagnostics.grid = impl->grid.stats;
-                    for (auto const& worker : impl->workers) {
-                        processed_boids += worker.processed_boids;
-                        nearest_neighbor_samples += worker.nearest_neighbor_samples;
-                        heading_total = heading_total + worker.heading_total;
-                        impl->report.diagnostics.raw_candidates_mean
-                            += static_cast<double>(worker.raw_candidate_total);
-                        impl->report.diagnostics.raw_candidates_max = std::max(
-                            impl->report.diagnostics.raw_candidates_max,
-                            worker.raw_candidate_max
-                        );
-                        impl->report.diagnostics.retained_neighbors_mean
-                            += static_cast<double>(worker.retained_neighbor_total);
-                        impl->report.diagnostics.retained_neighbors_max = std::max(
-                            impl->report.diagnostics.retained_neighbors_max,
-                            worker.retained_neighbor_max
-                        );
-                        impl->report.diagnostics.separation_neighbors_mean
-                            += static_cast<double>(worker.separation_neighbor_total);
-                        impl->report.diagnostics.social_neighbors_mean
-                            += static_cast<double>(worker.social_neighbor_total);
-                        impl->report.diagnostics.nearest_neighbor_distance_mean
-                            += worker.nearest_neighbor_distance_total;
-                        impl->report.diagnostics.speed_mean += worker.speed_total;
-                        impl->report.diagnostics.acceleration_mean += worker.acceleration_total;
-                        impl->report.diagnostics.speed_min = std::min(
-                            impl->report.diagnostics.speed_min == 0.0F
-                                ? std::numeric_limits<float>::max()
-                                : impl->report.diagnostics.speed_min,
-                            worker.speed_min
-                        );
-                        impl->report.diagnostics.speed_max
-                            = std::max(impl->report.diagnostics.speed_max, worker.speed_max);
-                        impl->report.diagnostics.acceleration_max = std::max(
-                            impl->report.diagnostics.acceleration_max,
-                            worker.acceleration_max
-                        );
-                        impl->report.diagnostics.neighbor_cap_hit_count += worker.cap_hits;
-                        impl->report.diagnostics.isolated_boid_count += worker.isolated_boids;
-                        impl->report.diagnostics.acceleration_saturation_count
-                            += worker.acceleration_saturations;
-                        impl->report.diagnostics.overlap_recovery_count
-                            += worker.overlap_recoveries;
-                        impl->report.diagnostics.hard_wall_guard_count += worker.wall_guards;
-                        impl->report.overlap_recovery_count += worker.overlap_recoveries;
-                        impl->report.hard_wall_guard_count += worker.wall_guards;
-                        impl->report.neighbor_cap_hit_count += worker.cap_hits;
-                        if (worker.selected.has_value()) {
-                            impl->selected_debug = worker.selected;
+                        auto processed_boids = std::uint64_t{};
+                        auto nearest_neighbor_samples = std::uint64_t{};
+                        auto heading_total = Vec3f{};
+                        impl->report.diagnostics.grid = impl->grid.stats;
+                        for (auto const& worker : impl->workers)
+                        {
+                            processed_boids += worker.processed_boids;
+                            nearest_neighbor_samples += worker.nearest_neighbor_samples;
+                            heading_total = heading_total + worker.heading_total;
+                            impl->report.diagnostics.raw_candidates_mean +=
+                                static_cast<double>(worker.raw_candidate_total);
+                            impl->report.diagnostics.raw_candidates_max = std::max(
+                                impl->report.diagnostics.raw_candidates_max,
+                                worker.raw_candidate_max
+                            );
+                            impl->report.diagnostics.retained_neighbors_mean +=
+                                static_cast<double>(worker.retained_neighbor_total);
+                            impl->report.diagnostics.retained_neighbors_max = std::max(
+                                impl->report.diagnostics.retained_neighbors_max,
+                                worker.retained_neighbor_max
+                            );
+                            impl->report.diagnostics.separation_neighbors_mean +=
+                                static_cast<double>(worker.separation_neighbor_total);
+                            impl->report.diagnostics.social_neighbors_mean +=
+                                static_cast<double>(worker.social_neighbor_total);
+                            impl->report.diagnostics.nearest_neighbor_distance_mean +=
+                                worker.nearest_neighbor_distance_total;
+                            impl->report.diagnostics.speed_mean += worker.speed_total;
+                            impl->report.diagnostics.acceleration_mean += worker.acceleration_total;
+                            impl->report.diagnostics.speed_min = std::min(
+                                impl->report.diagnostics.speed_min == 0.0F
+                                    ? std::numeric_limits<float>::max()
+                                    : impl->report.diagnostics.speed_min,
+                                worker.speed_min
+                            );
+                            impl->report.diagnostics.speed_max =
+                                std::max(impl->report.diagnostics.speed_max, worker.speed_max);
+                            impl->report.diagnostics.acceleration_max = std::max(
+                                impl->report.diagnostics.acceleration_max,
+                                worker.acceleration_max
+                            );
+                            impl->report.diagnostics.neighbor_cap_hit_count += worker.cap_hits;
+                            impl->report.diagnostics.isolated_boid_count += worker.isolated_boids;
+                            impl->report.diagnostics.acceleration_saturation_count +=
+                                worker.acceleration_saturations;
+                            impl->report.diagnostics.overlap_recovery_count +=
+                                worker.overlap_recoveries;
+                            impl->report.diagnostics.hard_wall_guard_count += worker.wall_guards;
+                            impl->report.overlap_recovery_count += worker.overlap_recoveries;
+                            impl->report.hard_wall_guard_count += worker.wall_guards;
+                            impl->report.neighbor_cap_hit_count += worker.cap_hits;
+                            if (worker.selected.has_value())
+                            {
+                                impl->selected_debug = worker.selected;
+                            }
                         }
+                        if (processed_boids != 0U)
+                        {
+                            auto const denominator = static_cast<double>(processed_boids);
+                            impl->report.diagnostics.raw_candidates_mean /= denominator;
+                            impl->report.diagnostics.retained_neighbors_mean /= denominator;
+                            impl->report.diagnostics.separation_neighbors_mean /= denominator;
+                            impl->report.diagnostics.social_neighbors_mean /= denominator;
+                            impl->report.diagnostics.speed_mean /= denominator;
+                            impl->report.diagnostics.acceleration_mean /= denominator;
+                            impl->report.diagnostics.polarization =
+                                length(heading_total / static_cast<float>(processed_boids));
+                        }
+                        else
+                        {
+                            impl->report.diagnostics.speed_min = 0.0F;
+                        }
+                        if (nearest_neighbor_samples != 0U)
+                        {
+                            impl->report.diagnostics.nearest_neighbor_distance_mean /=
+                                static_cast<double>(nearest_neighbor_samples);
+                        }
+                        impl->report.valid = impl->phase_valid;
+                        impl->report.phases.validate_ms = elapsed_ms(phase_started);
+                        impl->commit_started = Clock::now();
                     }
-                    if (processed_boids != 0U) {
-                        auto const denominator = static_cast<double>(processed_boids);
-                        impl->report.diagnostics.raw_candidates_mean /= denominator;
-                        impl->report.diagnostics.retained_neighbors_mean /= denominator;
-                        impl->report.diagnostics.separation_neighbors_mean /= denominator;
-                        impl->report.diagnostics.social_neighbors_mean /= denominator;
-                        impl->report.diagnostics.speed_mean /= denominator;
-                        impl->report.diagnostics.acceleration_mean /= denominator;
-                        impl->report.diagnostics.polarization
-                            = length(heading_total / static_cast<float>(processed_boids));
-                    } else {
-                        impl->report.diagnostics.speed_min = 0.0F;
-                    }
-                    if (nearest_neighbor_samples != 0U) {
-                        impl->report.diagnostics.nearest_neighbor_distance_mean
-                            /= static_cast<double>(nearest_neighbor_samples);
-                    }
-                    impl->report.valid = impl->phase_valid;
-                    impl->report.phases.validate_ms = elapsed_ms(phase_started);
-                    impl->commit_started = Clock::now();
                 }
-            });
+            );
 
         world
             .system<const FlockRow, Position, Heading, Velocity, HueState, Hue>(
@@ -1630,89 +1766,105 @@ namespace simnet
             )
             .kind(commit_phase)
             .multi_threaded()
-            .each([impl](
-                      flecs::iter&,
-                      std::size_t,
-                      FlockRow const& flock_row,
-                      Position& position,
-                      Heading& heading,
-                      Velocity& velocity,
-                      HueState& hue_state,
-                      Hue& hue
-                  ) {
-                if (!impl->phase_valid || flock_row.value >= impl->prepared_entity_count) {
-                    return;
+            .each(
+                [impl](
+                    flecs::iter&,
+                    std::size_t,
+                    FlockRow const& flock_row,
+                    Position& position,
+                    Heading& heading,
+                    Velocity& velocity,
+                    HueState& hue_state,
+                    Hue& hue
+                )
+                {
+                    if (!impl->phase_valid || flock_row.value >= impl->prepared_entity_count)
+                    {
+                        return;
+                    }
+                    auto const row = flock_row.value;
+                    position.value = impl->next.positions[row];
+                    heading.value = impl->next.headings[row];
+                    velocity.value = impl->next.velocities[row];
+                    hue_state.value = impl->next.hues[row];
+                    hue.value =
+                        static_cast<std::uint8_t>(std::floor(impl->next.hues[row] * 256.0F));
                 }
-                auto const row = flock_row.value;
-                position.value = impl->next.positions[row];
-                heading.value = impl->next.headings[row];
-                velocity.value = impl->next.velocities[row];
-                hue_state.value = impl->next.hues[row];
-                hue.value = static_cast<std::uint8_t>(std::floor(impl->next.hues[row] * 256.0F));
-            });
+            );
 
         world.system<>("simnet::FlockReport")
             .kind(report_phase)
-            .run([impl](flecs::iter& system_iterator) {
-                while (system_iterator.next()) {
-                    if (impl->phase_valid) {
-                        ++impl->completed_tick_count;
+            .run(
+                [impl](flecs::iter& system_iterator)
+                {
+                    while (system_iterator.next())
+                    {
+                        if (impl->phase_valid)
+                        {
+                            ++impl->completed_tick_count;
+                        }
+                        impl->report.phases.commit_ms = elapsed_ms(impl->commit_started);
+                        impl->report.phases.progress_ms = elapsed_ms(impl->progress_started);
+                        [[maybe_unused]] auto const& diagnostics = impl->report.diagnostics;
+                        [[maybe_unused]] auto const& phases = impl->report.phases;
+                        SIMNET_TRACE_PLOT(
+                            "boids.neighbors.raw_mean",
+                            diagnostics.raw_candidates_mean
+                        );
+                        SIMNET_TRACE_PLOT(
+                            "boids.neighbors.raw_max",
+                            static_cast<double>(diagnostics.raw_candidates_max)
+                        );
+                        SIMNET_TRACE_PLOT(
+                            "boids.neighbors.retained_mean",
+                            diagnostics.retained_neighbors_mean
+                        );
+                        SIMNET_TRACE_PLOT(
+                            "boids.neighbors.cap_hit_boids",
+                            static_cast<double>(diagnostics.neighbor_cap_hit_count)
+                        );
+                        SIMNET_TRACE_PLOT(
+                            "boids.neighbors.separation_mean",
+                            diagnostics.separation_neighbors_mean
+                        );
+                        SIMNET_TRACE_PLOT(
+                            "boids.neighbors.social_mean",
+                            diagnostics.social_neighbors_mean
+                        );
+                        SIMNET_TRACE_PLOT("boids.motion.speed_mean", diagnostics.speed_mean);
+                        SIMNET_TRACE_PLOT(
+                            "boids.motion.acceleration_mean",
+                            diagnostics.acceleration_mean
+                        );
+                        SIMNET_TRACE_PLOT(
+                            "boids.motion.acceleration_saturations",
+                            static_cast<double>(diagnostics.acceleration_saturation_count)
+                        );
+                        SIMNET_TRACE_PLOT("boids.motion.polarization", diagnostics.polarization);
+                        SIMNET_TRACE_PLOT("boids.phase.capture_ms", phases.capture_ms);
+                        SIMNET_TRACE_PLOT("boids.phase.grid_ms", phases.grid_ms);
+                        SIMNET_TRACE_PLOT("boids.phase.compute_ms", phases.compute_ms);
+                        SIMNET_TRACE_PLOT("boids.phase.validate_ms", phases.validate_ms);
+                        SIMNET_TRACE_PLOT("boids.phase.commit_ms", phases.commit_ms);
+                        SIMNET_TRACE_PLOT("boids.phase.progress_ms", phases.progress_ms);
                     }
-                    impl->report.phases.commit_ms = elapsed_ms(impl->commit_started);
-                    impl->report.phases.progress_ms = elapsed_ms(impl->progress_started);
-                    [[maybe_unused]] auto const& diagnostics = impl->report.diagnostics;
-                    [[maybe_unused]] auto const& phases = impl->report.phases;
-                    SIMNET_TRACE_PLOT("boids.neighbors.raw_mean", diagnostics.raw_candidates_mean);
-                    SIMNET_TRACE_PLOT(
-                        "boids.neighbors.raw_max",
-                        static_cast<double>(diagnostics.raw_candidates_max)
-                    );
-                    SIMNET_TRACE_PLOT(
-                        "boids.neighbors.retained_mean",
-                        diagnostics.retained_neighbors_mean
-                    );
-                    SIMNET_TRACE_PLOT(
-                        "boids.neighbors.cap_hit_boids",
-                        static_cast<double>(diagnostics.neighbor_cap_hit_count)
-                    );
-                    SIMNET_TRACE_PLOT(
-                        "boids.neighbors.separation_mean",
-                        diagnostics.separation_neighbors_mean
-                    );
-                    SIMNET_TRACE_PLOT(
-                        "boids.neighbors.social_mean",
-                        diagnostics.social_neighbors_mean
-                    );
-                    SIMNET_TRACE_PLOT("boids.motion.speed_mean", diagnostics.speed_mean);
-                    SIMNET_TRACE_PLOT(
-                        "boids.motion.acceleration_mean",
-                        diagnostics.acceleration_mean
-                    );
-                    SIMNET_TRACE_PLOT(
-                        "boids.motion.acceleration_saturations",
-                        static_cast<double>(diagnostics.acceleration_saturation_count)
-                    );
-                    SIMNET_TRACE_PLOT("boids.motion.polarization", diagnostics.polarization);
-                    SIMNET_TRACE_PLOT("boids.phase.capture_ms", phases.capture_ms);
-                    SIMNET_TRACE_PLOT("boids.phase.grid_ms", phases.grid_ms);
-                    SIMNET_TRACE_PLOT("boids.phase.compute_ms", phases.compute_ms);
-                    SIMNET_TRACE_PLOT("boids.phase.validate_ms", phases.validate_ms);
-                    SIMNET_TRACE_PLOT("boids.phase.commit_ms", phases.commit_ms);
-                    SIMNET_TRACE_PLOT("boids.phase.progress_ms", phases.progress_ms);
                 }
-            });
+            );
     }
 
     EntityNetId spawn_authoritative_player(flecs::world& world)
     {
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index) || index.next_id == 0U) {
+        if (!valid_index(index) || index.next_id == 0U)
+        {
             return 0U;
         }
         auto id = index.next_id;
         auto position = find_index(index, id);
-        while (position != index.ids.end() && *position == id) {
-            if (id == std::numeric_limits<EntityNetId>::max()) {
+        while (position != index.ids.end() && *position == id)
+        {
+            if (id == std::numeric_limits<EntityNetId>::max())
+            {
                 return 0U;
             }
             ++id;
@@ -1728,7 +1880,8 @@ namespace simnet
                               .speed = index.player_settings.cruise_speed,
                           })
                           .set<PlayerLatestInput>({});
-        if (!entity.is_alive()) {
+        if (!entity.is_alive())
+        {
             return 0U;
         }
         position = find_index(index, id);
@@ -1747,20 +1900,23 @@ namespace simnet
     set_authoritative_player_input(flecs::world& world, EntityNetId id, PlayerControlState input)
     {
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index) || id == 0U) {
+        if (!valid_index(index) || id == 0U)
+        {
             return false;
         }
         auto const position = find_index(index, id);
-        if (position == index.ids.end() || *position != id) {
+        if (position == index.ids.end() || *position != id)
+        {
             return false;
         }
         auto entity = flecs::entity{
             world,
             index.entities[static_cast<std::size_t>(position - index.ids.begin())],
         };
-        if (!entity.is_alive() || !entity.has<EntityKindComponent>()
-            || entity.get<EntityKindComponent>().value != EntityKind::Player
-            || !entity.has<PlayerLatestInput>()) {
+        if (!entity.is_alive() || !entity.has<EntityKindComponent>() ||
+            entity.get<EntityKindComponent>().value != EntityKind::Player ||
+            !entity.has<PlayerLatestInput>())
+        {
             return false;
         }
         entity.set<PlayerLatestInput>({.value = input});
@@ -1770,17 +1926,20 @@ namespace simnet
     bool delete_authoritative_player(flecs::world& world, EntityNetId id)
     {
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index) || id == 0U) {
+        if (!valid_index(index) || id == 0U)
+        {
             return false;
         }
         auto const position = find_index(index, id);
-        if (position == index.ids.end() || *position != id) {
+        if (position == index.ids.end() || *position != id)
+        {
             return false;
         }
         auto const offset = static_cast<std::size_t>(position - index.ids.begin());
         auto entity = flecs::entity{world, index.entities[offset]};
-        if (!entity.is_alive() || !entity.has<EntityKindComponent>()
-            || entity.get<EntityKindComponent>().value != EntityKind::Player) {
+        if (!entity.is_alive() || !entity.has<EntityKindComponent>() ||
+            entity.get<EntityKindComponent>().value != EntityKind::Player)
+        {
             return false;
         }
         entity.destruct();
@@ -1793,16 +1952,19 @@ namespace simnet
     flecs::entity upsert_authoritative_boid(flecs::world& world, EntityState const& boid)
     {
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index) || !valid_boid_state(boid)) {
+        if (!valid_index(index) || !valid_boid_state(boid))
+        {
             return {};
         }
 
         auto position = find_index(index, boid.id);
         auto offset = static_cast<std::size_t>(position - index.ids.begin());
-        if (position != index.ids.end() && *position == boid.id) {
+        if (position != index.ids.end() && *position == boid.id)
+        {
             auto entity = flecs::entity{world, index.entities[offset]};
-            if (!entity.is_alive() || !entity.has<EntityKindComponent>()
-                || entity.get<EntityKindComponent>().value != EntityKind::Boid) {
+            if (!entity.is_alive() || !entity.has<EntityKindComponent>() ||
+                entity.get<EntityKindComponent>().value != EntityKind::Boid)
+            {
                 return {};
             }
             set_authoritative_simulation_components(
@@ -1813,8 +1975,8 @@ namespace simnet
             );
             return entity;
         }
-        if (index.ids.size()
-            >= static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+        if (index.ids.size() >= static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()))
+        {
             return {};
         }
 
@@ -1841,20 +2003,24 @@ namespace simnet
         SIMNET_TRACE_SCOPE_CATEGORY("game_server.bulk_spawn", LogCategory::Simulation);
         auto report = AuthoritativeSpawnReport{.requested_count = boids.size()};
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index)) {
+        if (!valid_index(index))
+        {
             report.error = AuthoritativeSpawnError::InvalidIndexState;
             return report;
         }
-        if (boids.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+        if (boids.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+        {
             report.error = AuthoritativeSpawnError::CountOutOfRange;
             return report;
         }
-        if (boids.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())
-                - index.ids.size()) {
+        if (boids.size() >
+            static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) - index.ids.size())
+        {
             report.error = AuthoritativeSpawnError::CountOutOfRange;
             return report;
         }
-        if (boids.empty()) {
+        if (boids.empty())
+        {
             return report;
         }
 
@@ -1864,24 +2030,29 @@ namespace simnet
                 LogCategory::Simulation
             );
             auto const current_maximum = index.ids.empty() ? EntityNetId{} : index.ids.back();
-            for (std::size_t offset = 0; offset < boids.size(); ++offset) {
+            for (std::size_t offset = 0; offset < boids.size(); ++offset)
+            {
                 auto const& boid = boids[offset];
-                if (boid.id == 0U) {
+                if (boid.id == 0U)
+                {
                     report.error = AuthoritativeSpawnError::ZeroId;
                     report.failing_index = offset;
                     return report;
                 }
-                if (offset != 0U && boid.id <= boids[offset - 1U].id) {
+                if (offset != 0U && boid.id <= boids[offset - 1U].id)
+                {
                     report.error = AuthoritativeSpawnError::NonAscendingIds;
                     report.failing_index = offset;
                     return report;
                 }
-                if (boid.id <= current_maximum) {
+                if (boid.id <= current_maximum)
+                {
                     report.error = AuthoritativeSpawnError::ExistingIdOverlap;
                     report.failing_index = offset;
                     return report;
                 }
-                if (!valid_boid_state(boid)) {
+                if (!valid_boid_state(boid))
+                {
                     report.error = AuthoritativeSpawnError::InvalidBoidState;
                     report.failing_index = offset;
                     return report;
@@ -1913,7 +2084,8 @@ namespace simnet
             rows.reserve(boids.size());
             entities.resize(boids.size());
             index.reserve(index.ids.size() + boids.size());
-            for (std::size_t offset = 0; offset < boids.size(); ++offset) {
+            for (std::size_t offset = 0; offset < boids.size(); ++offset)
+            {
                 auto const& boid = boids[offset];
                 kinds.push_back({.value = EntityKind::Boid});
                 identities.push_back({.id = boid.id});
@@ -1957,7 +2129,8 @@ namespace simnet
         {
             SIMNET_TRACE_SCOPE_CATEGORY("game_server.bulk_spawn_flecs", LogCategory::Simulation);
             auto const* created = ecs_bulk_init(world.c_ptr(), &populate);
-            if (created == nullptr) {
+            if (created == nullptr)
+            {
                 report.error = AuthoritativeSpawnError::FlecsBulkInsertFailed;
                 return report;
             }
@@ -1969,7 +2142,8 @@ namespace simnet
                 "game_server.bulk_spawn_index_append",
                 LogCategory::Simulation
             );
-            for (std::size_t offset = 0; offset < boids.size(); ++offset) {
+            for (std::size_t offset = 0; offset < boids.size(); ++offset)
+            {
                 index.ids.push_back(boids[offset].id);
                 index.entities.push_back(entities[offset]);
             }
@@ -1986,21 +2160,25 @@ namespace simnet
     bool delete_authoritative_boid(flecs::world& world, EntityNetId id)
     {
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index)) {
+        if (!valid_index(index))
+        {
             return false;
         }
         auto const position = find_index(index, id);
-        if (position == index.ids.end() || *position != id) {
+        if (position == index.ids.end() || *position != id)
+        {
             return false;
         }
         auto const offset = static_cast<std::size_t>(position - index.ids.begin());
         auto const entity = index.entities[offset];
-        if (!ecs_is_alive(world.c_ptr(), entity)) {
+        if (!ecs_is_alive(world.c_ptr(), entity))
+        {
             return false;
         }
         auto const handle = flecs::entity{world, entity};
-        if (!handle.has<EntityKindComponent>()
-            || handle.get<EntityKindComponent>().value != EntityKind::Boid) {
+        if (!handle.has<EntityKindComponent>() ||
+            handle.get<EntityKindComponent>().value != EntityKind::Boid)
+        {
             return false;
         }
         ecs_delete(world.c_ptr(), entity);
@@ -2023,7 +2201,8 @@ namespace simnet
     {
         auto report = ServerSnapshotExtractionReport{.tick = tick};
         auto const& index = world.get<AuthoritativeReplicationIndex>();
-        if (!valid_index(index) || !index.snapshot_query) {
+        if (!valid_index(index) || !index.snapshot_query)
+        {
             reset_failed_snapshot(out_snapshot, tick);
             report.valid = false;
             report.error = "authoritative replication extraction state is invalid";
@@ -2041,76 +2220,91 @@ namespace simnet
                 "game_server.snapshot.query_iteration",
                 LogCategory::Snapshot
             );
-            index.snapshot_query.run([&](flecs::iter& iterator) {
-                while (iterator.next()) {
-                    auto const kinds = iterator.field<const EntityKindComponent>(0);
-                    auto const identities = iterator.field<const NetIdentity>(1);
-                    auto const positions = iterator.field<const Position>(2);
-                    auto const headings = iterator.field<const Heading>(3);
-                    auto const hues = iterator.field<const Hue>(4);
-                    auto const entities = iterator.entities();
+            index.snapshot_query.run(
+                [&](flecs::iter& iterator)
+                {
+                    while (iterator.next())
+                    {
+                        auto const kinds = iterator.field<const EntityKindComponent>(0);
+                        auto const identities = iterator.field<const NetIdentity>(1);
+                        auto const positions = iterator.field<const Position>(2);
+                        auto const headings = iterator.field<const Heading>(3);
+                        auto const hues = iterator.field<const Hue>(4);
+                        auto const entities = iterator.entities();
 
-                    for (auto row : iterator) {
-                        auto const classification
-                            = classification_from_entity_kind(kinds[row].value);
-                        if (!classification.has_value()) {
-                            report.valid = false;
-                            report.error = "world snapshot entity kind is unknown";
-                            return;
+                        for (auto row : iterator)
+                        {
+                            auto const classification =
+                                classification_from_entity_kind(kinds[row].value);
+                            if (!classification.has_value())
+                            {
+                                report.valid = false;
+                                report.error = "world snapshot entity kind is unknown";
+                                return;
+                            }
+                            auto const id = identities[row].id;
+                            auto const position = positions[row].value;
+                            auto const heading = headings[row].value;
+                            if (id == 0U)
+                            {
+                                report.valid = false;
+                                report.error = "world snapshot identity is zero";
+                                return;
+                            }
+                            if (!is_finite(position))
+                            {
+                                report.valid = false;
+                                report.error =
+                                    "world snapshot position contains a non-finite component";
+                                return;
+                            }
+                            if (!is_finite(heading))
+                            {
+                                report.valid = false;
+                                report.error =
+                                    "world snapshot heading contains a non-finite component";
+                                return;
+                            }
+                            if (!is_normalized_heading(heading))
+                            {
+                                report.valid = false;
+                                report.error = "world snapshot heading is not normalized";
+                                return;
+                            }
+                            if (have_previous_id && id <= previous_id)
+                            {
+                                globally_ascending = false;
+                            }
+                            previous_id = id;
+                            have_previous_id = true;
+                            scratch.push_back({
+                                .id = id,
+                                .entity = entities[row],
+                                .classification = *classification,
+                                .position = position,
+                                .heading = heading,
+                                .hue = hues[row].value,
+                            });
                         }
-                        auto const id = identities[row].id;
-                        auto const position = positions[row].value;
-                        auto const heading = headings[row].value;
-                        if (id == 0U) {
-                            report.valid = false;
-                            report.error = "world snapshot identity is zero";
-                            return;
-                        }
-                        if (!is_finite(position)) {
-                            report.valid = false;
-                            report.error
-                                = "world snapshot position contains a non-finite component";
-                            return;
-                        }
-                        if (!is_finite(heading)) {
-                            report.valid = false;
-                            report.error = "world snapshot heading contains a non-finite component";
-                            return;
-                        }
-                        if (!is_normalized_heading(heading)) {
-                            report.valid = false;
-                            report.error = "world snapshot heading is not normalized";
-                            return;
-                        }
-                        if (have_previous_id && id <= previous_id) {
-                            globally_ascending = false;
-                        }
-                        previous_id = id;
-                        have_previous_id = true;
-                        scratch.push_back({
-                            .id = id,
-                            .entity = entities[row],
-                            .classification = *classification,
-                            .position = position,
-                            .heading = heading,
-                            .hue = hues[row].value,
-                        });
                     }
                 }
-            });
+            );
         }
 
-        if (!report.valid) {
+        if (!report.valid)
+        {
             reset_failed_snapshot(out_snapshot, tick);
             return report;
         }
-        if (scratch.size() != index.ids.size()) {
+        if (scratch.size() != index.ids.size())
+        {
             reset_failed_snapshot(out_snapshot, tick);
             report.valid = false;
             report.error = "authoritative query does not match indexed entity count";
             return report;
         }
-        if (!globally_ascending) {
+        if (!globally_ascending)
+        {
             SIMNET_TRACE_SCOPE_CATEGORY("game_server.snapshot.scratch_sort", LogCategory::Snapshot);
             std::ranges::sort(scratch, {}, &AuthoritativeExtractionEntry::id);
         }
@@ -2125,10 +2319,12 @@ namespace simnet
                 "game_server.snapshot.index_verification",
                 LogCategory::Snapshot
             );
-            for (std::size_t position = 0; position < scratch.size(); ++position) {
+            for (std::size_t position = 0; position < scratch.size(); ++position)
+            {
                 auto const& entry = scratch[position];
-                if (entry.id != index.ids[position] || entry.entity != index.entities[position]
-                    || (position != 0U && entry.id <= scratch[position - 1U].id)) {
+                if (entry.id != index.ids[position] || entry.entity != index.entities[position] ||
+                    (position != 0U && entry.id <= scratch[position - 1U].id))
+                {
                     reset_failed_snapshot(out_snapshot, tick);
                     report.valid = false;
                     report.error = "authoritative query does not match indexed entity ownership";
@@ -2147,7 +2343,8 @@ namespace simnet
             out_snapshot.positions.resize(scratch.size());
             out_snapshot.headings.resize(scratch.size());
             out_snapshot.hues.resize(scratch.size());
-            for (std::size_t position = 0; position < scratch.size(); ++position) {
+            for (std::size_t position = 0; position < scratch.size(); ++position)
+            {
                 auto const& entry = scratch[position];
                 out_snapshot.ids[position] = entry.id;
                 out_snapshot.classifications[position] = entry.classification;

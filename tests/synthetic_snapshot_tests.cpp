@@ -18,9 +18,9 @@ namespace
 {
     [[nodiscard]] bool same_vec3_bits(simnet::Vec3f left, simnet::Vec3f right) noexcept
     {
-        return std::bit_cast<std::uint32_t>(left.x) == std::bit_cast<std::uint32_t>(right.x)
-            && std::bit_cast<std::uint32_t>(left.y) == std::bit_cast<std::uint32_t>(right.y)
-            && std::bit_cast<std::uint32_t>(left.z) == std::bit_cast<std::uint32_t>(right.z);
+        return std::bit_cast<std::uint32_t>(left.x) == std::bit_cast<std::uint32_t>(right.x) &&
+               std::bit_cast<std::uint32_t>(left.y) == std::bit_cast<std::uint32_t>(right.y) &&
+               std::bit_cast<std::uint32_t>(left.z) == std::bit_cast<std::uint32_t>(right.z);
     }
 
     [[nodiscard]] bool same_snapshot_bits(
@@ -28,22 +28,22 @@ namespace
         simnet::WorldSnapshot const& right
     ) noexcept
     {
-        return left.tick == right.tick && left.ids == right.ids
-            && left.classifications == right.classifications && left.hues == right.hues
-            && left.positions.size() == right.positions.size()
-            && left.headings.size() == right.headings.size()
-            && std::equal(
+        return left.tick == right.tick && left.ids == right.ids &&
+               left.classifications == right.classifications && left.hues == right.hues &&
+               left.positions.size() == right.positions.size() &&
+               left.headings.size() == right.headings.size() &&
+               std::equal(
                    left.positions.begin(),
                    left.positions.end(),
                    right.positions.begin(),
                    same_vec3_bits
-            )
-            && std::equal(
+               ) &&
+               std::equal(
                    left.headings.begin(),
                    left.headings.end(),
                    right.headings.begin(),
                    same_vec3_bits
-            );
+               );
     }
 
     [[nodiscard]] simnet::SyntheticSnapshotSettings settings(std::uint32_t count = 10U)
@@ -89,7 +89,8 @@ TEST_CASE(
     auto first = simnet::SyntheticSnapshotState{};
     auto second = simnet::SyntheticSnapshotState{};
 
-    for (simnet::Tick tick = 37U; tick != 43U; ++tick) {
+    for (simnet::Tick tick = 37U; tick != 43U; ++tick)
+    {
         auto const& first_snapshot = simnet::update_synthetic_world_snapshot(
             snapshot_settings,
             change_settings,
@@ -123,15 +124,17 @@ TEST_CASE(
         simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 7U, state)
     );
 
-    for (auto step = std::uint32_t{}; step < 5U; ++step) {
+    for (auto step = std::uint32_t{}; step < 5U; ++step)
+    {
         auto const previous = state.current;
         auto const tick = static_cast<simnet::Tick>(8U + step);
         auto const candidate = simnet::make_synthetic_world_snapshot(snapshot_settings, tick);
         auto const first_index = static_cast<std::uint32_t>((step * 2U) % 10U);
-        auto const& current
-            = simnet::update_synthetic_world_snapshot(snapshot_settings, changes, tick, state);
+        auto const& current =
+            simnet::update_synthetic_world_snapshot(snapshot_settings, changes, tick, state);
         CHECK(state.next_entity_index == ((first_index + 2U) % 10U));
-        for (auto index = std::uint32_t{}; index < 10U; ++index) {
+        for (auto index = std::uint32_t{}; index < 10U; ++index)
+        {
             auto const serviced = index == first_index || index == ((first_index + 1U) % 10U);
             check_entity_equal(current, serviced ? candidate : previous, index);
         }
@@ -155,12 +158,12 @@ TEST_CASE(
         .entity_change_fraction = 0.0,
         .field_change_mode = simnet::SyntheticFieldChangeMode::All,
     };
-    auto const initial
-        = simnet::update_synthetic_world_snapshot(snapshot_settings, no_changes, 30U, frozen);
+    auto const initial =
+        simnet::update_synthetic_world_snapshot(snapshot_settings, no_changes, 30U, frozen);
     auto expected = initial;
     expected.tick = 31U;
-    auto const& unchanged
-        = simnet::update_synthetic_world_snapshot(snapshot_settings, no_changes, 31U, frozen);
+    auto const& unchanged =
+        simnet::update_synthetic_world_snapshot(snapshot_settings, no_changes, 31U, frozen);
     CHECK(same_snapshot_bits(unchanged, expected));
     CHECK(frozen.next_entity_index == 0U);
 }
@@ -173,28 +176,30 @@ TEST_CASE("synthetic field modes change only their named canonical groups", "[sy
              simnet::SyntheticFieldChangeMode::Transform,
              simnet::SyntheticFieldChangeMode::PositionOnly,
              simnet::SyntheticFieldChangeMode::HeadingOnly,
-         }) {
+         })
+    {
         CAPTURE(static_cast<std::uint32_t>(mode));
         auto state = simnet::SyntheticSnapshotState{};
         auto const changes = simnet::SyntheticChangeSettings{
             .entity_change_fraction = 0.25,
             .field_change_mode = mode,
         };
-        auto const initial
-            = simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 50U, state);
+        auto const initial =
+            simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 50U, state);
         auto const previous = initial;
         auto const candidate = simnet::make_synthetic_world_snapshot(snapshot_settings, 51U);
-        auto const& current
-            = simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 51U, state);
+        auto const& current =
+            simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 51U, state);
 
         CHECK(current.ids == previous.ids);
         CHECK(current.classifications == previous.classifications);
-        for (auto index = std::size_t{}; index < current.size(); ++index) {
+        for (auto index = std::size_t{}; index < current.size(); ++index)
+        {
             auto const serviced = index < 2U;
-            auto const position_changes
-                = serviced && mode != simnet::SyntheticFieldChangeMode::HeadingOnly;
-            auto const heading_changes
-                = serviced && mode != simnet::SyntheticFieldChangeMode::PositionOnly;
+            auto const position_changes =
+                serviced && mode != simnet::SyntheticFieldChangeMode::HeadingOnly;
+            auto const heading_changes =
+                serviced && mode != simnet::SyntheticFieldChangeMode::PositionOnly;
             auto const hue_changes = serviced && mode == simnet::SyntheticFieldChangeMode::All;
             CHECK(same_vec3_bits(
                 current.positions[index],
@@ -268,27 +273,23 @@ TEST_CASE(
         .field_change_mode = simnet::SyntheticFieldChangeMode::PositionOnly,
     };
     auto synthetic_state = simnet::SyntheticSnapshotState{};
-    auto const& initial = simnet::update_synthetic_world_snapshot(
-        snapshot_settings,
-        changes,
-        100U,
-        synthetic_state
-    );
+    auto const& initial =
+        simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 100U, synthetic_state);
 
     auto pipeline = simnet::PipelineDefinition{};
-    pipeline.techniques = simnet::PipelineTechniqueFlags::Delta
-        | simnet::PipelineTechniqueFlags::DeltaFieldMask
-        | simnet::PipelineTechniqueFlags::Quantization | simnet::PipelineTechniqueFlags::OctHeading
-        | simnet::PipelineTechniqueFlags::BitPacking;
+    pipeline.techniques =
+        simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::DeltaFieldMask |
+        simnet::PipelineTechniqueFlags::Quantization | simnet::PipelineTechniqueFlags::OctHeading |
+        simnet::PipelineTechniqueFlags::BitPacking;
     pipeline.quantization.position_bounds = snapshot_settings.bounds;
     auto encode_state = simnet::ClientReplicationState{};
     auto decode_state = simnet::ClientReplicationState{};
     auto scratch = simnet::PipelineScratch{};
-    auto const full
-        = simnet::encode_snapshot(pipeline, encode_state, scratch, {.snapshot = &initial});
+    auto const full =
+        simnet::encode_snapshot(pipeline, encode_state, scratch, {.snapshot = &initial});
     REQUIRE(full.kind == simnet::EncodeResultKind::Update);
-    auto const decoded_full
-        = simnet::decode_update(pipeline, decode_state, {.bytes = full.update.bytes});
+    auto const decoded_full =
+        simnet::decode_update(pipeline, decode_state, {.bytes = full.update.bytes});
     REQUIRE(decoded_full.report.valid);
     auto reconstructed_full = simnet::WorldSnapshot{};
     REQUIRE(
@@ -296,12 +297,8 @@ TEST_CASE(
     );
     REQUIRE(same_snapshot_bits(reconstructed_full, full.resulting_snapshot));
 
-    auto const& current = simnet::update_synthetic_world_snapshot(
-        snapshot_settings,
-        changes,
-        101U,
-        synthetic_state
-    );
+    auto const& current =
+        simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 101U, synthetic_state);
     auto delta = simnet::encode_snapshot(
         pipeline,
         encode_state,
@@ -322,8 +319,8 @@ TEST_CASE(
     CHECK(delta.report.delta.heading_inclusion_count == 0U);
     CHECK(delta.report.delta.hue_inclusion_count == 0U);
     CHECK(
-        delta.report.delta.actual_upsert_representation_bytes
-        < delta.report.delta.complete_record_equivalent_bytes
+        delta.report.delta.actual_upsert_representation_bytes <
+        delta.report.delta.complete_record_equivalent_bytes
     );
 
     auto compressor = simnet::ZstdCompressor{};
@@ -361,22 +358,18 @@ TEST_CASE(
     auto reassembly = simnet::ReassemblyState{};
     auto serialization_scratch = std::vector<simnet::Byte>{};
     auto completed = simnet::CompletedByteGroup{};
-    for (auto index = std::uint16_t{}; index < prepared.chunk_count; ++index) {
-        auto const packet = simnet::serialize_group_chunk(
-            packet_settings,
-            prepared,
-            index,
-            serialization_scratch
-        );
-        auto accepted = simnet::accept_group_packet(
-            packet_settings,
-            reassembly,
-            packet,
-            simnet::Nanoseconds{}
-        );
-        if (accepted.kind == simnet::ReassemblyResultKind::Complete) {
+    for (auto index = std::uint16_t{}; index < prepared.chunk_count; ++index)
+    {
+        auto const packet =
+            simnet::serialize_group_chunk(packet_settings, prepared, index, serialization_scratch);
+        auto accepted =
+            simnet::accept_group_packet(packet_settings, reassembly, packet, simnet::Nanoseconds{});
+        if (accepted.kind == simnet::ReassemblyResultKind::Complete)
+        {
             completed = std::move(accepted.completed);
-        } else {
+        }
+        else
+        {
             CHECK(accepted.kind == simnet::ReassemblyResultKind::Incomplete);
         }
     }

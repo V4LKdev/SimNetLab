@@ -18,7 +18,8 @@ namespace
         auto snapshot = simnet::WorldSnapshot{};
         snapshot.tick = tick;
         snapshot.reserve(entities.size());
-        for (auto const& entity : entities) {
+        for (auto const& entity : entities)
+        {
             snapshot.ids.push_back(entity.id);
             snapshot.classifications.push_back(entity.classification);
             snapshot.positions.push_back(entity.position);
@@ -49,11 +50,13 @@ namespace
             snapshot.positions,
             position,
             radius,
-            [&](std::uint32_t index) {
+            [&](std::uint32_t index)
+            {
                 candidates.push_back(index);
             }
         ));
-        if (was_unsorted != nullptr) {
+        if (was_unsorted != nullptr)
+        {
             *was_unsorted = !std::ranges::is_sorted(candidates);
         }
         std::ranges::sort(candidates);
@@ -64,11 +67,12 @@ namespace
     decoded_ids(simnet::PipelineDefinition const& pipeline, simnet::EncodeOutput const& encoded)
     {
         auto state = simnet::ClientReplicationState{};
-        auto const decoded
-            = simnet::decode_update(pipeline, state, {.bytes = encoded.update.bytes});
+        auto const decoded =
+            simnet::decode_update(pipeline, state, {.bytes = encoded.update.bytes});
         REQUIRE(decoded.report.valid);
         auto ids = std::vector<simnet::EntityNetId>{};
-        for (auto const& entity : decoded.update.upserts) {
+        for (auto const& entity : decoded.update.upserts)
+        {
             ids.push_back(entity.id);
         }
         return ids;
@@ -459,7 +463,8 @@ TEST_CASE("AOI candidates remain ordered through incremental wraparound", "[aoi]
     auto replica = first.resulting_snapshot;
     auto replica_sequence = first.update.sequence;
 
-    auto encode_next = [&]() {
+    auto encode_next = [&]()
+    {
         ++snapshot.tick;
         auto encoded = simnet::encode_snapshot(
             pipeline,
@@ -507,14 +512,14 @@ TEST_CASE("Delta AOI uses the selected acknowledged population", "[aoi][delta]")
         .source_entity_id = 1U,
     };
     auto pipeline = simnet::PipelineDefinition{};
-    pipeline.techniques
-        = simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::DeltaFieldMask;
+    pipeline.techniques =
+        simnet::PipelineTechniqueFlags::Delta | simnet::PipelineTechniqueFlags::DeltaFieldMask;
     pipeline.area_of_interest = {
         .mode = simnet::AreaOfInterestMode::Radius,
         .radius = 5.0F,
     };
-    auto state
-        = simnet::ClientReplicationState{.next_sequence = 2U, .level_of_detail_schedule = {}};
+    auto state =
+        simnet::ClientReplicationState{.next_sequence = 2U, .level_of_detail_schedule = {}};
     auto scratch = simnet::PipelineScratch{};
     auto const candidates = std::array<std::uint32_t, 1>{0U};
     auto const encoded = simnet::encode_snapshot(

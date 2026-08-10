@@ -19,11 +19,10 @@ export namespace simnet
     /// Opaque replicated entity classification. Zero is reserved as invalid.
     class EntityClassification
     {
-    public:
+      public:
         constexpr EntityClassification() noexcept = default;
 
-        explicit constexpr EntityClassification(std::uint8_t value) noexcept
-            : value_(value)
+        explicit constexpr EntityClassification(std::uint8_t value) noexcept : value_(value)
         {
         }
 
@@ -37,7 +36,7 @@ export namespace simnet
             return value_ == other.value_;
         }
 
-    private:
+      private:
         std::uint8_t value_{};
     };
 

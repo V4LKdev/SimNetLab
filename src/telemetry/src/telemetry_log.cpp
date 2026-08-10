@@ -30,34 +30,46 @@ namespace
     [[nodiscard]] std::string lowercase(std::string_view value)
     {
         auto result = std::string{value};
-        std::ranges::transform(result, result.begin(), [](unsigned char character) {
-            return static_cast<char>(std::tolower(character));
-        });
+        std::ranges::transform(
+            result,
+            result.begin(),
+            [](unsigned char character)
+            {
+                return static_cast<char>(std::tolower(character));
+            }
+        );
         return result;
     }
 
     [[nodiscard]] LogLevel parse_log_level(std::string_view value)
     {
         auto const normalized = lowercase(value);
-        if (normalized == "trace") {
+        if (normalized == "trace")
+        {
             return LogLevel::Trace;
         }
-        if (normalized == "debug") {
+        if (normalized == "debug")
+        {
             return LogLevel::Debug;
         }
-        if (normalized == "info") {
+        if (normalized == "info")
+        {
             return LogLevel::Info;
         }
-        if (normalized == "warn") {
+        if (normalized == "warn")
+        {
             return LogLevel::Warn;
         }
-        if (normalized == "error") {
+        if (normalized == "error")
+        {
             return LogLevel::Error;
         }
-        if (normalized == "critical") {
+        if (normalized == "critical")
+        {
             return LogLevel::Critical;
         }
-        if (normalized == "off") {
+        if (normalized == "off")
+        {
             return LogLevel::Off;
         }
         return LogLevel::Info;
@@ -66,7 +78,8 @@ namespace
     /// Converts a simnet LogLevel to the corresponding spdlog level.
     [[nodiscard]] spdlog::level::level_enum to_spdlog_level(LogLevel level) noexcept
     {
-        switch (level) {
+        switch (level)
+        {
             case LogLevel::Trace:
                 return spdlog::level::trace;
             case LogLevel::Debug:
@@ -88,7 +101,8 @@ namespace
     /// Maps a log category to a short name used in the log output.
     [[nodiscard]] std::string_view category_name(LogCategory category) noexcept
     {
-        switch (category) {
+        switch (category)
+        {
             case LogCategory::Core:
                 return "core";
             case LogCategory::Config:
@@ -130,11 +144,13 @@ namespace simnet
         auto sinks = std::vector<spdlog::sink_ptr>{};
 
         // Build the active sink set from runtime config
-        if (config.console_log_enabled) {
+        if (config.console_log_enabled)
+        {
             sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
         }
 
-        if (config.file_log_enabled) {
+        if (config.file_log_enabled)
+        {
             std::filesystem::create_directories(config.log_directory);
             sinks.push_back(
                 std::make_shared<spdlog::sinks::basic_file_sink_mt>(
@@ -145,7 +161,8 @@ namespace simnet
         }
 
         auto created = std::shared_ptr<spdlog::logger>{};
-        if (!sinks.empty()) {
+        if (!sinks.empty())
+        {
             created = std::make_shared<spdlog::logger>("simnet", sinks.begin(), sinks.end());
             created->set_pattern("[%H:%M:%S.%e] [%^%l%$] [%n] %v");
             created->set_level(to_spdlog_level(parse_log_level(config.min_level)));
@@ -162,7 +179,8 @@ namespace simnet
             std::scoped_lock lock{logger_mutex};
             old_logger = std::move(logger);
         }
-        if (old_logger) {
+        if (old_logger)
+        {
             old_logger->flush();
         }
     }
@@ -170,7 +188,8 @@ namespace simnet
     void log(LogCategory category, LogLevel level, std::string_view message)
     {
         auto active_logger = current_logger();
-        if (!active_logger) {
+        if (!active_logger)
+        {
             return;
         }
         active_logger->log(to_spdlog_level(level), "[{}] {}", category_name(category), message);

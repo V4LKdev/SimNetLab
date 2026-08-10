@@ -20,7 +20,8 @@ namespace
         auto result = simnet::WorldSnapshot{};
         result.tick = tick;
         result.reserve(entities.size());
-        for (auto const& entity : entities) {
+        for (auto const& entity : entities)
+        {
             result.ids.push_back(entity.id);
             result.classifications.push_back(entity.classification);
             result.positions.push_back(entity.position);
@@ -36,7 +37,8 @@ namespace
         auto result = simnet::WorldSnapshot{};
         result.tick = tick;
         result.reserve(count);
-        for (auto index = std::uint32_t{}; index < count; ++index) {
+        for (auto index = std::uint32_t{}; index < count; ++index)
+        {
             result.ids.push_back(index + 1U);
             result.classifications.push_back(
                 simnet::EntityClassification{static_cast<std::uint8_t>(index % 3U + 1U)}
@@ -58,7 +60,8 @@ namespace
     [[nodiscard]] simnet::PipelineDefinition lod_pipeline(bool incremental = false)
     {
         auto pipeline = simnet::PipelineDefinition{};
-        if (incremental) {
+        if (incremental)
+        {
             pipeline.techniques |= simnet::PipelineTechniqueFlags::Incremental;
         }
         pipeline.area_of_interest = {
@@ -83,19 +86,22 @@ namespace
     [[nodiscard]] bool
     same_snapshot(simnet::WorldSnapshot const& left, simnet::WorldSnapshot const& right)
     {
-        if (left.tick != right.tick || left.ids != right.ids
-            || left.classifications != right.classifications || left.hues != right.hues
-            || left.positions.size() != right.positions.size()
-            || left.headings.size() != right.headings.size()) {
+        if (left.tick != right.tick || left.ids != right.ids ||
+            left.classifications != right.classifications || left.hues != right.hues ||
+            left.positions.size() != right.positions.size() ||
+            left.headings.size() != right.headings.size())
+        {
             return false;
         }
-        for (auto index = std::size_t{}; index < left.size(); ++index) {
-            if (left.positions[index].x != right.positions[index].x
-                || left.positions[index].y != right.positions[index].y
-                || left.positions[index].z != right.positions[index].z
-                || left.headings[index].x != right.headings[index].x
-                || left.headings[index].y != right.headings[index].y
-                || left.headings[index].z != right.headings[index].z) {
+        for (auto index = std::size_t{}; index < left.size(); ++index)
+        {
+            if (left.positions[index].x != right.positions[index].x ||
+                left.positions[index].y != right.positions[index].y ||
+                left.positions[index].z != right.positions[index].z ||
+                left.headings[index].x != right.headings[index].x ||
+                left.headings[index].y != right.headings[index].y ||
+                left.headings[index].z != right.headings[index].z)
+            {
                 return false;
             }
         }
@@ -106,7 +112,8 @@ namespace
     {
         auto result = std::vector<simnet::EntityNetId>{};
         result.reserve(update.upserts.size());
-        for (auto const& entity : update.upserts) {
+        for (auto const& entity : update.upserts)
+        {
             result.push_back(entity.id);
         }
         return result;
@@ -301,8 +308,8 @@ TEST_CASE("standalone distance LOD emits explicit-baseline Patches", "[lod][patc
     auto decode_equivalent = pipeline;
     decode_equivalent.level_of_detail = {};
     CHECK(
-        simnet::pipeline_decode_signature(pipeline)
-        == simnet::pipeline_decode_signature(decode_equivalent)
+        simnet::pipeline_decode_signature(pipeline) ==
+        simnet::pipeline_decode_signature(decode_equivalent)
     );
     auto encode_state = simnet::ClientReplicationState{};
     auto decode_state = simnet::ClientReplicationState{};
@@ -316,7 +323,8 @@ TEST_CASE("standalone distance LOD emits explicit-baseline Patches", "[lod][patc
     REQUIRE(full.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
 
     source.tick = 1U;
-    for (auto& position : source.positions) {
+    for (auto& position : source.positions)
+    {
         position.y += 1.0F;
     }
     auto patch = simnet::encode_snapshot(
@@ -336,22 +344,22 @@ TEST_CASE("standalone distance LOD emits explicit-baseline Patches", "[lod][patc
     CHECK(patch.report.upsert_count < source.size());
     auto const& lod = patch.report.level_of_detail;
     CHECK(
-        lod.population.near + lod.population.medium + lod.population.far
-        == patch.report.area_of_interest.retained_count
+        lod.population.near + lod.population.medium + lod.population.far ==
+        patch.report.area_of_interest.retained_count
     );
     CHECK(lod.serviced.near + lod.deferred.near == lod.eligible.near);
     CHECK(lod.serviced.medium + lod.deferred.medium == lod.eligible.medium);
     CHECK(lod.serviced.far + lod.deferred.far == lod.eligible.far);
     CHECK(
-        lod.represented.near + lod.represented.medium + lod.represented.far
-        <= lod.serviced.near + lod.serviced.medium + lod.serviced.far + lod.recovery_forced_count
+        lod.represented.near + lod.represented.medium + lod.represented.far <=
+        lod.serviced.near + lod.serviced.medium + lod.serviced.far + lod.recovery_forced_count
     );
 
-    auto const decoded_full
-        = simnet::decode_update(pipeline, decode_state, {.bytes = full.update.bytes});
+    auto const decoded_full =
+        simnet::decode_update(pipeline, decode_state, {.bytes = full.update.bytes});
     REQUIRE(decoded_full.report.valid);
-    auto const decoded_patch
-        = simnet::decode_update(pipeline, decode_state, {.bytes = patch.update.bytes});
+    auto const decoded_patch =
+        simnet::decode_update(pipeline, decode_state, {.bytes = patch.update.bytes});
     REQUIRE(decoded_patch.report.valid);
     auto reconstructed = simnet::WorldSnapshot{};
     REQUIRE(
@@ -366,7 +374,8 @@ TEST_CASE("standalone distance LOD emits explicit-baseline Patches", "[lod][patc
 
     auto malformed = patch.update.bytes;
     constexpr auto baseline_sequence_offset = std::size_t{29U};
-    for (auto offset = std::size_t{}; offset < 4U; ++offset) {
+    for (auto offset = std::size_t{}; offset < 4U; ++offset)
+    {
         malformed[baseline_sequence_offset + offset] = simnet::Byte{};
     }
     auto malformed_state = simnet::ClientReplicationState{};
@@ -381,7 +390,8 @@ TEST_CASE("standalone distance LOD emits explicit-baseline Patches", "[lod][patc
 TEST_CASE("distance LOD phases are stable and distributed", "[lod][phase][determinism]")
 {
     auto source = linear_snapshot(0U, 32U);
-    for (auto& position : source.positions) {
+    for (auto& position : source.positions)
+    {
         position.x += 10.0F;
     }
     auto const candidates = all_candidates(source);
@@ -409,12 +419,14 @@ TEST_CASE("distance LOD phases are stable and distributed", "[lod][phase][determ
         first_state.level_of_detail_schedule.size() == second_state.level_of_detail_schedule.size()
     );
     auto phases = std::array<bool, 4>{};
-    for (auto index = std::size_t{}; index < first_state.level_of_detail_schedule.size(); ++index) {
+    for (auto index = std::size_t{}; index < first_state.level_of_detail_schedule.size(); ++index)
+    {
         auto const& first = first_state.level_of_detail_schedule[index];
         auto const& second = second_state.level_of_detail_schedule[index];
         CHECK(first.id == second.id);
         CHECK(first.next_due_tick == second.next_due_tick);
-        if (first.band == simnet::LevelOfDetailBand::Far) {
+        if (first.band == simnet::LevelOfDetailBand::Far)
+        {
             phases[first.next_due_tick % 4U] = true;
         }
     }
@@ -437,7 +449,8 @@ TEST_CASE("Incremental LOD drains persistent Near work without starvation", "[lo
         {.snapshot = &source, .interest_source = &interest, .candidate_indices = candidates}
     );
     auto represented = std::vector<simnet::EntityNetId>{};
-    for (simnet::Tick tick = 1U; tick <= 3U; ++tick) {
+    for (simnet::Tick tick = 1U; tick <= 3U; ++tick)
+    {
         source.tick = tick;
         auto encoded = simnet::encode_snapshot(
             pipeline,
@@ -451,7 +464,8 @@ TEST_CASE("Incremental LOD drains persistent Near work without starvation", "[lo
                 .candidate_indices = candidates,
             }
         );
-        for (auto const& entity : scratch.logical_update.upserts) {
+        for (auto const& entity : scratch.logical_update.upserts)
+        {
             represented.push_back(entity.id);
         }
         baseline = std::move(encoded);
@@ -515,7 +529,8 @@ TEST_CASE("cadence preserves the conservative LOD scheduling-age bound", "[lod][
         {.snapshot = &source, .interest_source = &interest, .candidate_indices = candidates}
     );
     auto represented = std::vector<simnet::EntityNetId>{};
-    for (simnet::Tick tick = 1U; tick <= 9U; ++tick) {
+    for (simnet::Tick tick = 1U; tick <= 9U; ++tick)
+    {
         source.tick = tick;
         auto encoded = simnet::encode_snapshot(
             pipeline,
@@ -529,10 +544,12 @@ TEST_CASE("cadence preserves the conservative LOD scheduling-age bound", "[lod][
                 .candidate_indices = candidates,
             }
         );
-        if (encoded.kind == simnet::EncodeResultKind::Skipped) {
+        if (encoded.kind == simnet::EncodeResultKind::Skipped)
+        {
             continue;
         }
-        for (auto const& entity : scratch.logical_update.upserts) {
+        for (auto const& entity : scratch.logical_update.upserts)
+        {
             represented.push_back(entity.id);
         }
         baseline = std::move(encoded);
@@ -699,8 +716,8 @@ TEST_CASE("LOD state survives checked due-tick overflow", "[lod][transaction]")
     CHECK(state.next_sequence == before.next_sequence);
     CHECK(state.incremental_cursor == before.incremental_cursor);
     CHECK(
-        state.level_of_detail_schedule[0].next_due_tick
-        == before.level_of_detail_schedule[0].next_due_tick
+        state.level_of_detail_schedule[0].next_due_tick ==
+        before.level_of_detail_schedule[0].next_due_tick
     );
 }
 
@@ -935,8 +952,8 @@ TEST_CASE("ACK-relative recovery repeats a lost standalone LOD upsert", "[lod][d
         full_plan
     );
     REQUIRE(
-        simnet::app::promote_snapshot_ack(delivery, 1U, simnet::Nanoseconds{2U})
-        == simnet::app::AckPromotionOutcome::Promoted
+        simnet::app::promote_snapshot_ack(delivery, 1U, simnet::Nanoseconds{2U}) ==
+        simnet::app::AckPromotionOutcome::Promoted
     );
     REQUIRE(delivery.acknowledged.has_value());
 
@@ -1000,8 +1017,8 @@ TEST_CASE("ACK-relative recovery repeats a lost standalone LOD upsert", "[lod][d
             .valid
     );
     CHECK(same_snapshot(reconstructed, repeated.resulting_snapshot));
-    auto repeated_plan
-        = simnet::app::plan_snapshot_retention(delivery, repeated.resulting_snapshot);
+    auto repeated_plan =
+        simnet::app::plan_snapshot_retention(delivery, repeated.resulting_snapshot);
     REQUIRE(repeated_plan.valid);
     simnet::app::commit_submitted_snapshot(
         delivery,
@@ -1016,8 +1033,7 @@ TEST_CASE("ACK-relative recovery repeats a lost standalone LOD upsert", "[lod][d
             delivery,
             repeated.update.sequence,
             simnet::Nanoseconds{5U}
-        )
-        == simnet::app::AckPromotionOutcome::Promoted
+        ) == simnet::app::AckPromotionOutcome::Promoted
     );
     CHECK(delivery.recovery_upserts.empty());
 }

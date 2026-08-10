@@ -45,7 +45,8 @@ namespace simnet::render_detail
     [[nodiscard]] inline Vec3f normalized_or_forward(Vec3f heading) noexcept
     {
         auto const magnitude_squared = length_squared(heading);
-        if (!std::isfinite(magnitude_squared) || magnitude_squared <= 0.000001F) {
+        if (!std::isfinite(magnitude_squared) || magnitude_squared <= 0.000001F)
+        {
             return {0.0F, 0.0F, 1.0F};
         }
         return heading / std::sqrt(magnitude_squared);
@@ -68,8 +69,8 @@ namespace simnet::render_detail
 
     [[nodiscard]] inline WorldUpBasis world_up_basis(Vec3f forward) noexcept
     {
-        auto const horizontal
-            = normalize_or(Vec3f{.x = forward.x, .z = forward.z}, Vec3f{.z = 1.0F});
+        auto const horizontal =
+            normalize_or(Vec3f{.x = forward.x, .z = forward.z}, Vec3f{.z = 1.0F});
         auto const right = normalize_or(cross(Vec3f{.y = 1.0F}, horizontal), Vec3f{.x = 1.0F});
         return {
             .right = right,
@@ -129,14 +130,14 @@ namespace simnet
 {
     class Viewer::Impl
     {
-    public:
+      public:
         explicit Impl(ViewerConfig config, std::string output_directory);
         ~Impl();
 
         [[nodiscard]] ViewerResult draw(RenderFrame const& frame);
         void set_camera_mode(CameraMode mode) noexcept;
 
-    private:
+      private:
         struct SelectedEntity
         {
             EntityNetId id{};

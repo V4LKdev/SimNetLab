@@ -78,7 +78,7 @@ export namespace simnet
     /// Owns validated opaque dictionary bytes and reusable prepared Zstd state.
     class ZstdDictionary
     {
-    public:
+      public:
         ZstdDictionary(
             std::vector<Byte> bytes,
             int compression_level,
@@ -94,7 +94,7 @@ export namespace simnet
 
         [[nodiscard]] ZstdDictionaryIdentity const& identity() const noexcept;
 
-    private:
+      private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
 
@@ -116,7 +116,7 @@ export namespace simnet
 
     class ZstdCompressor
     {
-    public:
+      public:
         ZstdCompressor();
         ~ZstdCompressor();
 
@@ -126,7 +126,7 @@ export namespace simnet
         ZstdCompressor(ZstdCompressor const&) = delete;
         ZstdCompressor& operator=(ZstdCompressor const&) = delete;
 
-    private:
+      private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
 
@@ -149,7 +149,7 @@ export namespace simnet
 
     class ZstdDecompressor
     {
-    public:
+      public:
         ZstdDecompressor();
         ~ZstdDecompressor();
 
@@ -159,7 +159,7 @@ export namespace simnet
         ZstdDecompressor(ZstdDecompressor const&) = delete;
         ZstdDecompressor& operator=(ZstdDecompressor const&) = delete;
 
-    private:
+      private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
 

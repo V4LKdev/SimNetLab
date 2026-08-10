@@ -58,14 +58,14 @@ export namespace simnet::app
 
     class SignalHandlers
     {
-    public:
+      public:
         SignalHandlers();
         ~SignalHandlers();
 
         SignalHandlers(SignalHandlers const&) = delete;
         SignalHandlers& operator=(SignalHandlers const&) = delete;
 
-    private:
+      private:
         using Handler = void (*)(int);
 
         Handler interrupt_{};
@@ -74,7 +74,7 @@ export namespace simnet::app
 
     class TelemetryLifetime
     {
-    public:
+      public:
         explicit TelemetryLifetime(TelemetryConfig const& config);
         ~TelemetryLifetime();
 
@@ -89,7 +89,8 @@ export namespace simnet::app
     {
         auto value = Value{};
         auto const result = std::from_chars(text.data(), text.data() + text.size(), value);
-        if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
+        if (result.ec != std::errc{} || result.ptr != text.data() + text.size())
+        {
             throw std::runtime_error("invalid value for " + std::string{option});
         }
         return value;
@@ -160,8 +161,8 @@ namespace simnet::app
     }
 
     SignalHandlers::SignalHandlers()
-        : interrupt_(std::signal(SIGINT, request_signal_stop))
-        , terminate_(std::signal(SIGTERM, request_signal_stop))
+        : interrupt_(std::signal(SIGINT, request_signal_stop)),
+          terminate_(std::signal(SIGTERM, request_signal_stop))
     {
     }
 
@@ -188,7 +189,8 @@ namespace simnet::app
 
     std::string_view next_option_value(int& index, int argc, char** argv, std::string_view option)
     {
-        if (++index >= argc) {
+        if (++index >= argc)
+        {
             throw std::runtime_error("missing value for " + std::string{option});
         }
         return argv[index];
@@ -197,9 +199,10 @@ namespace simnet::app
     std::chrono::milliseconds
     milliseconds_option(int& index, int argc, char** argv, std::string_view option)
     {
-        auto const value
-            = parse_unsigned<std::uint64_t>(next_option_value(index, argc, argv, option), option);
-        if (value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+        auto const value =
+            parse_unsigned<std::uint64_t>(next_option_value(index, argc, argv, option), option);
+        if (value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+        {
             throw std::runtime_error("value out of range for " + std::string{option});
         }
         return std::chrono::milliseconds{static_cast<std::int64_t>(value)};
@@ -207,10 +210,12 @@ namespace simnet::app
 
     SendSizePolicy transport_send_size_policy(TransportConfig const& config)
     {
-        if (config.send_size_policy == "enforce_limit") {
+        if (config.send_size_policy == "enforce_limit")
+        {
             return SendSizePolicy::EnforceLimit;
         }
-        if (config.send_size_policy == "allow_backend_fragmentation") {
+        if (config.send_size_policy == "allow_backend_fragmentation")
+        {
             return SendSizePolicy::AllowBackendFragmentation;
         }
         throw std::runtime_error("unsupported send size policy: " + config.send_size_policy);
@@ -218,10 +223,12 @@ namespace simnet::app
 
     TransportDelivery snapshot_transport_delivery(SnapshotDeliveryConfig const& config)
     {
-        if (config.mode == "reliable_sequenced") {
+        if (config.mode == "reliable_sequenced")
+        {
             return TransportDelivery::ReliableSequenced;
         }
-        if (config.mode == "unreliable_sequenced") {
+        if (config.mode == "unreliable_sequenced")
+        {
             return TransportDelivery::UnreliableSequenced;
         }
         throw std::runtime_error("unsupported snapshot delivery: " + config.mode);
@@ -229,7 +236,8 @@ namespace simnet::app
 
     constexpr std::string_view transport_delivery_name(TransportDelivery delivery) noexcept
     {
-        switch (delivery) {
+        switch (delivery)
+        {
             case TransportDelivery::ReliableSequenced:
                 return "reliable_sequenced";
             case TransportDelivery::UnreliableSequenced:
@@ -241,48 +249,67 @@ namespace simnet::app
     PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared)
     {
         auto pipeline = PipelineDefinition{};
-        if (shared.pipeline.send_interval_ticks > 1U) {
+        if (shared.pipeline.send_interval_ticks > 1U)
+        {
             pipeline.techniques |= PipelineTechniqueFlags::SendInterval;
             pipeline.send_interval.interval_ticks = shared.pipeline.send_interval_ticks;
         }
-        if (shared.pipeline.enable_quantization) {
+        if (shared.pipeline.enable_quantization)
+        {
             pipeline.techniques |= PipelineTechniqueFlags::Quantization;
-            pipeline.quantization.position_bounds
-                = make_centered_bounds(shared.simulation.world_half);
+            pipeline.quantization.position_bounds =
+                make_centered_bounds(shared.simulation.world_half);
         }
-        if (shared.pipeline.enable_oct_heading) {
+        if (shared.pipeline.enable_oct_heading)
+        {
             pipeline.techniques |= PipelineTechniqueFlags::OctHeading;
         }
-        if (shared.pipeline.enable_bit_packing) {
+        if (shared.pipeline.enable_bit_packing)
+        {
             pipeline.techniques |= PipelineTechniqueFlags::BitPacking;
         }
-        if (shared.pipeline.enable_incremental) {
+        if (shared.pipeline.enable_incremental)
+        {
             pipeline.techniques |= PipelineTechniqueFlags::Incremental;
         }
-        if (shared.pipeline.enable_delta) {
+        if (shared.pipeline.enable_delta)
+        {
             pipeline.techniques |= PipelineTechniqueFlags::Delta;
         }
-        if (shared.pipeline.enable_delta_field_mask) {
+        if (shared.pipeline.enable_delta_field_mask)
+        {
             pipeline.techniques |= PipelineTechniqueFlags::DeltaFieldMask;
         }
         auto const& area_of_interest = shared.pipeline.area_of_interest;
-        if (area_of_interest.mode == "none") {
+        if (area_of_interest.mode == "none")
+        {
             pipeline.area_of_interest.mode = AreaOfInterestMode::None;
-        } else if (area_of_interest.mode == "radius") {
+        }
+        else if (area_of_interest.mode == "radius")
+        {
             pipeline.area_of_interest.mode = AreaOfInterestMode::Radius;
-        } else if (area_of_interest.mode == "fov") {
+        }
+        else if (area_of_interest.mode == "fov")
+        {
             pipeline.area_of_interest.mode = AreaOfInterestMode::Fov;
-        } else {
+        }
+        else
+        {
             throw std::runtime_error("unsupported AOI mode: " + area_of_interest.mode);
         }
         pipeline.area_of_interest.radius = area_of_interest.radius;
         pipeline.area_of_interest.fov_degrees = area_of_interest.fov_degrees;
         auto const& level_of_detail = shared.pipeline.level_of_detail;
-        if (level_of_detail.mode == "none") {
+        if (level_of_detail.mode == "none")
+        {
             pipeline.level_of_detail.mode = LevelOfDetailMode::None;
-        } else if (level_of_detail.mode == "distance_bands") {
+        }
+        else if (level_of_detail.mode == "distance_bands")
+        {
             pipeline.level_of_detail.mode = LevelOfDetailMode::DistanceBands;
-        } else {
+        }
+        else
+        {
             throw std::runtime_error("unsupported level-of-detail mode: " + level_of_detail.mode);
         }
         pipeline.level_of_detail.near_distance = level_of_detail.near_distance;
@@ -296,25 +323,33 @@ namespace simnet::app
     CompressionSettings make_compression_settings(SharedConfig const& shared)
     {
         auto mode = CompressionMode::None;
-        if (shared.compression.mode == "whole_update") {
+        if (shared.compression.mode == "whole_update")
+        {
             mode = CompressionMode::WholeUpdate;
-        } else if (shared.compression.mode == "per_packet") {
+        }
+        else if (shared.compression.mode == "per_packet")
+        {
             mode = CompressionMode::PerPacket;
-        } else if (shared.compression.mode != "none") {
+        }
+        else if (shared.compression.mode != "none")
+        {
             throw std::runtime_error("unsupported compression mode: " + shared.compression.mode);
         }
-        if (mode != CompressionMode::None
-            && (shared.compression.level < 1 || shared.compression.level > 19)) {
+        if (mode != CompressionMode::None &&
+            (shared.compression.level < 1 || shared.compression.level > 19))
+        {
             throw std::runtime_error("unsupported Zstd compression level");
         }
-        if (shared.compression.dictionary != "none"
-            && shared.compression.dictionary != "pipeline_v1") {
+        if (shared.compression.dictionary != "none" &&
+            shared.compression.dictionary != "pipeline_v1")
+        {
             throw std::runtime_error(
                 "unsupported compression dictionary: " + shared.compression.dictionary
             );
         }
-        if ((mode == CompressionMode::None || mode == CompressionMode::PerPacket)
-            && shared.compression.dictionary != "none") {
+        if ((mode == CompressionMode::None || mode == CompressionMode::PerPacket) &&
+            shared.compression.dictionary != "none")
+        {
             throw std::runtime_error("compression dictionary requires whole_update mode");
         }
         return {
@@ -326,7 +361,8 @@ namespace simnet::app
 
     constexpr std::string_view compression_mode_name(CompressionMode mode) noexcept
     {
-        switch (mode) {
+        switch (mode)
+        {
             case CompressionMode::None:
                 return "none";
             case CompressionMode::WholeUpdate:
@@ -347,8 +383,8 @@ namespace simnet::app
             .max_chunks_per_group = config.max_chunks_per_update,
             .max_in_flight_groups = config.max_in_flight_updates,
             .max_incomplete_bytes = config.max_incomplete_bytes,
-            .reassembly_timeout
-            = Nanoseconds{static_cast<std::int64_t>(config.reassembly_timeout_ms) * 1'000'000},
+            .reassembly_timeout =
+                Nanoseconds{static_cast<std::int64_t>(config.reassembly_timeout_ms) * 1'000'000},
         };
         validate_packetization_settings(settings);
         return settings;
@@ -362,17 +398,22 @@ namespace simnet::app
     {
         auto compatibility = fingerprint_network_compatibility(shared).value;
         auto const dictionary_selected = shared.compression.dictionary != "none";
-        if (dictionary_selected != (dictionary_identity != nullptr)) {
+        if (dictionary_selected != (dictionary_identity != nullptr))
+        {
             throw std::runtime_error(
                 "selected compression dictionary identity is unavailable or unexpected"
             );
         }
-        if (dictionary_identity != nullptr) {
-            auto mix = [&](std::uint64_t value) {
-                for (auto shift = 56U;; shift -= 8U) {
+        if (dictionary_identity != nullptr)
+        {
+            auto mix = [&](std::uint64_t value)
+            {
+                for (auto shift = 56U;; shift -= 8U)
+                {
                     compatibility ^= (value >> shift) & 0xffU;
                     compatibility *= 1099511628211ULL;
-                    if (shift == 0U) {
+                    if (shift == 0U)
+                    {
                         break;
                     }
                 }
@@ -392,7 +433,8 @@ namespace simnet::app
     std::string_view shutdown_reason_name(ShutdownReason reason)
     {
         using enum ShutdownReason;
-        switch (reason) {
+        switch (reason)
+        {
             case None:
                 return "none";
             case Requested:

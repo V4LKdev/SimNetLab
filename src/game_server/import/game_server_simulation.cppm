@@ -165,7 +165,7 @@ export namespace simnet
     /// The runtime must outlive the Flecs world to which it is registered.
     class ServerGameRuntime
     {
-    public:
+      public:
         struct Impl;
 
         explicit ServerGameRuntime(
@@ -183,7 +183,7 @@ export namespace simnet
         [[nodiscard]] std::optional<SelectedBoidDebug> selected_boid_debug() const noexcept;
         [[nodiscard]] ServerGameStepReport const& last_step_report() const noexcept;
 
-    private:
+      private:
         std::unique_ptr<Impl> impl_;
 
         friend void register_server_game(flecs::world&, ServerGameRuntime&);
