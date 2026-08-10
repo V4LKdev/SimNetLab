@@ -4,6 +4,7 @@ module;
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 /// @brief Presentation interpolation between validated world snapshots.
 export module simnet.snapshot:interpolate;

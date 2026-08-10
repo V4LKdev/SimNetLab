@@ -1,6 +1,7 @@
 module;
 
 #include <cstddef>
+#include <string>
 #include <utility>
 
 /// @brief Complete snapshot reconstruction from logical client patches.
@@ -118,7 +119,7 @@ export namespace simnet
         WorldSnapshot& out_snapshot
     )
     {
-        auto const patch_validation = validate_client_snapshot_patch(patch);
+        auto patch_validation = validate_client_snapshot_patch(patch);
         if (!patch_validation.valid)
         {
             return patch_validation;
