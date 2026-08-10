@@ -66,7 +66,8 @@ namespace simnet
             .raw_delta = raw_delta,
         };
 
-        auto accepted_delta = std::max(raw_delta, Nanoseconds{});
+        auto const nonnegative_delta = std::max(raw_delta, Nanoseconds{});
+        auto accepted_delta = nonnegative_delta;
         if (accepted_delta > settings.max_frame_time)
         {
             plan.frame_delta_clamped = true;
@@ -107,7 +108,7 @@ namespace simnet
         ++stats.frames;
         stats.ticks = clock.tick;
         stats.capped_frames += plan.step_limit_reached ? 1U : 0U;
-        stats.raw_time += std::max(raw_delta, Nanoseconds{});
+        stats.raw_time += nonnegative_delta;
         stats.accepted_time += plan.accepted_delta;
         stats.clamped_time += plan.clamped_time;
         stats.dropped_time += plan.dropped_time;

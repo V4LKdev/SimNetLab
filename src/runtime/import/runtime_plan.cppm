@@ -7,7 +7,7 @@ import :types;
 
 export namespace simnet
 {
-    /// Returns the current steady-clock epoch duration rounded to nanoseconds.
+    /// Returns the current steady-clock epoch duration converted to nanoseconds.
     [[nodiscard]] Nanoseconds steady_now_ns() noexcept;
 
     /// Resets a frame timer to an explicit monotonic nanosecond timestamp.
