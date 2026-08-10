@@ -13,10 +13,11 @@ namespace simnet::transport_protocol
 {
     inline constexpr std::uint8_t channel_count = 3;
     inline constexpr std::size_t max_session_message_bytes = 35;
-    inline constexpr std::size_t max_reassembled_payload_bytes = 16U * 1024U * 1024U;
+    inline constexpr std::size_t max_reassembled_payload_bytes = std::size_t{16} * 1024U * 1024U;
 
     enum class SessionMessageKind : std::uint8_t
     {
+        Invalid = 0,
         ClientHello = 1,
         ServerAccept = 2,
         ServerReject = 3

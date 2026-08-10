@@ -122,30 +122,47 @@ namespace simnet::transport_protocol
             return false;
         }
 
-        message.kind = static_cast<SessionMessageKind>(kind);
-        if (message.kind == SessionMessageKind::ClientHello)
+        auto candidate = SessionMessage{
+            .kind = static_cast<SessionMessageKind>(kind),
+        };
+        if (candidate.kind == SessionMessageKind::ClientHello)
         {
-            return payload_size == 24U &&
-                   read_big_endian(bytes, offset, message.identity.application_protocol_version) &&
-                   read_big_endian(bytes, offset, message.identity.compatibility_fingerprint) &&
-                   read_big_endian(bytes, offset, message.identity.application_wire_fingerprint) &&
-                   read_big_endian(bytes, offset, message.identity.capabilities);
+            if (payload_size != 24U ||
+                !read_big_endian(bytes, offset, candidate.identity.application_protocol_version) ||
+                !read_big_endian(bytes, offset, candidate.identity.compatibility_fingerprint) ||
+                !read_big_endian(bytes, offset, candidate.identity.application_wire_fingerprint) ||
+                !read_big_endian(bytes, offset, candidate.identity.capabilities))
+            {
+                return false;
+            }
         }
-        if (message.kind == SessionMessageKind::ServerAccept)
+        else if (candidate.kind == SessionMessageKind::ServerAccept)
         {
-            return payload_size == 0U;
+            if (payload_size != 0U)
+            {
+                return false;
+            }
         }
-        if (message.kind == SessionMessageKind::ServerReject)
+        else if (candidate.kind == SessionMessageKind::ServerReject)
         {
             auto code = std::uint16_t{};
             if (payload_size != 2U || !read_big_endian(bytes, offset, code))
             {
                 return false;
             }
-            message.reject_code = static_cast<DisconnectCode>(code);
-            return valid_disconnect_code(message.reject_code) &&
-                   message.reject_code != DisconnectCode::None;
+            candidate.reject_code = static_cast<DisconnectCode>(code);
+            if (!valid_disconnect_code(candidate.reject_code) ||
+                candidate.reject_code == DisconnectCode::None)
+            {
+                return false;
+            }
         }
-        return false;
+        else
+        {
+            return false;
+        }
+
+        message = candidate;
+        return true;
     }
 } // namespace simnet::transport_protocol

@@ -59,16 +59,16 @@ namespace simnet
                    size <= limits.max_payload_bytes;
         }
 
-        [[nodiscard]] ENetPacketFlag delivery_flags(TransportDelivery delivery) noexcept
+        [[nodiscard]] enet_uint32 delivery_flags(TransportDelivery delivery) noexcept
         {
             switch (delivery)
             {
                 case TransportDelivery::ReliableSequenced:
-                    return ENET_PACKET_FLAG_RELIABLE;
+                    return static_cast<enet_uint32>(ENET_PACKET_FLAG_RELIABLE);
                 case TransportDelivery::UnreliableSequenced:
-                    return static_cast<ENetPacketFlag>(0);
+                    return 0;
             }
-            return static_cast<ENetPacketFlag>(0);
+            return 0;
         }
 
         [[nodiscard]] TransportDelivery packet_delivery(ENetPacket const& packet) noexcept
@@ -78,6 +78,19 @@ namespace simnet
                 return TransportDelivery::ReliableSequenced;
             }
             return TransportDelivery::UnreliableSequenced;
+        }
+
+        [[nodiscard]] ReceivedPacket
+        received_packet(PeerId peer, TransportLane lane, ENetPacket const& packet)
+        {
+            auto payload = std::vector<Byte>(packet.dataLength);
+            std::memcpy(payload.data(), packet.data, packet.dataLength);
+            return {
+                .peer = peer,
+                .lane = lane,
+                .delivery = packet_delivery(packet),
+                .payload = std::move(payload),
+            };
         }
 
         [[nodiscard]] std::size_t unfragmented_payload_limit(ENetPeer const& peer) noexcept
@@ -579,16 +592,7 @@ namespace simnet
             }
             else
             {
-                auto payload = std::vector<Byte>(event.packet->dataLength);
-                std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
-                out_events.push_back(
-                    ReceivedPacket{
-                        .peer = peer,
-                        .lane = lane,
-                        .delivery = packet_delivery(*event.packet),
-                        .payload = std::move(payload),
-                    }
-                );
+                out_events.push_back(received_packet(peer, lane, *event.packet));
             }
         }
 
@@ -874,6 +878,73 @@ namespace simnet
             );
         }
 
+        void handle_session_receive(
+            ENetEvent const& event,
+            TransportLane lane,
+            std::vector<TransportEvent>& out_events
+        )
+        {
+            auto message = SessionMessage{};
+            auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
+            if (lane != TransportLane::Lane0 ||
+                !decode_session_message(ByteSpan{data, event.packet->dataLength}, message))
+            {
+                out_events.push_back(
+                    TransportErrorEvent{
+                        .message = "invalid server session message",
+                    }
+                );
+                return;
+            }
+            if (message.kind == SessionMessageKind::ServerAccept)
+            {
+                session_ready_ = true;
+                out_events.push_back(
+                    PeerSessionReady{
+                        .peer = server_peer_id,
+                    }
+                );
+                return;
+            }
+            if (message.kind == SessionMessageKind::ServerReject)
+            {
+                out_events.push_back(
+                    TransportErrorEvent{
+                        .message = "server rejected transport session",
+                    }
+                );
+                out_events.push_back(
+                    PeerDisconnected{
+                        .peer = server_peer_id,
+                        .code = message.reject_code,
+                        .native_reason = static_cast<std::uint32_t>(message.reject_code),
+                    }
+                );
+                ++counters_.disconnects;
+                enet_peer_disconnect_now(
+                    event.peer,
+                    static_cast<std::uint32_t>(message.reject_code)
+                );
+                server_ = nullptr;
+                transport_connected_ = false;
+                session_ready_ = false;
+                return;
+            }
+
+            out_events.push_back(
+                TransportErrorEvent{
+                    .message = "invalid server control message",
+                }
+            );
+            enet_peer_disconnect_now(
+                event.peer,
+                static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch)
+            );
+            server_ = nullptr;
+            transport_connected_ = false;
+            session_ready_ = false;
+        }
+
         void handle_receive(ENetEvent const& event, std::vector<TransportEvent>& out_events)
         {
             auto const lane = static_cast<TransportLane>(event.channelID);
@@ -920,81 +991,10 @@ namespace simnet
 
             if (!session_ready_)
             {
-                auto message = SessionMessage{};
-                auto const* data = reinterpret_cast<Byte const*>(event.packet->data);
-                if (lane != TransportLane::Lane0 ||
-                    !decode_session_message(ByteSpan{data, event.packet->dataLength}, message))
-                {
-                    out_events.push_back(
-                        TransportErrorEvent{
-                            .message = "invalid server session message",
-                        }
-                    );
-                }
-                else if (message.kind == SessionMessageKind::ServerAccept)
-                {
-                    if (!session_ready_)
-                    {
-                        session_ready_ = true;
-                        out_events.push_back(
-                            PeerSessionReady{
-                                .peer = server_peer_id,
-                            }
-                        );
-                    }
-                }
-                else if (message.kind == SessionMessageKind::ServerReject)
-                {
-                    out_events.push_back(
-                        TransportErrorEvent{
-                            .message = "server rejected transport session",
-                        }
-                    );
-                    out_events.push_back(
-                        PeerDisconnected{
-                            .peer = server_peer_id,
-                            .code = message.reject_code,
-                            .native_reason = static_cast<std::uint32_t>(message.reject_code),
-                        }
-                    );
-                    ++counters_.disconnects;
-                    enet_peer_disconnect_now(
-                        event.peer,
-                        static_cast<std::uint32_t>(message.reject_code)
-                    );
-                    server_ = nullptr;
-                    transport_connected_ = false;
-                    session_ready_ = false;
-                }
-                else
-                {
-                    out_events.push_back(
-                        TransportErrorEvent{
-                            .message = "invalid server control message",
-                        }
-                    );
-                    enet_peer_disconnect_now(
-                        event.peer,
-                        static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch)
-                    );
-                    server_ = nullptr;
-                    transport_connected_ = false;
-                    session_ready_ = false;
-                }
+                handle_session_receive(event, lane, out_events);
+                return;
             }
-            else
-            {
-                auto payload = std::vector<Byte>(event.packet->dataLength);
-                std::memcpy(payload.data(), event.packet->data, event.packet->dataLength);
-                out_events.push_back(
-                    ReceivedPacket{
-                        .peer = server_peer_id,
-                        .lane = lane,
-                        .delivery = packet_delivery(*event.packet),
-                        .payload = std::move(payload),
-                    }
-                );
-            }
+            out_events.push_back(received_packet(server_peer_id, lane, *event.packet));
         }
 
         void expire_pending_session(std::vector<TransportEvent>& out_events)
