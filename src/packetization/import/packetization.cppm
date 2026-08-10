@@ -1,7 +1,6 @@
 module;
 
 #include <cstdint>
-#include <span>
 #include <string>
 #include <vector>
 

@@ -261,7 +261,7 @@ TEST_CASE("duplicates are idempotent or invalidate only their group", "[packetiz
     CHECK(state.report.duplicate_chunks == 1U);
 
     auto conflicting = group_packets[0];
-    conflicting.back() = static_cast<simnet::Byte>(conflicting.back() ^ simnet::Byte{1U});
+    conflicting.back() ^= simnet::Byte{1U};
     auto conflict = simnet::accept_group_packet(config, state, conflicting, simnet::Nanoseconds{});
     CHECK(conflict.kind == simnet::ReassemblyResultKind::Invalid);
     CHECK(state.incomplete.empty());
