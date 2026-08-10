@@ -93,4 +93,7 @@ instead of being ignored.
 
 Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.
 
-`shared_boids_demo.json` is a conservative 1,000-entity visual profile. Its rule values are starting points, not final tuning constants. `shared_stress_50k.json` is the local high-count stress and visual-inspection profile. It is a Server-only scenario rather than a realistic unpacketized ENet replication workload.
+`shared_demo_visual.json` is the 1,500-entity visual profile. Its rule values are starting points,
+not final tuning constants. `shared_stress_50k.json` is the local high-count stress and
+visual-inspection profile. It is a Server-only scenario rather than a realistic unpacketized ENet
+replication workload.

@@ -1553,25 +1553,3 @@ TEST_CASE("maintained compression treatments load with matching controls", "[con
         control_fingerprint.value
     );
 }
-
-// TEST_CASE("boids demo profile loads a conservative deterministic scenario", "[config]")
-// {
-//     auto const path = simnet::default_shared_config_path().parent_path()
-//         / "shared_boids_demo.json";
-//     auto const config = simnet::load_shared_config(path);
-//
-//     CHECK(config.simulation.initial_boid_count == 1000U);
-//     CHECK(config.simulation.world_half == 65.0F);
-//     CHECK(config.spatial.cell_size == 18.0F);
-//     CHECK(config.spatial.max_neighbors == 64U);
-//     CHECK(config.boids.min_speed <= config.boids.cruise_speed);
-//     CHECK(config.boids.cruise_speed <= config.boids.max_speed);
-//     CHECK(config.boids.alignment_radius == 18.0F);
-//     CHECK(config.boids.cohesion_radius == 18.0F);
-//     CHECK(config.boids.enable_wander);
-//     CHECK(config.boids.enable_hue_assimilation);
-//     CHECK(config.player.yaw_acceleration_degrees == 360.0F);
-//     CHECK(config.player.pitch_acceleration_degrees == 300.0F);
-//     CHECK(config.player.max_yaw_rate_degrees == 120.0F);
-//     CHECK(config.player.max_pitch_rate_degrees == 90.0F);
-// }

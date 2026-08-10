@@ -44,7 +44,7 @@ namespace
 
     void hash_string(std::uint64_t& hash, std::string_view value) noexcept
     {
-        for (char character : value)
+        for (char const character : value)
         {
             hash ^= static_cast<unsigned char>(character);
             hash *= fnv_prime;
@@ -306,6 +306,44 @@ namespace
         }
     }
 
+    void validate_boids(simnet::BoidsConfig const& config)
+    {
+        if (config.min_speed < 0.0F || config.min_speed > config.cruise_speed ||
+            config.cruise_speed > config.max_speed)
+        {
+            throw std::runtime_error(
+                "invalid boids speed limits: expected 0 <= min_speed <= cruise_speed <= max_speed"
+            );
+        }
+        validate_positive("boids.max_speed", config.max_speed);
+        validate_positive("boids.max_acceleration", config.max_acceleration);
+        validate_positive("boids.separation_radius", config.separation_radius);
+        validate_positive("boids.alignment_radius", config.alignment_radius);
+        validate_positive("boids.cohesion_radius", config.cohesion_radius);
+        if (config.field_of_view_degrees <= 0.0F || config.field_of_view_degrees > 360.0F)
+        {
+            throw std::runtime_error(
+                "invalid config field 'boids.field_of_view_degrees': expected (0, 360]"
+            );
+        }
+        validate_positive(
+            "boids.containment_prediction_seconds",
+            config.containment_prediction_seconds
+        );
+        validate_positive("boids.containment_margin", config.containment_margin);
+        if (config.separation_acceleration < 0.0F || config.containment_acceleration < 0.0F ||
+            config.alignment_acceleration < 0.0F || config.cohesion_acceleration < 0.0F ||
+            config.wander_acceleration < 0.0F)
+        {
+            throw std::runtime_error(
+                "invalid boids rule acceleration: expected non-negative values"
+            );
+        }
+        validate_positive("boids.wander_frequency_hz", config.wander_frequency_hz);
+        validate_positive("boids.hue_assimilation_rate", config.hue_assimilation_rate);
+        validate_positive("boids.hue_drift_rate", config.hue_drift_rate);
+    }
+
     void apply_boids(Json const& json, simnet::BoidsConfig& config)
     {
         read_optional(json, "enable_separation", config.enable_separation);
@@ -350,40 +388,7 @@ namespace
             apply_player_influence_force(*section, "player_predator", config.player_predator);
         }
 
-        if (config.min_speed < 0.0F || config.min_speed > config.cruise_speed ||
-            config.cruise_speed > config.max_speed)
-        {
-            throw std::runtime_error(
-                "invalid boids speed limits: expected 0 <= min_speed <= cruise_speed <= max_speed"
-            );
-        }
-        validate_positive("boids.max_speed", config.max_speed);
-        validate_positive("boids.max_acceleration", config.max_acceleration);
-        validate_positive("boids.separation_radius", config.separation_radius);
-        validate_positive("boids.alignment_radius", config.alignment_radius);
-        validate_positive("boids.cohesion_radius", config.cohesion_radius);
-        if (config.field_of_view_degrees <= 0.0F || config.field_of_view_degrees > 360.0F)
-        {
-            throw std::runtime_error(
-                "invalid config field 'boids.field_of_view_degrees': expected (0, 360]"
-            );
-        }
-        validate_positive(
-            "boids.containment_prediction_seconds",
-            config.containment_prediction_seconds
-        );
-        validate_positive("boids.containment_margin", config.containment_margin);
-        if (config.separation_acceleration < 0.0F || config.containment_acceleration < 0.0F ||
-            config.alignment_acceleration < 0.0F || config.cohesion_acceleration < 0.0F ||
-            config.wander_acceleration < 0.0F)
-        {
-            throw std::runtime_error(
-                "invalid boids rule acceleration: expected non-negative values"
-            );
-        }
-        validate_positive("boids.wander_frequency_hz", config.wander_frequency_hz);
-        validate_positive("boids.hue_assimilation_rate", config.hue_assimilation_rate);
-        validate_positive("boids.hue_drift_rate", config.hue_drift_rate);
+        validate_boids(config);
     }
 
     void validate_player_influence_forces(simnet::SharedConfig const& config)
