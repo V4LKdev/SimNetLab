@@ -361,10 +361,14 @@ TEST_CASE("Zstd frame validation rejects corruption and extra frames", "[compres
             .valid
     );
 
-    auto output = std::vector<simnet::Byte>{};
+    auto output = bytes("unchanged");
+    auto const original = output;
     auto corrupt = valid;
     corrupt.back() ^= simnet::Byte{0xFFU};
-    CHECK_FALSE(simnet::decompress_bytes(decompressor, corrupt, limits(), output).valid);
+    auto const corrupt_report = simnet::decompress_bytes(decompressor, corrupt, limits(), output);
+    CHECK_FALSE(corrupt_report.valid);
+    CHECK(corrupt_report.error.starts_with("Zstd decompression failed: "));
+    CHECK(output == original);
 
     auto concatenated = valid;
     auto const payload = std::vector<simnet::Byte>(
@@ -378,6 +382,7 @@ TEST_CASE("Zstd frame validation rejects corruption and extra frames", "[compres
         static_cast<std::uint32_t>(concatenated.size() - simnet::compression_envelope_bytes)
     );
     CHECK_FALSE(simnet::decompress_bytes(decompressor, concatenated, limits(16384U), output).valid);
+    CHECK(output == original);
 
     auto trailing = valid;
     trailing.push_back(simnet::Byte{0U});
@@ -387,6 +392,7 @@ TEST_CASE("Zstd frame validation rejects corruption and extra frames", "[compres
         static_cast<std::uint32_t>(trailing.size() - simnet::compression_envelope_bytes)
     );
     CHECK_FALSE(simnet::decompress_bytes(decompressor, trailing, limits(), output).valid);
+    CHECK(output == original);
 }
 
 TEST_CASE("unknown Zstd frame sizes are rejected without poisoning later input", "[compression]")

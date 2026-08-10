@@ -1,6 +1,5 @@
 module;
 
-#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -58,9 +57,106 @@ namespace
         simnet::append_big_endian(output, payload_bytes);
     }
 
+    void write_compression_envelope(
+        simnet::CompressionReport& report,
+        std::vector<simnet::Byte>& output,
+        simnet::CompressionEncoding encoding,
+        simnet::ByteSpan payload
+    )
+    {
+        report.encoding = encoding;
+        report.encoded_payload_bytes = static_cast<std::uint32_t>(payload.size());
+        report.envelope_bytes = simnet::compression_envelope_bytes;
+        report.output_bytes = report.envelope_bytes + report.encoded_payload_bytes;
+        output.clear();
+        output.reserve(report.output_bytes);
+        write_header(output, report.encoding, report.input_bytes, report.encoded_payload_bytes);
+        output.insert(output.end(), payload.begin(), payload.end());
+        report.valid = true;
+    }
+
     [[nodiscard]] bool valid_limits(simnet::CompressionLimits limits) noexcept
     {
         return limits.max_uncompressed_bytes != 0U && limits.max_output_bytes != 0U;
+    }
+
+    [[nodiscard]] bool validate_compression_input(
+        simnet::ByteSpan input,
+        simnet::CompressionLimits limits,
+        simnet::CompressionReport& report
+    )
+    {
+        if (input.empty() || input.size() > limits.max_uncompressed_bytes ||
+            input.size() > std::numeric_limits<std::uint32_t>::max())
+        {
+            report.error = "compression input byte count is outside contextual bounds";
+            return false;
+        }
+        report.input_bytes = static_cast<std::uint32_t>(input.size());
+        return true;
+    }
+
+    [[nodiscard]] bool validate_decompression_input(
+        simnet::ByteSpan input,
+        simnet::CompressionLimits limits,
+        simnet::DecompressionReport& report
+    )
+    {
+        if (!valid_limits(limits))
+        {
+            report.error = "decompression limits must be positive";
+            return false;
+        }
+        if (input.size() < simnet::compression_envelope_bytes ||
+            input.size() > limits.max_output_bytes ||
+            input.size() > std::numeric_limits<std::uint32_t>::max())
+        {
+            report.error = "compression envelope byte count is outside contextual bounds";
+            return false;
+        }
+        report.input_bytes = static_cast<std::uint32_t>(input.size());
+        return true;
+    }
+
+    [[nodiscard]] bool valid_header_identity(EnvelopeHeader const& header) noexcept
+    {
+        return header.magic == compression_magic &&
+               header.protocol == compression_protocol_version &&
+               header.schema == compression_schema_version;
+    }
+
+    [[nodiscard]] bool envelope_sizes_within_bounds(
+        EnvelopeHeader const& header,
+        simnet::CompressionLimits limits
+    ) noexcept
+    {
+        return header.uncompressed_bytes != 0U && header.payload_bytes != 0U &&
+               header.uncompressed_bytes <= limits.max_uncompressed_bytes;
+    }
+
+    [[nodiscard]] bool envelope_payload_size_matches(
+        EnvelopeHeader const& header,
+        simnet::ByteSpan input,
+        simnet::CompressionLimits limits
+    ) noexcept
+    {
+        auto const total_bytes =
+            static_cast<std::uint64_t>(simnet::compression_envelope_bytes) + header.payload_bytes;
+        return total_bytes == input.size() && total_bytes <= limits.max_output_bytes;
+    }
+
+    [[nodiscard]] bool
+    frame_content_size_matches(simnet::ByteSpan payload, std::uint32_t expected_bytes) noexcept
+    {
+        auto const content_size = ZSTD_getFrameContentSize(payload.data(), payload.size());
+        return content_size != ZSTD_CONTENTSIZE_ERROR && content_size != ZSTD_CONTENTSIZE_UNKNOWN &&
+               content_size == expected_bytes;
+    }
+
+    [[nodiscard]] bool contains_one_complete_frame(simnet::ByteSpan payload) noexcept
+    {
+        auto const frame_size = ZSTD_findFrameCompressedSize(payload.data(), payload.size());
+        return ZSTD_isError(frame_size) == 0U && frame_size == payload.size();
     }
 
     [[nodiscard]] simnet::Nanoseconds now_ns() noexcept
@@ -243,13 +339,10 @@ namespace simnet
             report.error = "Zstd compression level must be in [1, 19]";
             return report;
         }
-        if (input.empty() || input.size() > limits.max_uncompressed_bytes ||
-            input.size() > std::numeric_limits<std::uint32_t>::max())
+        if (!validate_compression_input(input, limits, report))
         {
-            report.error = "compression input byte count is outside contextual bounds";
             return report;
         }
-        report.input_bytes = static_cast<std::uint32_t>(input.size());
 
         auto const bound = ZSTD_compressBound(input.size());
         if (ZSTD_isError(bound) != 0U || bound > compressor.impl_->frame_scratch.max_size())
@@ -311,26 +404,14 @@ namespace simnet
             return report;
         }
 
-        report.encoding = use_zstd ? CompressionEncoding::Zstd : CompressionEncoding::Raw;
-        report.encoded_payload_bytes = static_cast<std::uint32_t>(payload_bytes);
-        report.envelope_bytes = compression_envelope_bytes;
-        report.output_bytes = static_cast<std::uint32_t>(total_bytes);
-        output.clear();
-        output.reserve(report.output_bytes);
-        write_header(output, report.encoding, report.input_bytes, report.encoded_payload_bytes);
-        if (use_zstd)
-        {
-            output.insert(
-                output.end(),
-                compressor.impl_->frame_scratch.begin(),
-                compressor.impl_->frame_scratch.begin() + static_cast<std::ptrdiff_t>(compressed)
-            );
-        }
-        else
-        {
-            output.insert(output.end(), input.begin(), input.end());
-        }
-        report.valid = true;
+        auto const payload =
+            use_zstd ? ByteSpan{compressor.impl_->frame_scratch}.first(compressed) : input;
+        write_compression_envelope(
+            report,
+            output,
+            use_zstd ? CompressionEncoding::Zstd : CompressionEncoding::Raw,
+            payload
+        );
         return report;
     }
 
@@ -348,13 +429,10 @@ namespace simnet
             report.error = "compression limits must be positive";
             return report;
         }
-        if (input.empty() || input.size() > limits.max_uncompressed_bytes ||
-            input.size() > std::numeric_limits<std::uint32_t>::max())
+        if (!validate_compression_input(input, limits, report))
         {
-            report.error = "compression input byte count is outside contextual bounds";
             return report;
         }
-        report.input_bytes = static_cast<std::uint32_t>(input.size());
 
         auto const bound = ZSTD_compressBound(input.size());
         if (ZSTD_isError(bound) != 0U || bound > compressor.impl_->frame_scratch.max_size())
@@ -400,27 +478,14 @@ namespace simnet
             return report;
         }
 
-        report.encoding =
-            use_dictionary ? CompressionEncoding::ZstdDictionary : CompressionEncoding::Raw;
-        report.encoded_payload_bytes = static_cast<std::uint32_t>(payload_bytes);
-        report.envelope_bytes = compression_envelope_bytes;
-        report.output_bytes = static_cast<std::uint32_t>(total_bytes);
-        output.clear();
-        output.reserve(report.output_bytes);
-        write_header(output, report.encoding, report.input_bytes, report.encoded_payload_bytes);
-        if (use_dictionary)
-        {
-            output.insert(
-                output.end(),
-                compressor.impl_->frame_scratch.begin(),
-                compressor.impl_->frame_scratch.begin() + static_cast<std::ptrdiff_t>(compressed)
-            );
-        }
-        else
-        {
-            output.insert(output.end(), input.begin(), input.end());
-        }
-        report.valid = true;
+        auto const payload =
+            use_dictionary ? ByteSpan{compressor.impl_->frame_scratch}.first(compressed) : input;
+        write_compression_envelope(
+            report,
+            output,
+            use_dictionary ? CompressionEncoding::ZstdDictionary : CompressionEncoding::Raw,
+            payload
+        );
         return report;
     }
 
@@ -432,23 +497,13 @@ namespace simnet
     )
     {
         auto report = DecompressionReport{};
-        if (!valid_limits(limits))
+        if (!validate_decompression_input(input, limits, report))
         {
-            report.error = "decompression limits must be positive";
             return report;
         }
-        if (input.size() < compression_envelope_bytes || input.size() > limits.max_output_bytes ||
-            input.size() > std::numeric_limits<std::uint32_t>::max())
-        {
-            report.error = "compression envelope byte count is outside contextual bounds";
-            return report;
-        }
-        report.input_bytes = static_cast<std::uint32_t>(input.size());
 
         auto header = EnvelopeHeader{};
-        if (!read_header(input, header) || header.magic != compression_magic ||
-            header.protocol != compression_protocol_version ||
-            header.schema != compression_schema_version ||
+        if (!read_header(input, header) || !valid_header_identity(header) ||
             (header.encoding != static_cast<std::uint8_t>(CompressionEncoding::Raw) &&
              header.encoding != static_cast<std::uint8_t>(CompressionEncoding::Zstd) &&
              header.encoding != static_cast<std::uint8_t>(CompressionEncoding::ZstdDictionary)))
@@ -456,15 +511,12 @@ namespace simnet
             report.error = "compression envelope identity or version is invalid";
             return report;
         }
-        if (header.uncompressed_bytes == 0U || header.payload_bytes == 0U ||
-            header.uncompressed_bytes > limits.max_uncompressed_bytes)
+        if (!envelope_sizes_within_bounds(header, limits))
         {
             report.error = "compression envelope sizes are outside contextual bounds";
             return report;
         }
-        auto const total_bytes =
-            static_cast<std::uint64_t>(compression_envelope_bytes) + header.payload_bytes;
-        if (total_bytes != input.size() || total_bytes > limits.max_output_bytes)
+        if (!envelope_payload_size_matches(header, input, limits))
         {
             report.error = "compression envelope payload size is inconsistent";
             return report;
@@ -494,39 +546,36 @@ namespace simnet
             return report;
         }
 
-        auto const content_size = ZSTD_getFrameContentSize(payload.data(), payload.size());
-        if (content_size == ZSTD_CONTENTSIZE_ERROR || content_size == ZSTD_CONTENTSIZE_UNKNOWN ||
-            content_size != header.uncompressed_bytes)
+        if (!frame_content_size_matches(payload, header.uncompressed_bytes))
         {
             report.error = "Zstd frame content size is invalid or inconsistent";
             return report;
         }
-        auto const frame_size = ZSTD_findFrameCompressedSize(payload.data(), payload.size());
-        if (ZSTD_isError(frame_size) != 0U || frame_size != payload.size())
+        if (!contains_one_complete_frame(payload))
         {
             report.error = "Zstd frame is truncated or has trailing data";
             return report;
         }
 
-        output.resize(header.uncompressed_bytes);
+        decompressor.impl_->frame_scratch.resize(header.uncompressed_bytes);
         auto const start = now_ns();
         auto const decompressed = ZSTD_decompressDCtx(
             decompressor.impl_->context,
-            output.data(),
-            output.size(),
+            decompressor.impl_->frame_scratch.data(),
+            decompressor.impl_->frame_scratch.size(),
             payload.data(),
             payload.size()
         );
         report.decompression_cpu_time = now_ns() - start;
         if (ZSTD_isError(decompressed) != 0U || decompressed != header.uncompressed_bytes)
         {
-            output.clear();
             report.error =
                 ZSTD_isError(decompressed) != 0U
                     ? std::string{"Zstd decompression failed: "} + ZSTD_getErrorName(decompressed)
                     : "Zstd decompressed byte count is inconsistent";
             return report;
         }
+        output = decompressor.impl_->frame_scratch;
         report.output_bytes = header.uncompressed_bytes;
         report.valid = true;
         return report;
@@ -541,38 +590,25 @@ namespace simnet
     )
     {
         auto report = DecompressionReport{};
-        if (!valid_limits(limits))
+        if (!validate_decompression_input(input, limits, report))
         {
-            report.error = "decompression limits must be positive";
             return report;
         }
-        if (input.size() < compression_envelope_bytes || input.size() > limits.max_output_bytes ||
-            input.size() > std::numeric_limits<std::uint32_t>::max())
-        {
-            report.error = "compression envelope byte count is outside contextual bounds";
-            return report;
-        }
-        report.input_bytes = static_cast<std::uint32_t>(input.size());
 
         auto header = EnvelopeHeader{};
-        if (!read_header(input, header) || header.magic != compression_magic ||
-            header.protocol != compression_protocol_version ||
-            header.schema != compression_schema_version ||
+        if (!read_header(input, header) || !valid_header_identity(header) ||
             (header.encoding != static_cast<std::uint8_t>(CompressionEncoding::Raw) &&
              header.encoding != static_cast<std::uint8_t>(CompressionEncoding::ZstdDictionary)))
         {
             report.error = "dictionary compression envelope identity or version is invalid";
             return report;
         }
-        if (header.uncompressed_bytes == 0U || header.payload_bytes == 0U ||
-            header.uncompressed_bytes > limits.max_uncompressed_bytes)
+        if (!envelope_sizes_within_bounds(header, limits))
         {
             report.error = "dictionary compression envelope sizes are outside contextual bounds";
             return report;
         }
-        auto const total_bytes =
-            static_cast<std::uint64_t>(compression_envelope_bytes) + header.payload_bytes;
-        if (total_bytes != input.size() || total_bytes > limits.max_output_bytes)
+        if (!envelope_payload_size_matches(header, input, limits))
         {
             report.error = "dictionary compression envelope payload size is inconsistent";
             return report;
@@ -598,15 +634,12 @@ namespace simnet
             return report;
         }
 
-        auto const content_size = ZSTD_getFrameContentSize(payload.data(), payload.size());
-        if (content_size == ZSTD_CONTENTSIZE_ERROR || content_size == ZSTD_CONTENTSIZE_UNKNOWN ||
-            content_size != header.uncompressed_bytes)
+        if (!frame_content_size_matches(payload, header.uncompressed_bytes))
         {
             report.error = "Zstd dictionary frame content size is invalid or inconsistent";
             return report;
         }
-        auto const frame_size = ZSTD_findFrameCompressedSize(payload.data(), payload.size());
-        if (ZSTD_isError(frame_size) != 0U || frame_size != payload.size())
+        if (!contains_one_complete_frame(payload))
         {
             report.error = "Zstd dictionary frame is truncated or has trailing data";
             return report;

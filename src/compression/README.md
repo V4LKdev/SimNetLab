@@ -9,8 +9,10 @@ The 17-byte network-order envelope contains `SNCZ`, protocol and schema versions
 Zstd, or ZstdDictionary encoding, the declared uncompressed byte count, and the encoded payload
 byte count. Dictionary frames also carry Zstd's nonzero embedded dictionary ID. Decoding requires
 one complete frame with a known exact content size. Truncated frames, concatenated frames, trailing
-bytes, corrupt data, size mismatches, and dictionary ID mismatches are rejected before caller state
-changes.
+bytes, corrupt data, size mismatches, and dictionary ID mismatches are rejected. Callers consume
+decoded output only when the report is valid. Ordinary and dictionary Zstd decoding use reusable
+scratch storage and commit caller output only after complete validation and successful decoding.
+Every failure leaves caller output unchanged.
 
 Whole-update compression always uses the envelope. Per-packet composition uses a Zstd envelope only
 when the complete envelope is smaller than the original application packet. Otherwise it preserves
