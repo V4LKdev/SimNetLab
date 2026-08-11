@@ -16,6 +16,7 @@ target_sources(simnet_game_client
 
 target_link_libraries(simnet_game_client
     PUBLIC
+        simnet_core
         simnet_game_shared
         simnet_snapshot
 )

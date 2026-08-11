@@ -10,4 +10,6 @@ Applying each successfully reconstructed update to the Flecs sink is a required 
 
 The Flecs sink is never authoritative and never replaces retained reconstructed snapshots. Local player ownership comes from the `JoinAccepted` player ID, not Flecs classification. Generic `EntityClassification` values map to `EntityKindComponent`, so multiple remote Player entities remain represented independently of local ownership.
 
-The module depends only on `simnet_game_shared` and `simnet_snapshot`. It does not own pipeline decoding, transport, rendering, telemetry, config, synthetic data, or server simulation.
+The module depends only on `simnet_core`, `simnet_game_shared`, and `simnet_snapshot`. It does not
+own pipeline decoding, transport, rendering, telemetry, config, synthetic data, or server
+simulation.
