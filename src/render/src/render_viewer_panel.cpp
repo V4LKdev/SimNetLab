@@ -21,6 +21,8 @@ import simnet.core;
 
 namespace simnet
 {
+    using render_detail::draw_text;
+
     namespace
     {
         using namespace render_detail;
@@ -61,11 +63,6 @@ namespace simnet
             return {margin + static_cast<float>(index) * (width + gap), 78.0F, width, 36.0F};
         }
 
-        void draw_text(Font font, char const* value, Vector2 position, float size, Color color)
-        {
-            DrawTextEx(font, value, position, size, 0.75F, color);
-        }
-
         float panel_content_extent(PanelModel const& model) noexcept
         {
             auto height = 12.0F;
@@ -75,7 +72,7 @@ namespace simnet
                 height += section_header_height;
                 if (section.expanded)
                 {
-                    height += panel_row_height * section.row_count;
+                    height += panel_row_height * static_cast<float>(section.row_count);
                 }
             }
             return height;
@@ -171,13 +168,14 @@ namespace simnet
                         auto const header = Rectangle{0.0F, y, panel_width, section_header_height};
                         if (section.collapsible && CheckCollisionPointRec(mouse, header))
                         {
-                            ui_.expanded_sections[page_index(ui_.page)] ^= (1U << index);
+                            ui_.expanded_sections[page_index(ui_.page)] ^=
+                                (std::uint32_t{1} << static_cast<std::uint32_t>(index));
                             break;
                         }
                         y += section_header_height;
                         if (section.expanded)
                         {
-                            y += panel_row_height * section.row_count;
+                            y += panel_row_height * static_cast<float>(section.row_count);
                         }
                     }
                 }
@@ -426,7 +424,7 @@ namespace simnet
         auto const content_height = content_bottom - content_top;
         auto& scroll = ui_.page_scroll[page_index(ui_.page)];
         auto const total_height = panel_content_extent(panel_model_);
-        auto const max_scroll = std::max(0.0F, total_height - content_height);
+        auto const max_scroll = std::max(0.0F, total_height - static_cast<float>(content_height));
         scroll = std::clamp(scroll, 0.0F, max_scroll);
         auto content_y = static_cast<float>(content_top) - scroll + 12.0F;
 

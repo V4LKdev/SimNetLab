@@ -239,6 +239,11 @@ namespace simnet::render_detail
 
     inline constexpr UiTypography typography{};
 
+    inline void draw_text(Font font, char const* value, Vector2 position, float size, Color color)
+    {
+        DrawTextEx(font, value, position, size, 0.75F, color);
+    }
+
     struct ViewportUiLayout
     {
         std::array<Rectangle, 4> toolbar_buttons{};

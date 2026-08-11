@@ -23,11 +23,6 @@ namespace simnet
     namespace
     {
         using namespace render_detail;
-
-        void draw_text(Font font, char const* value, Vector2 position, float size, Color color)
-        {
-            DrawTextEx(font, value, position, size, 0.75F, color);
-        }
     } // namespace
 
     void Viewer::Impl::draw_viewport_ui(RenderFrame const& frame, ViewerResult const&)
@@ -253,7 +248,7 @@ namespace simnet
                     sizeof(value),
                     "Entity %u   |   Speed %.2f   |   Neighbors %u",
                     selected_entity_frame_->id,
-                    frame.selected_details->speed.value_or(0.0F),
+                    static_cast<double>(frame.selected_details->speed.value_or(0.0F)),
                     frame.selected_details->retained_neighbor_count.value_or(0U)
                 );
             }
@@ -264,9 +259,9 @@ namespace simnet
                     sizeof(value),
                     "Entity %u   |   %.1f  %.1f  %.1f",
                     selected_entity_frame_->id,
-                    selected_entity_frame_->position.x,
-                    selected_entity_frame_->position.y,
-                    selected_entity_frame_->position.z
+                    static_cast<double>(selected_entity_frame_->position.x),
+                    static_cast<double>(selected_entity_frame_->position.y),
+                    static_cast<double>(selected_entity_frame_->position.z)
                 );
             }
             draw_text(

@@ -10,7 +10,10 @@ heap allocation. `render_viewer_panel.cpp` owns sidebar layout, scrolling, and
 UI interaction. `render_viewer_viewport_ui.cpp` draws the
 toolbar menus, contextual help, selection card, and orientation gizmo. The shared
 private implementation header contains only Viewer state and internal helpers.
-it is not part of the module's public API.
+It is not part of the module's public API.
+
+Viewer construction releases every acquired Raylib resource if a later initialization step fails.
+Normal destruction releases the same resources in reverse ownership order.
 
 The private panel uses the tracked JetBrains Mono Nerd Font Regular resource
 from `assets/JetBrainsMonoNerdFont-Regular.ttf`. The viewer loads a bounded

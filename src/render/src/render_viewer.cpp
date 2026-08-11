@@ -33,12 +33,7 @@ namespace
 {
     using Clock = std::chrono::steady_clock;
 
-    constexpr std::size_t selected_trail_max_points = 2400;
-    constexpr float pi = 3.14159265358979323846F;
-    constexpr float min_pitch = -pi * 0.48F;
-    constexpr float max_pitch = pi * 0.48F;
-    constexpr float minimum_distance = 2.0F;
-    constexpr float automatic_orbit_angular_speed = pi / 18.0F;
+    constexpr float automatic_orbit_angular_speed = simnet::render_detail::pi / 18.0F;
 
     bool viewer_active = false;
 
@@ -79,7 +74,10 @@ namespace
     {
         auto const elapsed = std::max(frame_delta, simnet::Nanoseconds{});
         auto const seconds = std::chrono::duration<float>{elapsed}.count();
-        return std::remainder(yaw + automatic_orbit_angular_speed * seconds, 2.0F * pi);
+        return std::remainder(
+            yaw + automatic_orbit_angular_speed * seconds,
+            2.0F * simnet::render_detail::pi
+        );
     }
 
     [[nodiscard]] std::filesystem::path next_screenshot_path(std::string const& output_directory)
@@ -128,48 +126,6 @@ namespace
         }
     }
 
-    [[nodiscard]] Vector3 to_raylib(simnet::Vec3f value) noexcept
-    {
-        return {value.x, value.y, value.z};
-    }
-
-    [[nodiscard]] bool finite(simnet::Vec3f value) noexcept
-    {
-        return simnet::is_finite(value);
-    }
-
-    [[nodiscard]] simnet::Vec3f normalized_or_forward(simnet::Vec3f heading) noexcept
-    {
-        auto const length_squared = simnet::length_squared(heading);
-        if (!std::isfinite(length_squared) || length_squared <= 0.000001F)
-        {
-            return {0.0F, 0.0F, 1.0F};
-        }
-        return heading / std::sqrt(length_squared);
-    }
-
-    struct WorldUpBasis
-    {
-        simnet::Vec3f right{.x = 1.0F};
-        simnet::Vec3f up{.y = 1.0F};
-    };
-
-    [[nodiscard]] WorldUpBasis world_up_basis(simnet::Vec3f forward) noexcept
-    {
-        auto const horizontal = simnet::normalize_or(
-            simnet::Vec3f{.x = forward.x, .z = forward.z},
-            simnet::Vec3f{.z = 1.0F}
-        );
-        auto const right = simnet::normalize_or(
-            cross(simnet::Vec3f{.y = 1.0F}, horizontal),
-            simnet::Vec3f{.x = 1.0F}
-        );
-        return {
-            .right = right,
-            .up = simnet::normalize_or(cross(forward, right), simnet::Vec3f{.y = 1.0F}),
-        };
-    }
-
     [[nodiscard]] Mesh make_directional_mesh()
     {
         // The wedge points along local +Z and uses local +Y as up.
@@ -183,10 +139,14 @@ namespace
         if (mesh.vertices == nullptr || mesh.normals == nullptr || mesh.texcoords == nullptr ||
             mesh.indices == nullptr)
         {
+            MemFree(mesh.vertices);
+            MemFree(mesh.normals);
+            MemFree(mesh.texcoords);
+            MemFree(mesh.indices);
             throw std::runtime_error("failed to allocate directional entity mesh");
         }
 
-        float const vertices[] = {
+        constexpr std::array vertices = {
             0.0F,
             0.0F,
             1.25F,
@@ -200,7 +160,7 @@ namespace
             0.45F,
             -0.35F,
         };
-        float const normals[] = {
+        constexpr std::array normals = {
             0.0F,
             0.0F,
             1.0F,
@@ -214,17 +174,17 @@ namespace
             0.8F,
             -0.5F,
         };
-        float const texcoords[] = {0.5F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F, 0.5F, 0.5F};
-        unsigned short const indices[] = {0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2};
-        std::copy(std::begin(vertices), std::end(vertices), mesh.vertices);
-        std::copy(std::begin(normals), std::end(normals), mesh.normals);
-        std::copy(std::begin(texcoords), std::end(texcoords), mesh.texcoords);
-        std::copy(std::begin(indices), std::end(indices), mesh.indices);
+        constexpr std::array texcoords = {0.5F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F, 0.5F, 0.5F};
+        constexpr std::array<unsigned short, 12> indices = {0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2};
+        std::copy(vertices.begin(), vertices.end(), mesh.vertices);
+        std::copy(normals.begin(), normals.end(), mesh.normals);
+        std::copy(texcoords.begin(), texcoords.end(), mesh.texcoords);
+        std::copy(indices.begin(), indices.end(), mesh.indices);
         UploadMesh(&mesh, false);
         return mesh;
     }
 
-    [[nodiscard]] Matrix mesh_correction(std::string const& path) noexcept
+    [[nodiscard]] Matrix mesh_correction(std::string const& path)
     {
         if (std::filesystem::path{path}.filename() == "boid.obj")
         {
@@ -324,6 +284,11 @@ void main()
 
 namespace simnet
 {
+    using render_detail::finite;
+    using render_detail::normalized_or_forward;
+    using render_detail::to_raylib;
+    using render_detail::world_up_basis;
+
     Viewer::Impl::Impl(ViewerConfig config, std::string output_directory)
         : config_(std::move(config)), output_directory_(std::move(output_directory)),
           scene_rect_{
@@ -348,47 +313,62 @@ namespace simnet
         {
             throw std::runtime_error("failed to create viewer window");
         }
-        static constexpr auto glyphs = viewer_glyphs();
-        font_ =
-            LoadFontEx(SIMNET_NERD_FONT_PATH, 40, glyphs.data(), static_cast<int>(glyphs.size()));
-        if (font_.texture.id == 0)
+        try
         {
-            CloseWindow();
-            throw std::runtime_error("failed to load viewer font");
-        }
-        SetTextureFilter(font_.texture, TEXTURE_FILTER_BILINEAR);
-        SetTargetFPS(static_cast<int>(config_.target_frame_rate));
-        scene_ = LoadRenderTexture(scene_rect_.width, scene_rect_.height);
-        if (scene_.texture.id == 0)
-        {
-            CloseWindow();
-            throw std::runtime_error("failed to create viewer scene render texture");
-        }
-        load_entity_model();
-        shader_ = LoadShaderFromMemory(instancing_vertex_shader, instancing_fragment_shader);
-        instancing_available_ = shader_.id != 0 && model_.meshCount > 0 &&
-                                model_.materialCount > 0 && model_.meshes != nullptr &&
-                                model_.materials != nullptr && model_.meshMaterial != nullptr;
-        if (instancing_available_)
-        {
-            shader_.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(shader_, "mvp");
-            shader_.locs[SHADER_LOC_COLOR_DIFFUSE] = GetShaderLocation(shader_, "colDiffuse");
-            for (int index = 0; index < model_.materialCount; ++index)
+            static constexpr auto glyphs = viewer_glyphs();
+            font_ = LoadFontEx(
+                SIMNET_NERD_FONT_PATH,
+                40,
+                glyphs.data(),
+                static_cast<int>(glyphs.size())
+            );
+            if (font_.texture.id == 0)
             {
-                model_.materials[index].shader = shader_;
+                throw std::runtime_error("failed to load viewer font");
             }
+            SetTextureFilter(font_.texture, TEXTURE_FILTER_BILINEAR);
+            SetTargetFPS(static_cast<int>(config_.target_frame_rate));
+            scene_ = LoadRenderTexture(scene_rect_.width, scene_rect_.height);
+            if (scene_.texture.id == 0)
+            {
+                throw std::runtime_error("failed to create viewer scene render texture");
+            }
+            load_entity_model();
+            shader_ = LoadShaderFromMemory(instancing_vertex_shader, instancing_fragment_shader);
+            instancing_available_ = shader_.id != 0 && model_.meshCount > 0 &&
+                                    model_.materialCount > 0 && model_.meshes != nullptr &&
+                                    model_.materials != nullptr && model_.meshMaterial != nullptr;
+            if (instancing_available_)
+            {
+                shader_.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(shader_, "mvp");
+                shader_.locs[SHADER_LOC_COLOR_DIFFUSE] = GetShaderLocation(shader_, "colDiffuse");
+                for (int index = 0; index < model_.materialCount; ++index)
+                {
+                    model_.materials[index].shader = shader_;
+                }
+            }
+            else
+            {
+                TraceLog(LOG_WARNING, "SimNet viewer instanced entity drawing is unavailable");
+            }
+            camera_.up = {0.0F, 1.0F, 0.0F};
+            camera_.fovy = 55.0F;
+            camera_.projection = CAMERA_PERSPECTIVE;
+            viewer_active = true;
         }
-        else
+        catch (...)
         {
-            TraceLog(LOG_WARNING, "SimNet viewer instanced entity drawing is unavailable");
+            release_resources();
+            throw;
         }
-        camera_.up = {0.0F, 1.0F, 0.0F};
-        camera_.fovy = 55.0F;
-        camera_.projection = CAMERA_PERSPECTIVE;
-        viewer_active = true;
     }
 
     Viewer::Impl::~Impl()
+    {
+        release_resources();
+    }
+
+    void Viewer::Impl::release_resources() noexcept
     {
         if (model_.meshCount > 0)
         {
@@ -565,8 +545,7 @@ namespace simnet
             }
             TraceLog(LOG_WARNING, "SimNet viewer mesh load failed, using procedural wedge");
         }
-        mesh_ = make_directional_mesh();
-        model_ = LoadModelFromMesh(mesh_);
+        model_ = LoadModelFromMesh(make_directional_mesh());
     }
 
     [[nodiscard]] std::optional<Viewer::Impl::SelectedEntity>
@@ -627,7 +606,7 @@ namespace simnet
             std::abs(bounds.max.z - bounds.min.z),
             1.0F,
         });
-        min_distance_ = std::max(minimum_distance, extent * 0.05F);
+        min_distance_ = std::max(render_detail::minimum_distance, extent * 0.05F);
         max_distance_ = std::max(min_distance_ * 2.0F, extent * 4.0F);
         if (!camera_initialized_)
         {
@@ -668,7 +647,11 @@ namespace simnet
             auto& yaw = mode_ == CameraMode::EntityFollow ? detail_yaw_ : overview_yaw_;
             auto& pitch = mode_ == CameraMode::EntityFollow ? detail_pitch_ : overview_pitch_;
             yaw -= delta.x * 0.006F;
-            pitch = std::clamp(pitch + delta.y * 0.006F, min_pitch, max_pitch);
+            pitch = std::clamp(
+                pitch + delta.y * 0.006F,
+                render_detail::min_pitch,
+                render_detail::max_pitch
+            );
         }
         if ((mode_ == CameraMode::OverviewOrbit || mode_ == CameraMode::EntityFollow) && in_scene)
         {
@@ -754,15 +737,15 @@ namespace simnet
     void Viewer::Impl::reset_overview_camera(Vec3f center) noexcept
     {
         target_ = to_raylib(center);
-        overview_yaw_ = pi * 0.25F;
-        overview_pitch_ = pi / 6.0F;
+        overview_yaw_ = render_detail::pi * 0.25F;
+        overview_pitch_ = render_detail::pi / 6.0F;
         overview_distance_ = std::clamp(max_distance_ * 0.45F, min_distance_, max_distance_);
     }
 
     void Viewer::Impl::reset_detail_camera(float world_extent) noexcept
     {
-        detail_yaw_ = pi * 0.25F;
-        detail_pitch_ = pi / 6.0F;
+        detail_yaw_ = render_detail::pi * 0.25F;
+        detail_pitch_ = render_detail::pi / 6.0F;
         detail_distance_ = std::clamp(
             std::max(config_.entity_scale * 10.0F, world_extent * 0.03F),
             detail_min_distance_,
@@ -894,7 +877,7 @@ namespace simnet
             return;
         }
         selected_trail_.push_back(position);
-        if (selected_trail_.size() > selected_trail_max_points)
+        if (selected_trail_.size() > render_detail::selected_trail_max_points)
         {
             selected_trail_.pop_front();
         }

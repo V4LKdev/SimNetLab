@@ -138,6 +138,7 @@ namespace simnet
         };
 
         void load_entity_model();
+        void release_resources() noexcept;
         [[nodiscard]] std::optional<SelectedEntity>
         find_selected_entity(RenderEntityView const& entities) const;
         void clear_selection(ViewerResult& result, bool preserve_navigation_anchor = false);
@@ -192,7 +193,6 @@ namespace simnet
         render_detail::SceneRect scene_rect_{};
         RenderTexture2D scene_{};
         Font font_{};
-        Mesh mesh_{};
         Model model_{};
         Shader shader_{};
         Camera3D camera_{};

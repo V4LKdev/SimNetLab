@@ -332,7 +332,9 @@ namespace simnet
         BeginMode3D(camera_);
         auto const aspect =
             static_cast<double>(scene_rect_.width) / static_cast<double>(scene_rect_.height);
-        rlSetMatrixProjection(MatrixPerspective(camera_.fovy * DEG2RAD, aspect, 0.01, 10000.0));
+        rlSetMatrixProjection(
+            MatrixPerspective(static_cast<double>(camera_.fovy * DEG2RAD), aspect, 0.01, 10000.0)
+        );
         rlSetMatrixModelview(MatrixLookAt(camera_.position, camera_.target, camera_.up));
 
         if (overlays_.world_bounds)
