@@ -1,4 +1,6 @@
 # game_server
+find_package(flecs CONFIG REQUIRED)
+
 add_library(simnet_game_server)
 
 target_sources(simnet_game_server
@@ -18,9 +20,10 @@ target_link_libraries(simnet_game_server
     PUBLIC
         simnet_core
         simnet_snapshot
-        simnet_game_shared
         simnet_spatial
+        $<IF:$<TARGET_EXISTS:flecs::flecs>,flecs::flecs,flecs::flecs_static>
     PRIVATE
+        simnet_game_shared
         simnet_telemetry
 )
 

@@ -5,7 +5,6 @@ module;
 /// @brief Authoritative session-owned player lifecycle and semantic input.
 export module simnet.game_server:player;
 
-import :simulation;
 import simnet.core;
 
 export namespace simnet

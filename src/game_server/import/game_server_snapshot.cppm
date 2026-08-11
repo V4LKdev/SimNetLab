@@ -12,7 +12,6 @@ module;
 export module simnet.game_server:snapshot;
 
 import simnet.core;
-import simnet.game_shared;
 import simnet.snapshot;
 import :simulation;
 
@@ -60,13 +59,13 @@ export namespace simnet
 
     /// Creates or updates one authoritative boid entity by EntityNetId.
     [[nodiscard]] flecs::entity
-    upsert_authoritative_boid(flecs::world& world, EntityState const& boid);
+    upsert_authoritative_boid(flecs::world& world, EntityState const& boid_state);
 
     /// Appends a validated ascending batch of newly generated authoritative boids.
     /// Call on the owning thread outside Flecs iteration and deferred mutation contexts.
     /// Active observers must not create or delete boids during this operation.
     [[nodiscard]] AuthoritativeSpawnReport
-    append_authoritative_boids(flecs::world& world, std::span<const EntityState> boids);
+    append_authoritative_boids(flecs::world& world, std::span<const EntityState> boid_states);
 
     /// Deletes one authoritative boid entity by EntityNetId.
     [[nodiscard]] bool delete_authoritative_boid(flecs::world& world, EntityNetId id);

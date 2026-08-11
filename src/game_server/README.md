@@ -18,10 +18,10 @@ Allowed dependencies:
 ```txt
 simnet_core
 simnet_snapshot
-simnet_game_shared
-simnet_spatial (private simulation acceleration)
+simnet_spatial (public simulation settings and diagnostics)
+Flecs (public authoritative world API)
+simnet_game_shared (private component ownership)
 simnet_telemetry (private implementation tracing only)
-Flecs
 ```
 
 The module must not depend on pipeline, transport, render, synthetic data, config, ENet, or Raylib. App/runtime code maps shared configuration into the renderer-independent simulation settings.

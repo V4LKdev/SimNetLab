@@ -23,6 +23,8 @@ module simnet.game_server;
 
 import :snapshot;
 import :player;
+import :simulation;
+import simnet.core;
 import simnet.game_shared;
 import simnet.snapshot;
 import simnet.spatial;
@@ -99,11 +101,12 @@ namespace
         return index.ids.size() == index.entities.size() && index.boid_count <= index.ids.size();
     }
 
-    [[nodiscard]] bool valid_boid_state(simnet::EntityState const& boid) noexcept
+    [[nodiscard]] bool valid_boid_state(simnet::EntityState const& boid_state) noexcept
     {
-        return boid.id != 0U && boid.classification == simnet::boid_entity_classification &&
-               simnet::is_finite(boid.position) && simnet::is_finite(boid.heading) &&
-               std::abs(simnet::length(boid.heading) - 1.0F) <=
+        return boid_state.id != 0U &&
+               boid_state.classification == simnet::boid_entity_classification &&
+               simnet::is_finite(boid_state.position) && simnet::is_finite(boid_state.heading) &&
+               std::abs(simnet::length(boid_state.heading) - 1.0F) <=
                    simnet::heading_normalization_tolerance;
     }
 
@@ -115,34 +118,33 @@ namespace
 
     [[nodiscard]] simnet::EntityNetId next_entity_id(simnet::EntityNetId id) noexcept
     {
-        return id == std::numeric_limits<simnet::EntityNetId>::max()
-                   ? 0U
-                   : static_cast<simnet::EntityNetId>(id + 1U);
+        return id == std::numeric_limits<simnet::EntityNetId>::max() ? 0U : id + 1U;
     }
 
-    void set_authoritative_boid_components(flecs::entity entity, simnet::EntityState const& boid)
+    void
+    set_authoritative_boid_components(flecs::entity entity, simnet::EntityState const& boid_state)
     {
         entity.set<simnet::EntityKindComponent>({.value = simnet::EntityKind::Boid});
-        entity.set<simnet::NetIdentity>({.id = boid.id});
-        entity.set<simnet::Position>({.value = boid.position});
-        entity.set<simnet::Heading>({.value = boid.heading});
-        entity.set<simnet::Hue>({.value = boid.hue});
+        entity.set<simnet::NetIdentity>({.id = boid_state.id});
+        entity.set<simnet::Position>({.value = boid_state.position});
+        entity.set<simnet::Heading>({.value = boid_state.heading});
+        entity.set<simnet::Hue>({.value = boid_state.hue});
     }
 
     void set_authoritative_simulation_components(
         flecs::entity entity,
-        simnet::EntityState const& boid,
+        simnet::EntityState const& boid_state,
         std::uint32_t row,
         float cruise_speed
     )
     {
-        set_authoritative_boid_components(entity, boid);
-        entity.set<Velocity>({.value = boid.heading * cruise_speed});
-        entity.set<HueState>({.value = static_cast<float>(boid.hue) / 256.0F});
+        set_authoritative_boid_components(entity, boid_state);
+        entity.set<Velocity>({.value = boid_state.heading * cruise_speed});
+        entity.set<HueState>({.value = static_cast<float>(boid_state.hue) / 256.0F});
         entity.set<FlockRow>({.value = row});
     }
 
-    void remap_rows(flecs::world& world, AuthoritativeReplicationIndex const& index, std::size_t)
+    void remap_boid_rows(flecs::world& world, AuthoritativeReplicationIndex const& index)
     {
         auto row = std::uint32_t{};
         for (auto const entity_id : index.entities)
@@ -1004,11 +1006,11 @@ namespace
         if (!scratch.neighbors.empty())
         {
             scratch.nearest_neighbor_distance_total +=
-                std::sqrt(scratch.neighbors.front().distance_squared);
+                static_cast<double>(std::sqrt(scratch.neighbors.front().distance_squared));
             ++scratch.nearest_neighbor_samples;
         }
-        scratch.speed_total += speed;
-        scratch.acceleration_total += acceleration;
+        scratch.speed_total += static_cast<double>(speed);
+        scratch.acceleration_total += static_cast<double>(acceleration);
         scratch.heading_total = scratch.heading_total + evaluation.next_heading;
         scratch.speed_min = std::min(scratch.speed_min, speed);
         scratch.speed_max = std::max(scratch.speed_max, speed);
@@ -1270,19 +1272,19 @@ namespace simnet
                                        const Hue>()
                                    .cache_kind(flecs::QueryCacheAll)
                                    .build();
-        auto const capture_query = world
-                                       .query_builder<
-                                           const EntityKindComponent,
-                                           const NetIdentity,
-                                           const Position,
-                                           const Heading,
-                                           const Velocity,
-                                           const HueState,
-                                           const Hue,
-                                           const FlockRow>("simnet::FlockCaptureQuery")
-                                       .cache_kind(flecs::QueryCacheAll)
-                                       .build();
-        impl->capture_query_entity = capture_query.entity();
+        auto const registered_capture_query = world
+                                                  .query_builder<
+                                                      const EntityKindComponent,
+                                                      const NetIdentity,
+                                                      const Position,
+                                                      const Heading,
+                                                      const Velocity,
+                                                      const HueState,
+                                                      const Hue,
+                                                      const FlockRow>("simnet::FlockCaptureQuery")
+                                                  .cache_kind(flecs::QueryCacheAll)
+                                                  .build();
+        impl->capture_query_entity = registered_capture_query.entity();
 
         auto const player_phase = world.entity("simnet::PlayerMovementPhase")
                                       .add(flecs::Phase)
@@ -1326,8 +1328,8 @@ namespace simnet
                     auto const delta_time = iterator.delta_time();
                     auto const& settings = impl->player_settings;
                     auto const& input = latest_input.value;
-                    // Raylib uses a right-handed world. With +Z forward and +Y up,
-                    // the fish's local right is -X and its local left is +X.
+                    // In the shared right-handed world, +Z is forward and +Y is up.
+                    // Local right is -X and local left is +X.
                     auto const yaw_axis =
                         (input.yaw_left ? 1.0F : 0.0F) + (input.yaw_right ? -1.0F : 0.0F);
                     auto const pitch_axis =
@@ -1455,11 +1457,14 @@ namespace simnet
                         if (impl->settings.player_lure.enabled ||
                             impl->settings.player_predator.enabled)
                         {
-                            auto const& index = query_world.get<AuthoritativeReplicationIndex>();
+                            auto const& replication_index =
+                                query_world.get<AuthoritativeReplicationIndex>();
                             auto previous_player_id = EntityNetId{};
-                            for (std::size_t offset = 0; offset < index.ids.size(); ++offset)
+                            for (std::size_t offset = 0; offset < replication_index.ids.size();
+                                 ++offset)
                             {
-                                auto entity = flecs::entity{query_world, index.entities[offset]};
+                                auto entity =
+                                    flecs::entity{query_world, replication_index.entities[offset]};
                                 if (!entity.is_alive() || !entity.has<EntityKindComponent>())
                                 {
                                     impl->phase_valid = false;
@@ -1480,7 +1485,7 @@ namespace simnet
                                 }
                                 auto const id = entity.get<NetIdentity>().id;
                                 auto const position = entity.get<Position>().value;
-                                if (id == 0U || id != index.ids[offset] ||
+                                if (id == 0U || id != replication_index.ids[offset] ||
                                     (previous_player_id != 0U && id <= previous_player_id) ||
                                     !is_finite(position))
                                 {
@@ -1949,17 +1954,17 @@ namespace simnet
         return true;
     }
 
-    flecs::entity upsert_authoritative_boid(flecs::world& world, EntityState const& boid)
+    flecs::entity upsert_authoritative_boid(flecs::world& world, EntityState const& boid_state)
     {
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index) || !valid_boid_state(boid))
+        if (!valid_index(index) || !valid_boid_state(boid_state))
         {
             return {};
         }
 
-        auto position = find_index(index, boid.id);
+        auto position = find_index(index, boid_state.id);
         auto offset = static_cast<std::size_t>(position - index.ids.begin());
-        if (position != index.ids.end() && *position == boid.id)
+        if (position != index.ids.end() && *position == boid_state.id)
         {
             auto entity = flecs::entity{world, index.entities[offset]};
             if (!entity.is_alive() || !entity.has<EntityKindComponent>() ||
@@ -1969,7 +1974,7 @@ namespace simnet
             }
             set_authoritative_simulation_components(
                 entity,
-                boid,
+                boid_state,
                 entity.get<FlockRow>().value,
                 index.cruise_speed
             );
@@ -1981,45 +1986,45 @@ namespace simnet
         }
 
         index.reserve(index.ids.size() + 1U);
-        position = find_index(index, boid.id);
+        position = find_index(index, boid_state.id);
         offset = static_cast<std::size_t>(position - index.ids.begin());
         auto entity = world.entity();
-        set_authoritative_simulation_components(entity, boid, 0U, index.cruise_speed);
-        index.ids.insert(position, boid.id);
+        set_authoritative_simulation_components(entity, boid_state, 0U, index.cruise_speed);
+        index.ids.insert(position, boid_state.id);
         index.entities.insert(
             index.entities.begin() + static_cast<std::ptrdiff_t>(offset),
             entity.id()
         );
         ++index.boid_count;
-        index.next_id = std::max(index.next_id, next_entity_id(boid.id));
-        remap_rows(world, index, 0U);
+        index.next_id = std::max(index.next_id, next_entity_id(boid_state.id));
+        remap_boid_rows(world, index);
         world.modified<AuthoritativeReplicationIndex>();
         return entity;
     }
 
     AuthoritativeSpawnReport
-    append_authoritative_boids(flecs::world& world, std::span<const EntityState> boids)
+    append_authoritative_boids(flecs::world& world, std::span<const EntityState> boid_states)
     {
         SIMNET_TRACE_SCOPE_CATEGORY("game_server.bulk_spawn", LogCategory::Simulation);
-        auto report = AuthoritativeSpawnReport{.requested_count = boids.size()};
+        auto report = AuthoritativeSpawnReport{.requested_count = boid_states.size()};
         auto& index = world.ensure<AuthoritativeReplicationIndex>();
         if (!valid_index(index))
         {
             report.error = AuthoritativeSpawnError::InvalidIndexState;
             return report;
         }
-        if (boids.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+        if (boid_states.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
         {
             report.error = AuthoritativeSpawnError::CountOutOfRange;
             return report;
         }
-        if (boids.size() >
+        if (boid_states.size() >
             static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) - index.ids.size())
         {
             report.error = AuthoritativeSpawnError::CountOutOfRange;
             return report;
         }
-        if (boids.empty())
+        if (boid_states.empty())
         {
             return report;
         }
@@ -2030,28 +2035,28 @@ namespace simnet
                 LogCategory::Simulation
             );
             auto const current_maximum = index.ids.empty() ? EntityNetId{} : index.ids.back();
-            for (std::size_t offset = 0; offset < boids.size(); ++offset)
+            for (std::size_t offset = 0; offset < boid_states.size(); ++offset)
             {
-                auto const& boid = boids[offset];
-                if (boid.id == 0U)
+                auto const& boid_state = boid_states[offset];
+                if (boid_state.id == 0U)
                 {
                     report.error = AuthoritativeSpawnError::ZeroId;
                     report.failing_index = offset;
                     return report;
                 }
-                if (offset != 0U && boid.id <= boids[offset - 1U].id)
+                if (offset != 0U && boid_state.id <= boid_states[offset - 1U].id)
                 {
                     report.error = AuthoritativeSpawnError::NonAscendingIds;
                     report.failing_index = offset;
                     return report;
                 }
-                if (boid.id <= current_maximum)
+                if (boid_state.id <= current_maximum)
                 {
                     report.error = AuthoritativeSpawnError::ExistingIdOverlap;
                     report.failing_index = offset;
                     return report;
                 }
-                if (!valid_boid_state(boid))
+                if (!valid_boid_state(boid_state))
                 {
                     report.error = AuthoritativeSpawnError::InvalidBoidState;
                     report.failing_index = offset;
@@ -2074,27 +2079,27 @@ namespace simnet
                 "game_server.bulk_spawn_component_arrays",
                 LogCategory::Simulation
             );
-            kinds.reserve(boids.size());
-            identities.reserve(boids.size());
-            positions.reserve(boids.size());
-            headings.reserve(boids.size());
-            hues.reserve(boids.size());
-            velocities.reserve(boids.size());
-            hue_states.reserve(boids.size());
-            rows.reserve(boids.size());
-            entities.resize(boids.size());
-            index.reserve(index.ids.size() + boids.size());
-            for (std::size_t offset = 0; offset < boids.size(); ++offset)
+            kinds.reserve(boid_states.size());
+            identities.reserve(boid_states.size());
+            positions.reserve(boid_states.size());
+            headings.reserve(boid_states.size());
+            hues.reserve(boid_states.size());
+            velocities.reserve(boid_states.size());
+            hue_states.reserve(boid_states.size());
+            rows.reserve(boid_states.size());
+            entities.resize(boid_states.size());
+            index.reserve(index.ids.size() + boid_states.size());
+            for (std::size_t offset = 0; offset < boid_states.size(); ++offset)
             {
-                auto const& boid = boids[offset];
+                auto const& boid_state = boid_states[offset];
                 kinds.push_back({.value = EntityKind::Boid});
-                identities.push_back({.id = boid.id});
-                positions.push_back({.value = boid.position});
-                headings.push_back({.value = boid.heading});
-                hues.push_back({.value = boid.hue});
-                velocities.push_back({.value = boid.heading * index.cruise_speed});
+                identities.push_back({.id = boid_state.id});
+                positions.push_back({.value = boid_state.position});
+                headings.push_back({.value = boid_state.heading});
+                hues.push_back({.value = boid_state.hue});
+                velocities.push_back({.value = boid_state.heading * index.cruise_speed});
                 hue_states.push_back({
-                    .value = static_cast<float>(boid.hue) / 256.0F,
+                    .value = static_cast<float>(boid_state.hue) / 256.0F,
                 });
                 rows.push_back({
                     .value = static_cast<std::uint32_t>(index.boid_count + offset),
@@ -2123,7 +2128,7 @@ namespace simnet
             rows.data(),
         };
         auto populate = ecs_bulk_desc_t{};
-        populate.count = static_cast<std::int32_t>(boids.size());
+        populate.count = static_cast<std::int32_t>(boid_states.size());
         std::copy(ids.begin(), ids.end(), populate.ids);
         populate.data = data.data();
         {
@@ -2134,7 +2139,7 @@ namespace simnet
                 report.error = AuthoritativeSpawnError::FlecsBulkInsertFailed;
                 return report;
             }
-            std::copy_n(created, boids.size(), entities.begin());
+            std::copy_n(created, boid_states.size(), entities.begin());
         }
 
         {
@@ -2142,17 +2147,17 @@ namespace simnet
                 "game_server.bulk_spawn_index_append",
                 LogCategory::Simulation
             );
-            for (std::size_t offset = 0; offset < boids.size(); ++offset)
+            for (std::size_t offset = 0; offset < boid_states.size(); ++offset)
             {
-                index.ids.push_back(boids[offset].id);
+                index.ids.push_back(boid_states[offset].id);
                 index.entities.push_back(entities[offset]);
             }
-            index.boid_count += boids.size();
-            auto const maximum = boids.back().id;
+            index.boid_count += boid_states.size();
+            auto const maximum = boid_states.back().id;
             index.next_id = std::max(index.next_id, next_entity_id(maximum));
             world.modified<AuthoritativeReplicationIndex>();
         }
-        report.spawned_count = boids.size();
+        report.spawned_count = boid_states.size();
         SIMNET_TRACE_PLOT("server.authoritative_index_size", static_cast<double>(index.ids.size()));
         return report;
     }
@@ -2185,7 +2190,7 @@ namespace simnet
         index.ids.erase(position);
         index.entities.erase(index.entities.begin() + static_cast<std::ptrdiff_t>(offset));
         --index.boid_count;
-        remap_rows(world, index, 0U);
+        remap_boid_rows(world, index);
         world.modified<AuthoritativeReplicationIndex>();
         return true;
     }
