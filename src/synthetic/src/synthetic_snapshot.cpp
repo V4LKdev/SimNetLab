@@ -53,10 +53,6 @@ namespace
         {
             throw std::runtime_error("invalid synthetic snapshot bounds");
         }
-        if (settings.entity_count > std::numeric_limits<simnet::EntityNetId>::max())
-        {
-            throw std::runtime_error("synthetic snapshot entity count exceeds EntityNetId range");
-        }
     }
 
     void validate_change_settings(simnet::SyntheticChangeSettings const& settings)
@@ -144,7 +140,7 @@ namespace
         auto const y_index = (index / axis_count) % axis_count;
         auto const z_index =
             index / static_cast<std::uint32_t>(static_cast<std::uint64_t>(axis_count) * axis_count);
-        auto const divisor = static_cast<float>(std::max(axis_count, 1U));
+        auto const divisor = static_cast<float>(axis_count);
 
         return lerp(
             bounds.min,
@@ -173,7 +169,7 @@ namespace
     void
     append_common_fields(simnet::WorldSnapshot& snapshot, std::uint32_t index, simnet::Tick tick)
     {
-        snapshot.ids.push_back(static_cast<simnet::EntityNetId>(index + 1U));
+        snapshot.ids.push_back(index + 1U);
         snapshot.classifications.push_back(synthetic_entity_classification);
         snapshot.headings.push_back(deterministic_heading(index, tick));
         snapshot.hues.push_back(deterministic_hue(index, tick));
@@ -304,7 +300,7 @@ namespace simnet
         auto const population = snapshot_settings.entity_count;
         for (std::uint32_t offset = 0U; offset < count; ++offset)
         {
-            auto const index = static_cast<std::size_t>(
+            auto const index = static_cast<std::uint32_t>(
                 (static_cast<std::uint64_t>(state.next_entity_index) + offset) % population
             );
             copy_selected_fields(
