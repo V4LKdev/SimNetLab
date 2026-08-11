@@ -113,8 +113,12 @@ TEST_CASE(
 
     simnet::app::record_player_input_submission_failure(state);
     CHECK(state.failed_submission_count == 1U);
+    CHECK(state.desired.buttons == active_buttons);
     CHECK(state.last_submitted.buttons == 0U);
+    CHECK(state.has_submitted);
     CHECK(state.last_submission_time == simnet::app::player_input_heartbeat_interval);
+    CHECK(state.state_change_submission_count == 1U);
+    CHECK(state.heartbeat_submission_count == 1U);
     active_change = simnet::app::plan_player_input_submission(
         state,
         true,
@@ -173,9 +177,6 @@ TEST_CASE(
     CHECK(recovery_heartbeat->cause == PlayerInputSubmissionCause::Heartbeat);
     authoritative_input = recovery_heartbeat->input;
     CHECK(authoritative_input.buttons == 0U);
-    auto const duplicate = authoritative_input;
-    authoritative_input = recovery_heartbeat->input;
-    CHECK(simnet::app::same_player_input(authoritative_input, duplicate));
 }
 
 TEST_CASE(
@@ -227,13 +228,22 @@ TEST_CASE(
     CHECK(sampled_schedule(144U) == expected);
 }
 
-TEST_CASE("Player input equality covers every semantic button", "[app_protocol][player]")
+TEST_CASE("Every Player input semantic byte schedules immediate delivery", "[app_protocol][player]")
 {
-    auto const neutral = simnet::app::PlayerInputMessage{};
-    for (auto bit = std::uint8_t{1U}; bit != 0U; bit = static_cast<std::uint8_t>(bit << 1U))
+    auto state = simnet::app::PlayerInputDeliveryState{};
+    auto initial = simnet::app::plan_player_input_submission(state, true, simnet::Nanoseconds{});
+    REQUIRE(initial.has_value());
+    simnet::app::record_player_input_submission(state, *initial, simnet::Nanoseconds{});
+
+    for (auto button_value = std::uint16_t{1U}; button_value <= 255U; ++button_value)
     {
-        auto const input = simnet::app::PlayerInputMessage{.buttons = bit};
-        CHECK_FALSE(simnet::app::same_player_input(neutral, input));
-        CHECK(simnet::app::same_player_input(input, input));
+        auto const buttons = static_cast<std::uint8_t>(button_value);
+        simnet::app::set_desired_player_input(state, {.buttons = buttons});
+        auto submission =
+            simnet::app::plan_player_input_submission(state, true, state.last_submission_time);
+        REQUIRE(submission.has_value());
+        CHECK(submission->cause == simnet::app::PlayerInputSubmissionCause::StateChange);
+        CHECK(submission->input.buttons == buttons);
+        simnet::app::record_player_input_submission(state, *submission, state.last_submission_time);
     }
 }

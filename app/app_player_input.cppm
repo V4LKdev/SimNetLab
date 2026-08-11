@@ -38,23 +38,20 @@ export namespace simnet::app
         std::uint64_t failed_submission_count{};
     };
 
-    [[nodiscard]] constexpr bool
-    same_player_input(PlayerInputMessage left, PlayerInputMessage right) noexcept
-    {
-        return left.buttons == right.buttons;
-    }
-
+    /// Clears all desired, committed, timing, and diagnostic state for a new session.
     void reset_player_input_delivery(PlayerInputDeliveryState& state) noexcept
     {
         state = {};
     }
 
+    /// Replaces the latest input desired by the Client without committing a submission.
     void
     set_desired_player_input(PlayerInputDeliveryState& state, PlayerInputMessage desired) noexcept
     {
         state.desired = desired;
     }
 
+    /// Plans an immediate state change or one heartbeat without changing delivery state.
     [[nodiscard]] std::optional<PlayerInputSubmission> plan_player_input_submission(
         PlayerInputDeliveryState const& state,
         bool accepted_player_session,
@@ -65,7 +62,7 @@ export namespace simnet::app
         {
             return std::nullopt;
         }
-        if (!state.has_submitted || !same_player_input(state.desired, state.last_submitted))
+        if (!state.has_submitted || state.desired.buttons != state.last_submitted.buttons)
         {
             return PlayerInputSubmission{
                 .input = state.desired,
@@ -83,6 +80,7 @@ export namespace simnet::app
         return std::nullopt;
     }
 
+    /// Commits a locally successful transport submission and its submission time.
     void record_player_input_submission(
         PlayerInputDeliveryState& state,
         PlayerInputSubmission const& submission,
@@ -102,6 +100,7 @@ export namespace simnet::app
         }
     }
 
+    /// Records a failed transport submission without committing its input or timestamp.
     void record_player_input_submission_failure(PlayerInputDeliveryState& state) noexcept
     {
         ++state.failed_submission_count;
