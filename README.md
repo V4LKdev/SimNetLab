@@ -7,7 +7,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 ## Current capability
 
 - ENet transport with a session handshake and generic bounded post-session byte lanes
-- Versioned application messages for acknowledgements, control, player input, and stationary observer interest
+- Versioned application messages for acknowledgments, control, player input, and stationary observer interest
 - Configurable hard application packetization with bounded complete-group Client reassembly
 - Toggleable bounded Zstd compression for complete updates or individual application packets, with
   an optional maintained `pipeline_v1` whole-update dictionary

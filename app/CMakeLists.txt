@@ -4,6 +4,7 @@ add_executable(
     server_main.cpp
     server_runtime.cpp
     app_common.cpp
+    app_protocol.cpp
     app_compression_corpus.cpp
     app_compression_dictionary.cpp
     app_evidence.cpp
@@ -50,6 +51,7 @@ add_executable(
     client_main.cpp
     client_runtime.cpp
     app_common.cpp
+    app_protocol.cpp
     app_compression_dictionary.cpp
 )
 target_sources(Client

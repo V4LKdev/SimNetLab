@@ -12,9 +12,10 @@ module;
 
 module simnet.app_common;
 
+import simnet.app_protocol;
+
 namespace
 {
-    constexpr std::uint32_t application_protocol_version = 7;
     constexpr std::uint64_t fnv_prime = 1099511628211ULL;
     volatile std::sig_atomic_t signal_stop_latch = 0;
 

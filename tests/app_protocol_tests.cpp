@@ -9,6 +9,27 @@ import simnet.core;
 
 TEST_CASE("application role and pause messages round-trip exactly", "[app_protocol]")
 {
+    CHECK(simnet::app::application_protocol_version == 7U);
+    CHECK(simnet::app::app_message_version == 2U);
+    CHECK(
+        simnet::app::encode_app_message({
+            .kind = simnet::app::AppMessageKind::PauseSetRequest,
+            .paused = true,
+        }) == std::vector<simnet::Byte>{simnet::Byte{1U}, simnet::Byte{2U}, simnet::Byte{1U}}
+    );
+    CHECK(
+        simnet::app::encode_app_message({
+            .kind = simnet::app::AppMessageKind::PauseState,
+            .paused = false,
+        }) == std::vector<simnet::Byte>{simnet::Byte{2U}, simnet::Byte{2U}, simnet::Byte{0U}}
+    );
+    CHECK(
+        simnet::app::encode_app_message({
+            .kind = simnet::app::AppMessageKind::JoinRequest,
+            .role = simnet::app::ClientRole::Player,
+        }) == std::vector<simnet::Byte>{simnet::Byte{3U}, simnet::Byte{2U}, simnet::Byte{1U}}
+    );
+
     for (auto const message : std::array{
              simnet::app::AppMessage{
                  .kind = simnet::app::AppMessageKind::PauseSetRequest,
@@ -94,7 +115,20 @@ TEST_CASE("application protocol rejects malformed roles and versions", "[app_pro
 
     auto truncated_join = first_observer;
     truncated_join.pop_back();
+    auto const unchanged = decoded;
     CHECK_FALSE(simnet::app::decode_app_message(truncated_join, decoded));
+    CHECK(decoded.kind == unchanged.kind);
+    CHECK(decoded.role == unchanged.role);
+    CHECK(decoded.peer_id == unchanged.peer_id);
+    CHECK(decoded.player_id == unchanged.player_id);
+    CHECK(decoded.paused == unchanged.paused);
+    CHECK_FALSE(
+        simnet::app::decode_app_message(
+            std::array<simnet::Byte, 2>{simnet::Byte{0U}, simnet::Byte{2U}},
+            decoded
+        )
+    );
+    CHECK(decoded.peer_id == unchanged.peer_id);
 
     auto const stationary_observer = simnet::app::encode_app_message({
         .kind = simnet::app::AppMessageKind::JoinRequest,
@@ -139,6 +173,13 @@ TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
     };
     auto const bytes = simnet::app::encode_player_input(input);
     REQUIRE(bytes.size() == 3U);
+    CHECK(
+        bytes == std::vector<simnet::Byte>{
+                     simnet::Byte{6U},
+                     simnet::Byte{2U},
+                     simnet::Byte{0x51U},
+                 }
+    );
     auto decoded = simnet::app::PlayerInputMessage{};
     REQUIRE(simnet::app::decode_player_input(bytes, decoded));
     CHECK(decoded.buttons == input.buttons);
@@ -150,6 +191,7 @@ TEST_CASE("player input is a versioned one-byte button state", "[app_protocol]")
     auto invalid = bytes;
     invalid[1] = simnet::Byte{1U};
     CHECK_FALSE(simnet::app::decode_player_input(invalid, decoded));
+    CHECK(decoded.buttons == input.buttons);
 }
 
 TEST_CASE("snapshot ACK uses the application-owned envelope", "[app_protocol][ack]")
@@ -161,6 +203,24 @@ TEST_CASE("snapshot ACK uses the application-owned envelope", "[app_protocol][ac
     };
     auto const bytes = simnet::app::encode_snapshot_ack(expected);
     REQUIRE(bytes.size() == 14U);
+    CHECK(
+        bytes == std::vector<simnet::Byte>{
+                     simnet::Byte{5U},
+                     simnet::Byte{2U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{9U},
+                     simnet::Byte{0x12U},
+                     simnet::Byte{0x34U},
+                     simnet::Byte{0x56U},
+                     simnet::Byte{0x78U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{8U},
+                 }
+    );
     CHECK(simnet::app::decode_app_message_kind(bytes) == simnet::app::AppMessageKind::SnapshotAck);
     auto decoded = simnet::app::SnapshotAck{};
     REQUIRE(simnet::app::decode_snapshot_ack(bytes, decoded));
@@ -171,6 +231,9 @@ TEST_CASE("snapshot ACK uses the application-owned envelope", "[app_protocol][ac
     auto malformed = bytes;
     malformed.push_back(simnet::Byte{});
     CHECK_FALSE(simnet::app::decode_snapshot_ack(malformed, decoded));
+    CHECK(decoded.newest_received_snapshot == expected.newest_received_snapshot);
+    CHECK(decoded.received_mask == expected.received_mask);
+    CHECK(decoded.newest_applied_snapshot == expected.newest_applied_snapshot);
 }
 
 TEST_CASE("snapshot recovery request is versioned and transactional", "[app_protocol][recovery]")
@@ -181,6 +244,20 @@ TEST_CASE("snapshot recovery request is versioned and transactional", "[app_prot
     };
     auto const bytes = simnet::app::encode_snapshot_recovery_request(expected);
     REQUIRE(bytes.size() == 10U);
+    CHECK(
+        bytes == std::vector<simnet::Byte>{
+                     simnet::Byte{8U},
+                     simnet::Byte{2U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{19U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{12U},
+                 }
+    );
     CHECK(
         simnet::app::decode_app_message_kind(bytes) ==
         simnet::app::AppMessageKind::SnapshotRecoveryRequest
@@ -200,6 +277,7 @@ TEST_CASE("snapshot recovery request is versioned and transactional", "[app_prot
     malformed[5] = simnet::Byte{1U};
     CHECK_FALSE(simnet::app::decode_snapshot_recovery_request(malformed, decoded));
     CHECK(decoded.rejected_update_sequence == expected.rejected_update_sequence);
+    CHECK(decoded.missing_baseline_sequence == expected.missing_baseline_sequence);
 }
 
 TEST_CASE(
@@ -213,6 +291,17 @@ TEST_CASE(
     };
     auto const bytes = simnet::app::encode_stationary_observer_interest(message);
     REQUIRE(bytes.size() == 26U);
+    CHECK(
+        bytes == std::vector<simnet::Byte>{
+                     simnet::Byte{7U}, simnet::Byte{2U}, simnet::Byte{0x3fU}, simnet::Byte{0x80U},
+                     simnet::Byte{0U}, simnet::Byte{0U}, simnet::Byte{0xc0U}, simnet::Byte{0U},
+                     simnet::Byte{0U}, simnet::Byte{0U}, simnet::Byte{0x40U}, simnet::Byte{0x40U},
+                     simnet::Byte{0U}, simnet::Byte{0U}, simnet::Byte{0U},    simnet::Byte{0U},
+                     simnet::Byte{0U}, simnet::Byte{0U}, simnet::Byte{0U},    simnet::Byte{0U},
+                     simnet::Byte{0U}, simnet::Byte{0U}, simnet::Byte{0x40U}, simnet::Byte{0U},
+                     simnet::Byte{0U}, simnet::Byte{0U},
+                 }
+    );
     auto decoded = simnet::app::StationaryObserverInterestMessage{};
     REQUIRE(simnet::app::decode_stationary_observer_interest(bytes, decoded));
     CHECK(decoded.position.x == 1.0F);
