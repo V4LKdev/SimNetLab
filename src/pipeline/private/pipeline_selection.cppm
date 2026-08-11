@@ -5,6 +5,7 @@ module;
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 /// @brief Private entity selection helpers.
 module simnet.pipeline:selection;
@@ -363,6 +364,43 @@ namespace simnet::pipeline_selection
         return report;
     }
 
+    /// Selects IDs present in the previous snapshot but absent from the current snapshot.
+    void select_removed_entity_ids(
+        std::vector<EntityNetId>& selected_delete_ids,
+        WorldSnapshot const& current,
+        WorldSnapshot const& previous
+    )
+    {
+        selected_delete_ids.clear();
+        selected_delete_ids.reserve(previous.size());
+        auto current_index = std::size_t{};
+        auto previous_index = std::size_t{};
+        while (current_index < current.size() && previous_index < previous.size())
+        {
+            auto const current_id = current.ids[current_index];
+            auto const previous_id = previous.ids[previous_index];
+            if (current_id < previous_id)
+            {
+                ++current_index;
+            }
+            else if (previous_id < current_id)
+            {
+                selected_delete_ids.push_back(previous_id);
+                ++previous_index;
+            }
+            else
+            {
+                ++current_index;
+                ++previous_index;
+            }
+        }
+        while (previous_index < previous.size())
+        {
+            selected_delete_ids.push_back(previous.ids[previous_index]);
+            ++previous_index;
+        }
+    }
+
     /**
      * Filters scheduled upserts against a baseline and selects every baseline-only delete.
      *
@@ -455,35 +493,7 @@ namespace simnet::pipeline_selection
             }
         }
         scratch.selected_indices.resize(retained_count);
-
-        scratch.selected_delete_ids.clear();
-        scratch.selected_delete_ids.reserve(baseline.size());
-        auto current_index = std::size_t{};
-        baseline_index = 0;
-        while (current_index < current.size() && baseline_index < baseline.size())
-        {
-            auto const current_id = current.ids[current_index];
-            auto const baseline_id = baseline.ids[baseline_index];
-            if (current_id < baseline_id)
-            {
-                ++current_index;
-            }
-            else if (baseline_id < current_id)
-            {
-                scratch.selected_delete_ids.push_back(baseline_id);
-                ++baseline_index;
-            }
-            else
-            {
-                ++current_index;
-                ++baseline_index;
-            }
-        }
-        while (baseline_index < baseline.size())
-        {
-            scratch.selected_delete_ids.push_back(baseline.ids[baseline_index]);
-            ++baseline_index;
-        }
+        select_removed_entity_ids(scratch.selected_delete_ids, current, baseline);
         return report;
     }
 
@@ -494,29 +504,6 @@ namespace simnet::pipeline_selection
         WorldSnapshot const& replica
     )
     {
-        scratch.selected_delete_ids.clear();
-        scratch.selected_delete_ids.reserve(replica.size());
-        auto current_index = std::size_t{};
-        auto replica_index = std::size_t{};
-        while (current_index < current.size() && replica_index < replica.size())
-        {
-            if (current.ids[current_index] < replica.ids[replica_index])
-            {
-                ++current_index;
-            }
-            else if (replica.ids[replica_index] < current.ids[current_index])
-            {
-                scratch.selected_delete_ids.push_back(replica.ids[replica_index++]);
-            }
-            else
-            {
-                ++current_index;
-                ++replica_index;
-            }
-        }
-        while (replica_index < replica.size())
-        {
-            scratch.selected_delete_ids.push_back(replica.ids[replica_index++]);
-        }
+        select_removed_entity_ids(scratch.selected_delete_ids, current, replica);
     }
 }

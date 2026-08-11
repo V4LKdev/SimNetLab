@@ -241,7 +241,7 @@ export namespace simnet
     {
         /// Indices of entities to include in the encoded update.
         std::vector<std::uint32_t> selected_indices;
-        /// IDs to delete (for delta)
+        /// IDs included as deletes in the encoded update.
         std::vector<EntityNetId> selected_delete_ids;
         /// Source indices retained by AOI before update scheduling.
         std::vector<std::uint32_t> relevant_source_indices;

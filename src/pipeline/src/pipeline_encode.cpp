@@ -424,10 +424,15 @@ namespace simnet
         std::size_t const delete_count = emit_patch ? scratch.selected_delete_ids.size() : 0U;
         SnapshotKind const snapshot_kind =
             emit_patch ? SnapshotKind::Patch : SnapshotKind::FullReplace;
-        SequenceId const baseline_sequence =
-            schedule_level_of_detail || emit_delta
-                ? input.baseline_sequence
-                : (schedule_incremental ? input.replica_sequence : 0U);
+        auto baseline_sequence = SequenceId{};
+        if (schedule_level_of_detail || emit_delta)
+        {
+            baseline_sequence = input.baseline_sequence;
+        }
+        else if (schedule_incremental)
+        {
+            baseline_sequence = input.replica_sequence;
+        }
 
         // --- Representation encoding and layout ---
 
@@ -520,16 +525,17 @@ namespace simnet
         }
         else if (emit_patch)
         {
-            for (std::uint32_t const idx : scratch.selected_indices)
+            for (std::uint32_t const source_index : scratch.selected_indices)
             {
-                prepare_and_write_record(idx);
+                prepare_and_write_record(source_index);
             }
         }
         else
         {
-            for (std::size_t idx = 0; idx < selected_snapshot->size(); ++idx)
+            for (std::size_t source_index = 0; source_index < selected_snapshot->size();
+                 ++source_index)
             {
-                prepare_and_write_record(idx);
+                prepare_and_write_record(source_index);
             }
         }
 

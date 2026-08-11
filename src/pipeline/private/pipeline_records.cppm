@@ -209,12 +209,12 @@ namespace simnet::pipeline_records
             return;
         }
 
-        auto const position_x =
-            static_cast<double>(source_position.x) - prepared.canonical.position.x;
-        auto const position_y =
-            static_cast<double>(source_position.y) - prepared.canonical.position.y;
-        auto const position_z =
-            static_cast<double>(source_position.z) - prepared.canonical.position.z;
+        auto const position_x = static_cast<double>(source_position.x) -
+                                static_cast<double>(prepared.canonical.position.x);
+        auto const position_y = static_cast<double>(source_position.y) -
+                                static_cast<double>(prepared.canonical.position.y);
+        auto const position_z = static_cast<double>(source_position.z) -
+                                static_cast<double>(prepared.canonical.position.z);
         auto const position_error =
             std::sqrt(position_x * position_x + position_y * position_y + position_z * position_z);
         report.position_error_sum += position_error;
@@ -409,7 +409,7 @@ namespace simnet::pipeline_records
     }
 
     /// Reads one entity record in the bit-packed layout, returning false on truncation.
-    [[nodiscard]] bool read_bitpacked_record(ByteSpan bytes, Aabb3f bounds, EntityState& boid)
+    [[nodiscard]] bool read_bitpacked_record(ByteSpan bytes, Aabb3f bounds, EntityState& entity)
     {
         auto reader = pipeline_bitpack::BitReader{.bytes = bytes};
         auto id = std::uint32_t{};
@@ -432,9 +432,9 @@ namespace simnet::pipeline_records
             return false;
         }
 
-        boid.id = id;
-        boid.classification = EntityClassification{static_cast<std::uint8_t>(classification)};
-        boid.position = {
+        entity.id = id;
+        entity.classification = EntityClassification{static_cast<std::uint8_t>(classification)};
+        entity.position = {
             .x = pipeline_quantize::dequantize_unorm16(
                 static_cast<std::uint16_t>(px),
                 bounds.min.x,
@@ -451,11 +451,11 @@ namespace simnet::pipeline_records
                 bounds.max.z
             ),
         };
-        boid.heading = pipeline_quantize::decode_oct_heading(
+        entity.heading = pipeline_quantize::decode_oct_heading(
             static_cast<std::uint16_t>(hx),
             static_cast<std::uint16_t>(hy)
         );
-        boid.hue = static_cast<std::uint8_t>(hue);
+        entity.hue = static_cast<std::uint8_t>(hue);
         return true;
     }
 
@@ -635,8 +635,12 @@ namespace simnet::pipeline_records
     }
 
     /// Reads one entity record in the resolved layout, advancing offset. Returns false on truncation.
-    [[nodiscard]] bool
-    read_record(ByteSpan bytes, std::size_t& offset, RecordLayout const& layout, EntityState& boid)
+    [[nodiscard]] bool read_record(
+        ByteSpan bytes,
+        std::size_t& offset,
+        RecordLayout const& layout,
+        EntityState& entity
+    )
     {
         if (layout.bitpacked)
         {
@@ -649,7 +653,7 @@ namespace simnet::pipeline_records
             if (!read_bitpacked_record(
                     bytes.subspan(record_begin, layout.record_bytes),
                     layout.bounds,
-                    boid
+                    entity
                 ))
             {
                 return false;
@@ -658,7 +662,7 @@ namespace simnet::pipeline_records
             return true;
         }
 
-        if (!read_big_endian(bytes, offset, boid.id))
+        if (!read_big_endian(bytes, offset, entity.id))
         {
             return false;
         }
@@ -667,32 +671,32 @@ namespace simnet::pipeline_records
         {
             return false;
         }
-        boid.classification = EntityClassification{classification};
+        entity.classification = EntityClassification{classification};
         if (layout.quantized)
         {
-            if (!read_quantized_vec3(bytes, offset, layout.bounds, boid.position))
+            if (!read_quantized_vec3(bytes, offset, layout.bounds, entity.position))
             {
                 return false;
             }
             if (layout.oct_heading)
             {
-                if (!read_oct_heading(bytes, offset, boid.heading))
+                if (!read_oct_heading(bytes, offset, entity.heading))
                 {
                     return false;
                 }
             }
-            else if (!read_quantized_heading(bytes, offset, boid.heading))
+            else if (!read_quantized_heading(bytes, offset, entity.heading))
             {
                 return false;
             }
         }
         else if (
-            !pipeline_wire::read_vec3(bytes, offset, boid.position) ||
-            !pipeline_wire::read_vec3(bytes, offset, boid.heading)
+            !pipeline_wire::read_vec3(bytes, offset, entity.position) ||
+            !pipeline_wire::read_vec3(bytes, offset, entity.heading)
         )
         {
             return false;
         }
-        return read_byte(bytes, offset, boid.hue);
+        return read_byte(bytes, offset, entity.hue);
     }
 }
