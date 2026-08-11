@@ -2410,6 +2410,7 @@ namespace simnet::app
                     " cause=" + std::string{client_stop_cause_name(stop_cause)} + " frames=" +
                     std::to_string(stats.frames) + " ticks=" + std::to_string(stats.ticks) +
                     " runtime_ns=" + std::to_string(stats.raw_time.count()));
+            telemetry.shutdown();
             return stop.reason() == ShutdownReason::FatalError ? 1 : 0;
         }
         catch (std::exception const& error)

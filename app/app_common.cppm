@@ -1,12 +1,8 @@
 module;
 
 #include <charconv>
-#include <algorithm>
 #include <chrono>
-#include <cmath>
-#include <csignal>
 #include <cstdint>
-#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -76,10 +72,16 @@ export namespace simnet::app
     {
       public:
         explicit TelemetryLifetime(TelemetryConfig const& config);
-        ~TelemetryLifetime();
+        ~TelemetryLifetime() noexcept;
 
         TelemetryLifetime(TelemetryLifetime const&) = delete;
         TelemetryLifetime& operator=(TelemetryLifetime const&) = delete;
+
+        /// Flushes and releases telemetry. Shutdown failures are reported to the caller.
+        void shutdown();
+
+      private:
+        bool active_{true};
     };
 
     [[nodiscard]] bool signal_stop_requested() noexcept;
@@ -106,135 +108,7 @@ export namespace simnet::app
     [[nodiscard]] TransportDelivery
     snapshot_transport_delivery(SnapshotDeliveryConfig const& config);
     [[nodiscard]] constexpr std::string_view
-    transport_delivery_name(TransportDelivery delivery) noexcept;
-    [[nodiscard]] PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared);
-    [[nodiscard]] CompressionSettings make_compression_settings(SharedConfig const& shared);
-    [[nodiscard]] constexpr std::string_view compression_mode_name(CompressionMode mode) noexcept;
-    [[nodiscard]] PacketizationSettings make_packetization_settings(SharedConfig const& shared);
-    [[nodiscard]] SessionIdentity make_session_identity(
-        SharedConfig const& shared,
-        PipelineDefinition const& pipeline,
-        ZstdDictionaryIdentity const* dictionary_identity = nullptr
-    );
-    [[nodiscard]] std::string_view shutdown_reason_name(ShutdownReason reason);
-}
-
-namespace
-{
-    constexpr std::uint32_t application_protocol_version = 7;
-    volatile std::sig_atomic_t signal_stop_latch = 0;
-
-    extern "C" void request_signal_stop(int)
-    {
-        signal_stop_latch = 1;
-    }
-}
-
-namespace simnet::app
-{
-    Vec3f stationary_observer_forward(StationaryObserverState const& state) noexcept
-    {
-        auto const cosine_pitch = std::cos(state.pitch);
-        return {
-            .x = cosine_pitch * std::sin(state.yaw),
-            .y = std::sin(state.pitch),
-            .z = cosine_pitch * std::cos(state.yaw),
-        };
-    }
-
-    void apply_stationary_observer_rotation(
-        StationaryObserverState& state,
-        float yaw_axis,
-        float pitch_axis,
-        Nanoseconds frame_delta
-    ) noexcept
-    {
-        auto const seconds = std::chrono::duration<float>(frame_delta).count();
-        auto constexpr rotation_speed = 1.5F;
-        auto constexpr pitch_limit = 1.483529864F;
-        state.yaw += yaw_axis * rotation_speed * seconds;
-        state.pitch = std::clamp(
-            state.pitch + pitch_axis * rotation_speed * seconds,
-            -pitch_limit,
-            pitch_limit
-        );
-    }
-
-    SignalHandlers::SignalHandlers()
-        : interrupt_(std::signal(SIGINT, request_signal_stop)),
-          terminate_(std::signal(SIGTERM, request_signal_stop))
-    {
-    }
-
-    SignalHandlers::~SignalHandlers()
-    {
-        std::signal(SIGINT, interrupt_);
-        std::signal(SIGTERM, terminate_);
-    }
-
-    TelemetryLifetime::TelemetryLifetime(TelemetryConfig const& config)
-    {
-        initialize_telemetry(config);
-    }
-
-    TelemetryLifetime::~TelemetryLifetime()
-    {
-        shutdown_telemetry();
-    }
-
-    bool signal_stop_requested() noexcept
-    {
-        return signal_stop_latch != 0;
-    }
-
-    std::string_view next_option_value(int& index, int argc, char** argv, std::string_view option)
-    {
-        if (++index >= argc)
-        {
-            throw std::runtime_error("missing value for " + std::string{option});
-        }
-        return argv[index];
-    }
-
-    std::chrono::milliseconds
-    milliseconds_option(int& index, int argc, char** argv, std::string_view option)
-    {
-        auto const value =
-            parse_unsigned<std::uint64_t>(next_option_value(index, argc, argv, option), option);
-        if (value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
-        {
-            throw std::runtime_error("value out of range for " + std::string{option});
-        }
-        return std::chrono::milliseconds{static_cast<std::int64_t>(value)};
-    }
-
-    SendSizePolicy transport_send_size_policy(TransportConfig const& config)
-    {
-        if (config.send_size_policy == "enforce_limit")
-        {
-            return SendSizePolicy::EnforceLimit;
-        }
-        if (config.send_size_policy == "allow_backend_fragmentation")
-        {
-            return SendSizePolicy::AllowBackendFragmentation;
-        }
-        throw std::runtime_error("unsupported send size policy: " + config.send_size_policy);
-    }
-
-    TransportDelivery snapshot_transport_delivery(SnapshotDeliveryConfig const& config)
-    {
-        if (config.mode == "reliable_sequenced")
-        {
-            return TransportDelivery::ReliableSequenced;
-        }
-        if (config.mode == "unreliable_sequenced")
-        {
-            return TransportDelivery::UnreliableSequenced;
-        }
-        throw std::runtime_error("unsupported snapshot delivery: " + config.mode);
-    }
-
-    constexpr std::string_view transport_delivery_name(TransportDelivery delivery) noexcept
+    transport_delivery_name(TransportDelivery delivery) noexcept
     {
         switch (delivery)
         {
@@ -245,121 +119,9 @@ namespace simnet::app
         }
         return "unknown";
     }
-
-    PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared)
-    {
-        auto pipeline = PipelineDefinition{};
-        if (shared.pipeline.send_interval_ticks > 1U)
-        {
-            pipeline.techniques |= PipelineTechniqueFlags::SendInterval;
-            pipeline.send_interval.interval_ticks = shared.pipeline.send_interval_ticks;
-        }
-        if (shared.pipeline.enable_quantization)
-        {
-            pipeline.techniques |= PipelineTechniqueFlags::Quantization;
-            pipeline.quantization.position_bounds =
-                make_centered_bounds(shared.simulation.world_half);
-        }
-        if (shared.pipeline.enable_oct_heading)
-        {
-            pipeline.techniques |= PipelineTechniqueFlags::OctHeading;
-        }
-        if (shared.pipeline.enable_bit_packing)
-        {
-            pipeline.techniques |= PipelineTechniqueFlags::BitPacking;
-        }
-        if (shared.pipeline.enable_incremental)
-        {
-            pipeline.techniques |= PipelineTechniqueFlags::Incremental;
-        }
-        if (shared.pipeline.enable_delta)
-        {
-            pipeline.techniques |= PipelineTechniqueFlags::Delta;
-        }
-        if (shared.pipeline.enable_delta_field_mask)
-        {
-            pipeline.techniques |= PipelineTechniqueFlags::DeltaFieldMask;
-        }
-        auto const& area_of_interest = shared.pipeline.area_of_interest;
-        if (area_of_interest.mode == "none")
-        {
-            pipeline.area_of_interest.mode = AreaOfInterestMode::None;
-        }
-        else if (area_of_interest.mode == "radius")
-        {
-            pipeline.area_of_interest.mode = AreaOfInterestMode::Radius;
-        }
-        else if (area_of_interest.mode == "fov")
-        {
-            pipeline.area_of_interest.mode = AreaOfInterestMode::Fov;
-        }
-        else
-        {
-            throw std::runtime_error("unsupported AOI mode: " + area_of_interest.mode);
-        }
-        pipeline.area_of_interest.radius = area_of_interest.radius;
-        pipeline.area_of_interest.fov_degrees = area_of_interest.fov_degrees;
-        auto const& level_of_detail = shared.pipeline.level_of_detail;
-        if (level_of_detail.mode == "none")
-        {
-            pipeline.level_of_detail.mode = LevelOfDetailMode::None;
-        }
-        else if (level_of_detail.mode == "distance_bands")
-        {
-            pipeline.level_of_detail.mode = LevelOfDetailMode::DistanceBands;
-        }
-        else
-        {
-            throw std::runtime_error("unsupported level-of-detail mode: " + level_of_detail.mode);
-        }
-        pipeline.level_of_detail.near_distance = level_of_detail.near_distance;
-        pipeline.level_of_detail.medium_distance = level_of_detail.medium_distance;
-        pipeline.level_of_detail.medium_interval_ticks = level_of_detail.medium_interval_ticks;
-        pipeline.level_of_detail.far_interval_ticks = level_of_detail.far_interval_ticks;
-        validate_pipeline_definition(pipeline);
-        return pipeline;
-    }
-
-    CompressionSettings make_compression_settings(SharedConfig const& shared)
-    {
-        auto mode = CompressionMode::None;
-        if (shared.compression.mode == "whole_update")
-        {
-            mode = CompressionMode::WholeUpdate;
-        }
-        else if (shared.compression.mode == "per_packet")
-        {
-            mode = CompressionMode::PerPacket;
-        }
-        else if (shared.compression.mode != "none")
-        {
-            throw std::runtime_error("unsupported compression mode: " + shared.compression.mode);
-        }
-        if (mode != CompressionMode::None &&
-            (shared.compression.level < 1 || shared.compression.level > 19))
-        {
-            throw std::runtime_error("unsupported Zstd compression level");
-        }
-        if (shared.compression.dictionary != "none" &&
-            shared.compression.dictionary != "pipeline_v1")
-        {
-            throw std::runtime_error(
-                "unsupported compression dictionary: " + shared.compression.dictionary
-            );
-        }
-        if ((mode == CompressionMode::None || mode == CompressionMode::PerPacket) &&
-            shared.compression.dictionary != "none")
-        {
-            throw std::runtime_error("compression dictionary requires whole_update mode");
-        }
-        return {
-            .mode = mode,
-            .level = shared.compression.level,
-            .dictionary = shared.compression.dictionary,
-        };
-    }
-
-    constexpr std::string_view compression_mode_name(CompressionMode mode) noexcept
+    [[nodiscard]] PipelineDefinition make_snapshot_pipeline(SharedConfig const& shared);
+    [[nodiscard]] CompressionSettings make_compression_settings(SharedConfig const& shared);
+    [[nodiscard]] constexpr std::string_view compression_mode_name(CompressionMode mode) noexcept
     {
         switch (mode)
         {
@@ -372,88 +134,11 @@ namespace simnet::app
         }
         return "unknown";
     }
-
-    PacketizationSettings make_packetization_settings(SharedConfig const& shared)
-    {
-        auto const& config = shared.packetization;
-        auto settings = PacketizationSettings{
-            .enabled = config.enabled,
-            .max_payload_bytes = config.max_payload_bytes,
-            .max_group_bytes = config.max_update_bytes,
-            .max_chunks_per_group = config.max_chunks_per_update,
-            .max_in_flight_groups = config.max_in_flight_updates,
-            .max_incomplete_bytes = config.max_incomplete_bytes,
-            .reassembly_timeout =
-                Nanoseconds{static_cast<std::int64_t>(config.reassembly_timeout_ms) * 1'000'000},
-        };
-        validate_packetization_settings(settings);
-        return settings;
-    }
-
-    SessionIdentity make_session_identity(
+    [[nodiscard]] PacketizationSettings make_packetization_settings(SharedConfig const& shared);
+    [[nodiscard]] SessionIdentity make_session_identity(
         SharedConfig const& shared,
         PipelineDefinition const& pipeline,
-        ZstdDictionaryIdentity const* dictionary_identity
-    )
-    {
-        auto compatibility = fingerprint_network_compatibility(shared).value;
-        auto const dictionary_selected = shared.compression.dictionary != "none";
-        if (dictionary_selected != (dictionary_identity != nullptr))
-        {
-            throw std::runtime_error(
-                "selected compression dictionary identity is unavailable or unexpected"
-            );
-        }
-        if (dictionary_identity != nullptr)
-        {
-            auto mix = [&](std::uint64_t value)
-            {
-                for (auto shift = 56U;; shift -= 8U)
-                {
-                    compatibility ^= (value >> shift) & 0xffU;
-                    compatibility *= 1099511628211ULL;
-                    if (shift == 0U)
-                    {
-                        break;
-                    }
-                }
-            };
-            mix(dictionary_identity->dictionary_id);
-            mix(dictionary_identity->byte_count);
-            mix(dictionary_identity->content_fingerprint);
-        }
-        return {
-            .application_protocol_version = application_protocol_version,
-            .compatibility_fingerprint = compatibility,
-            .application_wire_fingerprint = pipeline_decode_signature(pipeline),
-            .capabilities = 0,
-        };
-    }
-
-    std::string_view shutdown_reason_name(ShutdownReason reason)
-    {
-        using enum ShutdownReason;
-        switch (reason)
-        {
-            case None:
-                return "none";
-            case Requested:
-                return "requested";
-            case Signal:
-                return "signal";
-            case FrameLimit:
-                return "frame_limit";
-            case TickLimit:
-                return "tick_limit";
-            case RuntimeLimit:
-                return "runtime_limit";
-            case WindowClosed:
-                return "window_closed";
-            case TransportDisconnected:
-                return "transport_disconnected";
-            case FatalError:
-                return "fatal_error";
-        }
-        return "unknown";
-    }
+        ZstdDictionaryIdentity const* dictionary_identity = nullptr
+    );
+    [[nodiscard]] std::string_view shutdown_reason_name(ShutdownReason reason);
 }

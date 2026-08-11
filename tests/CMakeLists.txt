@@ -27,6 +27,7 @@ add_executable(SimNetTests
     spatial_tests.cpp
     telemetry_tests.cpp
     transport_tests.cpp
+    ${PROJECT_SOURCE_DIR}/app/app_common.cpp
     ${PROJECT_SOURCE_DIR}/app/app_compression_corpus.cpp
     ${PROJECT_SOURCE_DIR}/app/app_compression_dictionary.cpp
     ${PROJECT_SOURCE_DIR}/app/app_evidence.cpp

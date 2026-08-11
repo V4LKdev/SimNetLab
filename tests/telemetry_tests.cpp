@@ -11,6 +11,7 @@
 #include <vector>
 
 import simnet.telemetry;
+import simnet.app_common;
 import simnet.config;
 import simnet.core;
 import simnet.snapshot;
@@ -38,6 +39,7 @@ static_assert(!std::is_copy_assignable_v<simnet::ClientReplicationCsvWriter>);
 static_assert(!std::is_move_constructible_v<simnet::ClientReplicationCsvWriter>);
 static_assert(!std::is_move_assignable_v<simnet::ClientReplicationCsvWriter>);
 static_assert(std::is_nothrow_destructible_v<simnet::ClientReplicationCsvWriter>);
+static_assert(std::is_nothrow_destructible_v<simnet::app::TelemetryLifetime>);
 
 namespace
 {
@@ -571,6 +573,31 @@ TEST_CASE("telemetry logging has explicit sink ownership", "[telemetry][logging]
     simnet::shutdown_telemetry();
     simnet::shutdown_telemetry();
     CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Critical));
+}
+
+TEST_CASE(
+    "application telemetry lifetime has explicit and fallback shutdown",
+    "[telemetry][lifecycle]"
+)
+{
+    auto const config = simnet::TelemetryConfig{
+        .console_log_enabled = true,
+        .file_log_enabled = false,
+        .min_level = "warn",
+    };
+    {
+        auto telemetry = simnet::app::TelemetryLifetime{config};
+        REQUIRE(simnet::log_enabled(simnet::LogLevel::Warn));
+        telemetry.shutdown();
+        CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Warn));
+        CHECK_NOTHROW(telemetry.shutdown());
+    }
+
+    {
+        auto telemetry = simnet::app::TelemetryLifetime{config};
+        REQUIRE(simnet::log_enabled(simnet::LogLevel::Warn));
+    }
+    CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Warn));
 }
 
 TEST_CASE("Server replication measurements preserve byte ownership", "[telemetry][server]")

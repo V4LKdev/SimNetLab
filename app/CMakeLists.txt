@@ -3,6 +3,7 @@ add_executable(
     Server
     server_main.cpp
     server_runtime.cpp
+    app_common.cpp
     app_compression_corpus.cpp
     app_compression_dictionary.cpp
     app_evidence.cpp
@@ -21,6 +22,7 @@ target_link_libraries(Server
     PRIVATE
         simnet_config
         simnet_compression
+        simnet_core
         simnet_game_server
         simnet_packetization
         simnet_pipeline
@@ -43,7 +45,13 @@ if (SIMNET_ENABLE_RENDER)
 endif ()
 simnet_configure_target(Server)
 
-add_executable(Client client_main.cpp client_runtime.cpp app_compression_dictionary.cpp)
+add_executable(
+    Client
+    client_main.cpp
+    client_runtime.cpp
+    app_common.cpp
+    app_compression_dictionary.cpp
+)
 target_sources(Client
     PRIVATE
         FILE_SET CXX_MODULES
@@ -59,6 +67,7 @@ target_link_libraries(Client
     PRIVATE
         simnet_config
         simnet_compression
+        simnet_core
         simnet_game_client
         simnet_packetization
         simnet_pipeline

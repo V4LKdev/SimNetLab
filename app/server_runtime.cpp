@@ -3766,6 +3766,7 @@ namespace simnet::app
                     std::string{shutdown_reason_name(stop.reason())} + " frames=" +
                     std::to_string(stats.frames) + " ticks=" + std::to_string(stats.ticks) +
                     " dropped_ns=" + std::to_string(stats.dropped_time.count()));
+            telemetry.shutdown();
             return stop.reason() == ShutdownReason::FatalError ? 1 : 0;
         }
         catch (std::exception const& error)
