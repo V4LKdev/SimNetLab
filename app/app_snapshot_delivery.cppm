@@ -299,17 +299,16 @@ export namespace simnet::app
             if (found != state.recovery_upserts.end() && found->id == upsert.id)
             {
                 *found = upsert;
+                continue;
             }
-            else
+
+            if (state.recovery_upserts.size() >= maximum_recovery_upserts)
             {
-                if (state.recovery_upserts.size() >= maximum_recovery_upserts)
-                {
-                    state.recovery_upserts.clear();
-                    enter_snapshot_recovery(state, SnapshotRecoveryReason::RetentionPressure);
-                    return false;
-                }
-                state.recovery_upserts.insert(found, upsert);
+                state.recovery_upserts.clear();
+                enter_snapshot_recovery(state, SnapshotRecoveryReason::RetentionPressure);
+                return false;
             }
+            state.recovery_upserts.insert(found, upsert);
         }
         return true;
     }

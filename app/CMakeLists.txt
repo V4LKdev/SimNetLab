@@ -28,6 +28,7 @@ target_link_libraries(Server
         simnet_packetization
         simnet_pipeline
         simnet_runtime
+        simnet_snapshot
         simnet_spatial
         simnet_telemetry
         simnet_transport
@@ -74,6 +75,7 @@ target_link_libraries(Client
         simnet_packetization
         simnet_pipeline
         simnet_runtime
+        simnet_snapshot
         simnet_telemetry
         simnet_transport
 )
