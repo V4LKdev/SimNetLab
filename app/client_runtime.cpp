@@ -1,4 +1,4 @@
-#include "client_runtime.hpp"
+module;
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +19,8 @@
 #include <vector>
 
 #include <simnet/telemetry_trace.hpp>
+
+module simnet.client_runtime;
 
 import simnet.config;
 import simnet.app_camera;
@@ -146,6 +148,7 @@ namespace
         simnet::Nanoseconds decompression_cpu_time{};
     };
 
+#if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] constexpr std::string_view
     compression_encoding_name(simnet::CompressionEncoding encoding) noexcept
     {
@@ -160,6 +163,7 @@ namespace
         }
         return "Unknown";
     }
+#endif
 
     constexpr std::size_t retained_snapshot_limit = 64;
 
@@ -680,10 +684,10 @@ namespace
                             .state = client_connection_state_name(connection_state),
                             .peer = peer,
                         }},
-                    .replication = std::move(replication),
+                    .replication = replication,
                 },
-            .stationary_observer = std::move(stationary_observer),
-            .game_camera = std::move(game_camera),
+            .stationary_observer = stationary_observer,
+            .game_camera = game_camera,
             .setup = setup,
         };
     }
@@ -883,6 +887,8 @@ namespace
         auto patch = simnet::SnapshotUpdate{
             .tick = snapshot.tick,
             .kind = simnet::SnapshotKind::FullReplace,
+            .upserts = {},
+            .deletes = {},
         };
         patch.upserts.reserve(snapshot.size());
         for (std::size_t index = 0; index < snapshot.size(); ++index)
@@ -2201,8 +2207,8 @@ namespace simnet::app
                                 requested_role == app::ClientRole::Player
                                     ? std::string_view{"player"}
                                     : std::string_view{"stationary observer"},
-                                std::move(stationary_observer_view),
-                                std::move(game_camera),
+                                stationary_observer_view,
+                                game_camera,
                                 run_setup.view()
                             ));
                         }

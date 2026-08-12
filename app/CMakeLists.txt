@@ -66,6 +66,7 @@ target_sources(Client
             app_player_input.cppm
             app_protocol.cppm
             app_snapshot_delivery.cppm
+            client_runtime.cppm
 )
 target_link_libraries(Client
     PRIVATE

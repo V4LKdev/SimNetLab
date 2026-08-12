@@ -1,4 +1,4 @@
-#include "client_runtime.hpp"
+import simnet.client_runtime;
 
 int main(int argc, char** argv)
 {
