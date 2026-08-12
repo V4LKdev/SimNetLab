@@ -22,6 +22,7 @@ static_assert(!std::is_copy_constructible_v<simnet::app::CompressionCorpusWriter
 static_assert(!std::is_copy_assignable_v<simnet::app::CompressionCorpusWriter>);
 static_assert(!std::is_move_constructible_v<simnet::app::CompressionCorpusWriter>);
 static_assert(!std::is_move_assignable_v<simnet::app::CompressionCorpusWriter>);
+static_assert(std::is_nothrow_destructible_v<simnet::app::CompressionCorpusWriter>);
 
 namespace
 {
@@ -197,10 +198,29 @@ TEST_CASE(
     }};
     REQUIRE(writer.capture(7U, pipeline, 2U, encoded));
     REQUIRE(writer.close());
+    REQUIRE(writer.close());
 
     auto const sample_path = output_directory / "sample_peer_7_sequence_1_tick_17.bin";
     CHECK(read_bytes(sample_path) == encoded.update.bytes);
     CHECK(writer.sample_count() == 1U);
+}
+
+TEST_CASE("compression corpus destructor finalizes captured output", "[compression][corpus]")
+{
+    auto temporary = CorpusTemporaryDirectory{};
+    auto const output_directory = temporary.path() / "capture";
+    {
+        auto writer = simnet::app::CompressionCorpusWriter{{
+            .output_directory = output_directory,
+            .run = corpus_run(),
+            .seed = 41001U,
+        }};
+        REQUIRE(writer.capture(3U, manifest_pipeline(), 5U, manifest_output()));
+    }
+
+    auto const sample_path = output_directory / "sample_peer_3_sequence_4_tick_9.bin";
+    CHECK(read_bytes(sample_path) == bytes_from("abc"));
+    CHECK(read_lines(output_directory / "manifest.csv").size() == 2U);
 }
 
 TEST_CASE(

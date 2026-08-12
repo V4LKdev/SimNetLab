@@ -136,7 +136,7 @@ namespace
         }
         tail[remaining] = 0x80U;
         auto const padded_bytes = remaining < 56U ? 64U : 128U;
-        auto const bit_count = static_cast<std::uint64_t>(bytes.size()) * 8U;
+        auto const bit_count = bytes.size() * std::uint64_t{8U};
         for (auto index = std::size_t{}; index < 8U; ++index)
         {
             tail[padded_bytes - 1U - index] = static_cast<std::uint8_t>(bit_count >> (index * 8U));
@@ -162,13 +162,13 @@ namespace
 
     template <std::integral Value> void append_integer(std::string& output, Value value)
     {
-        char buffer[32]{};
-        auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+        auto buffer = std::array<char, 32>{};
+        auto const result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
         if (result.ec != std::errc{})
         {
             throw std::runtime_error("failed to format compression corpus manifest integer");
         }
-        output.append(buffer, result.ptr);
+        output.append(buffer.data(), result.ptr);
     }
 
     void append_field(std::string& output, std::string_view value)
@@ -240,6 +240,94 @@ namespace
                std::to_string(report.sequence) + "_tick_" + std::to_string(report.tick) + ".bin";
     }
 
+    void prepare_output_directory(std::filesystem::path const& output_directory)
+    {
+        auto filesystem_error = std::error_code{};
+        auto const exists = std::filesystem::exists(output_directory, filesystem_error);
+        if (filesystem_error)
+        {
+            throw std::runtime_error(
+                "failed to inspect compression corpus output directory: " +
+                filesystem_error.message()
+            );
+        }
+        if (exists)
+        {
+            auto const directory =
+                std::filesystem::is_directory(output_directory, filesystem_error);
+            if (filesystem_error || !directory)
+            {
+                throw std::runtime_error(
+                    "compression corpus destination is not a directory: " +
+                    output_directory.string()
+                );
+            }
+            auto const empty = std::filesystem::is_empty(output_directory, filesystem_error);
+            if (filesystem_error || !empty)
+            {
+                throw std::runtime_error(
+                    "compression corpus output directory must be empty: " +
+                    output_directory.string()
+                );
+            }
+            return;
+        }
+
+        auto const created =
+            std::filesystem::create_directories(output_directory, filesystem_error);
+        if (!created || filesystem_error)
+        {
+            auto message =
+                std::string{"failed to exclusively create compression corpus directory: "} +
+                output_directory.string();
+            if (filesystem_error)
+            {
+                message += ". " + filesystem_error.message();
+            }
+            throw std::runtime_error(message);
+        }
+    }
+
+    [[nodiscard]] std::string make_manifest_row(
+        CompressionCorpusWriterConfig const& config,
+        PeerId peer,
+        PipelineDefinition const& pipeline,
+        std::uint32_t source_entity_count,
+        EncodeOutput const& encoded,
+        std::string_view filename
+    )
+    {
+        auto row = std::string{};
+        row.reserve(512U);
+        append_field(row, compression_corpus_manifest_schema_version);
+        append_field(row, config.run.run_id);
+        append_field(row, peer);
+        append_field(row, encoded.report.tick);
+        append_field(row, encoded.report.sequence);
+        append_field(row, encoded.report.baseline_sequence);
+        append_field(row, snapshot_kind_name(encoded.report.snapshot_kind));
+        append_field(row, representation_name(encoded.report.representation.layout));
+        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::SendInterval));
+        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental));
+        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization));
+        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading));
+        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta));
+        append_field(
+            row,
+            has_all_flags(pipeline.techniques, PipelineTechniqueFlags::DeltaFieldMask)
+        );
+        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::BitPacking));
+        append_field(row, area_of_interest_name(pipeline.area_of_interest.mode));
+        append_field(row, level_of_detail_name(pipeline.level_of_detail.mode));
+        append_field(row, config.seed);
+        append_field(row, static_cast<std::uint32_t>(encoded.resulting_snapshot.size()));
+        append_field(row, source_entity_count);
+        append_field(row, static_cast<std::uint32_t>(encoded.update.bytes.size()));
+        append_field(row, sha256(encoded.update.bytes));
+        append_field(row, filename);
+        return row;
+    }
+
     [[nodiscard]] bool
     write_sample(std::filesystem::path const& path, ByteSpan bytes, std::string& error)
     {
@@ -305,54 +393,9 @@ namespace simnet::app
                 );
             }
 
-            auto filesystem_error = std::error_code{};
-            auto const exists = std::filesystem::exists(*config.output_directory, filesystem_error);
-            if (filesystem_error)
-            {
-                throw std::runtime_error(
-                    "failed to inspect compression corpus output directory: " +
-                    filesystem_error.message()
-                );
-            }
-            if (exists)
-            {
-                auto const directory =
-                    std::filesystem::is_directory(*config.output_directory, filesystem_error);
-                if (filesystem_error || !directory)
-                {
-                    throw std::runtime_error(
-                        "compression corpus destination is not a directory: " +
-                        config.output_directory->string()
-                    );
-                }
-                auto const empty =
-                    std::filesystem::is_empty(*config.output_directory, filesystem_error);
-                if (filesystem_error || !empty)
-                {
-                    throw std::runtime_error(
-                        "compression corpus output directory must be empty: " +
-                        config.output_directory->string()
-                    );
-                }
-            }
-            else
-            {
-                auto const created =
-                    std::filesystem::create_directories(*config.output_directory, filesystem_error);
-                if (!created || filesystem_error)
-                {
-                    auto message =
-                        std::string{"failed to exclusively create compression corpus directory: "} +
-                        config.output_directory->string();
-                    if (filesystem_error)
-                    {
-                        message += ". " + filesystem_error.message();
-                    }
-                    throw std::runtime_error(message);
-                }
-            }
-
-            manifest_path = *config.output_directory / "manifest.csv";
+            auto const& output_directory = config.output_directory.value();
+            prepare_output_directory(output_directory);
+            manifest_path = output_directory / "manifest.csv";
             manifest.emplace(manifest_path, compression_corpus_manifest_header_v1);
         }
 
@@ -377,11 +420,18 @@ namespace simnet::app
     {
     }
 
-    CompressionCorpusWriter::~CompressionCorpusWriter()
+    CompressionCorpusWriter::~CompressionCorpusWriter() noexcept
     {
-        if (impl_)
+        try
         {
-            static_cast<void>(close());
+            if (impl_)
+            {
+                static_cast<void>(close());
+            }
+        }
+        catch (...)
+        {
+            return;
         }
     }
 
@@ -416,7 +466,7 @@ namespace simnet::app
         }
 
         auto const filename = sample_filename(peer, encoded.report);
-        auto const sample_path = *impl_->config.output_directory / filename;
+        auto const sample_path = impl_->config.output_directory.value() / filename;
         auto sample_error = std::string{};
         if (!write_sample(sample_path, encoded.update.bytes, sample_error))
         {
@@ -424,41 +474,21 @@ namespace simnet::app
             return false;
         }
 
-        auto row = std::string{};
-        row.reserve(512U);
-        append_field(row, compression_corpus_manifest_schema_version);
-        append_field(row, impl_->config.run.run_id);
-        append_field(row, peer);
-        append_field(row, encoded.report.tick);
-        append_field(row, encoded.report.sequence);
-        append_field(row, encoded.report.baseline_sequence);
-        append_field(row, snapshot_kind_name(encoded.report.snapshot_kind));
-        append_field(row, representation_name(encoded.report.representation.layout));
-        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::SendInterval));
-        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Incremental));
-        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Quantization));
-        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::OctHeading));
-        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::Delta));
-        append_field(
-            row,
-            has_all_flags(pipeline.techniques, PipelineTechniqueFlags::DeltaFieldMask)
+        auto const row = make_manifest_row(
+            impl_->config,
+            peer,
+            pipeline,
+            source_entity_count,
+            encoded,
+            filename
         );
-        append_field(row, has_all_flags(pipeline.techniques, PipelineTechniqueFlags::BitPacking));
-        append_field(row, area_of_interest_name(pipeline.area_of_interest.mode));
-        append_field(row, level_of_detail_name(pipeline.level_of_detail.mode));
-        append_field(row, impl_->config.seed);
-        append_field(row, static_cast<std::uint32_t>(encoded.resulting_snapshot.size()));
-        append_field(row, source_entity_count);
-        append_field(row, static_cast<std::uint32_t>(encoded.update.bytes.size()));
-        append_field(row, sha256(encoded.update.bytes));
-        append_field(row, filename);
-
-        if (!impl_->manifest->write_row(row) || !impl_->manifest->flush())
+        auto& manifest = impl_->manifest.value();
+        if (!manifest.write_row(row) || !manifest.flush())
         {
             auto cleanup_error = std::error_code{};
             std::filesystem::remove(sample_path, cleanup_error);
             auto error = std::string{"failed to write or flush compression corpus manifest: "} +
-                         std::string{impl_->manifest->error()};
+                         std::string{manifest.error()};
             if (cleanup_error)
             {
                 error += ". Failed to remove uncommitted sample: " + cleanup_error.message();
@@ -480,11 +510,11 @@ namespace simnet::app
         {
             return impl_->failure.empty();
         }
-        if (!impl_->manifest->close())
+        auto& manifest = impl_->manifest.value();
+        if (!manifest.close())
         {
             impl_->reject(
-                "failed to close compression corpus manifest: " +
-                std::string{impl_->manifest->error()}
+                "failed to close compression corpus manifest: " + std::string{manifest.error()}
             );
         }
         impl_->closed = true;

@@ -35,7 +35,7 @@ export namespace simnet::app
     {
       public:
         explicit CompressionCorpusWriter(CompressionCorpusWriterConfig config);
-        ~CompressionCorpusWriter();
+        ~CompressionCorpusWriter() noexcept;
 
         CompressionCorpusWriter(CompressionCorpusWriter const&) = delete;
         CompressionCorpusWriter& operator=(CompressionCorpusWriter const&) = delete;
