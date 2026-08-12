@@ -1,5 +1,6 @@
 module;
 
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -41,21 +42,21 @@ namespace
 
     template <typename Value> void append_integer(std::string& output, Value value)
     {
-        char buffer[32]{};
-        auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+        auto buffer = std::array<char, 32>{};
+        auto const result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
         if (result.ec != std::errc{})
         {
             throw std::runtime_error("failed to format boid CSV integer");
         }
-        output.append(buffer, result.ptr);
+        output.append(buffer.data(), result.ptr);
     }
 
     template <typename Value> void append_floating_point(std::string& output, Value value)
     {
-        char buffer[64]{};
+        auto buffer = std::array<char, 64>{};
         auto const result = std::to_chars(
-            buffer,
-            buffer + sizeof(buffer),
+            buffer.data(),
+            buffer.data() + buffer.size(),
             value,
             std::chars_format::general,
             std::numeric_limits<Value>::max_digits10
@@ -64,7 +65,7 @@ namespace
         {
             throw std::runtime_error("failed to format boid CSV floating-point value");
         }
-        output.append(buffer, result.ptr);
+        output.append(buffer.data(), result.ptr);
     }
 
     class BoidCsvRow
@@ -351,18 +352,19 @@ namespace simnet::app
 
         [[nodiscard]] bool persist_buffer()
         {
+            auto& output_file = file.value();
             auto row = std::string{};
             row.reserve(768);
             for (auto const& entry : buffer)
             {
                 format_row(row, config.run, entry);
-                if (!file->write_row(row))
+                if (!output_file.write_row(row))
                 {
                     capture_file_failure();
                     return false;
                 }
             }
-            if (!file->flush())
+            if (!output_file.flush())
             {
                 capture_file_failure();
                 return false;
@@ -387,11 +389,18 @@ namespace simnet::app
     {
     }
 
-    ServerBoidCsvWriter::~ServerBoidCsvWriter()
+    ServerBoidCsvWriter::~ServerBoidCsvWriter() noexcept
     {
-        if (impl_)
+        try
         {
-            static_cast<void>(close());
+            if (impl_)
+            {
+                static_cast<void>(close());
+            }
+        }
+        catch (...)
+        {
+            return;
         }
     }
 

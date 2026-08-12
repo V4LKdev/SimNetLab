@@ -55,7 +55,7 @@ export namespace simnet::app
     {
       public:
         explicit ServerBoidCsvWriter(ServerBoidCsvWriterConfig config);
-        ~ServerBoidCsvWriter();
+        ~ServerBoidCsvWriter() noexcept;
 
         ServerBoidCsvWriter(ServerBoidCsvWriter const&) = delete;
         ServerBoidCsvWriter& operator=(ServerBoidCsvWriter const&) = delete;

@@ -18,6 +18,7 @@ static_assert(!std::is_copy_constructible_v<simnet::app::ServerBoidCsvWriter>);
 static_assert(!std::is_copy_assignable_v<simnet::app::ServerBoidCsvWriter>);
 static_assert(!std::is_move_constructible_v<simnet::app::ServerBoidCsvWriter>);
 static_assert(!std::is_move_assignable_v<simnet::app::ServerBoidCsvWriter>);
+static_assert(std::is_nothrow_destructible_v<simnet::app::ServerBoidCsvWriter>);
 
 namespace
 {
@@ -260,6 +261,36 @@ TEST_CASE("Server boid CSV has an exact buffered v1 schema", "[telemetry][csv][b
         lines[1] == "1,boid-run,server,100,110,9,0,2,10,3,4,5,1.25,2.5,6,3.5,7,8,4.5,5.5,9,6.5,7.5,"
                     "8.5,9.5,10.5,11.5,12,13,14,0.75,1,2,3,4,5,6"
     );
+}
+
+TEST_CASE("Server boid CSV destructor persists buffered fallback output", "[telemetry][csv][boids]")
+{
+    auto temporary = EvidenceTemporaryDirectory{};
+    auto const output_path = temporary.path() / "server_boids_v1_101.csv";
+    {
+        auto writer = simnet::app::ServerBoidCsvWriter{{
+            .enabled = true,
+            .output_directory = temporary.path(),
+            .run =
+                {
+                    .run_id = "boid-fallback",
+                    .process_role = simnet::EvidenceProcessRole::Server,
+                    .process_started_unix_ns = 101,
+                },
+            .tick_rate_hz = 1.0,
+            .worker_count = 1,
+        }};
+        REQUIRE(writer.sample(
+            1,
+            sample_report(),
+            {.recorded_at_unix_ns = 106, .elapsed_since_process_start_ns = 5}
+        ));
+    }
+
+    auto const lines = read_evidence_lines(output_path);
+    REQUIRE(lines.size() == 2);
+    CHECK(lines[0] == simnet::app::server_boids_csv_header_v1);
+    CHECK_FALSE(lines[1].empty());
 }
 
 TEST_CASE(
