@@ -338,10 +338,9 @@ TEST_CASE("header bounds reject explicit malformed fields", "[packetization][mal
     auto reject = [&](std::vector<simnet::Byte> packet)
     {
         auto state = simnet::ReassemblyState{};
-        CHECK(
-            simnet::accept_group_packet(config, state, std::move(packet), simnet::Nanoseconds{})
-                .kind == simnet::ReassemblyResultKind::Invalid
-        );
+        auto const result =
+            simnet::accept_group_packet(config, state, std::move(packet), simnet::Nanoseconds{});
+        CHECK(result.kind == simnet::ReassemblyResultKind::Invalid);
         CHECK(state.incomplete.empty());
     };
 
@@ -600,15 +599,13 @@ TEST_CASE(
     config.max_chunks_per_group = 128U;
     config.max_incomplete_bytes = 8192U;
     auto prepared = simnet::PreparedByteGroup{};
-    REQUIRE(
-        simnet::prepare_byte_group(
-            config,
-            first.update.sequence,
-            std::move(first.update.bytes),
-            prepared
-        )
-            .outcome == simnet::GroupPreparationOutcome::Prepared
+    auto const preparation = simnet::prepare_byte_group(
+        config,
+        first.update.sequence,
+        std::move(first.update.bytes),
+        prepared
     );
+    REQUIRE(preparation.outcome == simnet::GroupPreparationOutcome::Prepared);
     REQUIRE(prepared.chunk_count > 1U);
     auto serialization_scratch = std::vector<simnet::Byte>{};
     CHECK_FALSE(simnet::serialize_group_chunk(config, prepared, 0U, serialization_scratch).empty());

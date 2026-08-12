@@ -42,7 +42,7 @@ namespace
         for (std::uint32_t index = 0; index < count; ++index)
         {
             boids.push_back({
-                .id = static_cast<simnet::EntityNetId>(index + 1U),
+                .id = index + 1U,
                 .classification = known_classification,
                 .position = {static_cast<float>(index), 0.0F, 0.0F},
                 .heading = {1.0F, 0.0F, 0.0F},
@@ -669,7 +669,9 @@ TEST_CASE(
         REQUIRE(encoded.update.bytes.size() >= 8U);
         CHECK(std::to_integer<std::uint8_t>(encoded.update.bytes[6U]) == 0U);
         CHECK(std::to_integer<std::uint8_t>(encoded.update.bytes[7U]) == 5U);
-        CHECK(encoded.update.bytes.size() == encoded_update_header_bytes + record_bytes * 2U);
+        auto const expected_size =
+            encoded_update_header_bytes + static_cast<std::size_t>(record_bytes) * 2U;
+        CHECK(encoded.update.bytes.size() == expected_size);
 
         auto const decoded =
             simnet::decode_update(pipeline, decode_state, {.bytes = encoded.update.bytes});
@@ -1571,7 +1573,7 @@ TEST_CASE(
     scratch.logical_update.tick = 19U;
     scratch.bytes = {simnet::Byte{11U}};
 
-    for (simnet::Tick tick : {1U, 2U})
+    for (simnet::Tick const tick : {1U, 2U})
     {
         current.tick = tick;
         auto const skipped = simnet::encode_snapshot(

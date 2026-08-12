@@ -40,7 +40,7 @@ namespace
     {
         for (std::uint32_t index = 0; index < boid_count; ++index)
         {
-            auto const id = static_cast<simnet::EntityNetId>(index + 1U);
+            simnet::EntityNetId const id = index + 1U;
             static_cast<void>(simnet::upsert_authoritative_boid(world, test_boid(id, index, tick)));
         }
         if (tick == 2)

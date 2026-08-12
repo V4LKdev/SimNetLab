@@ -63,6 +63,7 @@ target_link_libraries(SimNetTests
         simnet_compression
         simnet_game_client
         simnet_game_server
+        simnet_game_shared
         simnet_packetization
         simnet_pipeline
         simnet_runtime

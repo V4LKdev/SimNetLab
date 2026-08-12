@@ -241,8 +241,10 @@ namespace
         for (std::uint32_t index = 0; index < 256U; ++index)
         {
             auto const x = static_cast<float>(index % 8U) * 3.0F - 10.5F;
-            auto const y = static_cast<float>((index / 8U) % 8U) * 3.0F - 10.5F;
-            auto const z = static_cast<float>(index / 64U) * 3.0F - 4.5F;
+            auto const y_index = (index / 8U) % 8U;
+            auto const y = static_cast<float>(y_index) * 3.0F - 10.5F;
+            auto const z_index = index / 64U;
+            auto const z = static_cast<float>(z_index) * 3.0F - 4.5F;
             boids.push_back(boid(index + 1U, {x, y, z}, headings[index % headings.size()]));
         }
         REQUIRE(simnet::append_authoritative_boids(world, boids).success());

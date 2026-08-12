@@ -388,7 +388,7 @@ TEST_CASE(
         simnet::pipeline_decode_signature(pipeline)
     );
 
-    auto raw = defaults;
+    auto const& raw = defaults;
     auto quantized = defaults;
     quantized.pipeline.enable_quantization = true;
     auto oct = quantized;
@@ -440,7 +440,7 @@ TEST_CASE(
 
     auto const runtime_fingerprint =
         simnet::fingerprint_runtime_config(defaults, simnet::default_server_config());
-    for (auto changed : {loaded, quantized, oct, bit_packed})
+    for (auto const& changed : {loaded, quantized, oct, bit_packed})
     {
         CHECK(
             simnet::fingerprint_runtime_config(changed, simnet::default_server_config()).value !=
@@ -603,7 +603,7 @@ TEST_CASE("every maintained JSON profile parses through its production loader", 
     auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
     for (auto const& entry : std::filesystem::directory_iterator{directory})
     {
-        auto const path = entry.path();
+        auto const& path = entry.path();
         if (!entry.is_regular_file() || path.extension() != ".json")
         {
             continue;
@@ -1125,7 +1125,7 @@ TEST_CASE("Player influence configuration is strict bounded and fingerprinted", 
     auto const compatibility = simnet::fingerprint_network_compatibility(treatment);
     auto const runtime =
         simnet::fingerprint_runtime_config(treatment, simnet::default_server_config());
-    auto check_changed = [&](simnet::SharedConfig changed)
+    auto check_changed = [&](simnet::SharedConfig const& changed)
     {
         CHECK(simnet::fingerprint_network_compatibility(changed).value != compatibility.value);
         CHECK(

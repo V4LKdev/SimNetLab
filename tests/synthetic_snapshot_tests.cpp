@@ -127,9 +127,9 @@ TEST_CASE(
     for (auto step = std::uint32_t{}; step < 5U; ++step)
     {
         auto const previous = state.current;
-        auto const tick = static_cast<simnet::Tick>(8U + step);
+        simnet::Tick const tick = 8U + static_cast<simnet::Tick>(step);
         auto const candidate = simnet::make_synthetic_world_snapshot(snapshot_settings, tick);
-        auto const first_index = static_cast<std::uint32_t>((step * 2U) % 10U);
+        auto const first_index = (step * 2U) % 10U;
         auto const& current =
             simnet::update_synthetic_world_snapshot(snapshot_settings, changes, tick, state);
         CHECK(state.next_entity_index == ((first_index + 2U) % 10U));
@@ -184,9 +184,8 @@ TEST_CASE("synthetic field modes change only their named canonical groups", "[sy
             .entity_change_fraction = 0.25,
             .field_change_mode = mode,
         };
-        auto const initial =
+        auto const previous =
             simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 50U, state);
-        auto const previous = initial;
         auto const candidate = simnet::make_synthetic_world_snapshot(snapshot_settings, 51U);
         auto const& current =
             simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 51U, state);
