@@ -1,10 +1,12 @@
-#pragma once
+#ifndef SIMNET_APP_SERVER_PEER_ITERATION_HPP_INCLUDED
+#define SIMNET_APP_SERVER_PEER_ITERATION_HPP_INCLUDED
 
 #include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <vector>
 
+// Header-defined templates keep production and focused peer-iteration tests on one contract.
 namespace simnet::app::detail
 {
     enum class PeerAdmission
@@ -39,18 +41,21 @@ namespace simnet::app::detail
         Remove remove
     )
     {
-        auto index = std::size_t{};
-        while (index < peers.size())
+        auto peer_index = std::size_t{};
+        while (peer_index < peers.size())
         {
-            if (!is_joined(peers[index]) || process(peers[index]))
+            if (!is_joined(peers[peer_index]) || process(peers[peer_index]))
             {
-                ++index;
+                ++peer_index;
                 continue;
             }
-            remove(peers[index]);
+            remove(peers[peer_index]);
             peers.erase(
-                peers.begin() + static_cast<typename std::vector<PeerState>::difference_type>(index)
+                peers.begin() +
+                static_cast<typename std::vector<PeerState>::difference_type>(peer_index)
             );
         }
     }
 }
+
+#endif // SIMNET_APP_SERVER_PEER_ITERATION_HPP_INCLUDED

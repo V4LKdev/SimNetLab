@@ -1,4 +1,4 @@
-#include "server_runtime.hpp"
+import simnet.server_runtime;
 
 int main(int argc, char** argv)
 {

@@ -1,4 +1,4 @@
-#include "server_runtime.hpp"
+module;
 
 #include <algorithm>
 #include <chrono>
@@ -21,6 +21,8 @@
 #include <simnet/telemetry_trace.hpp>
 
 #include "server_peer_iteration.hpp"
+
+module simnet.server_runtime;
 
 import simnet.config;
 import simnet.app_compression_corpus;
@@ -228,6 +230,7 @@ namespace
         Abandoned
     };
 
+#if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] constexpr std::string_view
     packet_submission_outcome_name(PacketSubmissionOutcome outcome) noexcept
     {
@@ -259,6 +262,7 @@ namespace
         }
         return "Unknown";
     }
+#endif
 
     [[nodiscard]] constexpr std::string_view
     level_of_detail_mode_name(simnet::LevelOfDetailMode mode) noexcept
@@ -479,7 +483,7 @@ namespace
     }
 
     [[nodiscard]] bool prepare_per_packet_transport_group(
-        simnet::app::CompressionSettings compression,
+        simnet::app::CompressionSettings const& compression,
         simnet::PacketizationSettings const& packetization,
         std::uint32_t transport_payload_limit,
         simnet::PreparedByteGroup const& prepared,
@@ -526,8 +530,8 @@ namespace
                 report.error = compressed.error;
                 return false;
             }
-            auto const next_size =
-                static_cast<std::uint64_t>(transport_group.bytes.size()) + compressed.output_bytes;
+            std::uint64_t next_size = transport_group.bytes.size();
+            next_size += compressed.output_bytes;
             if (next_size > maximum_storage ||
                 next_size > std::numeric_limits<std::uint32_t>::max())
             {
@@ -980,7 +984,7 @@ namespace
                 details.latest_snapshot_tick =
                     peer->snapshot_delivery.submitted.back().snapshot.tick;
             }
-            replication = std::move(details);
+            replication = details;
         }
         auto selected_details = std::optional<simnet::SelectedEntityDetails>{};
         debug_storage.spheres.clear();
@@ -1252,9 +1256,9 @@ namespace
                             .has_spatial_visualization = true,
                         },
                     .connection = connection,
-                    .replication = std::move(replication),
+                    .replication = replication,
                 },
-            .selected_details = std::move(selected_details),
+            .selected_details = selected_details,
             .spatial =
                 simnet::SpatialDebugView{
                     .cells = spatial.displayed_cells,
@@ -1391,7 +1395,7 @@ namespace
         auto const y_index = (index / side) % side;
         auto const z_index = index / (side * side);
         auto const cell = config.simulation.world_half * 2.0F / static_cast<float>(side);
-        auto const id = static_cast<simnet::EntityNetId>(index + 1U);
+        simnet::EntityNetId const id = index + 1U;
         auto const key = config.run.seed ^ (static_cast<std::uint64_t>(id) << 1U);
         auto const coordinate = [&](std::uint32_t cell_index, std::uint64_t salt)
         {
@@ -2844,12 +2848,7 @@ namespace
                 return false;
             }
             compression_report.bytes_after_packetization = preparation.total_packet_bytes;
-            if (compression.mode == simnet::app::CompressionMode::None)
-            {
-                compression_report.final_transport_bytes = preparation.total_packet_bytes;
-                compression_report.valid = true;
-            }
-            else if (compression.mode == simnet::app::CompressionMode::WholeUpdate)
+            if (compression.mode != simnet::app::CompressionMode::PerPacket)
             {
                 compression_report.final_transport_bytes = preparation.total_packet_bytes;
                 compression_report.valid = true;

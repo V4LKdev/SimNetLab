@@ -18,6 +18,7 @@ target_sources(
         app_evidence.cppm
         app_protocol.cppm
         app_snapshot_delivery.cppm
+        server_runtime.cppm
 )
 target_link_libraries(Server
     PRIVATE
@@ -25,6 +26,7 @@ target_link_libraries(Server
         simnet_compression
         simnet_core
         simnet_game_server
+        simnet_game_shared
         simnet_packetization
         simnet_pipeline
         simnet_runtime
