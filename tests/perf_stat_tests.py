@@ -348,8 +348,9 @@ class PerfStatTests(unittest.TestCase):
 
     def test_signal_cleanup_terminates_and_kills_stubborn_children(self) -> None:
         class Child:
-            def __init__(self, stubborn: bool) -> None:
+            def __init__(self, stubborn: bool, exited_before_terminate: bool = False) -> None:
                 self.stubborn = stubborn
+                self.exited_before_terminate = exited_before_terminate
                 self.terminated = False
                 self.killed = False
 
@@ -357,6 +358,8 @@ class PerfStatTests(unittest.TestCase):
                 return None
 
             def terminate(self) -> None:
+                if self.exited_before_terminate:
+                    raise ProcessLookupError
                 self.terminated = True
 
             def wait(self, timeout: float) -> int:
@@ -369,11 +372,14 @@ class PerfStatTests(unittest.TestCase):
 
         ordinary = Child(False)
         stubborn = Child(True)
-        collector.stop_children([ordinary, stubborn])
+        exited = Child(False, exited_before_terminate=True)
+        collector.stop_children([ordinary, stubborn, exited])
         self.assertTrue(ordinary.terminated)
         self.assertFalse(ordinary.killed)
         self.assertTrue(stubborn.terminated)
         self.assertTrue(stubborn.killed)
+        self.assertFalse(exited.terminated)
+        self.assertFalse(exited.killed)
         with self.assertRaises(KeyboardInterrupt):
             collector.termination_signal_handler(15, None)
 

@@ -458,7 +458,10 @@ def target_identity_status(session: Session) -> str:
 def stop_children(processes: Iterable[subprocess.Popen[str]]) -> None:
     active = [process for process in processes if process.poll() is None]
     for process in active:
-        process.terminate()
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass
     for process in active:
         try:
             process.wait(timeout=2.0)
