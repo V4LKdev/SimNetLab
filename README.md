@@ -23,11 +23,10 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 
 ## Planned work
 
-LOD, compression, the repeatable benchmark runner, and external experiment
-orchestration remain planned. Tracy instrumentation is available through the
-`SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are available when local
-visualization is enabled. The Server can display occupied spatial cells and selected-boid
-simulation diagnostics.
+The automated experiment matrix and external orchestration remain planned. Tracy instrumentation
+is available through the `SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are
+available when local visualization is enabled. The Server can display occupied spatial cells and
+selected-boid simulation diagnostics.
 
 BitPacking is retained as an evaluated technique. The current quantized octahedral record is already 128 bits, so bit packing produces the same 16-byte record size while adding packing work.
 
@@ -133,14 +132,11 @@ authoritative ticks.
 - `simnet_packetization`: bounded opaque byte groups and Client reassembly
 - `simnet_transport`: ENet transport and session protocol
 - `simnet_render`: generic core-only Raylib viewer
-- `simnet_benchmarking`: benchmarking placeholder
 
-The placeholder benchmarking target is disabled by default. Enable
-`SIMNET_ENABLE_BENCHMARKING` only when working on the future benchmark harness.
-Server and Client write separate v1 replication CSVs under `telemetry.log_directory` when
-`metrics_csv_enabled` is true. The Server also writes a small boid-tuning CSV containing one
-aggregate row per simulated second. These files are raw application evidence, not the future
-benchmark runner. Reserved benchmark settings are not part of the runtime measurement contract.
+Benchmark orchestration is outside the production library graph. Server and Client expose bounded
+runtime controls and versioned CSV evidence for external automation and collectors. The Server
+also writes a small boid-tuning CSV containing one aggregate row per simulated second. Reserved
+benchmark settings are not part of the runtime measurement contract.
 
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the player role. Stationary observer remains the default.
 
