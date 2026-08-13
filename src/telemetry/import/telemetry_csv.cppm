@@ -18,8 +18,6 @@ export namespace simnet
 {
     inline constexpr std::uint32_t server_replication_csv_schema_version = 3;
     inline constexpr std::uint32_t client_replication_csv_schema_version = 2;
-    inline constexpr std::size_t replication_csv_buffer_capacity = 256;
-    inline constexpr std::size_t replication_csv_drain_threshold = 128;
 
     inline constexpr std::string_view server_replication_csv_header_v3 =
         "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"

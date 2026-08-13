@@ -70,26 +70,26 @@ never used in a path. An omitted value becomes `server-<process_started_unix_ns>
 `client-<process_started_unix_ns>`. Independently generated defaults do not prove that two
 processes belong to the same experiment.
 
-The application captures each record envelope after its TEL-001 measured stage. `record_order` is
-the authoritative order within one file. `recorded_at_unix_ns` supports approximate cross-process
-alignment. `elapsed_since_process_start_ns` is monotonic within the process. The role and
-process-start timestamp identify the producing process. Server rows store the Server-assigned peer
-ID and accepted gameplay role. Client rows store the Server-assigned peer ID and authoritative
-role from `JoinAccepted`.
+The application captures each record envelope after its measured replication stage.
+`record_order` is the authoritative order within one file. `recorded_at_unix_ns` supports
+approximate cross-process alignment. `elapsed_since_process_start_ns` is monotonic within the
+process. The role and process-start timestamp identify the producing process. Server rows store
+the Server-assigned peer ID and accepted gameplay role. Client rows store the Server-assigned peer
+ID and authoritative role from `JoinAccepted`.
 
 Replication writers reserve 256 typed records at startup and request a drain at 128. Submission
 copies only the measurement and envelope. Formatting and file I/O occur during explicit
-application drains outside TEL-001 stage boundaries. Buffer overflow and open, write, flush, or
-close failures make evidence collection fail and cause the owning process to fail. Files use
+application drains outside replication timing boundaries. Buffer overflow and open, write, flush,
+or close failures make evidence collection fail and cause the owning process to fail. Files use
 exclusive creation and are never truncated, appended to, or overwritten.
 
 Applications use explicit `close()` calls as the failure-reporting boundary. Destructors perform
 only best-effort fallback cleanup and do not report failures.
 
 The Server boid evidence path uses the same process envelope, exclusive file lifecycle, buffer
-capacity, and drain threshold. It retains its existing sample cadence of one aggregate report per
-simulated second plus the last unsampled tick. The boid schema remains separate from replication
-because it describes simulation diagnostics and phase timings rather than a replication attempt.
+capacity, and drain threshold. It samples one aggregate report per simulated second plus the last
+unsampled tick. The boid schema remains separate from replication because it describes simulation
+diagnostics and phase timings rather than a replication attempt.
 
 Enabled files are named `server_replication_v3_<process_started_unix_ns>.csv`,
 `client_replication_v2_<process_started_unix_ns>.csv`, and
@@ -122,9 +122,9 @@ Tracy instrumentation is controlled by the CMake `SIMNET_ENABLE_TRACY` option. I
 - Logging functions are thread-safe. Initialization and shutdown must be serialized externally.
   Calls before initialization, after shutdown, or under a zero-sink configuration are no-ops.
   Replication observers are application-owned and are not synchronized.
+- Logging initialization accepts only `trace`, `debug`, `info`, `warn`, `error`, `critical`, or
+  `off`. Invalid values leave the active logger unchanged.
 - Replication measurement observation and CSV submission perform fixed-size value assignment
   without formatting, logging, file I/O, or heap allocation after startup reservation.
 - Tracy is an optional diagnostic view. It is not final research evidence.
-- Log-level configuration remains case-insensitive. Unrecognized values still map to `Info` until
-  CFG-001 makes configuration validation fail closed.
 - The color palette returned by `category_trace_color` is based on Tableau 10 and is tuned for distinctness in the profiler.

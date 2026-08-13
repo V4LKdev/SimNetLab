@@ -1,10 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -446,7 +448,7 @@ TEST_CASE("replication CSV disabling and failures are explicit", "[telemetry][cs
             .process_started_unix_ns = 301,
         },
     }};
-    for (auto index = std::size_t{}; index < simnet::replication_csv_buffer_capacity; ++index)
+    for (auto index = std::size_t{}; index < 256U; ++index)
     {
         REQUIRE(writer.submit(
             {},
@@ -459,7 +461,7 @@ TEST_CASE("replication CSV disabling and failures are explicit", "[telemetry][cs
     CHECK_FALSE(writer.close());
     CHECK_FALSE(writer.close());
     CHECK(writer.buffered_count() == 0);
-    CHECK(read_lines(writer.path()).size() == simnet::replication_csv_buffer_capacity + 1U);
+    CHECK(read_lines(writer.path()).size() == 257U);
 
     auto exclusive = simnet::ServerReplicationCsvWriter{{
         .enabled = true,
@@ -484,6 +486,35 @@ TEST_CASE("replication CSV disabling and failures are explicit", "[telemetry][cs
             }
         )
     );
+}
+
+TEST_CASE("replication CSV requests a drain at 128 buffered records", "[telemetry][csv]")
+{
+    auto temporary = TemporaryDirectory{};
+    auto writer = simnet::ServerReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "drain-boundary",
+            .process_role = simnet::EvidenceProcessRole::Server,
+            .process_started_unix_ns = 303,
+        },
+    }};
+
+    for (auto record_index = std::size_t{}; record_index < 127U; ++record_index)
+    {
+        REQUIRE(writer.submit(
+            {},
+            {
+                .recorded_at_unix_ns = record_index,
+                .elapsed_since_process_start_ns = record_index,
+            }
+        ));
+    }
+    CHECK_FALSE(writer.needs_drain());
+    REQUIRE(writer.submit({}, {.recorded_at_unix_ns = 127, .elapsed_since_process_start_ns = 127}));
+    CHECK(writer.needs_drain());
+    REQUIRE(writer.close());
 }
 
 TEST_CASE(
@@ -572,6 +603,68 @@ TEST_CASE("telemetry logging has explicit sink ownership", "[telemetry][logging]
     );
     simnet::shutdown_telemetry();
     simnet::shutdown_telemetry();
+    CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Critical));
+}
+
+TEST_CASE("telemetry logging accepts only canonical lowercase levels", "[telemetry][logging]")
+{
+    struct CanonicalLevel
+    {
+        std::string_view name;
+        simnet::LogLevel enabled_probe;
+        bool expected_enabled;
+    };
+    constexpr auto canonical_levels = std::array{
+        CanonicalLevel{"trace", simnet::LogLevel::Trace, true},
+        CanonicalLevel{"debug", simnet::LogLevel::Debug, true},
+        CanonicalLevel{"info", simnet::LogLevel::Info, true},
+        CanonicalLevel{"warn", simnet::LogLevel::Warn, true},
+        CanonicalLevel{"error", simnet::LogLevel::Error, true},
+        CanonicalLevel{"critical", simnet::LogLevel::Critical, true},
+        CanonicalLevel{"off", simnet::LogLevel::Critical, false},
+    };
+
+    for (auto const& level : canonical_levels)
+    {
+        CAPTURE(level.name);
+        auto const config = simnet::TelemetryConfig{
+            .console_log_enabled = true,
+            .file_log_enabled = false,
+            .min_level = std::string{level.name},
+        };
+        REQUIRE_NOTHROW(simnet::initialize_telemetry(config));
+        CHECK(simnet::log_enabled(level.enabled_probe) == level.expected_enabled);
+    }
+    simnet::shutdown_telemetry();
+}
+
+TEST_CASE(
+    "invalid telemetry levels preserve initialized and disabled state",
+    "[telemetry][logging]"
+)
+{
+    auto config = simnet::TelemetryConfig{
+        .console_log_enabled = true,
+        .file_log_enabled = false,
+        .min_level = "warn",
+    };
+    simnet::initialize_telemetry(config);
+    REQUIRE_FALSE(simnet::log_enabled(simnet::LogLevel::Info));
+    REQUIRE(simnet::log_enabled(simnet::LogLevel::Warn));
+
+    for (auto const invalid_level : {"WARN", "Warn", " warn", "warn ", "", "warning", "verbose"})
+    {
+        CAPTURE(invalid_level);
+        config.min_level = invalid_level;
+        CHECK_THROWS_AS(simnet::initialize_telemetry(config), std::invalid_argument);
+        CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Info));
+        CHECK(simnet::log_enabled(simnet::LogLevel::Warn));
+    }
+
+    simnet::shutdown_telemetry();
+    config.console_log_enabled = false;
+    config.min_level = "invalid";
+    CHECK_THROWS_AS(simnet::initialize_telemetry(config), std::invalid_argument);
     CHECK_FALSE(simnet::log_enabled(simnet::LogLevel::Critical));
 }
 

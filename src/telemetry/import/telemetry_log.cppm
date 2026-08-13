@@ -10,7 +10,8 @@ import simnet.config;
 
 export namespace simnet
 {
-    /// Replaces the configured logging sinks. Zero configured sinks disable logging.
+    /// Replaces the configured logging sinks after validating the exact lowercase log level.
+    /// Zero configured sinks disable logging. Failure preserves the active logger.
     void initialize_telemetry(TelemetryConfig const& config);
 
     /// Shuts down all sinks. Flushes pending messages before release. Idempotent.

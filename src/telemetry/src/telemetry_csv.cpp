@@ -27,6 +27,9 @@ namespace
 {
     using namespace simnet;
 
+    constexpr std::size_t replication_csv_buffer_capacity = 256;
+    constexpr std::size_t replication_csv_drain_threshold = 128;
+
     [[nodiscard]] bool ascii_alphanumeric(char value) noexcept
     {
         return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||

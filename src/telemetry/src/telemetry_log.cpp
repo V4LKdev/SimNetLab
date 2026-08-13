@@ -1,10 +1,9 @@
 module;
 
-#include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,52 +25,37 @@ namespace
 
     using namespace simnet;
 
-    [[nodiscard]] std::string lowercase(std::string_view value)
-    {
-        auto result = std::string{value};
-        std::ranges::transform(
-            result,
-            result.begin(),
-            [](unsigned char character)
-            {
-                return static_cast<char>(std::tolower(character));
-            }
-        );
-        return result;
-    }
-
     [[nodiscard]] LogLevel parse_log_level(std::string_view value)
     {
-        auto const normalized = lowercase(value);
-        if (normalized == "trace")
+        if (value == "trace")
         {
             return LogLevel::Trace;
         }
-        if (normalized == "debug")
+        if (value == "debug")
         {
             return LogLevel::Debug;
         }
-        if (normalized == "info")
+        if (value == "info")
         {
             return LogLevel::Info;
         }
-        if (normalized == "warn")
+        if (value == "warn")
         {
             return LogLevel::Warn;
         }
-        if (normalized == "error")
+        if (value == "error")
         {
             return LogLevel::Error;
         }
-        if (normalized == "critical")
+        if (value == "critical")
         {
             return LogLevel::Critical;
         }
-        if (normalized == "off")
+        if (value == "off")
         {
             return LogLevel::Off;
         }
-        return LogLevel::Info;
+        throw std::invalid_argument("invalid telemetry log level: " + std::string{value});
     }
 
     [[nodiscard]] spdlog::level::level_enum to_spdlog_level(LogLevel level) noexcept
@@ -135,6 +119,7 @@ namespace simnet
 {
     void initialize_telemetry(TelemetryConfig const& config)
     {
+        auto const log_level = parse_log_level(config.min_level);
         auto sinks = std::vector<spdlog::sink_ptr>{};
 
         if (config.console_log_enabled)
@@ -158,7 +143,7 @@ namespace simnet
         {
             created = std::make_shared<spdlog::logger>("simnet", sinks.begin(), sinks.end());
             created->set_pattern("[%H:%M:%S.%e] [%^%l%$] [%n] %v");
-            created->set_level(to_spdlog_level(parse_log_level(config.min_level)));
+            created->set_level(to_spdlog_level(log_level));
         }
 
         auto const lock = std::scoped_lock{logger_mutex};
