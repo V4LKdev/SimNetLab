@@ -2,7 +2,8 @@
 
 SimNet loads one shared JSON file and one role-local JSON file. The Server uses a Server-local
 file. The Client uses a Client-local file. Missing sections and fields retain the C++ defaults.
-The shipped default files express those same defaults explicitly.
+The shipped default files express those same defaults explicitly. Every root and nested object
+rejects keys outside the current contract.
 
 The default paths are:
 
@@ -55,7 +56,6 @@ settings participate only in that process's runtime fingerprint unless noted oth
 | `separation_radius` | Number greater than zero | `3.6` | Separation neighborhood radius |
 | `alignment_radius` | Number greater than zero | `12` | Alignment neighborhood radius |
 | `cohesion_radius` | Number greater than zero | `24` | Cohesion neighborhood radius |
-| `perception_radius` | Number greater than zero | Not emitted | Compatibility alias applied to both social radii before explicit radius fields |
 | `field_of_view_degrees` | Number in `(0, 360]` | `240` | Boid perception angle |
 | `containment_prediction_seconds` | Number greater than zero | `0.75` | Containment look-ahead time |
 | `containment_margin` | Number greater than zero | `22.5` | Inner containment margin |
@@ -108,7 +108,7 @@ present, all three keys are required and no other keys are accepted.
 
 Synthetic mode requires a Server built with `SIMNET_ENABLE_SYNTHETIC=ON`. It rejects Server
 visualization and Player clients. Stationary observer clients can render the reconstructed
-snapshot. Omitting the object preserves the Flecs producer and the legacy default fingerprints.
+snapshot. Omitting the object preserves the Flecs producer and the default fingerprints.
 
 ### `pipeline`
 
@@ -230,12 +230,11 @@ not affect network compatibility.
 | `console_log_enabled` | Boolean | `true` | Enables console logging |
 | `file_log_enabled` | Boolean | `true` | Enables `simnet.log` |
 | `log_directory` | String path | `logs` | Directory for enabled logs and CSV evidence |
-| `min_level` | String, normally `trace`, `debug`, `info`, `warn`, `error`, `critical`, or `off` | `info` | Case-insensitive logging threshold |
+| `min_level` | `trace`, `debug`, `info`, `warn`, `error`, `critical`, or `off` | `info` | Exact lowercase logging threshold |
 | `metrics_csv_enabled` | Boolean | `true` | Enables role-specific replication CSV output and Server boid sampling |
 
-An unrecognized `min_level` currently normalizes to `info`. The Client accepts the same telemetry
-object. `log_directory` does not participate in runtime fingerprints. The other telemetry fields
-do.
+The Client accepts the same telemetry object. `log_directory` does not participate in runtime
+fingerprints. The other telemetry fields do.
 
 ## Client-local configuration
 
@@ -254,10 +253,9 @@ compatibility. Synthetic mode accepts only stationary observers.
 
 ## Validation and fingerprint notes
 
-JSON roots and named sections must be objects. The loader rejects unknown keys in `synthetic`,
-`pipeline`, `area_of_interest`, `level_of_detail`, `snapshot_delivery`, `compression`,
-`packetization`, `transport`, and Player influence objects. Other sections currently ignore
-unknown keys. Maintained profiles should use only the keys in this reference.
+JSON roots and named sections must be objects. Every shared, Server-local, Client-local, and nested
+object rejects unknown keys. Invalid enumerated values are rejected instead of being replaced by a
+default.
 
 All shared fields affect Server and Client runtime fingerprints. They also affect the canonical
 network compatibility fingerprint, with three compatibility-preserving exceptions. An absent

@@ -88,6 +88,79 @@ namespace
         hash_canonical_u64(hash, std::bit_cast<std::uint64_t>(value));
     }
 
+    template <typename Value>
+    void read_unsigned_integral(Json const& json_value, char const* key, Value& value)
+    {
+        static_assert(std::is_unsigned_v<Value>);
+        if (!json_value.is_number_unsigned())
+        {
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + key + "': expected unsigned integer"
+            );
+        }
+        auto const parsed = json_value.get<std::uint64_t>();
+        if (parsed > std::numeric_limits<Value>::max())
+        {
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + key + "': value is out of range"
+            );
+        }
+        value = static_cast<Value>(parsed);
+    }
+
+    template <typename Value>
+    void read_signed_integral(Json const& json_value, char const* key, Value& value)
+    {
+        static_assert(std::is_signed_v<Value> && std::is_integral_v<Value>);
+        if (json_value.is_number_unsigned())
+        {
+            auto const parsed = json_value.get<std::uint64_t>();
+            if (parsed > static_cast<std::uint64_t>(std::numeric_limits<Value>::max()))
+            {
+                throw std::runtime_error(
+                    std::string{"invalid config field '"} + key + "': value is out of range"
+                );
+            }
+            value = static_cast<Value>(parsed);
+            return;
+        }
+        if (!json_value.is_number_integer())
+        {
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + key + "': expected integer"
+            );
+        }
+        auto const parsed = json_value.get<std::int64_t>();
+        if (parsed < static_cast<std::int64_t>(std::numeric_limits<Value>::min()) ||
+            parsed > static_cast<std::int64_t>(std::numeric_limits<Value>::max()))
+        {
+            throw std::runtime_error(
+                std::string{"invalid config field '"} + key + "': value is out of range"
+            );
+        }
+        value = static_cast<Value>(parsed);
+    }
+
+    template <typename Value>
+    void read_config_value(Json const& json_value, char const* key, Value& value)
+    {
+        if constexpr (std::is_integral_v<Value> && !std::is_same_v<Value, bool>)
+        {
+            if constexpr (std::is_unsigned_v<Value>)
+            {
+                read_unsigned_integral(json_value, key, value);
+            }
+            else
+            {
+                read_signed_integral(json_value, key, value);
+            }
+        }
+        else
+        {
+            value = json_value.get<Value>();
+        }
+    }
+
     template <typename Value> void read_optional(Json const& object, char const* key, Value& value)
     {
         auto const found = object.find(key);
@@ -98,7 +171,7 @@ namespace
 
         try
         {
-            value = found->get<Value>();
+            read_config_value(*found, key, value);
         }
         catch (nlohmann::json::exception const& error)
         {
@@ -106,29 +179,6 @@ namespace
                 std::string{"invalid config field '"} + key + "': " + error.what()
             );
         }
-    }
-
-    void read_optional_u32(Json const& object, char const* key, std::uint32_t& value)
-    {
-        auto const found = object.find(key);
-        if (found == object.end())
-        {
-            return;
-        }
-        if (!found->is_number_unsigned())
-        {
-            throw std::runtime_error(
-                std::string{"invalid config field '"} + key + "': expected unsigned integer"
-            );
-        }
-        auto const parsed = found->get<std::uint64_t>();
-        if (parsed > std::numeric_limits<std::uint32_t>::max())
-        {
-            throw std::runtime_error(
-                std::string{"invalid config field '"} + key + "': value exceeds uint32 range"
-            );
-        }
-        value = static_cast<std::uint32_t>(parsed);
     }
 
     Json const* optional_object(Json const& object, char const* key)
@@ -172,6 +222,32 @@ namespace
         if (!json.is_object())
         {
             throw std::runtime_error("invalid config root: expected object");
+        }
+    }
+
+    void validate_known_fields(
+        Json const& json,
+        std::string_view section,
+        std::initializer_list<std::string_view> known_fields
+    )
+    {
+        for (auto const& [key, value] : json.items())
+        {
+            static_cast<void>(value);
+            if (std::ranges::find(known_fields, key) != known_fields.end())
+            {
+                continue;
+            }
+
+            auto qualified_name = std::string{section};
+            if (!qualified_name.empty())
+            {
+                qualified_name += '.';
+            }
+            qualified_name += key;
+            throw std::runtime_error(
+                "invalid config field '" + qualified_name + "': unknown field"
+            );
         }
     }
 
@@ -225,11 +301,17 @@ namespace
 
     void apply_run(Json const& json, simnet::RunConfig& config)
     {
+        validate_known_fields(json, "run", {"seed"});
         read_optional(json, "seed", config.seed);
     }
 
     void apply_simulation(Json const& json, simnet::SimulationConfig& config)
     {
+        validate_known_fields(
+            json,
+            "simulation",
+            {"tick_rate_hz", "world_half", "initial_boid_count"}
+        );
         read_optional(json, "tick_rate_hz", config.tick_rate_hz);
         read_optional(json, "world_half", config.world_half);
         read_optional(json, "initial_boid_count", config.initial_boid_count);
@@ -240,6 +322,7 @@ namespace
 
     void apply_spatial(Json const& json, simnet::SpatialConfig& config)
     {
+        validate_known_fields(json, "spatial", {"cell_size", "max_neighbors"});
         read_optional(json, "cell_size", config.cell_size);
         read_optional(json, "max_neighbors", config.max_neighbors);
 
@@ -253,17 +336,8 @@ namespace
         simnet::PlayerInfluenceForceConfig& config
     )
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "enabled" && key != "radius" && key != "max_acceleration")
-            {
-                throw std::runtime_error(
-                    "invalid config field 'boids." + std::string{field_name} + "." + key +
-                    "': unknown field"
-                );
-            }
-        }
+        auto const section = "boids." + std::string{field_name};
+        validate_known_fields(json, section, {"enabled", "radius", "max_acceleration"});
         if (!json.contains("enabled"))
         {
             throw std::runtime_error(
@@ -346,6 +420,39 @@ namespace
 
     void apply_boids(Json const& json, simnet::BoidsConfig& config)
     {
+        validate_known_fields(
+            json,
+            "boids",
+            {
+                "enable_separation",
+                "enable_alignment",
+                "enable_cohesion",
+                "enable_containment",
+                "enable_wander",
+                "enable_hue_assimilation",
+                "enable_hue_drift",
+                "min_speed",
+                "cruise_speed",
+                "max_speed",
+                "max_acceleration",
+                "separation_radius",
+                "alignment_radius",
+                "cohesion_radius",
+                "field_of_view_degrees",
+                "containment_prediction_seconds",
+                "containment_margin",
+                "separation_acceleration",
+                "containment_acceleration",
+                "alignment_acceleration",
+                "cohesion_acceleration",
+                "wander_acceleration",
+                "wander_frequency_hz",
+                "hue_assimilation_rate",
+                "hue_drift_rate",
+                "player_lure",
+                "player_predator",
+            }
+        );
         read_optional(json, "enable_separation", config.enable_separation);
         read_optional(json, "enable_alignment", config.enable_alignment);
         read_optional(json, "enable_cohesion", config.enable_cohesion);
@@ -357,10 +464,6 @@ namespace
         read_optional(json, "cruise_speed", config.cruise_speed);
         read_optional(json, "max_speed", config.max_speed);
         read_optional(json, "max_acceleration", config.max_acceleration);
-        auto legacy_perception_radius = config.alignment_radius;
-        read_optional(json, "perception_radius", legacy_perception_radius);
-        config.alignment_radius = legacy_perception_radius;
-        config.cohesion_radius = legacy_perception_radius;
         read_optional(json, "separation_radius", config.separation_radius);
         read_optional(json, "alignment_radius", config.alignment_radius);
         read_optional(json, "cohesion_radius", config.cohesion_radius);
@@ -420,6 +523,23 @@ namespace
 
     void apply_player(Json const& json, simnet::PlayerConfig& config)
     {
+        validate_known_fields(
+            json,
+            "player",
+            {
+                "cruise_speed",
+                "boost_speed",
+                "slow_speed",
+                "speed_change_rate",
+                "yaw_acceleration_degrees",
+                "pitch_acceleration_degrees",
+                "yaw_damping",
+                "pitch_damping",
+                "max_yaw_rate_degrees",
+                "max_pitch_rate_degrees",
+                "pitch_limit_degrees",
+            }
+        );
         read_optional(json, "cruise_speed", config.cruise_speed);
         read_optional(json, "boost_speed", config.boost_speed);
         read_optional(json, "slow_speed", config.slow_speed);
@@ -464,6 +584,7 @@ namespace
 
     void apply_gameplay(Json const& json, simnet::GameplayConfig& config)
     {
+        validate_known_fields(json, "gameplay", {"role", "stationary_observer_position"});
         read_optional(json, "role", config.role);
         read_optional(json, "stationary_observer_position", config.stationary_observer_position);
         validate_one_of("gameplay.role", config.role, {"stationary_observer", "player"});
@@ -484,16 +605,11 @@ namespace
 
     void apply_synthetic(Json const& json, simnet::SyntheticWorkloadConfig& config)
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "pattern" && key != "entity_change_fraction" && key != "field_change_mode")
-            {
-                throw std::runtime_error(
-                    "invalid config field 'synthetic." + key + "': unknown field"
-                );
-            }
-        }
+        validate_known_fields(
+            json,
+            "synthetic",
+            {"pattern", "entity_change_fraction", "field_change_mode"}
+        );
         if (!json.contains("pattern") || !json.contains("entity_change_fraction") ||
             !json.contains("field_change_mode"))
         {
@@ -523,16 +639,7 @@ namespace
 
     void apply_area_of_interest(Json const& json, simnet::AreaOfInterestConfig& config)
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "mode" && key != "radius" && key != "fov_degrees")
-            {
-                throw std::runtime_error(
-                    "invalid config field 'pipeline.area_of_interest." + key + "': unknown field"
-                );
-            }
-        }
+        validate_known_fields(json, "pipeline.area_of_interest", {"mode", "radius", "fov_degrees"});
 
         read_optional(json, "mode", config.mode);
         validate_one_of("pipeline.area_of_interest.mode", config.mode, {"none", "radius", "fov"});
@@ -592,17 +699,17 @@ namespace
 
     void apply_level_of_detail(Json const& json, simnet::LevelOfDetailConfig& config)
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "mode" && key != "near_distance" && key != "medium_distance" &&
-                key != "medium_interval_ticks" && key != "far_interval_ticks")
+        validate_known_fields(
+            json,
+            "pipeline.level_of_detail",
             {
-                throw std::runtime_error(
-                    "invalid config field 'pipeline.level_of_detail." + key + "': unknown field"
-                );
+                "mode",
+                "near_distance",
+                "medium_distance",
+                "medium_interval_ticks",
+                "far_interval_ticks",
             }
-        }
+        );
 
         read_optional(json, "mode", config.mode);
         validate_one_of("pipeline.level_of_detail.mode", config.mode, {"none", "distance_bands"});
@@ -661,21 +768,22 @@ namespace
 
     void apply_pipeline(Json const& json, simnet::PipelineConfig& config)
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "send_interval_ticks" && key != "enable_incremental" &&
-                key != "enable_quantization" && key != "enable_oct_heading" &&
-                key != "enable_delta" && key != "enable_delta_field_mask" &&
-                key != "enable_bit_packing" && key != "area_of_interest" &&
-                key != "level_of_detail")
+        validate_known_fields(
+            json,
+            "pipeline",
             {
-                throw std::runtime_error(
-                    "invalid config field 'pipeline." + key + "': unknown field"
-                );
+                "send_interval_ticks",
+                "enable_incremental",
+                "enable_quantization",
+                "enable_oct_heading",
+                "enable_delta",
+                "enable_delta_field_mask",
+                "enable_bit_packing",
+                "area_of_interest",
+                "level_of_detail",
             }
-        }
-        read_optional_u32(json, "send_interval_ticks", config.send_interval_ticks);
+        );
+        read_optional(json, "send_interval_ticks", config.send_interval_ticks);
         read_optional(json, "enable_incremental", config.enable_incremental);
         read_optional(json, "enable_quantization", config.enable_quantization);
         read_optional(json, "enable_oct_heading", config.enable_oct_heading);
@@ -729,18 +837,19 @@ namespace
 
     void apply_packetization(Json const& json, simnet::PacketizationConfig& config)
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "enabled" && key != "max_payload_bytes" && key != "max_update_bytes" &&
-                key != "max_chunks_per_update" && key != "max_in_flight_updates" &&
-                key != "max_incomplete_bytes" && key != "reassembly_timeout_ms")
+        validate_known_fields(
+            json,
+            "packetization",
             {
-                throw std::runtime_error(
-                    "invalid config field 'packetization." + key + "': unknown field"
-                );
+                "enabled",
+                "max_payload_bytes",
+                "max_update_bytes",
+                "max_chunks_per_update",
+                "max_in_flight_updates",
+                "max_incomplete_bytes",
+                "reassembly_timeout_ms",
             }
-        }
+        );
 
         read_optional(json, "enabled", config.enabled);
         read_optional(json, "max_payload_bytes", config.max_payload_bytes);
@@ -765,16 +874,7 @@ namespace
 
     void apply_compression(Json const& json, simnet::CompressionConfig& config)
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "mode" && key != "level" && key != "dictionary")
-            {
-                throw std::runtime_error(
-                    "invalid config field 'compression." + key + "': unknown field"
-                );
-            }
-        }
+        validate_known_fields(json, "compression", {"mode", "level", "dictionary"});
 
         auto const has_level = json.contains("level");
         auto const has_dictionary = json.contains("dictionary");
@@ -824,16 +924,11 @@ namespace
 
     void apply_snapshot_delivery(Json const& json, simnet::SnapshotDeliveryConfig& config)
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "mode" && key != "full_replace_after_unacknowledged_updates")
-            {
-                throw std::runtime_error(
-                    "invalid config field 'snapshot_delivery." + key + "': unknown field"
-                );
-            }
-        }
+        validate_known_fields(
+            json,
+            "snapshot_delivery",
+            {"mode", "full_replace_after_unacknowledged_updates"}
+        );
 
         if (!json.contains("mode") || !json.contains("full_replace_after_unacknowledged_updates"))
         {
@@ -864,17 +959,11 @@ namespace
 
     void apply_transport(Json const& json, simnet::TransportConfig& config)
     {
-        for (auto const& [key, value] : json.items())
-        {
-            static_cast<void>(value);
-            if (key != "host" && key != "port" && key != "max_clients" &&
-                key != "max_payload_bytes" && key != "send_size_policy")
-            {
-                throw std::runtime_error(
-                    "invalid config field 'transport." + key + "': unknown field"
-                );
-            }
-        }
+        validate_known_fields(
+            json,
+            "transport",
+            {"host", "port", "max_clients", "max_payload_bytes", "send_size_policy"}
+        );
         read_optional(json, "host", config.host);
         read_optional(json, "port", config.port);
         read_optional(json, "max_clients", config.max_clients);
@@ -904,6 +993,7 @@ namespace
 
     void apply_flecs(Json const& json, simnet::FlecsConfig& config)
     {
+        validate_known_fields(json, "flecs", {"thread_count"});
         read_optional(json, "thread_count", config.thread_count);
         validate_non_zero("flecs.thread_count", config.thread_count);
         if (config.thread_count > 64U)
@@ -914,6 +1004,24 @@ namespace
 
     void apply_visualization(Json const& json, simnet::VisualizationConfig& config)
     {
+        validate_known_fields(
+            json,
+            "visualization",
+            {
+                "enabled",
+                "interpolation_enabled",
+                "window_width",
+                "window_height",
+                "panel_width",
+                "target_fps",
+                "entity_scale",
+                "picking_radius",
+                "stationary_observer_interest_radius",
+                "stationary_observer_vertical_fov_degrees",
+                "max_visible_spatial_cells",
+                "entity_mesh_path",
+            }
+        );
         read_optional(json, "enabled", config.enabled);
         read_optional(json, "interpolation_enabled", config.interpolation_enabled);
         read_optional(json, "window_width", config.window_width);
@@ -985,16 +1093,49 @@ namespace
 
     void apply_telemetry(Json const& json, simnet::TelemetryConfig& config)
     {
+        validate_known_fields(
+            json,
+            "telemetry",
+            {
+                "console_log_enabled",
+                "file_log_enabled",
+                "log_directory",
+                "min_level",
+                "metrics_csv_enabled",
+            }
+        );
         read_optional(json, "console_log_enabled", config.console_log_enabled);
         read_optional(json, "file_log_enabled", config.file_log_enabled);
         read_optional(json, "log_directory", config.log_directory);
         read_optional(json, "min_level", config.min_level);
         read_optional(json, "metrics_csv_enabled", config.metrics_csv_enabled);
+
+        validate_one_of(
+            "telemetry.min_level",
+            config.min_level,
+            {"trace", "debug", "info", "warn", "error", "critical", "off"}
+        );
     }
 
     simnet::SharedConfig parse_shared_config(Json const& json)
     {
         validate_root(json);
+        validate_known_fields(
+            json,
+            "shared",
+            {
+                "run",
+                "simulation",
+                "spatial",
+                "boids",
+                "player",
+                "synthetic",
+                "pipeline",
+                "snapshot_delivery",
+                "compression",
+                "packetization",
+            }
+        );
 
         // Missing fields intentionally keep their typed defaults.
         auto config = simnet::default_shared_config();
@@ -1049,6 +1190,7 @@ namespace
     simnet::ServerConfig parse_server_config(Json const& json)
     {
         validate_root(json);
+        validate_known_fields(json, "server", {"transport", "flecs", "visualization", "telemetry"});
 
         // Missing fields intentionally keep their typed defaults.
         auto config = simnet::default_server_config();
@@ -1075,6 +1217,11 @@ namespace
     simnet::ClientConfig parse_client_config(Json const& json)
     {
         validate_root(json);
+        validate_known_fields(
+            json,
+            "client",
+            {"transport", "gameplay", "visualization", "telemetry"}
+        );
 
         // Client-local config owns transport, telemetry, and rendering knobs.
         auto config = simnet::default_client_config();

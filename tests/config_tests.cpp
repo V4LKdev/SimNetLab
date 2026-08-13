@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <string>
 #include <string_view>
 
 import simnet.app_common;
@@ -227,6 +228,140 @@ namespace
         check_visualization_equal(left.visualization, right.visualization);
         check_telemetry_equal(left.telemetry, right.telemetry);
     }
+}
+
+TEST_CASE("configuration rejects obsolete and unknown fields", "[config][validation]")
+{
+    auto const obsolete_alias = TemporaryConfig{
+        "simnet_config_obsolete_alias.json",
+        R"({ "boids": { "perception_radius": 12.0 } })"
+    };
+    CHECK_THROWS(simnet::load_shared_config(obsolete_alias.path()));
+
+    struct InvalidConfigDocument
+    {
+        std::string_view name;
+        std::string_view contents;
+    };
+    constexpr auto invalid_shared_configs = std::array{
+        InvalidConfigDocument{"root", R"({ "unexpected": true })"},
+        InvalidConfigDocument{"run", R"({ "run": { "unexpected": true } })"},
+        InvalidConfigDocument{"simulation", R"({ "simulation": { "unexpected": true } })"},
+        InvalidConfigDocument{"spatial", R"({ "spatial": { "unexpected": true } })"},
+        InvalidConfigDocument{"boids", R"({ "boids": { "unexpected": true } })"},
+        InvalidConfigDocument{
+            "player_lure",
+            R"({ "boids": { "player_lure": { "unexpected": true } } })"
+        },
+        InvalidConfigDocument{"player", R"({ "player": { "unexpected": true } })"},
+        InvalidConfigDocument{"synthetic", R"({ "synthetic": { "unexpected": true } })"},
+        InvalidConfigDocument{"pipeline", R"({ "pipeline": { "unexpected": true } })"},
+        InvalidConfigDocument{
+            "area_of_interest",
+            R"({ "pipeline": { "area_of_interest": { "unexpected": true } } })"
+        },
+        InvalidConfigDocument{
+            "level_of_detail",
+            R"({ "pipeline": { "level_of_detail": { "unexpected": true } } })"
+        },
+        InvalidConfigDocument{
+            "snapshot_delivery",
+            R"({ "snapshot_delivery": { "unexpected": true } })"
+        },
+        InvalidConfigDocument{"compression", R"({ "compression": { "unexpected": true } })"},
+        InvalidConfigDocument{"packetization", R"({ "packetization": { "unexpected": true } })"},
+    };
+    for (auto const& invalid : invalid_shared_configs)
+    {
+        CAPTURE(invalid.name);
+        auto const file = TemporaryConfig{"simnet_config_unknown_shared.json", invalid.contents};
+        CHECK_THROWS(simnet::load_shared_config(file.path()));
+    }
+
+    constexpr auto invalid_server_configs = std::array{
+        InvalidConfigDocument{"root", R"({ "unexpected": true })"},
+        InvalidConfigDocument{"transport", R"({ "transport": { "unexpected": true } })"},
+        InvalidConfigDocument{"flecs", R"({ "flecs": { "unexpected": true } })"},
+        InvalidConfigDocument{"visualization", R"({ "visualization": { "unexpected": true } })"},
+        InvalidConfigDocument{"telemetry", R"({ "telemetry": { "unexpected": true } })"},
+    };
+    for (auto const& invalid : invalid_server_configs)
+    {
+        CAPTURE(invalid.name);
+        auto const file = TemporaryConfig{"simnet_config_unknown_server.json", invalid.contents};
+        CHECK_THROWS(simnet::load_server_config(file.path()));
+    }
+
+    constexpr auto invalid_client_configs = std::array{
+        InvalidConfigDocument{"root", R"({ "unexpected": true })"},
+        InvalidConfigDocument{"gameplay", R"({ "gameplay": { "unexpected": true } })"},
+    };
+    for (auto const& invalid : invalid_client_configs)
+    {
+        CAPTURE(invalid.name);
+        auto const file = TemporaryConfig{"simnet_config_unknown_client.json", invalid.contents};
+        CHECK_THROWS(simnet::load_client_config(file.path()));
+    }
+}
+
+TEST_CASE("telemetry log levels accept only the current vocabulary", "[config][telemetry]")
+{
+    for (auto const level : {
+             "trace",
+             "debug",
+             "info",
+             "warn",
+             "error",
+             "critical",
+             "off",
+         })
+    {
+        CAPTURE(level);
+        auto const contents =
+            std::string{R"({ "telemetry": { "min_level": ")"} + level + R"(" } })";
+        auto const file = TemporaryConfig{"simnet_config_log_level.json", contents};
+        CHECK(simnet::load_server_config(file.path()).telemetry.min_level == level);
+        CHECK(simnet::load_client_config(file.path()).telemetry.min_level == level);
+    }
+
+    for (auto const level : {"TRACE", "Info", " info", "info ", "", "err", "warning", "verbose"})
+    {
+        CAPTURE(level);
+        auto const contents =
+            std::string{R"({ "telemetry": { "min_level": ")"} + level + R"(" } })";
+        auto const file = TemporaryConfig{"simnet_config_invalid_log_level.json", contents};
+        CHECK_THROWS(simnet::load_server_config(file.path()));
+        CHECK_THROWS(simnet::load_client_config(file.path()));
+    }
+}
+
+TEST_CASE("integral configuration fields reject numeric conversion", "[config][validation]")
+{
+    for (auto const contents : {
+             R"({ "run": { "seed": -1 } })",
+             R"({ "simulation": { "initial_boid_count": 1.5 } })",
+             R"({ "packetization": { "max_in_flight_updates": -1 } })",
+             R"({ "compression": { "mode": "whole_update", "level": 1.5 } })",
+         })
+    {
+        auto const file = TemporaryConfig{"simnet_config_invalid_integer.json", contents};
+        CHECK_THROWS(simnet::load_shared_config(file.path()));
+    }
+
+    auto const invalid_port = TemporaryConfig{
+        "simnet_config_invalid_port.json",
+        R"({ "transport": { "port": 7777.5 } })"
+    };
+    CHECK_THROWS(simnet::load_server_config(invalid_port.path()));
+
+    auto const maximum_seed = TemporaryConfig{
+        "simnet_config_maximum_seed.json",
+        R"({ "run": { "seed": 18446744073709551615 } })"
+    };
+    CHECK(
+        simnet::load_shared_config(maximum_seed.path()).run.seed ==
+        std::numeric_limits<std::uint64_t>::max()
+    );
 }
 
 TEST_CASE("network compatibility fingerprint covers shared configuration", "[config]")
@@ -953,12 +1088,6 @@ TEST_CASE("snapshot delivery configuration is strict shared treatment", "[config
         auto const invalid = TemporaryConfig{"simnet_delivery_invalid.json", contents};
         CHECK_THROWS(simnet::load_shared_config(invalid.path()));
     }
-
-    auto const obsolete_local = TemporaryConfig{
-        "simnet_delivery_obsolete_local.json",
-        R"({ "transport": { "snapshot_delivery": "reliable_sequenced" } })"
-    };
-    CHECK_THROWS(simnet::load_server_config(obsolete_local.path()));
 }
 
 TEST_CASE("maintained delivery treatments differ only by mode", "[config][delivery]")
