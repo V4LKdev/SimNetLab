@@ -237,20 +237,6 @@ An unrecognized `min_level` currently normalizes to `info`. The Client accepts t
 object. `log_directory` does not participate in runtime fingerprints. The other telemetry fields
 do.
 
-### `benchmark`
-
-These keys are reserved configuration vocabulary. The application does not currently execute a
-benchmark scenario or load ramp from them.
-
-| Key | Type and accepted values | Default | Meaning |
-| --- | --- | --- | --- |
-| `enabled` | Boolean | `false` | Reserved scenario switch |
-| `repetitions` | Unsigned 32-bit integer | `10` | Reserved repetition count |
-| `load_ramp.enabled` | Boolean | `false` | Reserved ramp switch |
-| `load_ramp.add_boids_per_step` | Unsigned 32-bit integer | `500` | Reserved population increment |
-| `load_ramp.step_interval_seconds` | Number greater than zero | `30` | Reserved interval |
-| `load_ramp.max_boids` | Unsigned 32-bit integer | `1000000` | Reserved population bound |
-
 ## Client-local configuration
 
 Client-local files accept `transport`, `visualization`, and `telemetry` exactly as documented
@@ -280,9 +266,8 @@ marker. Dictionary `none` adds no dictionary-name marker. Compression dictionary
 is added separately during session compatibility.
 
 Server-local runtime fingerprints include transport except `log_directory`, Flecs, visualization,
-telemetry except `log_directory`, and reserved benchmark settings. Client-local runtime
-fingerprints include transport except `log_directory`, gameplay, visualization, and telemetry
-except `log_directory`.
+and telemetry except `log_directory`. Client-local runtime fingerprints include transport except
+`log_directory`, gameplay, visualization, and telemetry except `log_directory`.
 
 ## Maintained profiles
 

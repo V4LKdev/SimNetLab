@@ -85,11 +85,10 @@ independently by `console_log_enabled`, `file_log_enabled`, and `min_level`.
 controls the Client replication CSV on Client. When disabled, the CSV path creates no directory or
 evidence file. Enabled file logging may independently create `log_directory`.
 
-Benchmark configuration vocabulary is retained for planned work. Temporal distance LOD is an
-implemented independent Patch-producing pipeline selection. The Server's small sampled boid CSV
-is tuning evidence rather than the future benchmark runner. Tracy instrumentation is controlled
-by the CMake build option. Unsupported pipeline selections are rejected during app startup
-instead of being ignored.
+Temporal distance LOD is an implemented independent Patch-producing pipeline selection. The
+Server's small sampled boid CSV is tuning evidence. Tracy instrumentation is controlled by the
+CMake build option. Unsupported pipeline selections are rejected during app startup instead of
+being ignored.
 
 Network compatibility fingerprints encode shared fields in a canonical order and byte representation. Their numeric values changed from the earlier native-byte implementation.
 

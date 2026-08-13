@@ -207,23 +207,6 @@ export namespace simnet
         bool metrics_csv_enabled{true};
     };
 
-    /// Reserved load-ramp settings. Application behavior is not implemented.
-    struct LoadRampConfig
-    {
-        bool enabled{false};
-        std::uint32_t add_boids_per_step{500};
-        double step_interval_seconds{30.0};
-        std::uint32_t max_boids{1000000};
-    };
-
-    /// Reserved benchmark settings. Application behavior is not implemented.
-    struct BenchmarkScenarioConfig
-    {
-        bool enabled{false};
-        std::uint32_t repetitions{10};
-        LoadRampConfig load_ramp{};
-    };
-
     /// Shared network-compatible runtime configuration.
     struct SharedConfig
     {
@@ -246,7 +229,6 @@ export namespace simnet
         FlecsConfig flecs{};
         VisualizationConfig visualization{};
         TelemetryConfig telemetry{};
-        BenchmarkScenarioConfig benchmark{};
     };
 
     /// Client-local runtime configuration.

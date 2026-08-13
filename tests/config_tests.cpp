@@ -214,18 +214,6 @@ namespace
         CHECK(left.flecs.thread_count == right.flecs.thread_count);
         check_visualization_equal(left.visualization, right.visualization);
         check_telemetry_equal(left.telemetry, right.telemetry);
-        CHECK(left.benchmark.enabled == right.benchmark.enabled);
-        CHECK(left.benchmark.repetitions == right.benchmark.repetitions);
-        CHECK(left.benchmark.load_ramp.enabled == right.benchmark.load_ramp.enabled);
-        CHECK(
-            left.benchmark.load_ramp.add_boids_per_step ==
-            right.benchmark.load_ramp.add_boids_per_step
-        );
-        CHECK(
-            left.benchmark.load_ramp.step_interval_seconds ==
-            right.benchmark.load_ramp.step_interval_seconds
-        );
-        CHECK(left.benchmark.load_ramp.max_boids == right.benchmark.load_ramp.max_boids);
     }
 
     void check_client_equal(simnet::ClientConfig const& left, simnet::ClientConfig const& right)

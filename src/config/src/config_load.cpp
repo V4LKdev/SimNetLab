@@ -992,30 +992,6 @@ namespace
         read_optional(json, "metrics_csv_enabled", config.metrics_csv_enabled);
     }
 
-    void apply_load_ramp(Json const& json, simnet::LoadRampConfig& config)
-    {
-        read_optional(json, "enabled", config.enabled);
-        read_optional(json, "add_boids_per_step", config.add_boids_per_step);
-        read_optional(json, "step_interval_seconds", config.step_interval_seconds);
-        read_optional(json, "max_boids", config.max_boids);
-
-        validate_positive(
-            "benchmark.load_ramp.step_interval_seconds",
-            config.step_interval_seconds
-        );
-    }
-
-    void apply_benchmark(Json const& json, simnet::BenchmarkScenarioConfig& config)
-    {
-        read_optional(json, "enabled", config.enabled);
-        read_optional(json, "repetitions", config.repetitions);
-
-        if (auto const* section = optional_object(json, "load_ramp"))
-        {
-            apply_load_ramp(*section, config.load_ramp);
-        }
-    }
-
     simnet::SharedConfig parse_shared_config(Json const& json)
     {
         validate_root(json);
@@ -1074,7 +1050,7 @@ namespace
     {
         validate_root(json);
 
-        // Server-local config owns transport, telemetry, and benchmark knobs.
+        // Missing fields intentionally keep their typed defaults.
         auto config = simnet::default_server_config();
 
         if (auto const* section = optional_object(json, "transport"))
@@ -1093,11 +1069,6 @@ namespace
         {
             apply_telemetry(*section, config.telemetry);
         }
-        if (auto const* section = optional_object(json, "benchmark"))
-        {
-            apply_benchmark(*section, config.benchmark);
-        }
-
         return config;
     }
 
@@ -1415,12 +1386,6 @@ namespace simnet
         hash_transport_and_telemetry(hash, local.transport, local.telemetry);
         hash_bytes(hash, local.flecs.thread_count);
         hash_visualization(hash, local.visualization);
-        hash_bytes(hash, local.benchmark.enabled);
-        hash_bytes(hash, local.benchmark.repetitions);
-        hash_bytes(hash, local.benchmark.load_ramp.enabled);
-        hash_bytes(hash, local.benchmark.load_ramp.add_boids_per_step);
-        hash_bytes(hash, local.benchmark.load_ramp.step_interval_seconds);
-        hash_bytes(hash, local.benchmark.load_ramp.max_boids);
 
         return {.value = hash};
     }

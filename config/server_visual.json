@@ -27,15 +27,5 @@
     "log_directory": "logs",
     "min_level": "info",
     "metrics_csv_enabled": true
-  },
-  "benchmark": {
-    "enabled": false,
-    "repetitions": 10,
-    "load_ramp": {
-      "enabled": false,
-      "add_boids_per_step": 500,
-      "step_interval_seconds": 30.0,
-      "max_boids": 1000000
-    }
   }
 }
