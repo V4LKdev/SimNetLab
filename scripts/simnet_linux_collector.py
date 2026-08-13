@@ -211,7 +211,8 @@ def parse_proc_io(text: str) -> dict[str, int]:
 
 
 def parse_schedstat(text: str) -> dict[str, int]:
-    fields = text.splitlines()[0].split() if text.splitlines() else []
+    lines = text.splitlines()
+    fields = lines[0].split() if lines else []
     if len(fields) < 3:
         raise ValueError("schedstat is truncated")
     return {
@@ -480,8 +481,10 @@ class LinuxSource:
             path = base / name
             try:
                 values.update(parser(_read_text(path)))
-            except (UnavailableError, ValueError) as error:
+            except UnavailableError as error:
                 errors.append(str(error))
+            except ValueError as error:
+                errors.append(f"invalid {path}: {error}")
         return values, errors, True
 
     def _read_sensors(self, sensors: Iterable[Sensor]) -> tuple[dict[str, object], list[str]]:
@@ -493,8 +496,10 @@ class LinuxSource:
                     "value": int(_read_text(sensor.path).strip()),
                     "unit": sensor.unit,
                 }
-            except (UnavailableError, ValueError) as error:
+            except UnavailableError as error:
                 errors.append(str(error))
+            except ValueError as error:
+                errors.append(f"invalid {sensor.path}: {error}")
         return values, errors
 
     def sample_host(self, interface: str | None) -> tuple[dict[str, object], list[str]]:
@@ -510,8 +515,10 @@ class LinuxSource:
         for path, parser in sources:
             try:
                 values.update(parser(_read_text(path)))
-            except (UnavailableError, ValueError) as error:
+            except UnavailableError as error:
                 errors.append(str(error))
+            except ValueError as error:
+                errors.append(f"invalid {path}: {error}")
         if interface is not None:
             values["network_interface"] = interface
             try:

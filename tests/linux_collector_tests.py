@@ -126,6 +126,12 @@ class CollectorTests(unittest.TestCase):
             self.assertNotIn("read_bytes", values)
             self.assertTrue(any("target process owner" in error for error in errors))
 
+            (fixture.proc / "42/schedstat").write_text("invalid\n", encoding="utf-8")
+            values, errors, alive = source.sample_process(target, include_smaps=False)
+            self.assertTrue(alive)
+            self.assertNotIn("scheduler_wait_ns", values)
+            self.assertTrue(any("schedstat" in error and "truncated" in error for error in errors))
+
             (fixture.proc / "42/stat").write_text(process_stat(999), encoding="utf-8")
             _, errors, alive = source.sample_process(target, include_smaps=False)
             self.assertFalse(alive)
@@ -175,11 +181,11 @@ class CollectorTests(unittest.TestCase):
 
             with (output / "process_samples_v1.csv").open(newline="", encoding="utf-8") as stream:
                 process_rows = list(csv.DictReader(stream))
-                self.assertEqual(stream.seek(0), 0)
+                stream.seek(0)
                 self.assertEqual(next(csv.reader(stream)), collector.PROCESS_COLUMNS)
             with (output / "host_samples_v1.csv").open(newline="", encoding="utf-8") as stream:
                 host_rows = list(csv.DictReader(stream))
-                self.assertEqual(stream.seek(0), 0)
+                stream.seek(0)
                 self.assertEqual(next(csv.reader(stream)), collector.HOST_COLUMNS)
             self.assertEqual(len(process_rows), 1)
             self.assertEqual(len(host_rows), 1)

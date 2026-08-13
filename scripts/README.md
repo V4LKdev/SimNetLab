@@ -41,6 +41,10 @@ missing files, permission failures, parse failures, and unsupported sensors. Zer
 when Linux reports a real zero. Variable CPU frequency, hwmon temperature, and powercap sources use
 self-describing JSON cells so the process schema remains fixed.
 
+Process samples cover CPU and scheduler activity, memory residency, file IO, and process identity.
+Host samples cover pressure stalls, available memory, load, interface counters, and optional
+frequency, temperature, and energy sources.
+
 Unix nanoseconds join collector files to SimNet evidence for the supplied run ID. Monotonic elapsed
 nanoseconds and record order provide within-collector ordering. Host temperature, powercap energy,
 and pressure stall information are environmental covariates. They are not process-attributable
