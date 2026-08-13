@@ -75,6 +75,68 @@ namespace
         snapshot.hues.push_back(0);
         return snapshot;
     }
+
+    struct ClientEntityFacts
+    {
+        simnet::EntityNetId id{};
+        simnet::EntityKind kind{simnet::EntityKind::Boid};
+        simnet::Vec3f position{};
+        simnet::Vec3f heading{};
+        std::uint8_t hue{};
+    };
+
+    [[nodiscard]] std::vector<ClientEntityFacts> client_entity_facts(flecs::world& world)
+    {
+        auto facts = std::vector<ClientEntityFacts>{};
+        auto query = world
+                         .query_builder<
+                             const simnet::NetIdentity,
+                             const simnet::EntityKindComponent,
+                             const simnet::Position,
+                             const simnet::Heading,
+                             const simnet::Hue>()
+                         .build();
+        query.each(
+            [&](simnet::NetIdentity const& identity,
+                simnet::EntityKindComponent const& kind,
+                simnet::Position const& position,
+                simnet::Heading const& heading,
+                simnet::Hue const& hue)
+            {
+                facts.push_back({
+                    .id = identity.id,
+                    .kind = kind.value,
+                    .position = position.value,
+                    .heading = heading.value,
+                    .hue = hue.value,
+                });
+            }
+        );
+        std::ranges::sort(facts, {}, &ClientEntityFacts::id);
+        return facts;
+    }
+
+    void
+    check_client_world_matches_snapshot(flecs::world& world, simnet::WorldSnapshot const& snapshot)
+    {
+        auto const facts = client_entity_facts(world);
+        REQUIRE(facts.size() == snapshot.size());
+        for (auto entity_index = std::size_t{}; entity_index < facts.size(); ++entity_index)
+        {
+            auto const expected_kind =
+                simnet::entity_kind_from_classification(snapshot.classifications[entity_index]);
+            REQUIRE(expected_kind.has_value());
+            CHECK(facts[entity_index].id == snapshot.ids[entity_index]);
+            CHECK(facts[entity_index].kind == *expected_kind);
+            CHECK(facts[entity_index].position.x == snapshot.positions[entity_index].x);
+            CHECK(facts[entity_index].position.y == snapshot.positions[entity_index].y);
+            CHECK(facts[entity_index].position.z == snapshot.positions[entity_index].z);
+            CHECK(facts[entity_index].heading.x == snapshot.headings[entity_index].x);
+            CHECK(facts[entity_index].heading.y == snapshot.headings[entity_index].y);
+            CHECK(facts[entity_index].heading.z == snapshot.headings[entity_index].z);
+            CHECK(facts[entity_index].hue == snapshot.hues[entity_index]);
+        }
+    }
 }
 
 TEST_CASE("game entity classification mapping is exact", "[replication][classification]")
@@ -264,27 +326,9 @@ TEST_CASE("five-tick replication contract remains intact", "[replication]")
     CHECK(ack.received_mask == 3);
     CHECK(ack.newest_applied_snapshot == 3);
 
-    CHECK(simnet::client_latest_replicated_tick(client_world) == 4);
-    CHECK(simnet::client_replicated_entity_count(client_world) == boid_count);
-
-    auto extracted_client_snapshot = simnet::WorldSnapshot{};
-    auto const client_extraction = simnet::extract_client_world_snapshot(
-        client_world,
-        simnet::client_latest_replicated_tick(client_world),
-        extracted_client_snapshot
-    );
-    REQUIRE(client_extraction.valid);
-    CHECK(client_extraction.entity_count == boid_count);
-    CHECK(extracted_client_snapshot.tick == 4);
-    CHECK(extracted_client_snapshot.ids.size() == boid_count);
-    CHECK(
-        extracted_client_snapshot.classifications ==
-        std::vector<simnet::EntityClassification>(boid_count, simnet::boid_entity_classification)
-    );
-    for (auto const id : extracted_client_snapshot.ids)
-    {
-        CHECK(simnet::client_entity_kind(client_world, id) == simnet::EntityKind::Boid);
-    }
+    CHECK(acknowledged_snapshot.tick == 4U);
+    CHECK(acknowledged_snapshot.size() == boid_count);
+    check_client_world_matches_snapshot(client_world, acknowledged_snapshot);
 }
 
 TEST_CASE(
@@ -358,13 +402,12 @@ TEST_CASE(
     auto const applied =
         simnet::apply_client_snapshot_patch_unchecked(client_world, decoded.update);
     REQUIRE(applied.valid);
-    CHECK(simnet::client_entity_kind(client_world, 1U) == simnet::EntityKind::Boid);
-    CHECK(simnet::client_entity_kind(client_world, first_player) == simnet::EntityKind::Player);
-    CHECK(simnet::client_entity_kind(client_world, second_player) == simnet::EntityKind::Player);
-
-    auto client_snapshot = simnet::WorldSnapshot{};
-    REQUIRE(simnet::extract_client_world_snapshot(client_world, 7U, client_snapshot).valid);
-    CHECK(client_snapshot.classifications == authoritative.classifications);
+    check_client_world_matches_snapshot(client_world, reconstructed);
+    auto initial_client_facts = client_entity_facts(client_world);
+    REQUIRE(initial_client_facts.size() == 3U);
+    CHECK(initial_client_facts[0].kind == simnet::EntityKind::Boid);
+    CHECK(initial_client_facts[1].kind == simnet::EntityKind::Player);
+    CHECK(initial_client_facts[2].kind == simnet::EntityKind::Player);
 
     REQUIRE(simnet::delete_authoritative_player(server_world, first_player));
     auto after_disconnect = simnet::WorldSnapshot{};
@@ -411,13 +454,13 @@ TEST_CASE(
     auto const applied_deletion =
         simnet::apply_client_snapshot_patch_unchecked(client_world, decoded_deletion.update);
     REQUIRE(applied_deletion.valid);
-    CHECK_FALSE(simnet::client_entity_kind(client_world, first_player).has_value());
-    CHECK(simnet::client_entity_kind(client_world, 1U) == simnet::EntityKind::Boid);
-    CHECK(simnet::client_entity_kind(client_world, second_player) == simnet::EntityKind::Player);
-    auto sink_snapshot = simnet::WorldSnapshot{};
-    REQUIRE(simnet::extract_client_world_snapshot(client_world, 8U, sink_snapshot).valid);
-    CHECK(sink_snapshot.ids == observer_canonical.ids);
-    CHECK(sink_snapshot.classifications == observer_canonical.classifications);
+    check_client_world_matches_snapshot(client_world, observer_canonical);
+    auto final_client_facts = client_entity_facts(client_world);
+    REQUIRE(final_client_facts.size() == 2U);
+    CHECK(final_client_facts[0].id == 1U);
+    CHECK(final_client_facts[0].kind == simnet::EntityKind::Boid);
+    CHECK(final_client_facts[1].id == second_player);
+    CHECK(final_client_facts[1].kind == simnet::EntityKind::Player);
 
     auto retained_deletion = deletion.resulting_snapshot;
     auto const deletion_retention =
@@ -486,7 +529,7 @@ TEST_CASE("Patch reconstruction removes requested entities", "[replication][snap
 }
 
 TEST_CASE(
-    "Client patch application rejects malformed and stale input transactionally",
+    "Client patch application accepts equal ticks and rejects stale ticks transactionally",
     "[replication][snapshot][validation]"
 )
 {
@@ -498,21 +541,24 @@ TEST_CASE(
         .upserts = {test_boid(1U, 0U, 5U)},
         .deletes = {},
     };
-    REQUIRE(simnet::apply_client_snapshot_patch(world, initial).valid);
+    REQUIRE(simnet::validate_client_snapshot_patch(initial).valid);
+    REQUIRE(simnet::apply_client_snapshot_patch_unchecked(world, initial).valid);
 
-    auto before = simnet::WorldSnapshot{};
-    REQUIRE(simnet::extract_client_world_snapshot(world, 5U, before).valid);
+    auto canonical = simnet::WorldSnapshot{};
+    REQUIRE(simnet::reconstruct_world_snapshot_unchecked(nullptr, initial, canonical).valid);
+    check_client_world_matches_snapshot(world, canonical);
 
-    auto malformed = simnet::SnapshotUpdate{
-        .tick = 6U,
+    auto const equal_tick = simnet::SnapshotUpdate{
+        .tick = 5U,
         .kind = simnet::SnapshotKind::Patch,
-        .upserts = {test_boid(0U, 1U, 6U)},
+        .upserts = {},
         .deletes = {},
     };
-    auto const malformed_report = simnet::apply_client_snapshot_patch(world, malformed);
-    CHECK_FALSE(malformed_report.valid);
-    CHECK(simnet::client_latest_replicated_tick(world) == 5U);
-    CHECK(simnet::client_replicated_entity_count(world) == 1U);
+    REQUIRE(simnet::validate_client_snapshot_patch(equal_tick).valid);
+    auto const equal_tick_report = simnet::apply_client_snapshot_patch_unchecked(world, equal_tick);
+    CHECK(equal_tick_report.valid);
+    CHECK(equal_tick_report.tick == 5U);
+    check_client_world_matches_snapshot(world, canonical);
 
     auto stale = simnet::SnapshotUpdate{
         .tick = 4U,
@@ -524,21 +570,9 @@ TEST_CASE(
     auto const stale_report = simnet::apply_client_snapshot_patch_unchecked(world, stale);
     CHECK_FALSE(stale_report.valid);
     CHECK(stale_report.error == "stale patch tick");
-
-    auto after = simnet::WorldSnapshot{};
-    REQUIRE(simnet::extract_client_world_snapshot(world, 5U, after).valid);
-    CHECK(after.tick == before.tick);
-    CHECK(after.ids == before.ids);
-    CHECK(after.classifications == before.classifications);
-    REQUIRE(after.positions.size() == before.positions.size());
-    CHECK(after.positions.front().x == before.positions.front().x);
-    CHECK(after.positions.front().y == before.positions.front().y);
-    CHECK(after.positions.front().z == before.positions.front().z);
-    REQUIRE(after.headings.size() == before.headings.size());
-    CHECK(after.headings.front().x == before.headings.front().x);
-    CHECK(after.headings.front().y == before.headings.front().y);
-    CHECK(after.headings.front().z == before.headings.front().z);
-    CHECK(after.hues == before.hues);
+    CHECK(stale_report.previous_entities == 1U);
+    CHECK(stale_report.final_entities == 1U);
+    check_client_world_matches_snapshot(world, canonical);
 }
 
 TEST_CASE(
@@ -557,11 +591,12 @@ TEST_CASE(
         .upserts = {boid, player},
         .deletes = {},
     };
-    REQUIRE(simnet::apply_client_snapshot_patch(world, initial).valid);
+    REQUIRE(simnet::validate_client_snapshot_patch(initial).valid);
+    REQUIRE(simnet::apply_client_snapshot_patch_unchecked(world, initial).valid);
 
-    auto before = simnet::WorldSnapshot{};
-    auto const before_extraction = simnet::extract_client_world_snapshot(world, 5U, before);
-    REQUIRE(before_extraction.valid);
+    auto canonical = simnet::WorldSnapshot{};
+    REQUIRE(simnet::reconstruct_world_snapshot_unchecked(nullptr, initial, canonical).valid);
+    check_client_world_matches_snapshot(world, canonical);
     auto before_entities = std::vector<std::pair<simnet::EntityNetId, flecs::entity_t>>{};
     auto identity_query = world.query_builder<const simnet::NetIdentity>().build();
     identity_query.each(
@@ -575,7 +610,7 @@ TEST_CASE(
     auto changed = test_boid(1U, 9U, 6U);
     auto unsupported = test_boid(3U, 3U, 6U);
     unsupported.classification = simnet::EntityClassification{247U};
-    auto const rejected = simnet::apply_client_snapshot_patch(
+    auto const rejected = simnet::apply_client_snapshot_patch_unchecked(
         world,
         {
             .tick = 6U,
@@ -592,28 +627,7 @@ TEST_CASE(
     CHECK(rejected.final_entities == 2U);
     CHECK(rejected.upsert_count == 2U);
     CHECK(rejected.delete_count == 1U);
-    CHECK(simnet::client_latest_replicated_tick(world) == 5U);
-    CHECK(simnet::client_replicated_entity_count(world) == 2U);
-
-    auto after = simnet::WorldSnapshot{};
-    auto const after_extraction = simnet::extract_client_world_snapshot(world, 5U, after);
-    REQUIRE(after_extraction.valid);
-    CHECK(after_extraction.tick == before_extraction.tick);
-    CHECK(after_extraction.entity_count == before_extraction.entity_count);
-    CHECK(after.ids == before.ids);
-    CHECK(after.classifications == before.classifications);
-    CHECK(after.hues == before.hues);
-    REQUIRE(after.positions.size() == before.positions.size());
-    REQUIRE(after.headings.size() == before.headings.size());
-    for (std::size_t index = 0; index < after.size(); ++index)
-    {
-        CHECK(after.positions[index].x == before.positions[index].x);
-        CHECK(after.positions[index].y == before.positions[index].y);
-        CHECK(after.positions[index].z == before.positions[index].z);
-        CHECK(after.headings[index].x == before.headings[index].x);
-        CHECK(after.headings[index].y == before.headings[index].y);
-        CHECK(after.headings[index].z == before.headings[index].z);
-    }
+    check_client_world_matches_snapshot(world, canonical);
 
     auto after_entities = std::vector<std::pair<simnet::EntityNetId, flecs::entity_t>>{};
     identity_query.each(
@@ -624,8 +638,10 @@ TEST_CASE(
     );
     std::ranges::sort(after_entities);
     CHECK(after_entities == before_entities);
-    CHECK(simnet::client_entity_kind(world, 1U) == simnet::EntityKind::Boid);
-    CHECK(simnet::client_entity_kind(world, 2U) == simnet::EntityKind::Player);
+    auto const facts = client_entity_facts(world);
+    REQUIRE(facts.size() == 2U);
+    CHECK(facts[0].kind == simnet::EntityKind::Boid);
+    CHECK(facts[1].kind == simnet::EntityKind::Player);
 }
 
 TEST_CASE("authoritative boid mutations use a private indexed lifecycle", "[replication]")

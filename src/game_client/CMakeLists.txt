@@ -9,7 +9,6 @@ target_sources(simnet_game_client
             import/game_client.cppm
             import/game_client_types.cppm
             import/game_client_apply.cppm
-            import/game_client_snapshot.cppm
     PRIVATE
         src/game_client.cpp
 )

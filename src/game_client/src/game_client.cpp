@@ -1,6 +1,5 @@
 module;
 
-#include <algorithm>
 #include <cstdint>
 #include <flecs.h>
 #include <optional>
@@ -11,7 +10,6 @@ module;
 module simnet.game_client;
 
 import :apply;
-import :snapshot;
 import simnet.game_shared;
 import simnet.snapshot;
 
@@ -133,12 +131,6 @@ namespace simnet
             return upsert_index < patch.upserts.size() && patch.upserts[upsert_index].id == id;
         }
 
-        void reset_failed_snapshot(WorldSnapshot& snapshot, Tick tick)
-        {
-            snapshot.clear();
-            snapshot.tick = tick;
-        }
-
         [[nodiscard]] ApplyPatchReport initial_apply_report(SnapshotUpdate const& patch)
         {
             return {
@@ -151,22 +143,6 @@ namespace simnet
                 .valid = true,
                 .error = {},
             };
-        }
-
-        [[nodiscard]] ApplyPatchReport rejected_apply_report(
-            flecs::world const& world,
-            SnapshotUpdate const& patch,
-            std::string error
-        )
-        {
-            auto report = initial_apply_report(patch);
-            auto const count =
-                static_cast<std::uint32_t>(world.get<ClientReplicationState>().size());
-            report.previous_entities = count;
-            report.final_entities = count;
-            report.valid = false;
-            report.error = std::move(error);
-            return report;
         }
 
         void apply_patch_to_world(
@@ -253,51 +229,12 @@ namespace simnet
 
             state = std::move(next_state);
         }
-
-        [[nodiscard]] ClientSnapshotExtractionReport
-        failed_snapshot_extraction(WorldSnapshot& snapshot, Tick tick, std::string error)
-        {
-            reset_failed_snapshot(snapshot, tick);
-            return {
-                .tick = tick,
-                .entity_count = 0U,
-                .valid = false,
-                .error = std::move(error),
-            };
-        }
     }
 
     void register_client_game(flecs::world& world)
     {
         register_game_components(world);
         world.ensure<ClientReplicationState>();
-    }
-
-    std::size_t client_replicated_entity_count(flecs::world const& world) noexcept
-    {
-        return world.get<ClientReplicationState>().size();
-    }
-
-    Tick client_latest_replicated_tick(flecs::world const& world) noexcept
-    {
-        return world.get<ClientReplicationState>().latest_tick;
-    }
-
-    std::optional<EntityKind> client_entity_kind(flecs::world const& world, EntityNetId id) noexcept
-    {
-        auto const& state = world.get<ClientReplicationState>();
-        auto const position = std::lower_bound(state.ids.begin(), state.ids.end(), id);
-        if (position == state.ids.end() || *position != id)
-        {
-            return std::nullopt;
-        }
-        auto const offset = static_cast<std::size_t>(position - state.ids.begin());
-        auto const entity = flecs::entity{world, state.entities[offset]};
-        if (!entity.is_alive() || !entity.has<EntityKindComponent>())
-        {
-            return std::nullopt;
-        }
-        return entity.get<EntityKindComponent>().value;
     }
 
     ApplyPatchReport
@@ -339,91 +276,4 @@ namespace simnet
         return report;
     }
 
-    ApplyPatchReport apply_client_snapshot_patch(flecs::world& world, SnapshotUpdate const& patch)
-    {
-        auto const validation = validate_client_snapshot_patch(patch);
-        if (!validation.valid)
-        {
-            return rejected_apply_report(world, patch, validation.message);
-        }
-        return apply_client_snapshot_patch_unchecked(world, patch);
-    }
-
-    ClientSnapshotExtractionReport
-    extract_client_world_snapshot(flecs::world const& world, Tick tick, WorldSnapshot& out_snapshot)
-    {
-        auto report = ClientSnapshotExtractionReport{.tick = tick};
-        auto const& state = world.get<ClientReplicationState>();
-        if (state.ids.size() != state.entities.size())
-        {
-            return failed_snapshot_extraction(
-                out_snapshot,
-                tick,
-                "client replication index sizes do not match"
-            );
-        }
-
-        out_snapshot.clear();
-        out_snapshot.tick = tick;
-        out_snapshot.reserve(state.size());
-        for (auto index_position = std::size_t{}; index_position < state.size(); ++index_position)
-        {
-            auto const entity_id = state.entities[index_position];
-            if (entity_id == 0 || !ecs_is_alive(world.c_ptr(), entity_id))
-            {
-                return failed_snapshot_extraction(
-                    out_snapshot,
-                    tick,
-                    "client replication index references a dead entity"
-                );
-            }
-
-            auto const entity = flecs::entity{world, entity_id};
-            if (!entity.has<EntityKindComponent>() || !entity.has<NetIdentity>() ||
-                !entity.has<Position>() || !entity.has<Heading>() || !entity.has<Hue>())
-            {
-                return failed_snapshot_extraction(
-                    out_snapshot,
-                    tick,
-                    "client replicated entity is missing required components"
-                );
-            }
-
-            auto const& identity = entity.get<NetIdentity>();
-            if (identity.id != state.ids[index_position])
-            {
-                return failed_snapshot_extraction(
-                    out_snapshot,
-                    tick,
-                    "client replication index identity does not match entity"
-                );
-            }
-
-            auto const classification =
-                classification_from_entity_kind(entity.get<EntityKindComponent>().value);
-            if (!classification.has_value())
-            {
-                return failed_snapshot_extraction(
-                    out_snapshot,
-                    tick,
-                    "client replicated entity kind is unsupported"
-                );
-            }
-
-            out_snapshot.ids.push_back(identity.id);
-            out_snapshot.classifications.push_back(*classification);
-            out_snapshot.positions.push_back(entity.get<Position>().value);
-            out_snapshot.headings.push_back(entity.get<Heading>().value);
-            out_snapshot.hues.push_back(entity.get<Hue>().value);
-        }
-
-        auto const validation = validate_world_snapshot(out_snapshot);
-        if (!validation.valid)
-        {
-            return failed_snapshot_extraction(out_snapshot, tick, validation.message);
-        }
-
-        report.entity_count = static_cast<std::uint32_t>(out_snapshot.size());
-        return report;
-    }
 }

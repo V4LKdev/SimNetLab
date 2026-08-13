@@ -2,7 +2,12 @@
 
 `simnet_game_client` owns the nonauthoritative Client Flecs replicated sink.
 
-It registers shared game components plus private sink application state. Call `register_client_game` once during Client setup. `apply_client_snapshot_patch` consumes a decoded or reconstructed `SnapshotUpdate` and applies it to the Flecs sink. It maps classifications 1 and 2 back to Boid and Player component values. Unsupported nonzero classifications and updates older than the latest accepted sink tick are rejected before mutating entities or sink application state. Equal ticks are accepted for future multi-packet ticks.
+It registers shared game components plus private sink application state. Call
+`register_client_game` once during Client setup. `apply_client_snapshot_patch_unchecked` consumes a
+previously validated decoded or reconstructed `SnapshotUpdate` and applies it to the Flecs sink. It
+maps classifications 1 and 2 back to Boid and Player component values. Unsupported nonzero
+classifications and updates older than the latest accepted sink tick are rejected before mutating
+entities or sink application state. Equal ticks remain valid application input.
 
 The Client application retains successfully reconstructed `WorldSnapshot` history as its canonical replicated representation. That history owns exact delta baselines, the latest replicated state, presentation interpolation, rendering data, stable-ID selection, and camera lookup. Rendering remains independent of Flecs.
 
