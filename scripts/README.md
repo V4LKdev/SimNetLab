@@ -113,6 +113,12 @@ python3 scripts/simnet_format_check.py
 python3 scripts/simnet_text_policy.py
 ```
 
+Pass `--allow-unicode PATH` only for a deliberate Unicode fixture. The exception does not allow
+tabs or prose semicolons.
+
+Use Markdown code formatting for literal examples. Add `text-policy: exact` to a source comment
+only when its literal text must retain a semicolon.
+
 Configure compiler-specific advisory builds with compilation databases:
 
 ```sh

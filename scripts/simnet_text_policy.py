@@ -72,7 +72,8 @@ def requested_files(root: Path, values: list[str]) -> list[Path]:
         candidate = (root / value).resolve()
         if candidate.is_dir():
             for path in candidate.rglob("*"):
-                if path.is_file() and (path.name == "CMakeLists.txt" or path.suffix in TEXT_SUFFIXES):
+                is_text_file = path.name == "CMakeLists.txt" or path.suffix in TEXT_SUFFIXES
+                if path.is_file() and is_text_file:
                     relative = path.relative_to(root).as_posix()
                     if not relative.startswith(EXCLUDED_PREFIXES):
                         files.add(path)
@@ -108,7 +109,7 @@ def unicode_category(character: str, line: str, column: int) -> tuple[str, str]:
     return "non-ascii", "maintained authored text must use ASCII"
 
 
-def character_diagnostics(path: Path, text: str) -> list[Diagnostic]:
+def character_diagnostics(path: Path, text: str, allow_unicode: bool) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         for column, character in enumerate(line, start=1):
@@ -116,7 +117,7 @@ def character_diagnostics(path: Path, text: str) -> list[Diagnostic]:
                 diagnostics.append(
                     Diagnostic(path, line_number, column, "U+0009", "tab", "use spaces")
                 )
-            elif ord(character) > 0x7F:
+            elif not allow_unicode and ord(character) > 0x7F:
                 category, message = unicode_category(character, line, column)
                 diagnostics.append(
                     Diagnostic(
@@ -136,19 +137,10 @@ def masked_prose(line: str) -> str:
     return URL.sub("", masked)
 
 
-def looks_like_commented_code(prose: str) -> bool:
-    stripped = prose.strip()
-    if not stripped.endswith(";"):
-        return False
-    return bool(
-        re.search(r'''(?:\bauto\b|\breturn\b|::|->|[=()"']|\+\+|--)''', stripped)
-    )
-
-
 def semicolon_diagnostics(path: Path, spans: list[tuple[int, int, str]]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     for line_number, base_column, prose in spans:
-        if EXACT_MARKER in prose or looks_like_commented_code(prose):
+        if EXACT_MARKER in prose:
             continue
         masked = masked_prose(prose)
         for match in re.finditer(";", masked):
@@ -287,14 +279,16 @@ def prose_spans(path: Path, text: str) -> list[tuple[int, int, str]]:
 
 
 def check_text(path: Path, text: str, allow_unicode: bool = False) -> list[Diagnostic]:
-    diagnostics = [] if allow_unicode else character_diagnostics(path, text)
+    diagnostics = character_diagnostics(path, text, allow_unicode)
     diagnostics.extend(semicolon_diagnostics(path, prose_spans(path, text)))
     return sorted(diagnostics, key=lambda item: (item.line, item.column, item.category))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("paths", nargs="*", help="optional repository-relative files or directories")
+    parser.add_argument(
+        "paths", nargs="*", help="optional repository-relative files or directories"
+    )
     parser.add_argument(
         "--allow-unicode",
         action="append",
