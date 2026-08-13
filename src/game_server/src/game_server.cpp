@@ -121,43 +121,6 @@ namespace
         return id == std::numeric_limits<simnet::EntityNetId>::max() ? 0U : id + 1U;
     }
 
-    void
-    set_authoritative_boid_components(flecs::entity entity, simnet::EntityState const& boid_state)
-    {
-        entity.set<simnet::EntityKindComponent>({.value = simnet::EntityKind::Boid});
-        entity.set<simnet::NetIdentity>({.id = boid_state.id});
-        entity.set<simnet::Position>({.value = boid_state.position});
-        entity.set<simnet::Heading>({.value = boid_state.heading});
-        entity.set<simnet::Hue>({.value = boid_state.hue});
-    }
-
-    void set_authoritative_simulation_components(
-        flecs::entity entity,
-        simnet::EntityState const& boid_state,
-        std::uint32_t row,
-        float cruise_speed
-    )
-    {
-        set_authoritative_boid_components(entity, boid_state);
-        entity.set<Velocity>({.value = boid_state.heading * cruise_speed});
-        entity.set<HueState>({.value = static_cast<float>(boid_state.hue) / 256.0F});
-        entity.set<FlockRow>({.value = row});
-    }
-
-    void remap_boid_rows(flecs::world& world, AuthoritativeReplicationIndex const& index)
-    {
-        auto row = std::uint32_t{};
-        for (auto const entity_id : index.entities)
-        {
-            auto entity = flecs::entity{world, entity_id};
-            if (entity.has<FlockRow>() &&
-                entity.get<simnet::EntityKindComponent>().value == simnet::EntityKind::Boid)
-            {
-                entity.set<FlockRow>({.value = row++});
-            }
-        }
-    }
-
     void reset_failed_snapshot(simnet::WorldSnapshot& snapshot, simnet::Tick tick)
     {
         snapshot.clear();
@@ -1954,54 +1917,6 @@ namespace simnet
         return true;
     }
 
-    flecs::entity upsert_authoritative_boid(flecs::world& world, EntityState const& boid_state)
-    {
-        auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index) || !valid_boid_state(boid_state))
-        {
-            return {};
-        }
-
-        auto position = find_index(index, boid_state.id);
-        auto offset = static_cast<std::size_t>(position - index.ids.begin());
-        if (position != index.ids.end() && *position == boid_state.id)
-        {
-            auto entity = flecs::entity{world, index.entities[offset]};
-            if (!entity.is_alive() || !entity.has<EntityKindComponent>() ||
-                entity.get<EntityKindComponent>().value != EntityKind::Boid)
-            {
-                return {};
-            }
-            set_authoritative_simulation_components(
-                entity,
-                boid_state,
-                entity.get<FlockRow>().value,
-                index.cruise_speed
-            );
-            return entity;
-        }
-        if (index.ids.size() >= static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()))
-        {
-            return {};
-        }
-
-        index.reserve(index.ids.size() + 1U);
-        position = find_index(index, boid_state.id);
-        offset = static_cast<std::size_t>(position - index.ids.begin());
-        auto entity = world.entity();
-        set_authoritative_simulation_components(entity, boid_state, 0U, index.cruise_speed);
-        index.ids.insert(position, boid_state.id);
-        index.entities.insert(
-            index.entities.begin() + static_cast<std::ptrdiff_t>(offset),
-            entity.id()
-        );
-        ++index.boid_count;
-        index.next_id = std::max(index.next_id, next_entity_id(boid_state.id));
-        remap_boid_rows(world, index);
-        world.modified<AuthoritativeReplicationIndex>();
-        return entity;
-    }
-
     AuthoritativeSpawnReport
     append_authoritative_boids(flecs::world& world, std::span<const EntityState> boid_states)
     {
@@ -2160,45 +2075,6 @@ namespace simnet
         report.spawned_count = boid_states.size();
         SIMNET_TRACE_PLOT("server.authoritative_index_size", static_cast<double>(index.ids.size()));
         return report;
-    }
-
-    bool delete_authoritative_boid(flecs::world& world, EntityNetId id)
-    {
-        auto& index = world.ensure<AuthoritativeReplicationIndex>();
-        if (!valid_index(index))
-        {
-            return false;
-        }
-        auto const position = find_index(index, id);
-        if (position == index.ids.end() || *position != id)
-        {
-            return false;
-        }
-        auto const offset = static_cast<std::size_t>(position - index.ids.begin());
-        auto const entity = index.entities[offset];
-        if (!ecs_is_alive(world.c_ptr(), entity))
-        {
-            return false;
-        }
-        auto const handle = flecs::entity{world, entity};
-        if (!handle.has<EntityKindComponent>() ||
-            handle.get<EntityKindComponent>().value != EntityKind::Boid)
-        {
-            return false;
-        }
-        ecs_delete(world.c_ptr(), entity);
-        index.ids.erase(position);
-        index.entities.erase(index.entities.begin() + static_cast<std::ptrdiff_t>(offset));
-        --index.boid_count;
-        remap_boid_rows(world, index);
-        world.modified<AuthoritativeReplicationIndex>();
-        return true;
-    }
-
-    std::size_t authoritative_boid_count(flecs::world const& world) noexcept
-    {
-        auto const& index = world.get<AuthoritativeReplicationIndex>();
-        return valid_index(index) ? index.boid_count : 0U;
     }
 
     ServerSnapshotExtractionReport

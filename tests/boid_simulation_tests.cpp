@@ -432,7 +432,6 @@ TEST_CASE(
 
     auto const player_id = simnet::spawn_authoritative_player(world);
     REQUIRE(player_id == 3U);
-    CHECK(simnet::authoritative_boid_count(world) == 2U);
     REQUIRE(
         simnet::set_authoritative_player_input(
             world,
@@ -495,7 +494,6 @@ TEST_CASE(
     REQUIRE(simnet::delete_authoritative_player(world, second_player_id));
     CHECK_FALSE(simnet::set_authoritative_player_input(world, player_id, {}));
     CHECK(snapshot(world, 5U).size() == 2U);
-    CHECK(simnet::authoritative_boid_count(world) == 2U);
 }
 
 TEST_CASE("disabled Player influence preserves exact Boid results", "[boids][player]")
