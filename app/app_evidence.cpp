@@ -20,6 +20,8 @@ module simnet.app_evidence;
 
 namespace
 {
+    constexpr std::size_t server_boids_csv_buffer_capacity = 256;
+
     using namespace simnet;
     using namespace simnet::app;
 

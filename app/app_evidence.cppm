@@ -16,7 +16,6 @@ import simnet.telemetry;
 export namespace simnet::app
 {
     inline constexpr std::uint32_t server_boids_csv_schema_version = 1;
-    inline constexpr std::size_t server_boids_csv_buffer_capacity = 256;
     inline constexpr std::size_t server_boids_csv_drain_threshold = 128;
 
     inline constexpr std::string_view server_boids_csv_header_v1 =

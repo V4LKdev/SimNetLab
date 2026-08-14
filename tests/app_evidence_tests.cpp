@@ -333,24 +333,37 @@ TEST_CASE("Server boid CSV disabling and overflow are explicit", "[telemetry][cs
         .worker_count = 1,
     }};
     auto const report = sample_report();
-    for (auto tick = simnet::Tick{1}; tick <= simnet::app::server_boids_csv_buffer_capacity; ++tick)
+    constexpr std::size_t overflow_probe_limit = 512;
+    auto accepted_count = std::size_t{0U};
+    while (accepted_count < overflow_probe_limit)
     {
-        REQUIRE(writer.sample(
-            tick,
-            report,
-            {.recorded_at_unix_ns = tick, .elapsed_since_process_start_ns = tick}
-        ));
+        auto const tick = simnet::Tick{accepted_count + 1U};
+        auto const timestamp = simnet::EvidenceRecordTimestamp{
+            .recorded_at_unix_ns = tick,
+            .elapsed_since_process_start_ns = tick,
+        };
+        if (!writer.sample(tick, report, timestamp))
+        {
+            break;
+        }
+        ++accepted_count;
     }
-    CHECK_FALSE(writer.sample(simnet::app::server_boids_csv_buffer_capacity + 1U, report));
+    REQUIRE(accepted_count > 0U);
+    REQUIRE(accepted_count < overflow_probe_limit);
+    auto const buffered_before_overflow = writer.buffered_count();
+    auto const overflow_tick = simnet::Tick{accepted_count + 1U};
+    auto const overflow_timestamp = simnet::EvidenceRecordTimestamp{
+        .recorded_at_unix_ns = overflow_tick,
+        .elapsed_since_process_start_ns = overflow_tick,
+    };
+    CHECK_FALSE(writer.sample(overflow_tick, report, overflow_timestamp));
+    CHECK(writer.buffered_count() == buffered_before_overflow);
     CHECK_FALSE(writer.healthy());
     CHECK(writer.error().find("overflow") != std::string_view::npos);
     CHECK_FALSE(writer.close());
     CHECK_FALSE(writer.close());
     CHECK(writer.buffered_count() == 0);
-    CHECK(
-        read_evidence_lines(writer.path()).size() ==
-        simnet::app::server_boids_csv_buffer_capacity + 1U
-    );
+    CHECK(read_evidence_lines(writer.path()).size() == accepted_count + 1U);
 
     auto closed_writer = simnet::app::ServerBoidCsvWriter{{
         .enabled = true,
