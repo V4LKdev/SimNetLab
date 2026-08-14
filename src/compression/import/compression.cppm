@@ -5,14 +5,16 @@ module;
 #include <string>
 #include <vector>
 
-/// @brief Bounded versioned Raw and Zstd byte envelopes.
+/// @brief Bounded versioned byte envelopes for Raw and Zstd payloads.
 export module simnet.compression;
 
 import simnet.core;
 
 export namespace simnet
 {
+    /// SNCZ envelope byte size including header-only framing.
     inline constexpr std::uint32_t compression_envelope_bytes = 17U;
+    /// Upper bound for validated dictionary bytes loaded into reusable Zstd dictionary state.
     inline constexpr std::uint32_t maximum_zstd_dictionary_bytes = 16U * 1024U;
 
     enum class CompressionEncoding : std::uint8_t
@@ -28,12 +30,14 @@ export namespace simnet
         OnlyWhenSmaller,
     };
 
+    /// Bounded byte limits shared by compressor and decompressor call sites.
     struct CompressionLimits
     {
         std::uint32_t max_uncompressed_bytes{};
         std::uint32_t max_output_bytes{};
     };
 
+    /// Per-call compression outcome and timing contract.
     struct CompressionReport
     {
         CompressionEncoding encoding{CompressionEncoding::Raw};
@@ -46,6 +50,7 @@ export namespace simnet
         std::string error{};
     };
 
+    /// Per-call decompression outcome and timing contract.
     struct DecompressionReport
     {
         CompressionEncoding encoding{CompressionEncoding::Raw};
@@ -75,7 +80,8 @@ export namespace simnet
     class ZstdCompressor;
     class ZstdDecompressor;
 
-    /// Owns validated opaque dictionary bytes and reusable prepared Zstd state.
+    /// Owns validated dictionary bytes and reusable prepared Zstd state.
+    /// Identity and lifetime checks are fixed at construction.
     class ZstdDictionary
     {
       public:
@@ -114,6 +120,7 @@ export namespace simnet
         );
     };
 
+    /// Owns reusable standard Zstd compression context and frame scratch.
     class ZstdCompressor
     {
       public:
@@ -147,6 +154,7 @@ export namespace simnet
         );
     };
 
+    /// Owns reusable standard Zstd decompression context and frame scratch.
     class ZstdDecompressor
     {
       public:
@@ -176,6 +184,9 @@ export namespace simnet
 
     [[nodiscard]] bool has_compression_envelope(ByteSpan bytes) noexcept;
 
+    /// Compresses bounded bytes into raw or ordinary Zstd envelopes, selecting
+    /// the active encoding by policy and bound safety. Output is rewritten only
+    /// for a successful report.
     [[nodiscard]] CompressionReport compress_bytes(
         ZstdCompressor& compressor,
         ByteSpan input,
@@ -185,7 +196,8 @@ export namespace simnet
         std::vector<Byte>& output
     );
 
-    /// Emits only a dictionary-Zstd envelope or a Raw envelope fallback.
+    /// Compresses using an exact dictionary context and falls back to Raw when
+    /// dictionary framing would not help or would violate output bounds.
     [[nodiscard]] CompressionReport compress_bytes_with_dictionary(
         ZstdCompressor& compressor,
         ZstdDictionary const& dictionary,
@@ -194,6 +206,9 @@ export namespace simnet
         std::vector<Byte>& output
     );
 
+    /// Decodes Raw and ordinary Zstd envelopes after complete envelope,
+    /// size, frame, and content-size validation.
+    /// Commits caller output only when the report is valid.
     [[nodiscard]] DecompressionReport decompress_bytes(
         ZstdDecompressor& decompressor,
         ByteSpan input,
@@ -201,7 +216,9 @@ export namespace simnet
         std::vector<Byte>& output
     );
 
-    /// Accepts only Raw or dictionary-Zstd envelopes for the supplied dictionary.
+    /// Decodes dictionary-aware envelopes only.
+    /// Commits caller output only after envelope, frame, dictionary-id, and decode
+    /// validation all succeed.
     [[nodiscard]] DecompressionReport decompress_bytes_with_dictionary(
         ZstdDecompressor& decompressor,
         ZstdDictionary const& dictionary,
