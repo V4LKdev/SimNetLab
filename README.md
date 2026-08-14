@@ -21,15 +21,6 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local stationary observer views, and authoritative remote pause
 - Stationary observer and authoritative Player join roles with per-session Player ownership and a locked third-person Client chase camera
 
-## Planned work
-
-The automated experiment matrix and external orchestration remain planned. Tracy instrumentation
-is available through the `SIMNET_ENABLE_TRACY` CMake option. Server and Client viewers are
-available when local visualization is enabled. The Server can display occupied spatial cells and
-selected-boid simulation diagnostics.
-
-BitPacking is retained as an evaluated technique. The current quantized octahedral record is already 128 bits, so bit packing produces the same 16-byte record size while adding packing work.
-
 ## Requirements
 
 - Linux
@@ -141,11 +132,11 @@ Default configuration is in `config/shared_default.json`, `config/server_default
 
 Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded. They do not parallelize queries or application code automatically.
 
-For the conservative 1,000-boid visual demonstration:
+For a visual demonstration profile:
 
 ```sh
-build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_boids_demo.json
-build/relWithDebInfo/app/Client --config config/client_visual.json --shared-config config/shared_boids_demo.json
+build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_demo_visual.json
+build/relWithDebInfo/app/Client --config config/client_visual.json --shared-config config/shared_demo_visual.json
 ```
 
 The Server keeps velocity, precise hue phase, and neighbor-computation state private. Replication remains the stable ID, position, normalized heading, and one-byte hue snapshot contract. The Server selected-entity panel remains available while paused and shows velocity, acceleration, query and neighbor counts, rule settings, flags, hue decisions, and steering contributions. Its optional generic gizmos show the queried cells, rule radii, FOV, and steering vectors. The Client does not receive those private facts.
