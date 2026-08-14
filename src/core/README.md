@@ -24,9 +24,10 @@
 
 ## Notes
 
-- All types are PoD. No heap allocations, no third-party imports.
-- Hot-path math (`Vec3f` operators, `contains`) is `constexpr`.
-- `length()` and `normalize_or()` use `std::sqrt` and are not `constexpr`.
-- Byte spans are non-owning views. The caller must keep the referenced buffer alive.
-- Use `make_clock(settings)` to avoid forgetting to set `fixed_dt`.
-- Elapsed frame acceptance policy belongs to the runtime caller, not the fixed-step clock.
+- Core owns simple value types and non-owning byte views.
+- `ByteSpan` does not own storage. Callers must preserve the referenced lifetime.
+- Container allocation, protocol policy, ECS, rendering, and file/process policy are
+  outside core.
+- Core depends only on the C++ standard library.
+- Use `make_clock(settings)` so `fixed_dt` is applied consistently.
+- Elapsed-frame acceptance policy belongs to runtime, not `FixedStepClock`.
