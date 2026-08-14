@@ -55,7 +55,7 @@ namespace
 
 TEST_CASE(
     "Player input scheduler sends state changes and repeats every latest state",
-    "[app_protocol][player][delivery]"
+    "[app_player_input][player][delivery]"
 )
 {
     using simnet::app::PlayerButton;

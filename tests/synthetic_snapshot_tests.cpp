@@ -80,8 +80,8 @@ TEST_CASE("synthetic snapshots use deterministic nonzero entity ids", "[syntheti
 }
 
 TEST_CASE(
-    "stateful default generation preserves legacy snapshots from any first tick",
-    "[synthetic][snapshot][compatibility]"
+    "stateful default generation preserves stateless parity snapshots from any first tick",
+    "[synthetic][snapshot]"
 )
 {
     auto const snapshot_settings = settings(32U);
@@ -103,8 +103,9 @@ TEST_CASE(
             tick,
             second
         );
-        auto const legacy = simnet::make_synthetic_world_snapshot(snapshot_settings, tick);
-        CHECK(same_snapshot_bits(first_snapshot, legacy));
+        auto const expected_snapshot =
+            simnet::make_synthetic_world_snapshot(snapshot_settings, tick);
+        CHECK(same_snapshot_bits(first_snapshot, expected_snapshot));
         CHECK(same_snapshot_bits(first_snapshot, second_snapshot));
     }
 }

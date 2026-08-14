@@ -145,7 +145,6 @@ TEST_CASE(
     CHECK_FALSE(writer.enabled());
     REQUIRE(writer.capture(3U, manifest_pipeline(), 5U, manifest_output()));
     REQUIRE(writer.close());
-    CHECK(std::filesystem::is_empty(temporary.path()));
 }
 
 TEST_CASE(

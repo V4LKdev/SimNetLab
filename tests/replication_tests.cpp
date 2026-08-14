@@ -218,7 +218,7 @@ TEST_CASE(
     CHECK(second_world.lookup("simnet::EntityKind").id() == 0U);
 }
 
-TEST_CASE("five-tick replication contract remains intact", "[replication]")
+TEST_CASE("authoritative-to-client snapshot preservation remains stable", "[replication]")
 {
     auto pipeline = simnet::PipelineDefinition{};
     pipeline.techniques |= simnet::PipelineTechniqueFlags::SendInterval;

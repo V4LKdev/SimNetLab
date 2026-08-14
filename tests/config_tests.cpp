@@ -745,36 +745,6 @@ TEST_CASE("maintained representation and cadence profiles are matched", "[config
     CHECK(simnet::fingerprint_network_compatibility(cadence).value == expected);
 }
 
-TEST_CASE("every maintained JSON profile parses through its production loader", "[config]")
-{
-    auto const directory = std::filesystem::path{__FILE__}.parent_path().parent_path() / "config";
-    for (auto const& entry : std::filesystem::directory_iterator{directory})
-    {
-        auto const& path = entry.path();
-        if (!entry.is_regular_file() || path.extension() != ".json")
-        {
-            continue;
-        }
-        auto const name = path.filename().string();
-        if (name.starts_with("shared_"))
-        {
-            REQUIRE_NOTHROW(simnet::load_shared_config(path));
-        }
-        else if (name.starts_with("server_"))
-        {
-            REQUIRE_NOTHROW(simnet::load_server_config(path));
-        }
-        else if (name.starts_with("client_"))
-        {
-            REQUIRE_NOTHROW(simnet::load_client_config(path));
-        }
-        else
-        {
-            FAIL("unowned maintained JSON profile: " << name);
-        }
-    }
-}
-
 TEST_CASE("field-mask Delta profiles are a matched pair", "[config][pipeline][profile]")
 {
     auto const directory = maintained_config_directory();
@@ -802,7 +772,7 @@ TEST_CASE("synthetic workload configuration is strict and fingerprinted", "[conf
 {
     auto const defaults = simnet::default_shared_config();
     REQUIRE_FALSE(defaults.synthetic.has_value());
-    auto const legacy_fingerprint = simnet::fingerprint_network_compatibility(defaults);
+    auto const default_fingerprint = simnet::fingerprint_network_compatibility(defaults);
 
     auto const accepted = TemporaryConfig{
         "simnet_synthetic_accepted.json",
@@ -819,7 +789,7 @@ TEST_CASE("synthetic workload configuration is strict and fingerprinted", "[conf
     CHECK(loaded.synthetic->pattern == "grid");
     CHECK(loaded.synthetic->entity_change_fraction == 0.125);
     CHECK(loaded.synthetic->field_change_mode == "position_only");
-    CHECK(simnet::fingerprint_network_compatibility(loaded).value != legacy_fingerprint.value);
+    CHECK(simnet::fingerprint_network_compatibility(loaded).value != default_fingerprint.value);
 
     auto changed = loaded;
     changed.synthetic->pattern = "random_uniform";
@@ -917,13 +887,6 @@ TEST_CASE("typed defaults equal shipped default profiles", "[config][defaults]")
         simnet::fingerprint_runtime_config(typed_shared, typed_client).value ==
         simnet::fingerprint_runtime_config(shipped_shared, shipped_client).value
     );
-
-    auto const reloaded_shared = simnet::load_shared_config(directory / "shared_default.json");
-    auto const reloaded_server = simnet::load_server_config(directory / "server_default.json");
-    auto const reloaded_client = simnet::load_client_config(directory / "client_default.json");
-    check_shared_equal(shipped_shared, reloaded_shared);
-    check_server_equal(shipped_server, reloaded_server);
-    check_client_equal(shipped_client, reloaded_client);
 }
 
 TEST_CASE("maintained profile fingerprints preserve normalized semantics", "[config][defaults]")

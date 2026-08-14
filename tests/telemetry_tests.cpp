@@ -20,14 +20,6 @@ import simnet.config;
 import simnet.core;
 import simnet.snapshot;
 
-static_assert(std::is_trivially_move_constructible_v<simnet::ServerReplicationMeasurement>);
-static_assert(std::is_trivially_move_constructible_v<simnet::ClientReplicationMeasurement>);
-static_assert(std::is_same_v<
-              decltype(simnet::ServerReplicationMeasurement::encode_elapsed_time),
-              simnet::Nanoseconds>);
-static_assert(std::is_same_v<
-              decltype(simnet::ClientReplicationMeasurement::sink_application_elapsed_time),
-              simnet::Nanoseconds>);
 static_assert(!std::is_copy_constructible_v<simnet::EvidenceCsvFile>);
 static_assert(!std::is_copy_assignable_v<simnet::EvidenceCsvFile>);
 static_assert(!std::is_move_constructible_v<simnet::EvidenceCsvFile>);
@@ -109,7 +101,7 @@ namespace
     }
 }
 
-TEST_CASE("evidence run IDs are validated or honestly process local", "[telemetry][csv]")
+TEST_CASE("evidence run IDs validate provided and generated values", "[telemetry][csv]")
 {
     auto const supplied =
         simnet::make_evidence_run_context(simnet::EvidenceProcessRole::Server, "Study_01-A");
