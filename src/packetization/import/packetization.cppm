@@ -13,12 +13,18 @@ export namespace simnet
 {
     using PacketGroupId = std::uint32_t;
 
+    /// Fixed SNPK packet header byte count.
     inline constexpr std::uint32_t packet_header_bytes = 25U;
+    /// Maximum configurable encoded group size for reassembled payloads.
     inline constexpr std::uint32_t maximum_packetized_group_bytes = 4U * 1024U * 1024U;
+    /// Maximum supported chunk count per group.
     inline constexpr std::uint32_t maximum_chunks_per_group = 4096U;
+    /// Default bound for concurrent in-flight groups.
     inline constexpr std::uint32_t maximum_in_flight_groups = 64U;
+    /// Maximum retained incomplete-bytes budget before rejecting new groups.
     inline constexpr std::uint32_t maximum_incomplete_group_bytes = 8U * 1024U * 1024U;
 
+    /// Packetization limits that own reassembly safety boundaries.
     struct PacketizationSettings
     {
         bool enabled{true};
@@ -36,6 +42,7 @@ export namespace simnet
         Rejected
     };
 
+    /// Result of one group prep run before chunk serialization.
     struct PacketizationReport
     {
         PacketGroupId group_id{};
@@ -47,6 +54,7 @@ export namespace simnet
         std::string error{};
     };
 
+    /// Prepared reassembly payload ownership for chunk production.
     struct PreparedByteGroup
     {
         PacketGroupId group_id{};
@@ -66,6 +74,7 @@ export namespace simnet
         LimitExceeded
     };
 
+    /// Finalized byte sequence and chunk metadata from a complete group.
     struct CompletedByteGroup
     {
         PacketGroupId group_id{};
@@ -74,6 +83,7 @@ export namespace simnet
         std::vector<Byte> bytes{};
     };
 
+    /// Reassembly outcome for one accepted packet.
     struct ReassemblyResult
     {
         ReassemblyResultKind kind{ReassemblyResultKind::Invalid};
@@ -82,6 +92,7 @@ export namespace simnet
         std::string error{};
     };
 
+    /// Live reassembly accounting for diagnostics and resource budget decisions.
     struct ReassemblyReport
     {
         std::uint64_t received_chunks{};
@@ -96,6 +107,7 @@ export namespace simnet
         std::uint64_t stale_groups{};
     };
 
+    /// One incomplete group currently tracked by reassembly.
     struct IncompleteByteGroup
     {
         PacketGroupId group_id{};
@@ -108,6 +120,7 @@ export namespace simnet
         std::vector<std::uint64_t> received_chunks{};
     };
 
+    /// Full reassembly owner for one peer or stream.
     struct ReassemblyState
     {
         PacketGroupId latest_committed_group{};
@@ -115,8 +128,11 @@ export namespace simnet
         ReassemblyReport report{};
     };
 
+    /// Throws on invalid settings. Call before first use and before each operation.
     void validate_packetization_settings(PacketizationSettings const& settings);
 
+    /// Builds a candidate packetized representation and reports failure without
+    /// mutating output when preparation bounds are violated.
     [[nodiscard]] PacketizationReport prepare_byte_group(
         PacketizationSettings const& settings,
         PacketGroupId group_id,
@@ -132,6 +148,8 @@ export namespace simnet
         std::vector<Byte>& serialization_scratch
     );
 
+    /// Accepts and validates one packet, updates per-peer reassembly accounting, and
+    /// returns only a temporary completed result on successful reconstruction.
     [[nodiscard]] ReassemblyResult accept_group_packet(
         PacketizationSettings const& settings,
         ReassemblyState& state,
@@ -139,14 +157,16 @@ export namespace simnet
         Nanoseconds now
     );
 
+    /// Evicts timed-out incomplete groups and updates retention counters.
     void expire_incomplete_groups(
         PacketizationSettings const& settings,
         ReassemblyState& state,
         Nanoseconds now
     ) noexcept;
 
-    /// Marks a group canonical and removes older incomplete groups.
+    /// Marks the last completed group canonical and removes older incomplete state.
     void commit_reassembled_group(ReassemblyState& state, PacketGroupId group_id) noexcept;
 
+    /// Clears all reassembly state and report counters.
     void clear_reassembly_state(ReassemblyState& state) noexcept;
 }
