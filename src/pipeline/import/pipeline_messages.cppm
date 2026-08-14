@@ -35,11 +35,11 @@ export namespace simnet
         double heading_angular_error_degrees_maximum{};
     };
 
-    /// Fully encoded update ready for compression or opaque byte-group packetization.
+    /// Complete encoded update for downstream compression or packetization.
     struct EncodedUpdate
     {
         SequenceId sequence{};
-        std::vector<Byte> bytes; /// raw header + body
+        std::vector<Byte> bytes;
     };
 
     /// Metrics produced by each encode call.
@@ -49,8 +49,8 @@ export namespace simnet
         SequenceId sequence{};
         SequenceId baseline_sequence{};
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
-        std::uint32_t upsert_count{}; /// number of upserts in the payload
-        std::uint32_t delete_count{}; /// number of deletes in the payload
+        std::uint32_t upsert_count{};
+        std::uint32_t delete_count{};
         RepresentationReport representation{};
         DeltaReport delta{};
         AreaOfInterestReport area_of_interest{};
@@ -65,8 +65,8 @@ export namespace simnet
         SequenceId baseline_sequence{};
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
 
-        bool valid{};        /// true when the encoded update passed all contract checks
-        std::string error{}; /// error message when !valid
+        bool valid{};        /// Validation status after full header and payload checks.
+        std::string error{}; /// First contract violation when validation fails.
     };
 
     /// Nonallocating first-error result for encoded update header inspection.
