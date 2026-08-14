@@ -15,6 +15,7 @@ import simnet.core;
 
 export namespace simnet
 {
+    /// Transport lanes map to ENet channels and therefore inherit ENet ordering limits.
     enum class TransportLane : std::uint8_t
     {
         Lane0 = 0,
@@ -22,18 +23,21 @@ export namespace simnet
         Lane2 = 2
     };
 
+    /// Delivery policy accepted for all post-handshake application traffic.
     enum class TransportDelivery : std::uint8_t
     {
         ReliableSequenced,
         UnreliableSequenced
     };
 
+    /// Governs send-time size handling before ENet transmission.
     enum class SendSizePolicy : std::uint8_t
     {
         EnforceLimit,
         AllowBackendFragmentation
     };
 
+    /// Disconnect classification surfaced to callers after session-level teardown events.
     enum class DisconnectCode : std::uint16_t
     {
         None,
@@ -62,6 +66,7 @@ export namespace simnet
         BackendError
     };
 
+    /// Session identity contract that must match exactly to reach payload phase.
     struct SessionIdentity
     {
         std::uint32_t application_protocol_version{};
@@ -70,12 +75,14 @@ export namespace simnet
         std::uint32_t capabilities{};
     };
 
+    /// Send-time transport limits checked before ENet queueing or serialization.
     struct TransportLimits
     {
         std::uint32_t max_payload_bytes{1200};
         SendSizePolicy size_policy{SendSizePolicy::EnforceLimit};
     };
 
+    /// Failure contract returned for lifecycle operations and transport send.
     struct TransportError
     {
         TransportErrorCode code{TransportErrorCode::None};
@@ -83,12 +90,14 @@ export namespace simnet
         std::uint32_t native_code{};
     };
 
+    /// `ok` means no transport-level or lifecycle failure and `error` is stable contract text.
     struct TransportResult
     {
         bool ok{true};
         TransportError error{};
     };
 
+    /// Outgoing payload owned by caller. Transport does not keep caller memory after call.
     struct SendPacket
     {
         PeerId peer{};
@@ -97,6 +106,7 @@ export namespace simnet
         std::span<Byte const> payload{};
     };
 
+    /// Incoming application payload is copied on receive to keep transport ownership local.
     struct ReceivedPacket
     {
         PeerId peer{};
@@ -105,16 +115,19 @@ export namespace simnet
         std::vector<Byte> payload;
     };
 
+    /// Emitted for ENet connect events. Payload transport has not yet been validated by app logic.
     struct PeerConnected
     {
         PeerId peer{};
     };
 
+    /// Emitted after version fingerprint session handshake succeeds.
     struct PeerSessionReady
     {
         PeerId peer{};
     };
 
+    /// Reported before or after peer teardown. Disconnection side effects are transport-owned.
     struct PeerDisconnected
     {
         PeerId peer{};
@@ -122,6 +135,7 @@ export namespace simnet
         std::uint32_t native_reason{};
     };
 
+    /// Non-fatal transport diagnostic. Transport call may continue afterward.
     struct TransportErrorEvent
     {
         std::string message{};
