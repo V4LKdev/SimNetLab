@@ -67,7 +67,7 @@ export namespace simnet::app
         std::uint8_t buttons{};
     };
 
-    /// Cumulative acknowledgement of decoded and applied snapshot groups.
+    /// Cumulative acknowledgment of decoded and applied snapshot groups.
     struct SnapshotAck
     {
         SequenceId newest_received_snapshot{};
@@ -115,14 +115,12 @@ export namespace simnet::app
     [[nodiscard]] std::optional<AppMessageKind>
     decode_app_message_kind(std::span<Byte const> bytes) noexcept;
 
-    /// Encodes a pause or join control message in its fixed network representation.
     [[nodiscard]] std::vector<Byte> encode_app_message(AppMessage message);
 
     /// Decodes a complete pause or join message. Failure leaves the destination unchanged.
     [[nodiscard]] bool
     decode_app_message(std::span<Byte const> bytes, AppMessage& message) noexcept;
 
-    /// Encodes the complete Player button state as a three-byte input message.
     [[nodiscard]] std::vector<Byte> encode_player_input(PlayerInputMessage input);
 
     /// Decodes one complete Player input message. Failure leaves the destination unchanged.
