@@ -7,6 +7,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "test_temporary_directory.hpp"
+
 import simnet.app_evidence;
 import simnet.core;
 import simnet.game_server;
@@ -22,31 +24,7 @@ static_assert(std::is_nothrow_destructible_v<simnet::app::ServerBoidCsvWriter>);
 
 namespace
 {
-    class EvidenceTemporaryDirectory
-    {
-      public:
-        EvidenceTemporaryDirectory()
-        {
-            auto const stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-            path_ = std::filesystem::temp_directory_path() /
-                    ("simnet_boid_tel003_" + std::to_string(stamp));
-            std::filesystem::create_directories(path_);
-        }
-
-        ~EvidenceTemporaryDirectory()
-        {
-            std::error_code error;
-            std::filesystem::remove_all(path_, error);
-        }
-
-        [[nodiscard]] std::filesystem::path const& path() const noexcept
-        {
-            return path_;
-        }
-
-      private:
-        std::filesystem::path path_{};
-    };
+    using TestTemporaryDirectory = simnet::test::TestTemporaryDirectory;
 
     [[nodiscard]] std::vector<std::string> read_evidence_lines(std::filesystem::path const& path)
     {
@@ -219,7 +197,7 @@ TEST_CASE("Server boid CSV has an exact buffered v1 schema", "[telemetry][csv][b
         "grid_duration_ms,compute_duration_ms,validate_duration_ms,commit_duration_ms,"
         "progress_duration_ms"
     );
-    auto temporary = EvidenceTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_boid_tel003"};
     auto writer = simnet::app::ServerBoidCsvWriter{{
         .enabled = true,
         .output_directory = temporary.path(),
@@ -265,7 +243,7 @@ TEST_CASE("Server boid CSV has an exact buffered v1 schema", "[telemetry][csv][b
 
 TEST_CASE("Server boid CSV destructor persists buffered fallback output", "[telemetry][csv][boids]")
 {
-    auto temporary = EvidenceTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_boid_tel003"};
     auto const output_path = temporary.path() / "server_boids_v1_101.csv";
     {
         auto writer = simnet::app::ServerBoidCsvWriter{{
@@ -298,7 +276,7 @@ TEST_CASE(
     "[telemetry][csv][boids]"
 )
 {
-    auto temporary = EvidenceTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_boid_tel003"};
     auto const output_directory = temporary.path() / "forged_boid";
     CHECK_THROWS(
         simnet::app::ServerBoidCsvWriter({
@@ -319,7 +297,7 @@ TEST_CASE(
 
 TEST_CASE("Server boid CSV disabling and overflow are explicit", "[telemetry][csv][boids]")
 {
-    auto temporary = EvidenceTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_boid_tel003"};
     auto const disabled_directory = temporary.path() / "disabled";
     auto disabled = simnet::app::ServerBoidCsvWriter{{
         .enabled = false,

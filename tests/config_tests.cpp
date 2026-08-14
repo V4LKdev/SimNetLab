@@ -5,8 +5,11 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+
+#include "test_temporary_directory.hpp"
 
 import simnet.app_common;
 import simnet.app_compression_dictionary;
@@ -18,20 +21,40 @@ import simnet.snapshot;
 
 namespace
 {
+    using TestTemporaryDirectory = simnet::test::TestTemporaryDirectory;
+
     class TemporaryConfig
     {
       public:
         TemporaryConfig(std::string_view name, std::string_view contents)
-            : path_(std::filesystem::temp_directory_path() / name)
+            : directory_(TestTemporaryDirectory{"simnet_config"}), path_(directory_.path() / name)
         {
             auto file = std::ofstream{path_};
+            if (!file)
+            {
+                throw std::runtime_error{"Failed to open temporary config file: " + path_.string()};
+            }
             file << contents;
-        }
-
-        ~TemporaryConfig()
-        {
-            std::error_code error{};
-            std::filesystem::remove(path_, error);
+            if (!file)
+            {
+                throw std::runtime_error{
+                    "Failed to write temporary config file: " + path_.string()
+                };
+            }
+            file.flush();
+            if (!file)
+            {
+                throw std::runtime_error{
+                    "Failed to flush temporary config file: " + path_.string()
+                };
+            }
+            file.close();
+            if (!file)
+            {
+                throw std::runtime_error{
+                    "Failed to close temporary config file: " + path_.string()
+                };
+            }
         }
 
         [[nodiscard]] std::filesystem::path const& path() const noexcept
@@ -40,6 +63,7 @@ namespace
         }
 
       private:
+        TestTemporaryDirectory directory_;
         std::filesystem::path path_;
     };
 

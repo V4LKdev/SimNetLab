@@ -12,6 +12,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "test_temporary_directory.hpp"
+
 import simnet.telemetry;
 import simnet.app_common;
 import simnet.config;
@@ -45,31 +47,7 @@ static_assert(std::is_nothrow_destructible_v<simnet::app::TelemetryLifetime>);
 
 namespace
 {
-    class TemporaryDirectory
-    {
-      public:
-        TemporaryDirectory()
-        {
-            auto const stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-            path_ =
-                std::filesystem::temp_directory_path() / ("simnet_tel003_" + std::to_string(stamp));
-            std::filesystem::create_directories(path_);
-        }
-
-        ~TemporaryDirectory()
-        {
-            std::error_code error;
-            std::filesystem::remove_all(path_, error);
-        }
-
-        [[nodiscard]] std::filesystem::path const& path() const noexcept
-        {
-            return path_;
-        }
-
-      private:
-        std::filesystem::path path_{};
-    };
+    using TestTemporaryDirectory = simnet::test::TestTemporaryDirectory;
 
     [[nodiscard]] std::vector<std::string> read_lines(std::filesystem::path const& path)
     {
@@ -158,7 +136,7 @@ TEST_CASE(
     "[telemetry][csv]"
 )
 {
-    auto temporary = TemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_tel003"};
     auto const server_directory = temporary.path() / "forged_server";
     CHECK_THROWS(
         simnet::ServerReplicationCsvWriter({
@@ -190,7 +168,7 @@ TEST_CASE(
 
 TEST_CASE("evidence CSV flush and post-close failures are observable", "[telemetry][csv]")
 {
-    auto temporary = TemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_tel003"};
     auto const path = temporary.path() / "checked.csv";
     auto file = simnet::EvidenceCsvFile{path, "header"};
     REQUIRE(file.write_row("row"));
@@ -208,7 +186,7 @@ TEST_CASE("evidence CSV flush and post-close failures are observable", "[telemet
 TEST_CASE("Server replication CSV has complete peer-attributed v3 rows", "[telemetry][csv][peer]")
 {
     CHECK(simnet::server_replication_csv_schema_version == 3U);
-    auto temporary = TemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_tel003"};
     auto writer = simnet::ServerReplicationCsvWriter{{
         .enabled = true,
         .output_directory = temporary.path(),
@@ -308,7 +286,7 @@ TEST_CASE(
 )
 {
     CHECK(simnet::client_replication_csv_schema_version == 2U);
-    auto temporary = TemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_tel003"};
     auto writer = simnet::ClientReplicationCsvWriter{{
         .enabled = true,
         .output_directory = temporary.path(),
@@ -420,7 +398,7 @@ TEST_CASE(
 
 TEST_CASE("replication CSV disabling and failures are explicit", "[telemetry][csv]")
 {
-    auto temporary = TemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_tel003"};
     auto const disabled_directory = temporary.path() / "disabled";
     auto disabled = simnet::ServerReplicationCsvWriter{{
         .enabled = false,
@@ -490,7 +468,7 @@ TEST_CASE("replication CSV disabling and failures are explicit", "[telemetry][cs
 
 TEST_CASE("replication CSV requests a drain at 128 buffered records", "[telemetry][csv]")
 {
-    auto temporary = TemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_tel003"};
     auto writer = simnet::ServerReplicationCsvWriter{{
         .enabled = true,
         .output_directory = temporary.path(),
@@ -522,7 +500,7 @@ TEST_CASE(
     "[telemetry][csv]"
 )
 {
-    auto temporary = TemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_tel003"};
     auto changed_role = simnet::ClientReplicationCsvWriter{{
         .enabled = true,
         .output_directory = temporary.path(),

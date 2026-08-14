@@ -32,6 +32,7 @@ add_executable(SimNetTests
     ${PROJECT_SOURCE_DIR}/app/app_compression_corpus.cpp
     ${PROJECT_SOURCE_DIR}/app/app_compression_dictionary.cpp
     ${PROJECT_SOURCE_DIR}/app/app_evidence.cpp
+    ${PROJECT_SOURCE_DIR}/tests/test_temporary_directory.hpp
 )
 target_sources(SimNetTests
     PRIVATE

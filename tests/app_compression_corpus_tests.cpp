@@ -1,6 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +10,8 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+
+#include "test_temporary_directory.hpp"
 
 import simnet.app_compression_corpus;
 import simnet.core;
@@ -26,33 +27,7 @@ static_assert(std::is_nothrow_destructible_v<simnet::app::CompressionCorpusWrite
 
 namespace
 {
-    class CorpusTemporaryDirectory
-    {
-      public:
-        CorpusTemporaryDirectory()
-        {
-            static auto next_id = std::atomic_uint64_t{};
-            auto const stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-            path_ = std::filesystem::temp_directory_path() /
-                    ("simnet_compression_corpus_" + std::to_string(stamp) + "_" +
-                     std::to_string(next_id.fetch_add(1U)));
-            std::filesystem::create_directories(path_);
-        }
-
-        ~CorpusTemporaryDirectory()
-        {
-            auto error = std::error_code{};
-            std::filesystem::remove_all(path_, error);
-        }
-
-        [[nodiscard]] std::filesystem::path const& path() const noexcept
-        {
-            return path_;
-        }
-
-      private:
-        std::filesystem::path path_{};
-    };
+    using TestTemporaryDirectory = simnet::test::TestTemporaryDirectory;
 
     [[nodiscard]] simnet::EvidenceRunContext corpus_run(std::string run_id = "corpus-run")
     {
@@ -161,7 +136,7 @@ TEST_CASE(
     "[compression][corpus]"
 )
 {
-    auto temporary = CorpusTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_compression_corpus"};
     auto writer = simnet::app::CompressionCorpusWriter{{
         .run = corpus_run("../ignored-while-disabled"),
         .seed = 41001U,
@@ -178,7 +153,7 @@ TEST_CASE(
     "[compression][corpus][pipeline]"
 )
 {
-    auto temporary = CorpusTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_compression_corpus"};
     auto const output_directory = temporary.path() / "capture";
     auto pipeline = simnet::PipelineDefinition{
         .techniques = simnet::PipelineTechniqueFlags::Quantization |
@@ -207,7 +182,7 @@ TEST_CASE(
 
 TEST_CASE("compression corpus destructor finalizes captured output", "[compression][corpus]")
 {
-    auto temporary = CorpusTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_compression_corpus"};
     auto const output_directory = temporary.path() / "capture";
     {
         auto writer = simnet::app::CompressionCorpusWriter{{
@@ -228,7 +203,7 @@ TEST_CASE(
     "[compression][corpus]"
 )
 {
-    auto temporary = CorpusTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_compression_corpus"};
     auto writer = simnet::app::CompressionCorpusWriter{{
         .output_directory = temporary.path() / "capture",
         .run = corpus_run(),
@@ -264,7 +239,7 @@ TEST_CASE(
     "[compression][corpus][failure]"
 )
 {
-    auto temporary = CorpusTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_compression_corpus"};
     auto const output_directory = temporary.path() / "capture";
     std::filesystem::create_directories(output_directory);
     auto const sentinel_path = output_directory / "keep.bin";
@@ -292,7 +267,7 @@ TEST_CASE(
     "[compression][corpus][failure]"
 )
 {
-    auto temporary = CorpusTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_compression_corpus"};
     auto const output_directory = temporary.path() / "capture";
     auto writer = simnet::app::CompressionCorpusWriter{{
         .output_directory = output_directory,
@@ -319,7 +294,7 @@ TEST_CASE(
     "[compression][corpus][failure]"
 )
 {
-    auto temporary = CorpusTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_compression_corpus"};
     auto const output_directory = temporary.path() / "capture";
     auto writer = simnet::app::CompressionCorpusWriter{{
         .output_directory = output_directory,
@@ -342,7 +317,7 @@ TEST_CASE(
     "[compression][corpus][failure]"
 )
 {
-    auto temporary = CorpusTemporaryDirectory{};
+    auto temporary = TestTemporaryDirectory{"simnet_compression_corpus"};
     auto const output_directory = temporary.path() / "capture";
 
     CHECK_THROWS(
