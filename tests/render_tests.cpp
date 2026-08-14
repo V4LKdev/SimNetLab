@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstdint>
+#include <span>
 
 import simnet.core;
 import simnet.render;

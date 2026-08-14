@@ -5,12 +5,14 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <cstddef>
 #include <iterator>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
+#include <utility>
 
 #include "test_temporary_directory.hpp"
 

@@ -2,8 +2,10 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <utility>
+#include <span>
 #include <vector>
 
 import simnet.core;

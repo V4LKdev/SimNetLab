@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <initializer_list>
 #include <cstdint>
 #include <limits>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 import simnet.app_snapshot_delivery;

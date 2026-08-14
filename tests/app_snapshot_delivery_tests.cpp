@@ -1,5 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
+#include <initializer_list>
 #include <vector>
+#include <utility>
 
 #include "../app/server_peer_iteration.hpp"
 

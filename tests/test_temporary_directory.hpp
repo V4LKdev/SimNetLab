@@ -59,9 +59,9 @@ namespace simnet::test
                 {
                     throw std::runtime_error{
                         "Failed to claim temporary directory: " + candidate.string() + " (" +
-                        error.message() + ")"};
+                        error.message() + ")"
+                    };
                 }
-
             }
             throw std::runtime_error{"Failed to claim exclusive temporary directory"};
         }

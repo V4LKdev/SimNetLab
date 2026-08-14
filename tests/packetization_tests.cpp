@@ -1,9 +1,10 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <numeric>
-#include <string>
 #include <vector>
+#include <utility>
 
 #include <catch2/catch_test_macros.hpp>
 
