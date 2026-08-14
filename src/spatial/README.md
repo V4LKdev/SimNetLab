@@ -2,13 +2,10 @@
 
 `simnet_spatial` is a reusable bounded sparse sorted uniform-grid acceleration module.
 
-It stores sorted source indices into external SoA position data and exposes immutable candidate queries for simulation, AoI, and LOD systems. It does not own boid behavior, ECS state, snapshots, telemetry, transport, rendering, or network replication policy.
+It indexes external structure-of-arrays position data without owning those arrays.
 
-The rebuild API is phased: resize when settings change, prepare scratch for capacity and worker count, begin a build, let external workers fill their own entry buffers, then finish with a single-threaded merge, sort, compact, and stats pass.
+Rebuilds are staged. Callers prepare reusable worker-local scratch, run shard builds, then commit only after validation and grid construction succeed. Committed output ordering is deterministic regardless of worker count or shard-completion order.
 
-The phased path sorts merged entries by cell key and source index. Worker count and shard completion
-order do not change the committed grid output.
+Queries are allocation-free and read-only. Radius and AABB boundaries are inclusive, and exact position filtering runs after overlapping-cell enumeration.
 
-The serial helper uses a deterministic counting/bucket build for bounded grids of at most 262,144 cells. It falls back to comparison sorting for larger valid grids. An ID-aware overload orders entries within each cell by `EntityNetId`. The positions-only overload preserves source-index ordering. Both paths stage their result in reusable scratch storage and commit only after validation and construction succeed.
-
-Queries are allocation-free, read-only, and exact-filter positions after enumerating overlapping cells.
+`simnet_spatial` depends on `simnet_core` and owns no gameplay, ECS, AOI policy, rendering, transport, or replication policy.
