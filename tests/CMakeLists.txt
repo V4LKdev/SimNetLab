@@ -17,11 +17,11 @@ add_executable(SimNetTests
         replication_tests.cpp
         telemetry_tests.cpp
         transport_tests.cpp
-        ${PROJECT_SOURCE_DIR}/app/app_common.cpp
-        ${PROJECT_SOURCE_DIR}/app/app_compression_corpus.cpp
-        ${PROJECT_SOURCE_DIR}/app/app_compression_dictionary.cpp
-        ${PROJECT_SOURCE_DIR}/app/app_evidence.cpp
-        ${PROJECT_SOURCE_DIR}/app/app_protocol.cpp
+        ${PROJECT_SOURCE_DIR}/app/common/app_common.cpp
+        ${PROJECT_SOURCE_DIR}/app/server/app_compression_corpus.cpp
+        ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cpp
+        ${PROJECT_SOURCE_DIR}/app/server/app_evidence.cpp
+        ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cpp
 )
 
 target_sources(SimNetTests
@@ -29,12 +29,12 @@ target_sources(SimNetTests
         FILE_SET CXX_MODULES
         BASE_DIRS ${PROJECT_SOURCE_DIR}
         FILES
-        ${PROJECT_SOURCE_DIR}/app/app_common.cppm
-        ${PROJECT_SOURCE_DIR}/app/app_compression_corpus.cppm
-        ${PROJECT_SOURCE_DIR}/app/app_compression_dictionary.cppm
-        ${PROJECT_SOURCE_DIR}/app/app_evidence.cppm
-        ${PROJECT_SOURCE_DIR}/app/app_protocol.cppm
-        ${PROJECT_SOURCE_DIR}/app/app_snapshot_delivery.cppm
+        ${PROJECT_SOURCE_DIR}/app/common/app_common.cppm
+        ${PROJECT_SOURCE_DIR}/app/server/app_compression_corpus.cppm
+        ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cppm
+        ${PROJECT_SOURCE_DIR}/app/server/app_evidence.cppm
+        ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cppm
+        ${PROJECT_SOURCE_DIR}/app/common/app_snapshot_delivery.cppm
 )
 
 target_link_libraries(SimNetTests
