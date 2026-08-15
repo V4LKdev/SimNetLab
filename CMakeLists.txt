@@ -14,10 +14,6 @@ include(SimNetOptions)
 include(SimNetTarget)
 include(CTest)
 
-if (SIMNET_ENABLE_ANALYSIS_TARGETS)
-    include(SimNetAnalysis)
-endif ()
-
 add_subdirectory(src/core)
 add_subdirectory(src/compression)
 add_subdirectory(src/packetization)

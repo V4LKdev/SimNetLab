@@ -103,39 +103,3 @@ reported running percentage is their combined coverage, capped at 100 percent, a
 acceptance threshold still applies. Perf-selected user-space event scope is preserved by the
 underlying event rows and does not replace the Linux collector's process-wide user and system CPU
 accounting.
-
-## Repository checks
-
-Formatting and text-policy checks use tracked maintained files by default:
-
-```sh
-python3 scripts/simnet_format_check.py
-python3 scripts/simnet_text_policy.py
-```
-
-Pass `--allow-unicode PATH` only for a deliberate Unicode fixture. The exception does not allow
-tabs or prose semicolons.
-
-Use Markdown code formatting for literal examples. Add `text-policy: exact` to a source comment
-only when its literal text must retain a semicolon.
-
-Configure compiler-specific advisory builds with compilation databases:
-
-```sh
-cmake --preset gcc-analysis --fresh
-cmake --build --preset gcc-analysis --parallel
-cmake --preset clang-analysis --fresh
-cmake --build --preset clang-analysis --parallel
-```
-
-Run clang-tidy only against the Clang database. Restrict a pass with repeatable `--path` options.
-The runner never applies fixes.
-
-```sh
-python3 scripts/simnet_clang_tidy.py --build-dir build/clang-analysis --path src/core
-python3 scripts/simnet_clang_tidy.py --build-dir build/clang-analysis --path src/pipeline
-```
-
-The analysis presets also provide opt-in `simnet_format_check`, `simnet_text_check`, and Clang-only
-`simnet_clang_tidy` build targets. Extended compiler warnings and clang-tidy remain advisory until
-the maintained modules are clean under GCC and Clang.

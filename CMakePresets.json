@@ -57,7 +57,6 @@
         "BUILD_TESTING": true,
         "SIMNET_WARNINGS_AS_ERRORS": false,
         "SIMNET_ENABLE_STRICT_WARNINGS": true,
-        "SIMNET_ENABLE_ANALYSIS_TARGETS": true,
         "SIMNET_ENABLE_ASAN": false,
         "SIMNET_ENABLE_UBSAN": false,
         "SIMNET_ENABLE_TRACY": false,

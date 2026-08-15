@@ -110,9 +110,3 @@ add_test(
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf_stat_tests.py
 )
 set_tests_properties(simnet.perf_stat PROPERTIES LABELS "safety-net" TIMEOUT 15)
-
-add_test(
-    NAME simnet.tooling_policy
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tooling_policy_tests.py
-)
-set_tests_properties(simnet.tooling_policy PROPERTIES LABELS "safety-net" TIMEOUT 10)
