@@ -1,4 +1,3 @@
-# root
 cmake_minimum_required(VERSION 3.31)
 
 project(
@@ -28,6 +27,7 @@ add_subdirectory(src/game_client)
 add_subdirectory(src/pipeline)
 add_subdirectory(src/transport)
 
+# Optional components
 if (SIMNET_ENABLE_SYNTHETIC)
     add_subdirectory(src/synthetic)
 endif ()
@@ -36,6 +36,7 @@ if (SIMNET_ENABLE_RENDER)
     add_subdirectory(src/render)
 endif ()
 
+# Applications and tests
 add_subdirectory(app)
 
 if (BUILD_TESTING)
