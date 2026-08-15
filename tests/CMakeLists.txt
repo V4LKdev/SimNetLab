@@ -1,5 +1,7 @@
 find_package(Catch2 CONFIG REQUIRED)
+find_package(flecs CONFIG REQUIRED)
 find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
+find_package(zstd CONFIG REQUIRED)
 
 add_executable(SimNetTests
         aoi_tests.cpp
@@ -52,6 +54,8 @@ target_link_libraries(SimNetTests
         simnet_telemetry
         simnet_transport
         Catch2::Catch2WithMain
+        zstd::libzstd
+        $<IF:$<TARGET_EXISTS:flecs::flecs>,flecs::flecs,flecs::flecs_static>
 )
 
 target_compile_definitions(

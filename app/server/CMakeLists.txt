@@ -1,3 +1,5 @@
+find_package(flecs CONFIG REQUIRED)
+
 add_executable(
         Server
         server_main.cpp
@@ -41,6 +43,7 @@ target_link_libraries(
         simnet_spatial
         simnet_telemetry
         simnet_transport
+        $<IF:$<TARGET_EXISTS:flecs::flecs>,flecs::flecs,flecs::flecs_static>
 )
 
 if (SIMNET_ENABLE_SYNTHETIC)
