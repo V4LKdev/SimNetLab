@@ -872,7 +872,7 @@ namespace simnet::app::server_replication
         simnet::Nanoseconds fixed_dt,
         simnet::PipelineDefinition const& pipeline,
         bool collect_representation_quality,
-        simnet::app::CompressionSettings compression,
+        simnet::app::CompressionSettings const& compression,
         simnet::PacketizationSettings const& packetization,
         simnet::SnapshotDeliveryConfig const& delivery_config,
         simnet::SpatialGridSettings const& area_of_interest_grid_settings,
