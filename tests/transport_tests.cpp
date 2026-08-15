@@ -1,10 +1,9 @@
-#include <algorithm>
-#include <array>
 #include <catch2/catch_test_macros.hpp>
+
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <functional>
 #include <thread>
 #include <variant>
@@ -15,99 +14,81 @@ import simnet.transport;
 
 namespace
 {
-    constexpr auto poll_timeout = std::chrono::seconds(2);
+    constexpr auto poll_timeout = std::chrono::seconds{2};
     constexpr auto port_range_min = std::uint16_t{20000U};
     constexpr auto port_range_size = std::uint16_t{20000U};
     constexpr auto max_port_attempts = std::size_t{64U};
 
-    [[nodiscard]] std::uint64_t test_token()
+    [[nodiscard]] std::uint16_t test_port()
     {
         auto const token =
             std::hash<std::thread::id>{}(std::this_thread::get_id()) ^
             static_cast<std::size_t>(std::chrono::steady_clock::now().time_since_epoch().count());
-        return token;
-    }
-
-    [[nodiscard]] std::uint16_t test_port()
-    {
         return static_cast<std::uint16_t>(
-            port_range_min + (test_token() % static_cast<std::uint64_t>(port_range_size))
+            port_range_min + (token % static_cast<std::uint64_t>(port_range_size))
         );
     }
 
-    [[nodiscard]] simnet::SessionIdentity identity(std::uint32_t protocol = 1)
+    [[nodiscard]] simnet::SessionIdentity identity()
     {
         return {
-            .application_protocol_version = protocol,
+            .application_protocol_version = 1U,
             .compatibility_fingerprint = 0x1234U,
             .application_wire_fingerprint = 0x5678U,
             .capabilities = 0U,
         };
     }
 
-    struct TransportTestSettings
-    {
-        std::uint16_t port{test_port()};
-    };
-
-    [[nodiscard]] simnet::TransportServerSettings server_settings(
-        TransportTestSettings const& settings,
-        simnet::SessionIdentity expected_identity = identity()
+    [[nodiscard]] std::uint16_t start_server(
+        simnet::TransportServer& server,
+        simnet::SessionIdentity expected_identity = identity(),
+        simnet::TransportLimits const* limits = nullptr
     )
     {
-        return {
+        auto config = simnet::TransportServerSettings{
             .bind_address = "127.0.0.1",
-            .port = settings.port,
+            .port = test_port(),
             .max_peers = 1U,
             .expected_identity = expected_identity,
         };
-    }
-
-    [[nodiscard]] bool start_server_with_retry(
-        simnet::TransportServer& server,
-        TransportTestSettings& settings,
-        simnet::SessionIdentity const& server_identity,
-        simnet::TransportLimits const* limits = nullptr,
-        std::size_t max_attempts = max_port_attempts
-    )
-    {
-        auto server_config = server_settings(settings, server_identity);
         if (limits != nullptr)
         {
-            server_config.limits = *limits;
+            config.limits = *limits;
         }
-        auto const first_port = settings.port;
-        auto next_port = settings.port;
-        for (std::size_t attempt = 0U; attempt < max_attempts; ++attempt)
+
+        for (auto attempt = std::size_t{}; attempt < max_port_attempts; ++attempt)
         {
-            server_config.port = next_port;
-            auto const result = server.start(server_config);
+            auto const result = server.start(config);
             if (result.ok)
             {
-                settings.port = next_port;
-                return true;
+                return config.port;
             }
-            std::cerr << "server start failed for port " << next_port << ": "
-                      << result.error.message << '\n';
+
             server.stop();
-            if (attempt + 1 >= max_attempts)
+            ++config.port;
+            if (config.port < port_range_min ||
+                config.port >= static_cast<std::uint16_t>(port_range_min + port_range_size))
             {
-                break;
-            }
-            ++next_port;
-            if (next_port < port_range_min || next_port >= port_range_min + port_range_size)
-            {
-                next_port = static_cast<std::uint16_t>(
-                    port_range_min + ((next_port - port_range_min) % port_range_size)
-                );
+                config.port = port_range_min;
             }
         }
-        std::cerr << "server startup exhausted " << max_attempts << " candidates starting at "
-                  << first_port << '\n';
-        return false;
+
+        return 0U;
     }
 
-    struct HandshakeResult
+    [[nodiscard]] simnet::TransportClientSettings client_settings(
+        std::uint16_t port,
+        simnet::SessionIdentity client_identity = identity()
+    )
+    {
+        return {
+            .server_address = "127.0.0.1",
+            .server_port = port,
+            .identity = client_identity,
+        };
+    }
+
+    struct SessionResult
     {
         bool server_ready{};
         bool client_ready{};
@@ -115,589 +96,341 @@ namespace
         simnet::PeerId server_peer{};
     };
 
-    [[nodiscard]] bool poll_once(
+    [[nodiscard]] SessionResult await_session(
         simnet::TransportServer& server,
-        simnet::TransportClient& client,
-        HandshakeResult& result
+        simnet::TransportClient& client
     )
     {
-        auto events = std::vector<simnet::TransportEvent>{};
-        auto poll = server.poll(events, 0);
-        if (!poll.ok)
+        auto result = SessionResult{};
+        auto const deadline = std::chrono::steady_clock::now() + poll_timeout;
+
+        while (std::chrono::steady_clock::now() < deadline)
         {
-            std::cerr << "server poll failed: " << poll.error.message << '\n';
-            return false;
-        }
-        for (auto const& event : events)
-        {
-            if (auto const* ready = std::get_if<simnet::PeerSessionReady>(&event))
-            {
-                result.server_ready = true;
-                result.server_peer = ready->peer;
-            }
-            else if (
-                std::holds_alternative<simnet::PeerDisconnected>(event) ||
-                std::holds_alternative<simnet::TransportErrorEvent>(event)
-            )
+            auto events = std::vector<simnet::TransportEvent>{};
+
+            auto poll = server.poll(events, 0);
+            if (!poll.ok)
             {
                 result.rejected = true;
+                return result;
+            }
+            for (auto const& event : events)
+            {
+                if (auto const* ready = std::get_if<simnet::PeerSessionReady>(&event))
+                {
+                    result.server_ready = true;
+                    result.server_peer = ready->peer;
+                }
+                else if (
+                    std::holds_alternative<simnet::PeerDisconnected>(event) ||
+                    std::holds_alternative<simnet::TransportErrorEvent>(event)
+                )
+                {
+                    result.rejected = true;
+                }
+            }
+
+            events.clear();
+            poll = client.poll(events, 1);
+            if (!poll.ok)
+            {
+                result.rejected = true;
+                return result;
+            }
+            for (auto const& event : events)
+            {
+                if (std::holds_alternative<simnet::PeerSessionReady>(event))
+                {
+                    result.client_ready = true;
+                }
+                else if (
+                    std::holds_alternative<simnet::PeerDisconnected>(event) ||
+                    std::holds_alternative<simnet::TransportErrorEvent>(event)
+                )
+                {
+                    result.rejected = true;
+                }
+            }
+
+            if ((result.server_ready && result.client_ready) || result.rejected)
+            {
+                return result;
             }
         }
 
-        events.clear();
-        poll = client.poll(events, 1);
-        if (!poll.ok)
-        {
-            std::cerr << "client poll failed: " << poll.error.message << '\n';
-            return false;
-        }
-        for (auto const& event : events)
-        {
-            if (std::holds_alternative<simnet::PeerSessionReady>(event))
-            {
-                result.client_ready = true;
-            }
-            else if (
-                std::holds_alternative<simnet::PeerDisconnected>(event) ||
-                std::holds_alternative<simnet::TransportErrorEvent>(event)
-            )
-            {
-                result.rejected = true;
-            }
-        }
-        return true;
+        return result;
     }
 
-    [[nodiscard]] bool poll_until(
+    [[nodiscard]] bool await_server_packet(
         simnet::TransportServer& server,
         simnet::TransportClient& client,
-        HandshakeResult& result,
-        bool want_ready
+        simnet::PeerId peer,
+        simnet::TransportLane lane,
+        simnet::TransportDelivery delivery,
+        simnet::ByteSpan expected
     )
     {
         auto const deadline = std::chrono::steady_clock::now() + poll_timeout;
         while (std::chrono::steady_clock::now() < deadline)
         {
-            if (!poll_once(server, client, result))
+            auto events = std::vector<simnet::TransportEvent>{};
+            static_cast<void>(client.poll(events, 0));
+            events.clear();
+
+            auto const poll = server.poll(events, 10);
+            if (!poll.ok)
             {
                 return false;
             }
-            if (want_ready && result.server_ready && result.client_ready)
+
+            for (auto const& event : events)
             {
-                return true;
-            }
-            if (!want_ready && result.rejected)
-            {
-                return true;
+                if (auto const* packet = std::get_if<simnet::ReceivedPacket>(&event))
+                {
+                    if (packet->peer == peer && packet->lane == lane &&
+                        packet->delivery == delivery &&
+                        packet->payload == std::vector<simnet::Byte>{expected.begin(), expected.end()})
+                    {
+                        return true;
+                    }
+                }
             }
         }
         return false;
     }
 
-    [[nodiscard]] simnet::TransportClientSettings client_settings(
-        TransportTestSettings const& settings,
-        simnet::SessionIdentity client_identity = identity()
-    )
-    {
-        return {
-            .server_address = "127.0.0.1",
-            .server_port = settings.port,
-            .identity = client_identity,
-        };
-    }
-
-    [[nodiscard]] bool matching_session_test(TransportTestSettings const& settings)
+    [[nodiscard]] bool session_is_rejected(simnet::SessionIdentity client_identity)
     {
         auto server = simnet::TransportServer{};
         auto client = simnet::TransportClient{};
-        auto limits = simnet::TransportLimits{
-            .max_payload_bytes = 64U,
-            .size_policy = simnet::SendSizePolicy::EnforceLimit,
-        };
 
-        auto settings_copy = settings;
-        auto result = simnet::TransportResult{};
-        auto const started = start_server_with_retry(server, settings_copy, identity(), &limits);
-        if (!started)
+        auto const port = start_server(server);
+        if (port == 0U)
         {
-            std::cerr << "server start failed on all candidate ports\n";
             return false;
         }
 
-        auto client_config = client_settings(settings_copy);
-        client_config.limits = limits;
-        result = client.connect(client_config);
-        if (!result.ok)
+        auto const connected = client.connect(client_settings(port, client_identity));
+        if (!connected.ok)
         {
-            std::cerr << "client connect failed: " << result.error.message << '\n';
             server.stop();
             return false;
         }
 
-        auto handshake = HandshakeResult{};
-        if (!poll_until(server, client, handshake, true))
-        {
-            std::cerr << "matching session did not become ready\n";
-            return false;
-        }
-
-        auto payload = std::array<simnet::Byte, 128>{};
-        result = server.send({
-            .peer = handshake.server_peer,
-            .lane = simnet::TransportLane::Lane1,
-            .delivery = simnet::TransportDelivery::ReliableSequenced,
-            .payload = payload,
-        });
-        if (result.ok || result.error.code != simnet::TransportErrorCode::PayloadTooLarge)
-        {
-            std::cerr << "oversize send did not fail with PayloadTooLarge\n";
-            return false;
-        }
-
-        auto small_payload = std::array<simnet::Byte, 4>{};
-        result = client.send(
-            static_cast<simnet::TransportLane>(255U),
-            simnet::TransportDelivery::ReliableSequenced,
-            small_payload
-        );
-        if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidLane)
-        {
-            std::cerr << "invalid lane send was not rejected\n";
-            return false;
-        }
-        result = client.send(
-            simnet::TransportLane::Lane1,
-            static_cast<simnet::TransportDelivery>(255U),
-            small_payload
-        );
-        if (result.ok || result.error.code != simnet::TransportErrorCode::InvalidDelivery)
-        {
-            std::cerr << "invalid delivery send was not rejected\n";
-            return false;
-        }
-
-        for (auto lane : {
-                 simnet::TransportLane::Lane0,
-                 simnet::TransportLane::Lane1,
-                 simnet::TransportLane::Lane2,
-             })
-        {
-            auto const sent =
-                client.send(lane, simnet::TransportDelivery::ReliableSequenced, small_payload);
-            if (!sent.ok)
-            {
-                std::cerr << "generic client payload send failed: " << sent.error.message << '\n';
-                return false;
-            }
-            auto const service_deadline = std::chrono::steady_clock::now() + poll_timeout;
-            auto seen = false;
-            while (!seen && std::chrono::steady_clock::now() < service_deadline)
-            {
-                auto events = std::vector<simnet::TransportEvent>{};
-                static_cast<void>(client.poll(events, 0));
-                events.clear();
-                auto const poll = server.poll(events, 10);
-                if (!poll.ok)
-                {
-                    return false;
-                }
-                for (auto const& event : events)
-                {
-                    if (auto const* packet = std::get_if<simnet::ReceivedPacket>(&event))
-                    {
-                        seen = packet->peer == handshake.server_peer && packet->lane == lane &&
-                               packet->payload == std::vector<simnet::Byte>{
-                                                      small_payload.begin(),
-                                                      small_payload.end()
-                                                  };
-                    }
-                }
-            }
-            if (!seen)
-            {
-                std::cerr << "generic client payload was not received intact\n";
-                return false;
-            }
-        }
-
-        auto const unreliable_sent = client.send(
-            simnet::TransportLane::Lane1,
-            simnet::TransportDelivery::UnreliableSequenced,
-            small_payload
-        );
-        if (!unreliable_sent.ok)
-        {
-            std::cerr << "unreliable sequenced send failed: " << unreliable_sent.error.message
-                      << '\n';
-            return false;
-        }
-        auto unreliable_seen = false;
-        auto const unreliable_deadline = std::chrono::steady_clock::now() + poll_timeout;
-        while (!unreliable_seen && std::chrono::steady_clock::now() < unreliable_deadline)
-        {
-            auto events = std::vector<simnet::TransportEvent>{};
-            static_cast<void>(client.poll(events, 0));
-            events.clear();
-            auto const poll = server.poll(events, 10);
-            if (!poll.ok)
-            {
-                return false;
-            }
-            for (auto const& event : events)
-            {
-                if (auto const* packet = std::get_if<simnet::ReceivedPacket>(&event))
-                {
-                    unreliable_seen =
-                        packet->lane == simnet::TransportLane::Lane1 &&
-                        packet->delivery == simnet::TransportDelivery::UnreliableSequenced &&
-                        packet->payload ==
-                            std::vector<simnet::Byte>{small_payload.begin(), small_payload.end()};
-                }
-            }
-        }
-        if (!unreliable_seen)
-        {
-            std::cerr << "unreliable sequenced payload was not observed with zero ENet flags\n";
-            return false;
-        }
-
-        auto const sent = server.send({
-            .peer = handshake.server_peer,
-            .lane = simnet::TransportLane::Lane0,
-            .delivery = simnet::TransportDelivery::ReliableSequenced,
-            .payload = small_payload,
-        });
-        if (!sent.ok)
-        {
-            return false;
-        }
-        auto server_payload_seen = false;
-        auto const server_deadline = std::chrono::steady_clock::now() + poll_timeout;
-        while (!server_payload_seen && std::chrono::steady_clock::now() < server_deadline)
-        {
-            auto events = std::vector<simnet::TransportEvent>{};
-            static_cast<void>(server.poll(events, 0));
-            events.clear();
-            auto const poll = client.poll(events, 10);
-            if (!poll.ok)
-            {
-                return false;
-            }
-            for (auto const& event : events)
-            {
-                if (auto const* packet = std::get_if<simnet::ReceivedPacket>(&event))
-                {
-                    server_payload_seen =
-                        packet->lane == simnet::TransportLane::Lane0 &&
-                        packet->payload ==
-                            std::vector<simnet::Byte>{small_payload.begin(), small_payload.end()};
-                }
-            }
-        }
-        if (!server_payload_seen)
-        {
-            return false;
-        }
-
+        auto const session = await_session(server, client);
         client.disconnect(simnet::DisconnectCode::None);
         server.stop();
-        return true;
+
+        return session.rejected && !session.server_ready && !session.client_ready;
     }
+}
 
-    [[nodiscard]] bool mismatched_session_test(
-        TransportTestSettings const& settings,
-        simnet::SessionIdentity mismatched_identity = identity(2U)
-    )
-    {
-        auto server = simnet::TransportServer{};
-        auto client = simnet::TransportClient{};
-        auto settings_copy = settings;
-        auto const started = start_server_with_retry(server, settings_copy, identity());
-        auto result = simnet::TransportResult{};
-        if (!started)
-        {
-            std::cerr << "server start failed on all candidate ports\n";
-            return false;
-        }
+TEST_CASE("ENet establishes a matching session and preserves delivery semantics", "[transport][enet]")
+{
+    auto const limits = simnet::TransportLimits{
+        .max_payload_bytes = 64U,
+        .size_policy = simnet::SendSizePolicy::EnforceLimit,
+    };
 
-        result = client.connect(client_settings(settings_copy, mismatched_identity));
-        if (!result.ok)
-        {
-            std::cerr << "client connect failed: " << result.error.message << '\n';
-            server.stop();
-            return false;
-        }
+    auto server = simnet::TransportServer{};
+    auto client = simnet::TransportClient{};
 
-        auto handshake = HandshakeResult{};
-        if (!poll_until(server, client, handshake, false))
-        {
-            std::cerr << "mismatched session did not reject\n";
-            return false;
-        }
-        if (handshake.server_ready || handshake.client_ready)
-        {
-            std::cerr << "mismatched session became ready\n";
-            return false;
-        }
+    auto const port = start_server(server, identity(), &limits);
+    REQUIRE(port != 0U);
 
-        client.disconnect(simnet::DisconnectCode::None);
-        server.stop();
-        return true;
-    }
+    auto config = client_settings(port);
+    config.limits = limits;
+    REQUIRE(client.connect(config).ok);
 
-    [[nodiscard]] bool reconnect_test(TransportTestSettings const& settings)
-    {
-        auto server = simnet::TransportServer{};
-        auto client = simnet::TransportClient{};
-        auto settings_copy = settings;
-        auto result = simnet::TransportResult{};
-        auto const started = start_server_with_retry(server, settings_copy, identity());
-        if (!started)
-        {
-            std::cerr << "reconnect server start failed on all candidate ports\n";
-            return false;
-        }
+    auto const session = await_session(server, client);
+    REQUIRE(session.server_ready);
+    REQUIRE(session.client_ready);
+    REQUIRE_FALSE(session.rejected);
 
-        result = client.connect(client_settings(settings_copy));
-        if (!result.ok)
-        {
-            std::cerr << "initial reconnect client connect failed: " << result.error.message
-                      << '\n';
-            server.stop();
-            return false;
-        }
-        auto first = HandshakeResult{};
-        if (!poll_until(server, client, first, true))
-        {
-            std::cerr << "initial reconnect session did not become ready\n";
-            return false;
-        }
+    auto const payload = std::array{
+        simnet::Byte{0x10U},
+        simnet::Byte{0x20U},
+        simnet::Byte{0x30U},
+        simnet::Byte{0x40U},
+    };
 
-        client.disconnect(simnet::DisconnectCode::None);
-        auto disconnected = false;
-        auto const disconnect_deadline = std::chrono::steady_clock::now() + poll_timeout;
-        while (!disconnected && std::chrono::steady_clock::now() < disconnect_deadline)
-        {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto const poll = server.poll(events, 10);
-            if (!poll.ok)
-            {
-                std::cerr << "reconnect disconnect poll failed: " << poll.error.message << '\n';
-                return false;
-            }
-            disconnected = std::ranges::any_of(
-                events,
-                [](simnet::TransportEvent const& event)
-                {
-                    return std::holds_alternative<simnet::PeerDisconnected>(event);
-                }
-            );
-        }
-        if (!disconnected)
-        {
-            std::cerr << "server did not observe reconnect disconnect\n";
-            return false;
-        }
-
-        result = client.connect(client_settings(settings_copy));
-        if (!result.ok)
-        {
-            std::cerr << "second reconnect client connect failed: " << result.error.message << '\n';
-            server.stop();
-            return false;
-        }
-        auto second = HandshakeResult{};
-        if (!poll_until(server, client, second, true))
-        {
-            std::cerr << "second reconnect session did not become ready\n";
-            return false;
-        }
-        if (second.server_peer <= first.server_peer)
-        {
-            std::cerr << "reconnected session did not receive a fresh peer identity\n";
-            return false;
-        }
-
-        client.disconnect(simnet::DisconnectCode::None);
-        server.stop();
-        return true;
-    }
-
-    [[nodiscard]] bool receive_limit_test(TransportTestSettings const& settings)
-    {
-        auto server = simnet::TransportServer{};
-        auto client = simnet::TransportClient{};
-        auto settings_copy = settings;
-        auto limits = simnet::TransportLimits{
-            .max_payload_bytes = 64U,
-            .size_policy = simnet::SendSizePolicy::EnforceLimit,
-        };
-        auto result = simnet::TransportResult{};
-        auto const started = start_server_with_retry(server, settings_copy, identity(), &limits);
-        if (!started)
-        {
-            std::cerr << "receive-limit server start failed on all candidate ports\n";
-            return false;
-        }
-
-        auto client_config = client_settings(settings_copy);
-        client_config.limits = {
-            .max_payload_bytes = 64U,
-            .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
-        };
-        result = client.connect(client_config);
-        if (!result.ok)
-        {
-            std::cerr << "receive-limit client connect failed: " << result.error.message << '\n';
-            return false;
-        }
-        auto handshake = HandshakeResult{};
-        if (!poll_until(server, client, handshake, true))
-        {
-            std::cerr << "receive-limit session did not become ready\n";
-            return false;
-        }
-
-        auto payload = std::array<simnet::Byte, 128>{};
-        result = client.send(
-            simnet::TransportLane::Lane1,
+    REQUIRE(
+        client.send(
+            simnet::TransportLane::Lane0,
             simnet::TransportDelivery::ReliableSequenced,
             payload
-        );
-        if (!result.ok)
-        {
-            std::cerr << "receive-limit sender unexpectedly rejected payload: "
-                      << result.error.message << '\n';
-            return false;
-        }
+        )
+            .ok
+    );
+    CHECK(
+        await_server_packet(
+            server,
+            client,
+            session.server_peer,
+            simnet::TransportLane::Lane0,
+            simnet::TransportDelivery::ReliableSequenced,
+            payload
+        )
+    );
 
-        auto rejected = false;
-        auto const deadline = std::chrono::steady_clock::now() + poll_timeout;
-        while (!rejected && std::chrono::steady_clock::now() < deadline)
-        {
-            auto events = std::vector<simnet::TransportEvent>{};
-            auto poll = client.poll(events, 0);
-            if (!poll.ok)
-            {
-                std::cerr << "receive-limit client service failed: " << poll.error.message << '\n';
-                return false;
-            }
-            events.clear();
-            poll = server.poll(events, 10);
-            if (!poll.ok)
-            {
-                rejected = poll.error.code == simnet::TransportErrorCode::PayloadTooLarge;
-            }
-            else
-            {
-                for (auto const& event : events)
-                {
-                    if (std::holds_alternative<simnet::ReceivedPacket>(event))
-                    {
-                        std::cerr << "oversized receive escaped transport limit\n";
-                        return false;
-                    }
-                    rejected = rejected ||
-                               std::holds_alternative<simnet::TransportErrorEvent>(event) ||
-                               std::holds_alternative<simnet::PeerDisconnected>(event);
-                }
-            }
-        }
-        if (!rejected || server.stats().oversize_drops == 0)
-        {
-            std::cerr << "oversized receive was not rejected and counted\n";
-            return false;
-        }
-
-        client.disconnect(simnet::DisconnectCode::None);
-        server.stop();
-        return true;
-    }
-
-    [[nodiscard]] bool unreliable_fragment_rejection_test(TransportTestSettings const& settings)
-    {
-        auto server = simnet::TransportServer{};
-        auto client = simnet::TransportClient{};
-        auto limits = simnet::TransportLimits{
-            .max_payload_bytes = 4096U,
-            .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
-        };
-        auto settings_copy = settings;
-        auto result = simnet::TransportResult{};
-        auto const started = start_server_with_retry(server, settings_copy, identity(), &limits);
-        if (!started)
-        {
-            return false;
-        }
-        auto client_config = client_settings(settings_copy);
-        client_config.limits = limits;
-        result = client.connect(client_config);
-        if (!result.ok)
-        {
-            return false;
-        }
-        auto handshake = HandshakeResult{};
-        if (!poll_until(server, client, handshake, true))
-        {
-            return false;
-        }
-
-        auto payload = std::array<simnet::Byte, 2000U>{};
-        result = client.send(
+    REQUIRE(
+        client.send(
             simnet::TransportLane::Lane1,
             simnet::TransportDelivery::UnreliableSequenced,
             payload
-        );
-        if (result.ok || result.error.code != simnet::TransportErrorCode::PayloadTooLarge)
-        {
-            return false;
-        }
-        result = client.send(
+        )
+            .ok
+    );
+    CHECK(
+        await_server_packet(
+            server,
+            client,
+            session.server_peer,
+            simnet::TransportLane::Lane1,
+            simnet::TransportDelivery::UnreliableSequenced,
+            payload
+        )
+    );
+
+    auto const oversized = std::array<simnet::Byte, 128U>{};
+    auto const rejected = client.send(
+        simnet::TransportLane::Lane1,
+        simnet::TransportDelivery::ReliableSequenced,
+        oversized
+    );
+    CHECK_FALSE(rejected.ok);
+    CHECK(rejected.error.code == simnet::TransportErrorCode::PayloadTooLarge);
+
+    client.disconnect(simnet::DisconnectCode::None);
+    server.stop();
+}
+
+TEST_CASE("ENet rejects incompatible session identities before readiness", "[transport][enet][identity]")
+{
+    auto protocol_mismatch = identity();
+    ++protocol_mismatch.application_protocol_version;
+    CHECK(session_is_rejected(protocol_mismatch));
+
+    auto compatibility_mismatch = identity();
+    compatibility_mismatch.compatibility_fingerprint ^= 1U;
+    CHECK(session_is_rejected(compatibility_mismatch));
+
+    auto wire_mismatch = identity();
+    wire_mismatch.application_wire_fingerprint ^= 1U;
+    CHECK(session_is_rejected(wire_mismatch));
+}
+
+TEST_CASE("ENet enforces the receiver payload limit", "[transport][enet][limits]")
+{
+    auto const server_limits = simnet::TransportLimits{
+        .max_payload_bytes = 64U,
+        .size_policy = simnet::SendSizePolicy::EnforceLimit,
+    };
+    auto const client_limits = simnet::TransportLimits{
+        .max_payload_bytes = 64U,
+        .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
+    };
+
+    auto server = simnet::TransportServer{};
+    auto client = simnet::TransportClient{};
+
+    auto const port = start_server(server, identity(), &server_limits);
+    REQUIRE(port != 0U);
+
+    auto config = client_settings(port);
+    config.limits = client_limits;
+    REQUIRE(client.connect(config).ok);
+
+    auto const session = await_session(server, client);
+    REQUIRE(session.server_ready);
+    REQUIRE(session.client_ready);
+
+    auto const payload = std::array<simnet::Byte, 128U>{};
+    REQUIRE(
+        client.send(
             simnet::TransportLane::Lane1,
             simnet::TransportDelivery::ReliableSequenced,
             payload
-        );
-        client.disconnect(simnet::DisconnectCode::None);
-        server.stop();
-        return result.ok;
+        )
+            .ok
+    );
+
+    auto rejected = false;
+    auto received = false;
+    auto const deadline = std::chrono::steady_clock::now() + poll_timeout;
+    while (!rejected && std::chrono::steady_clock::now() < deadline)
+    {
+        auto events = std::vector<simnet::TransportEvent>{};
+        static_cast<void>(client.poll(events, 0));
+        events.clear();
+
+        auto const poll = server.poll(events, 10);
+        if (!poll.ok)
+        {
+            rejected = poll.error.code == simnet::TransportErrorCode::PayloadTooLarge;
+            continue;
+        }
+
+        for (auto const& event : events)
+        {
+            received = received || std::holds_alternative<simnet::ReceivedPacket>(event);
+            rejected = rejected ||
+                       std::holds_alternative<simnet::TransportErrorEvent>(event) ||
+                       std::holds_alternative<simnet::PeerDisconnected>(event);
+        }
     }
 
-} // namespace
+    CHECK_FALSE(received);
+    CHECK(rejected);
+    CHECK(server.stats().oversize_drops > 0U);
 
-TEST_CASE("ENet session handshake and transport contract", "[transport][enet][integration]")
-{
-    auto const enet = TransportTestSettings{};
-    REQUIRE(matching_session_test(enet));
-}
-
-TEST_CASE("ENet rejects incompatible session identities", "[transport][enet][integration]")
-{
-    auto const enet = TransportTestSettings{};
-    REQUIRE(mismatched_session_test(enet));
-
-    auto fingerprint_mismatch = identity();
-    fingerprint_mismatch.compatibility_fingerprint ^= 1U;
-    REQUIRE(mismatched_session_test(enet, fingerprint_mismatch));
-
-    auto signature_mismatch = identity();
-    signature_mismatch.application_wire_fingerprint ^= 1U;
-    REQUIRE(mismatched_session_test(enet, signature_mismatch));
-}
-
-TEST_CASE("ENet disconnects and reconnects", "[transport][enet][integration][peer]")
-{
-    REQUIRE(reconnect_test(TransportTestSettings{}));
-}
-
-TEST_CASE("ENet enforces receive limits", "[transport][enet][integration]")
-{
-    REQUIRE(receive_limit_test(TransportTestSettings{}));
+    client.disconnect(simnet::DisconnectCode::None);
+    server.stop();
 }
 
 TEST_CASE(
-    "ENet unreliable sequenced delivery rejects implicit fragmentation",
-    "[transport][enet][integration]"
+    "ENet unreliable sequenced delivery rejects implicit backend fragmentation",
+    "[transport][enet][fragmentation]"
 )
 {
-    REQUIRE(unreliable_fragment_rejection_test(TransportTestSettings{}));
+    auto const limits = simnet::TransportLimits{
+        .max_payload_bytes = 4096U,
+        .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
+    };
+
+    auto server = simnet::TransportServer{};
+    auto client = simnet::TransportClient{};
+
+    auto const port = start_server(server, identity(), &limits);
+    REQUIRE(port != 0U);
+
+    auto config = client_settings(port);
+    config.limits = limits;
+    REQUIRE(client.connect(config).ok);
+
+    auto const session = await_session(server, client);
+    REQUIRE(session.server_ready);
+    REQUIRE(session.client_ready);
+
+    auto const payload = std::array<simnet::Byte, 2000U>{};
+
+    auto const unreliable = client.send(
+        simnet::TransportLane::Lane1,
+        simnet::TransportDelivery::UnreliableSequenced,
+        payload
+    );
+    CHECK_FALSE(unreliable.ok);
+    CHECK(unreliable.error.code == simnet::TransportErrorCode::PayloadTooLarge);
+
+    CHECK(
+        client.send(
+            simnet::TransportLane::Lane1,
+            simnet::TransportDelivery::ReliableSequenced,
+            payload
+        )
+            .ok
+    );
+
+    client.disconnect(simnet::DisconnectCode::None);
+    server.stop();
 }

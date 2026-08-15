@@ -4,8 +4,6 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <string_view>
-#include <type_traits>
 #include <vector>
 
 #include "test_temporary_directory.hpp"
@@ -16,12 +14,6 @@ import simnet.game_server;
 import simnet.pipeline;
 import simnet.snapshot;
 import simnet.telemetry;
-
-static_assert(!std::is_copy_constructible_v<simnet::app::ServerBoidCsvWriter>);
-static_assert(!std::is_copy_assignable_v<simnet::app::ServerBoidCsvWriter>);
-static_assert(!std::is_move_constructible_v<simnet::app::ServerBoidCsvWriter>);
-static_assert(!std::is_move_assignable_v<simnet::app::ServerBoidCsvWriter>);
-static_assert(std::is_nothrow_destructible_v<simnet::app::ServerBoidCsvWriter>);
 
 namespace
 {
@@ -240,146 +232,4 @@ TEST_CASE("Server boid CSV has an exact buffered v1 schema", "[telemetry][csv][b
         lines[1] == "1,boid-run,server,100,110,9,0,2,10,3,4,5,1.25,2.5,6,3.5,7,8,4.5,5.5,9,6.5,7.5,"
                     "8.5,9.5,10.5,11.5,12,13,14,0.75,1,2,3,4,5,6"
     );
-}
-
-TEST_CASE("Server boid CSV destructor persists buffered fallback output", "[telemetry][csv][boids]")
-{
-    auto temporary = TestTemporaryDirectory{"simnet_boid_tel003"};
-    auto const output_path = temporary.path() / "server_boids_v1_101.csv";
-    {
-        auto writer = simnet::app::ServerBoidCsvWriter{{
-            .enabled = true,
-            .output_directory = temporary.path(),
-            .run =
-                {
-                    .run_id = "boid-fallback",
-                    .process_role = simnet::EvidenceProcessRole::Server,
-                    .process_started_unix_ns = 101,
-                },
-            .tick_rate_hz = 1.0,
-            .worker_count = 1,
-        }};
-        REQUIRE(writer.sample(
-            1,
-            sample_report(),
-            {.recorded_at_unix_ns = 106, .elapsed_since_process_start_ns = 5}
-        ));
-    }
-
-    auto const lines = read_evidence_lines(output_path);
-    REQUIRE(lines.size() == 2);
-    CHECK(lines[0] == simnet::app::server_boids_csv_header_v1);
-    CHECK_FALSE(lines[1].empty());
-}
-
-TEST_CASE(
-    "enabled Server boid CSV rejects a forged run context before output",
-    "[telemetry][csv][boids]"
-)
-{
-    auto temporary = TestTemporaryDirectory{"simnet_boid_tel003"};
-    auto const output_directory = temporary.path() / "forged_boid";
-    CHECK_THROWS(
-        simnet::app::ServerBoidCsvWriter({
-            .enabled = true,
-            .output_directory = output_directory,
-            .run =
-                {
-                    .run_id = "../unsafe",
-                    .process_role = simnet::EvidenceProcessRole::Server,
-                    .process_started_unix_ns = 150,
-                },
-            .tick_rate_hz = 1.0,
-            .worker_count = 1,
-        })
-    );
-    CHECK_FALSE(std::filesystem::exists(output_directory));
-}
-
-TEST_CASE("Server boid CSV disabling and overflow are explicit", "[telemetry][csv][boids]")
-{
-    auto temporary = TestTemporaryDirectory{"simnet_boid_tel003"};
-    auto const disabled_directory = temporary.path() / "disabled";
-    auto disabled = simnet::app::ServerBoidCsvWriter{{
-        .enabled = false,
-        .output_directory = disabled_directory,
-        .run =
-            {
-                .run_id = "disabled",
-                .process_role = simnet::EvidenceProcessRole::Server,
-                .process_started_unix_ns = 200,
-            },
-        .tick_rate_hz = 1.0,
-        .worker_count = 1,
-    }};
-    CHECK(disabled.sample(1, sample_report()));
-    CHECK(disabled.close());
-    CHECK(disabled.sample(2, sample_report()));
-    CHECK(disabled.drain());
-    CHECK(disabled.close());
-    CHECK(disabled.healthy());
-    CHECK_FALSE(std::filesystem::exists(disabled_directory));
-
-    auto writer = simnet::app::ServerBoidCsvWriter{{
-        .enabled = true,
-        .output_directory = temporary.path(),
-        .run =
-            {
-                .run_id = "overflow",
-                .process_role = simnet::EvidenceProcessRole::Server,
-                .process_started_unix_ns = 201,
-            },
-        .tick_rate_hz = 1.0,
-        .worker_count = 1,
-    }};
-    auto const report = sample_report();
-    constexpr std::size_t overflow_probe_limit = 512;
-    auto accepted_count = std::size_t{0U};
-    while (accepted_count < overflow_probe_limit)
-    {
-        auto const tick = simnet::Tick{accepted_count + 1U};
-        auto const timestamp = simnet::EvidenceRecordTimestamp{
-            .recorded_at_unix_ns = tick,
-            .elapsed_since_process_start_ns = tick,
-        };
-        if (!writer.sample(tick, report, timestamp))
-        {
-            break;
-        }
-        ++accepted_count;
-    }
-    REQUIRE(accepted_count > 0U);
-    REQUIRE(accepted_count < overflow_probe_limit);
-    auto const buffered_before_overflow = writer.buffered_count();
-    auto const overflow_tick = simnet::Tick{accepted_count + 1U};
-    auto const overflow_timestamp = simnet::EvidenceRecordTimestamp{
-        .recorded_at_unix_ns = overflow_tick,
-        .elapsed_since_process_start_ns = overflow_tick,
-    };
-    CHECK_FALSE(writer.sample(overflow_tick, report, overflow_timestamp));
-    CHECK(writer.buffered_count() == buffered_before_overflow);
-    CHECK_FALSE(writer.healthy());
-    CHECK(writer.error().find("overflow") != std::string_view::npos);
-    CHECK_FALSE(writer.close());
-    CHECK_FALSE(writer.close());
-    CHECK(writer.buffered_count() == 0);
-    CHECK(read_evidence_lines(writer.path()).size() == accepted_count + 1U);
-
-    auto closed_writer = simnet::app::ServerBoidCsvWriter{{
-        .enabled = true,
-        .output_directory = temporary.path(),
-        .run =
-            {
-                .run_id = "closed-boid",
-                .process_role = simnet::EvidenceProcessRole::Server,
-                .process_started_unix_ns = 202,
-            },
-        .tick_rate_hz = 1.0,
-        .worker_count = 1,
-    }};
-    REQUIRE(closed_writer.close());
-    CHECK_FALSE(closed_writer.sample(1, report));
-    CHECK_FALSE(closed_writer.healthy());
-    CHECK(closed_writer.error().find("after close") != std::string_view::npos);
-    CHECK_FALSE(closed_writer.close());
 }

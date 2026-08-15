@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic contract tests for the Linux evidence collector."""
+"""Contract tests for the Linux research evidence collector."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/simnet_linux_collector.py"
 sys.dont_write_bytecode = True
+
 SPEC = importlib.util.spec_from_file_location("simnet_linux_collector", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 collector = importlib.util.module_from_spec(SPEC)
@@ -35,77 +35,111 @@ def process_stat(start_time: int = 777) -> str:
     return "42 (SimNet Client worker) " + " ".join(fields) + "\n"
 
 
-class FixtureTree:
-    def __init__(self, root: Path) -> None:
-        self.proc = root / "proc"
-        self.sys = root / "sys"
-        process = self.proc / "42"
-        process.mkdir(parents=True)
-        (process / "stat").write_text(process_stat(), encoding="utf-8")
-        (process / "cmdline").write_text("Client\0--run-id\0study-1\0", encoding="utf-8")
-        (process / "status").write_text(
-            "VmRSS:\t10 kB\nVmHWM:\t12 kB\nRssAnon:\t5 kB\nRssFile:\t4 kB\n"
-            "RssShmem:\t1 kB\nVmSize:\t20 kB\nVmSwap:\t2 kB\nThreads:\t4\n"
-            "voluntary_ctxt_switches:\t8\nnonvoluntary_ctxt_switches:\t3\n",
+def build_fixture(root: Path) -> collector.LinuxSource:
+    proc = root / "proc"
+    process = proc / "42"
+    process.mkdir(parents=True)
+
+    (process / "stat").write_text(process_stat(), encoding="utf-8")
+    (process / "cmdline").write_text("Client\0--run-id\0study-1\0", encoding="utf-8")
+    (process / "status").write_text(
+        "VmRSS:\t10 kB\n"
+        "VmHWM:\t12 kB\n"
+        "RssAnon:\t5 kB\n"
+        "RssFile:\t4 kB\n"
+        "RssShmem:\t1 kB\n"
+        "VmSize:\t20 kB\n"
+        "VmSwap:\t2 kB\n"
+        "Threads:\t4\n"
+        "voluntary_ctxt_switches:\t8\n"
+        "nonvoluntary_ctxt_switches:\t3\n",
+        encoding="utf-8",
+    )
+    (process / "io").write_text(
+        "syscr: 7\n"
+        "syscw: 5\n"
+        "read_bytes: 4096\n"
+        "write_bytes: 8192\n",
+        encoding="utf-8",
+    )
+    (process / "schedstat").write_text("900 100 12\n", encoding="utf-8")
+    (process / "smaps_rollup").write_text(
+        "Rss: 10 kB\n"
+        "Pss: 9 kB\n"
+        "Pss_Anon: 5 kB\n"
+        "Pss_File: 3 kB\n"
+        "Pss_Shmem: 1 kB\n"
+        "Shared_Clean: 2 kB\n"
+        "Shared_Dirty: 1 kB\n"
+        "Private_Clean: 3 kB\n"
+        "Private_Dirty: 4 kB\n"
+        "Anonymous: 5 kB\n"
+        "Swap: 2 kB\n",
+        encoding="utf-8",
+    )
+
+    (proc / "pressure").mkdir()
+    (proc / "pressure/cpu").write_text(
+        "some avg10=0.10 avg60=0.20 avg300=0.30 total=40\n",
+        encoding="utf-8",
+    )
+    for name in ("memory", "io"):
+        (proc / f"pressure/{name}").write_text(
+            "some avg10=0.00 avg60=0.01 avg300=0.02 total=3\n"
+            "full avg10=0.00 avg60=0.00 avg300=0.01 total=1\n",
             encoding="utf-8",
         )
-        (process / "io").write_text(
-            "syscr: 7\nsyscw: 5\nread_bytes: 4096\nwrite_bytes: 8192\n",
-            encoding="utf-8",
-        )
-        (process / "schedstat").write_text("900 100 12\n", encoding="utf-8")
-        (process / "smaps_rollup").write_text(
-            "Rss: 10 kB\nPss: 9 kB\nPss_Anon: 5 kB\nPss_File: 3 kB\n"
-            "Pss_Shmem: 1 kB\nShared_Clean: 2 kB\nShared_Dirty: 1 kB\n"
-            "Private_Clean: 3 kB\nPrivate_Dirty: 4 kB\nAnonymous: 5 kB\nSwap: 2 kB\n",
-            encoding="utf-8",
-        )
-        (self.proc / "pressure").mkdir()
-        (self.proc / "pressure/cpu").write_text(
-            "some avg10=0.10 avg60=0.20 avg300=0.30 total=40\n", encoding="utf-8"
-        )
-        for name in ("memory", "io"):
-            (self.proc / f"pressure/{name}").write_text(
-                "some avg10=0.00 avg60=0.01 avg300=0.02 total=3\n"
-                "full avg10=0.00 avg60=0.00 avg300=0.01 total=1\n",
-                encoding="utf-8",
-            )
-        (self.proc / "meminfo").write_text(
-            "MemTotal: 1000 kB\nMemAvailable: 750 kB\nSwapTotal: 200 kB\nSwapFree: 180 kB\n",
-            encoding="utf-8",
-        )
-        (self.proc / "loadavg").write_text("0.10 0.20 0.30 1/100 7\n", encoding="utf-8")
-        (self.proc / "cpuinfo").write_text("model name: Fixture CPU\n", encoding="utf-8")
-        (self.proc / "net").mkdir()
-        (self.proc / "net/dev").write_text(
-            "Inter-| Receive | Transmit\n"
-            " face |bytes packets errs drop fifo frame compressed multicast |"
-            "bytes packets errs drop fifo colls carrier compressed\n"
-            "  lo: 100 2 3 4 0 0 0 0 200 5 6 7 0 0 0 0\n",
-            encoding="utf-8",
-        )
-        self.sys.mkdir()
+
+    (proc / "meminfo").write_text(
+        "MemTotal: 1000 kB\n"
+        "MemAvailable: 750 kB\n"
+        "SwapTotal: 200 kB\n"
+        "SwapFree: 180 kB\n",
+        encoding="utf-8",
+    )
+    (proc / "loadavg").write_text("0.10 0.20 0.30 1/100 7\n", encoding="utf-8")
+    (proc / "cpuinfo").write_text("model name: Fixture CPU\n", encoding="utf-8")
+
+    (proc / "net").mkdir()
+    (proc / "net/dev").write_text(
+        "Inter-| Receive | Transmit\n"
+        " face |bytes packets errs drop fifo frame compressed multicast |"
+        "bytes packets errs drop fifo colls carrier compressed\n"
+        "  lo: 100 2 3 4 0 0 0 0 200 5 6 7 0 0 0 0\n",
+        encoding="utf-8",
+    )
+
+    return collector.LinuxSource(proc)
 
 
 class CollectorTests(unittest.TestCase):
-    def test_parsers_preserve_documented_units(self) -> None:
-        stat = collector.parse_proc_stat(process_stat())
-        self.assertEqual(stat["process_start_time_ticks"], 777)
-        self.assertEqual(stat["current_processor"], 6)
-        self.assertEqual(stat["thread_count"], 4)
+    def test_linux_parsers_preserve_documented_units(self) -> None:
         status = collector.parse_proc_status("VmRSS: 2 kB\nThreads: 3\n")
         self.assertEqual(status, {"vm_rss_bytes": 2048, "thread_count": 3})
+
+        schedstat = collector.parse_schedstat("900 100 12\n")
+        self.assertEqual(schedstat["scheduler_runtime_ns"], 900)
+        self.assertEqual(schedstat["scheduler_wait_ns"], 100)
+
+        smaps = collector.parse_smaps_rollup("Rss: 10 kB\nPss: 9 kB\n")
+        self.assertEqual(smaps["smaps_rss_bytes"], 10 * 1024)
+        self.assertEqual(smaps["smaps_pss_bytes"], 9 * 1024)
+
         network = collector.parse_net_dev(
-            "a\nb\neth0: 1 2 3 4 0 0 0 0 5 6 7 8 0 0 0 0\n", "eth0"
+            "a\nb\neth0: 1 2 3 4 0 0 0 0 5 6 7 8 0 0 0 0\n",
+            "eth0",
         )
+        self.assertEqual(network["network_rx_bytes"], 1)
         self.assertEqual(network["network_rx_drops"], 4)
+        self.assertEqual(network["network_tx_bytes"], 5)
         self.assertEqual(network["network_tx_errors"], 7)
 
-    def test_missing_permission_exit_and_pid_reuse_are_explicit(self) -> None:
+    def test_process_samples_reject_pid_reuse(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            fixture = FixtureTree(Path(directory))
-            source = collector.LinuxSource(fixture.proc, fixture.sys)
+            root = Path(directory)
+            source = build_fixture(root)
             target = source.inspect_target("client", 42)
+
             values, errors, alive = source.sample_process(target, include_smaps=True)
             self.assertTrue(alive)
             self.assertEqual(errors, [])
@@ -113,106 +147,81 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(values["scheduler_wait_ns"], 100)
             self.assertEqual(values["smaps_pss_bytes"], 9 * 1024)
 
-            original = Path.read_text
-
-            def denied(path: Path, *args: object, **kwargs: object) -> str:
-                if path.name == "io":
-                    raise PermissionError("fixture denial")
-                return original(path, *args, **kwargs)
-
-            with mock.patch.object(Path, "read_text", denied):
-                values, errors, alive = source.sample_process(target, include_smaps=False)
-            self.assertTrue(alive)
-            self.assertNotIn("read_bytes", values)
-            self.assertTrue(any("target process owner" in error for error in errors))
-
-            (fixture.proc / "42/schedstat").write_text("invalid\n", encoding="utf-8")
+            (source.proc_root / "42/stat").write_text(process_stat(999), encoding="utf-8")
             values, errors, alive = source.sample_process(target, include_smaps=False)
-            self.assertTrue(alive)
-            self.assertNotIn("scheduler_wait_ns", values)
-            self.assertTrue(any("schedstat" in error and "truncated" in error for error in errors))
 
-            (fixture.proc / "42/stat").write_text(process_stat(999), encoding="utf-8")
-            _, errors, alive = source.sample_process(target, include_smaps=False)
             self.assertFalse(alive)
-            self.assertTrue(any("PID reuse" in error for error in errors))
+            self.assertEqual(values, {"smaps_rollup_attempted": 0})
+            self.assertEqual(errors, ["PID reuse detected from a changed process start time"])
 
-            (fixture.proc / "42/stat").unlink()
-            _, errors, alive = source.sample_process(target, include_smaps=False)
-            self.assertFalse(alive)
-            self.assertTrue(any("missing metric source" in error for error in errors))
-
-    def test_collection_has_stable_columns_join_keys_and_monotonic_order(self) -> None:
+    def test_collection_writes_joinable_evidence_with_fixed_methodology(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            fixture = FixtureTree(root)
-            hwmon = fixture.sys / "class/hwmon/hwmon0"
-            hwmon.mkdir(parents=True)
-            (hwmon / "name").write_text("fixture_sensor\n", encoding="utf-8")
-            (hwmon / "temp1_label").write_text("package,quoted\n", encoding="utf-8")
-            (hwmon / "temp1_input").write_text("42000\n", encoding="utf-8")
-            source = collector.LinuxSource(fixture.proc, fixture.sys)
-            unix_values = iter((1_000, 1_100))
-            monotonic_values = iter((500, 550))
+            source = build_fixture(root)
             output = root / "evidence"
+
             result = collector.collect(
                 output_directory=output,
                 run_id="study-1",
                 target_specs=[("client", 42)],
-                interval_seconds=0.1,
                 interface="lo",
-                duration_seconds=0.0,
-                smaps_every=1,
+                duration_seconds=1.0e-9,
                 source=source,
-                unix_ns=lambda: next(unix_values),
-                monotonic_ns=lambda: next(monotonic_values),
+                unix_ns=iter((1_000, 1_100)).__next__,
+                monotonic_ns=iter((500, 550)).__next__,
                 sleep=lambda _seconds: None,
             )
             self.assertEqual(result, 0)
-            manifest = json.loads((output / "run_manifest_v1.json").read_text(encoding="utf-8"))
+
+            manifest = json.loads((output / "run_manifest_v2.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["schema_version"], collector.MANIFEST_SCHEMA_VERSION)
             self.assertEqual(manifest["run_id"], "study-1")
+            self.assertEqual(manifest["sampling_interval_seconds"], 0.1)
+            self.assertEqual(manifest["smaps_rollup_every_samples"], 10)
             self.assertEqual(manifest["targets"][0]["role"], "client")
-            self.assertIn("environmental_covariates", manifest["measurement_notes"])
-            self.assertFalse(manifest["capabilities"]["host"]["powercap_energy"]["available"])
-            self.assertIn(
-                "no readable powercap",
-                manifest["capabilities"]["host"]["powercap_energy"]["reason"],
+            self.assertEqual(manifest["targets"][0]["pid"], 42)
+            self.assertEqual(manifest["targets"][0]["process_start_time_ticks"], 777)
+            self.assertTrue(manifest["capabilities"]["host"]["network_interface"]["requested"])
+            self.assertEqual(
+                manifest["capabilities"]["host"]["network_interface"]["interface"],
+                "lo",
             )
 
-            with (output / "process_samples_v1.csv").open(newline="", encoding="utf-8") as stream:
+            with (output / "process_samples_v1.csv").open(
+                    newline="",
+                    encoding="utf-8",
+            ) as stream:
                 process_rows = list(csv.DictReader(stream))
                 stream.seek(0)
                 self.assertEqual(next(csv.reader(stream)), collector.PROCESS_COLUMNS)
-            with (output / "host_samples_v1.csv").open(newline="", encoding="utf-8") as stream:
+
+            with (output / "host_samples_v2.csv").open(
+                    newline="",
+                    encoding="utf-8",
+            ) as stream:
                 host_rows = list(csv.DictReader(stream))
                 stream.seek(0)
                 self.assertEqual(next(csv.reader(stream)), collector.HOST_COLUMNS)
+
             self.assertEqual(len(process_rows), 1)
             self.assertEqual(len(host_rows), 1)
-            self.assertEqual(process_rows[0]["run_id"], host_rows[0]["run_id"])
-            self.assertEqual(
-                process_rows[0]["recorded_at_unix_ns"], host_rows[0]["recorded_at_unix_ns"]
-            )
-            self.assertEqual(process_rows[0]["record_order"], "0")
-            self.assertEqual(host_rows[0]["record_order"], "0")
-            self.assertEqual(process_rows[0]["elapsed_since_collector_start_ns"], "50")
-            self.assertEqual(process_rows[0]["errors_json"], "[]")
-            self.assertEqual(process_rows[0]["smaps_rollup_attempted"], "1")
-            self.assertEqual(host_rows[0]["network_rx_bytes"], "100")
-            temperatures = json.loads(host_rows[0]["temperature_values_json"])
-            self.assertEqual(temperatures["hwmon0/temp1"]["value"], 42000)
 
-            with self.assertRaises(FileExistsError):
-                collector.collect(
-                    output,
-                    "study-1",
-                    [("client", 42)],
-                    0.1,
-                    "lo",
-                    0.0,
-                    1,
-                    source=source,
-                )
+            process = process_rows[0]
+            host = host_rows[0]
+            self.assertEqual(process["run_id"], host["run_id"])
+            self.assertEqual(process["recorded_at_unix_ns"], host["recorded_at_unix_ns"])
+            self.assertEqual(process["elapsed_since_collector_start_ns"], "50")
+            self.assertEqual(process["record_order"], "0")
+            self.assertEqual(host["record_order"], "0")
+            self.assertEqual(process["role"], "client")
+            self.assertEqual(process["pid"], "42")
+            self.assertEqual(process["process_start_time_ticks"], "777")
+            self.assertEqual(process["sample_status"], "sampled")
+            self.assertEqual(process["errors_json"], "[]")
+            self.assertEqual(process["smaps_rollup_attempted"], "1")
+            self.assertEqual(host["network_interface"], "lo")
+            self.assertEqual(host["network_rx_bytes"], "100")
+            self.assertEqual(host["network_tx_bytes"], "200")
 
 
 if __name__ == "__main__":

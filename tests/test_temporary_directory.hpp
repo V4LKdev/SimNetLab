@@ -1,10 +1,11 @@
 #pragma once
 
+#include <chrono>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <string_view>
-#include <chrono>
-#include <stdexcept>
+#include <system_error>
 
 namespace simnet::test
 {
@@ -12,9 +13,8 @@ namespace simnet::test
     {
       public:
         explicit TestTemporaryDirectory(std::string_view prefix = "simnet_tests_tmp")
-            : prefix_(prefix)
         {
-            claim_directory();
+            claim_directory(prefix);
         }
 
         TestTemporaryDirectory(TestTemporaryDirectory const&) = delete;
@@ -24,11 +24,8 @@ namespace simnet::test
 
         ~TestTemporaryDirectory() noexcept
         {
-            if (!path_.empty())
-            {
-                auto error = std::error_code{};
-                std::filesystem::remove_all(path_, error);
-            }
+            auto error = std::error_code{};
+            std::filesystem::remove_all(path_, error);
         }
 
         [[nodiscard]] std::filesystem::path const& path() const noexcept
@@ -37,24 +34,21 @@ namespace simnet::test
         }
 
       private:
-        void claim_directory()
+        void claim_directory(std::string_view prefix)
         {
             auto const base = std::filesystem::temp_directory_path();
             auto const stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-            auto const prefix = std::string{prefix_} + "_" + std::to_string(stamp);
+            auto const stem = std::string{prefix} + "_" + std::to_string(stamp);
 
-            for (auto attempt = 0U; attempt < max_attempts_; ++attempt)
+            for (auto attempt = 0U; attempt < max_attempts; ++attempt)
             {
-                auto candidate = base / (prefix + "_" + std::to_string(attempt));
+                auto const candidate = base / (stem + "_" + std::to_string(attempt));
                 auto error = std::error_code{};
-                auto const claimed = std::filesystem::create_directory(candidate, error);
-
-                if (!error && claimed)
+                if (std::filesystem::create_directory(candidate, error))
                 {
                     path_ = candidate;
                     return;
                 }
-
                 if (error)
                 {
                     throw std::runtime_error{
@@ -63,11 +57,11 @@ namespace simnet::test
                     };
                 }
             }
+
             throw std::runtime_error{"Failed to claim exclusive temporary directory"};
         }
 
-        std::string prefix_;
+        static constexpr auto max_attempts = 32U;
         std::filesystem::path path_{};
-        static constexpr auto max_attempts_ = 32U;
     };
 }
