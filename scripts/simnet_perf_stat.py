@@ -21,10 +21,13 @@ from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
 
-TOOL_VERSION = "1.0.0"
-MANIFEST_SCHEMA_VERSION = 1
+TOOL_VERSION = "1.1.0"
+MANIFEST_SCHEMA_VERSION = 2
 COUNTER_SCHEMA_VERSION = 1
 
+MINIMUM_RUNNING_PERCENTAGE = 95.0
+
+# Evidence schema
 COUNTER_COLUMNS = [
     "schema_version",
     "run_id",
@@ -48,6 +51,8 @@ COUNTER_COLUMNS = [
     "error_detail",
 ]
 
+
+# Perf profiles
 PROFILES: dict[str, tuple[tuple[str, ...], ...]] = {
     "software": (("task-clock", "context-switches", "cpu-migrations", "page-faults"),),
     "core": (("cycles", "instructions"), ("branches", "branch-misses")),
@@ -62,6 +67,7 @@ PROFILES: dict[str, tuple[tuple[str, ...], ...]] = {
 }
 
 RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+ROLE_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]*\Z")
 PERMISSION_MARKERS = (
     "permission denied",
     "not permitted",
@@ -108,7 +114,6 @@ class Session:
     process: subprocess.Popen[str] | None = None
     ended_at_unix_ns: int = 0
     return_code: int | None = None
-    stdout: str = ""
     stderr: str = ""
     errors: list[str] = field(default_factory=list)
     observations: list[CounterObservation] = field(default_factory=list)
@@ -117,7 +122,7 @@ class Session:
 
 def parse_target(value: str) -> tuple[str, int]:
     role, separator, pid_text = value.partition(":")
-    if not separator or not role or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", role):
+    if not separator or ROLE_PATTERN.fullmatch(role) is None:
         raise argparse.ArgumentTypeError("target must be ROLE:PID")
     try:
         pid = int(pid_text)
@@ -125,7 +130,7 @@ def parse_target(value: str) -> tuple[str, int]:
         raise argparse.ArgumentTypeError("target PID must be an integer") from error
     if pid <= 0:
         raise argparse.ArgumentTypeError("target PID must be positive")
-    return role, pid
+    return role.lower(), pid
 
 
 def validate_run_id(run_id: str) -> None:
@@ -134,6 +139,7 @@ def validate_run_id(run_id: str) -> None:
 
 
 def parse_process_start_ticks(text: str) -> int:
+    # comm may contain spaces, so split only after its closing parenthesis.
     closing = text.rfind(")")
     if closing < 0:
         raise ValueError("malformed /proc PID stat")
@@ -177,20 +183,16 @@ def cpu_model(proc_root: Path = Path("/proc")) -> str | None:
     return None
 
 
-def event_group_argument(group: Sequence[str]) -> str:
-    return "{" + ",".join(group) + "}"
-
-
 def build_perf_invocation(
-    perf_binary: str,
-    target: Target,
-    event_groups: Sequence[Sequence[str]],
-    duration_seconds: float,
+        perf_binary: str,
+        target: Target,
+        event_groups: Sequence[Sequence[str]],
+        duration_seconds: float,
 ) -> list[str]:
     timeout_ms = max(1, round(duration_seconds * 1000.0))
     arguments = [perf_binary, "stat", "--no-big-num", "-x", ";"]
     for group in event_groups:
-        arguments.extend(("-e", event_group_argument(group)))
+        arguments.extend(("-e", "{" + ",".join(group) + "}"))
     arguments.extend(("-p", str(target.pid), "--timeout", str(timeout_ms)))
     return arguments
 
@@ -206,6 +208,7 @@ def _decimal(value: str) -> Decimal | None:
 def _event_identity(observed: str, expected: Iterable[str]) -> tuple[str, str] | None:
     observed = observed.strip()
     scope = "generic"
+    # Hybrid CPUs may emit one row per PMU for a generic event.
     if observed.startswith("cpu_") and observed.count("/") >= 2:
         scope, observed, _modifiers = observed.split("/", 2)
     for event in expected:
@@ -214,18 +217,14 @@ def _event_identity(observed: str, expected: Iterable[str]) -> tuple[str, str] |
     return None
 
 
-def _format_decimal(value: Decimal) -> str:
-    return format(value, "f")
-
-
 def _aggregate_components(
-    event: str,
-    group_index: int,
-    components: Sequence[CounterObservation],
-    minimum_running_percentage: float,
+        event: str,
+        group_index: int,
+        components: Sequence[CounterObservation],
 ) -> CounterObservation:
     if len(components) == 1:
         return components[0]
+
     unavailable = [
         component
         for component in components
@@ -249,8 +248,6 @@ def _aggregate_components(
         )
 
     values = [_decimal(component.value) for component in components]
-    runtimes = [_decimal(component.counter_runtime_ns) for component in components]
-    percentages = [_decimal(component.running_percentage) for component in components]
     if any(value is None for value in values):
         return CounterObservation(
             event,
@@ -258,6 +255,8 @@ def _aggregate_components(
             "malformed_output",
             error_detail="hybrid PMU counter value is not numeric",
         )
+    numeric_values = [value for value in values if value is not None]
+
     units = {component.unit for component in components}
     if len(units) != 1:
         return CounterObservation(
@@ -267,38 +266,54 @@ def _aggregate_components(
             error_detail="hybrid PMU counter units differ",
         )
 
-    running = None
-    if all(percentage is not None for percentage in percentages):
-        running = min(Decimal("100"), sum(percentages, Decimal()))
-    below_threshold = running is not None and running < Decimal(
-        str(minimum_running_percentage)
+    runtimes = [_decimal(component.counter_runtime_ns) for component in components]
+    numeric_runtimes = [runtime for runtime in runtimes if runtime is not None]
+    runtime = (
+        sum(numeric_runtimes, Decimal())
+        if len(numeric_runtimes) == len(runtimes)
+        else None
     )
+
+    percentages = [_decimal(component.running_percentage) for component in components]
+    numeric_percentages = [percentage for percentage in percentages if percentage is not None]
+    running = (
+        min(Decimal("100"), sum(numeric_percentages, Decimal()))
+        if len(numeric_percentages) == len(percentages)
+        else None
+    )
+
+    below_threshold = (
+            running is not None
+            and running < Decimal(str(MINIMUM_RUNNING_PERCENTAGE))
+    )
+
     return CounterObservation(
         event=event,
         group_index=group_index,
         status="insufficient_running_time" if below_threshold else "measured",
-        value=_format_decimal(sum((value for value in values if value is not None), Decimal())),
+        value=format(sum(numeric_values, Decimal()), "f"),
         unit=components[0].unit,
-        counter_runtime_ns=_format_decimal(
-            sum((runtime for runtime in runtimes if runtime is not None), Decimal())
-        )
-        if all(runtime is not None for runtime in runtimes)
-        else "",
-        running_percentage=_format_decimal(running) if running is not None else "",
-        perf_scaled_value=("1" if running < Decimal("100") else "0")
-        if running is not None
-        else "",
+        counter_runtime_ns=format(runtime, "f") if runtime is not None else "",
+        running_percentage=format(running, "f") if running is not None else "",
+        perf_scaled_value=(
+            "1" if running is not None and running < Decimal("100") else
+            "0" if running is not None else
+            ""
+        ),
         accepted=not below_threshold,
-        error_detail="combined hybrid PMU running percentage is below the accepted threshold"
-        if below_threshold
-        else "",
+        error_detail=(
+            "combined hybrid PMU running percentage is below the accepted threshold"
+            if below_threshold
+            else ""
+        ),
     )
 
 
+# Perf output parsing
+
 def parse_perf_output(
-    output: str,
-    event_groups: Sequence[Sequence[str]],
-    minimum_running_percentage: float,
+        output: str,
+        event_groups: Sequence[Sequence[str]],
 ) -> tuple[list[CounterObservation], list[str]]:
     expected_slots = [
         (group_index, event)
@@ -330,7 +345,7 @@ def parse_perf_output(
             group = event_groups[group_cursor]
             seen = seen_by_scope.get((group_cursor, scope), set())
             if event not in group or (
-                event == group[0] and seen and all(expected in seen for expected in group)
+                    event == group[0] and seen and all(expected in seen for expected in group)
             ):
                 group_cursor += 1
                 continue
@@ -370,7 +385,7 @@ def parse_perf_output(
                 )
             else:
                 below_threshold = running is not None and running < Decimal(
-                    str(minimum_running_percentage)
+                    str(MINIMUM_RUNNING_PERCENTAGE)
                 )
                 observation = CounterObservation(
                     event=event,
@@ -398,12 +413,7 @@ def parse_perf_output(
         slot = (group_index, event)
         if slot in components:
             observations.append(
-                _aggregate_components(
-                    event,
-                    group_index,
-                    components[slot],
-                    minimum_running_percentage,
-                )
+                _aggregate_components(event, group_index, components[slot])
             )
     return observations, diagnostics
 
@@ -420,10 +430,10 @@ def _default_failure_status(stderr: str, return_code: int | None) -> tuple[str, 
 
 
 def _fill_missing_observations(
-    parsed: Sequence[CounterObservation],
-    event_groups: Sequence[Sequence[str]],
-    status: str,
-    detail: str,
+        parsed: Sequence[CounterObservation],
+        event_groups: Sequence[Sequence[str]],
+        status: str,
+        detail: str,
 ) -> list[CounterObservation]:
     by_slot = {
         (observation.group_index, observation.event): observation for observation in parsed
@@ -439,7 +449,7 @@ def _fill_missing_observations(
 
 
 def _override_observations(
-    observations: Sequence[CounterObservation], status: str, detail: str
+        observations: Sequence[CounterObservation], status: str, detail: str
 ) -> None:
     for observation in observations:
         observation.status = status
@@ -454,6 +464,8 @@ def target_identity_status(session: Session) -> str:
         return "target_reused"
     return "stable"
 
+
+# Process management
 
 def stop_children(processes: Iterable[subprocess.Popen[str]]) -> None:
     active = [process for process in processes if process.poll() is None]
@@ -474,23 +486,11 @@ def termination_signal_handler(_signum: int, _frame: object) -> None:
     raise KeyboardInterrupt
 
 
-def resolve_perf_binary(requested: str | None) -> tuple[str | None, str | None]:
-    if requested is None:
-        resolved = shutil.which("perf")
-        if resolved:
-            return str(Path(resolved).resolve()), None
+def resolve_perf_binary() -> tuple[str | None, str | None]:
+    resolved = shutil.which("perf")
+    if resolved is None:
         return None, "perf not found in PATH"
-    candidate = Path(requested)
-    if candidate.parent != Path(".") or "/" in requested:
-        if not candidate.is_file():
-            return None, f"perf binary does not exist: {requested}"
-        if not os.access(candidate, os.X_OK):
-            return None, f"perf binary is not executable: {requested}"
-        return str(candidate.resolve()), None
-    resolved = shutil.which(requested)
-    if resolved:
-        return str(Path(resolved).resolve()), None
-    return None, f"perf not found: {requested}"
+    return str(Path(resolved).resolve()), None
 
 
 def perf_version(perf_binary: str) -> tuple[str | None, str | None]:
@@ -538,11 +538,11 @@ def _host_manifest(proc_root: Path) -> dict[str, object]:
 
 
 def _write_evidence(
-    output_directory: Path,
-    manifest: dict[str, object],
-    rows: Sequence[dict[str, object]],
+        output_directory: Path,
+        manifest: dict[str, object],
+        rows: Sequence[dict[str, object]],
 ) -> None:
-    manifest_path = output_directory / "perf_manifest_v1.json"
+    manifest_path = output_directory / "perf_manifest_v2.json"
     counters_path = output_directory / "perf_counters_v1.csv"
     with manifest_path.open("x", encoding="utf-8") as stream:
         json.dump(manifest, stream, indent=2, sort_keys=True)
@@ -553,109 +553,68 @@ def _write_evidence(
         writer.writerows(rows)
 
 
-def collect(
-    output_directory: Path,
-    run_id: str,
-    target_specs: Sequence[tuple[str, int]],
-    profile: str,
-    duration_seconds: float,
-    perf_binary_requested: str | None,
-    minimum_running_percentage: float,
-    require_complete_profile: bool,
-    *,
-    proc_root: Path = Path("/proc"),
-    unix_ns: Callable[[], int] = time.time_ns,
-    monotonic: Callable[[], float] = time.monotonic,
-    identity_reader: Callable[[int], int | None] | None = None,
-) -> int:
-    validate_run_id(run_id)
-    if profile not in PROFILES:
-        raise ValueError(f"unknown profile: {profile}")
-    if duration_seconds <= 0:
-        raise ValueError("duration must be positive")
-    if not 0 <= minimum_running_percentage <= 100:
-        raise ValueError("minimum running percentage must be between 0 and 100")
-    if not target_specs:
-        raise ValueError("at least one target is required")
-    roles = [role for role, _pid in target_specs]
-    if len(set(roles)) != len(roles):
-        raise ValueError("target roles must be unique")
-    _prepare_output_directory(output_directory)
+# Collection
 
-    read_identity = identity_reader or (lambda pid: read_process_start_ticks(pid, proc_root))
-    event_groups = PROFILES[profile]
-    requested_events = [event for group in event_groups for event in group]
-    perf_binary, perf_error = resolve_perf_binary(perf_binary_requested)
-    version = None
-    version_error = None
-    if perf_binary is not None:
-        version, version_error = perf_version(perf_binary)
-
-    targets = [Target(role, pid, read_identity(pid)) for role, pid in target_specs]
-    sessions: list[Session] = []
-    global_errors = [error for error in (perf_error, version_error) if error]
-    for target in targets:
-        invocation = (
-            build_perf_invocation(perf_binary, target, event_groups, duration_seconds)
-            if perf_binary is not None
-            else []
-        )
-        sessions.append(Session(target, invocation, 0))
-
+def _run_sessions(
+        sessions: Sequence[Session],
+        duration_seconds: float,
+        unix_ns: Callable[[], int],
+        monotonic: Callable[[], float],
+) -> bool:
     launched: list[subprocess.Popen[str]] = []
     interrupted = False
     try:
-        if perf_binary is not None:
-            for session in sessions:
+        for session in sessions:
+            if not session.invocation or session.target.process_start_ticks is None:
                 if session.target.process_start_ticks is None:
                     session.errors.append("target exited before perf attachment")
-                    continue
-                session.started_at_unix_ns = unix_ns()
-                try:
-                    session.process = subprocess.Popen(
-                        session.invocation,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        env={**os.environ, "LC_ALL": "C"},
-                    )
-                    launched.append(session.process)
-                except OSError as error:
-                    session.errors.append(f"perf launch failed: {error}")
-                    session.ended_at_unix_ns = unix_ns()
+                continue
 
-            launch_failed = any(
-                session.process is None and session.target.process_start_ticks is not None
-                for session in sessions
-            )
-            if launch_failed:
-                stop_children(launched)
-                for session in sessions:
-                    if session.process is not None:
-                        session.return_code = session.process.poll()
-                        session.ended_at_unix_ns = unix_ns()
-                        session.errors.append("perf collection canceled after a launch failure")
-            else:
-                deadline = monotonic() + duration_seconds + 5.0
-                for session in sessions:
-                    if session.process is None:
-                        continue
-                    try:
-                        stdout, stderr = session.process.communicate(
-                            timeout=max(0.001, deadline - monotonic())
-                        )
-                        session.stdout = stdout
-                        session.stderr = stderr
-                        session.return_code = session.process.returncode
-                    except subprocess.TimeoutExpired:
-                        session.errors.append("perf exceeded its bounded timeout")
-                        stop_children([session.process])
-                        stdout, stderr = session.process.communicate()
-                        session.stdout = stdout
-                        session.stderr = stderr
-                        session.return_code = session.process.returncode
+            session.started_at_unix_ns = unix_ns()
+            try:
+                session.process = subprocess.Popen(
+                    session.invocation,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env={**os.environ, "LC_ALL": "C"},
+                )
+                launched.append(session.process)
+            except OSError as error:
+                session.errors.append(f"perf launch failed: {error}")
+                session.ended_at_unix_ns = unix_ns()
+
+        launch_failed = any(
+            session.invocation
+            and session.target.process_start_ticks is not None
+            and session.process is None
+            for session in sessions
+        )
+        if launch_failed:
+            stop_children(launched)
+            for session in sessions:
+                if session.process is not None:
+                    session.return_code = session.process.poll()
                     session.ended_at_unix_ns = unix_ns()
-    except (KeyboardInterrupt, SystemExit):
+                    session.errors.append("perf collection canceled after a launch failure")
+            return False
+
+        deadline = monotonic() + duration_seconds + 5.0
+        for session in sessions:
+            if session.process is None:
+                continue
+            try:
+                _stdout, session.stderr = session.process.communicate(
+                    timeout=max(0.001, deadline - monotonic())
+                )
+                session.return_code = session.process.returncode
+            except subprocess.TimeoutExpired:
+                session.errors.append("perf exceeded its bounded timeout")
+                stop_children([session.process])
+                _stdout, session.stderr = session.process.communicate()
+                session.return_code = session.process.returncode
+            session.ended_at_unix_ns = unix_ns()
+    except KeyboardInterrupt:
         interrupted = True
         stop_children(launched)
         for session in sessions:
@@ -665,11 +624,70 @@ def collect(
     finally:
         stop_children(launched)
 
+    return interrupted
+
+
+def collect(
+        output_directory: Path,
+        run_id: str,
+        target_specs: Sequence[tuple[str, int]],
+        profile: str,
+        duration_seconds: float,
+        *,
+        proc_root: Path = Path("/proc"),
+        unix_ns: Callable[[], int] = time.time_ns,
+        monotonic: Callable[[], float] = time.monotonic,
+        identity_reader: Callable[[int], int | None] | None = None,
+) -> int:
+    validate_run_id(run_id)
+    if profile not in PROFILES:
+        raise ValueError(f"unknown profile: {profile}")
+    if duration_seconds <= 0:
+        raise ValueError("duration must be positive")
+    if not target_specs:
+        raise ValueError("at least one target is required")
+
+    roles = [role for role, _pid in target_specs]
+    if any(ROLE_PATTERN.fullmatch(role) is None for role in roles):
+        raise ValueError("invalid target role")
+    if len(set(roles)) != len(roles):
+        raise ValueError("target roles must be unique")
+
+    _prepare_output_directory(output_directory)
+
+    read_identity = identity_reader or (lambda pid: read_process_start_ticks(pid, proc_root))
+    event_groups = PROFILES[profile]
+    requested_events = [event for group in event_groups for event in group]
+
+    perf_binary, perf_error = resolve_perf_binary()
+    version = None
+    version_error = None
+    if perf_binary is not None:
+        version, version_error = perf_version(perf_binary)
+
+    targets = [Target(role, pid, read_identity(pid)) for role, pid in target_specs]
+    sessions = [
+        Session(
+            target=target,
+            invocation=(
+                build_perf_invocation(perf_binary, target, event_groups, duration_seconds)
+                if perf_binary is not None
+                else []
+            ),
+            started_at_unix_ns=0,
+        )
+        for target in targets
+    ]
+
+    interrupted = _run_sessions(sessions, duration_seconds, unix_ns, monotonic)
+
     for session in sessions:
         session.final_process_start_ticks = read_identity(session.target.pid)
+
         if perf_binary is None:
-            status, detail = "perf_unavailable", perf_error or "perf is unavailable"
-            session.observations = _fill_missing_observations([], event_groups, status, detail)
+            session.observations = _fill_missing_observations(
+                [], event_groups, "perf_unavailable", perf_error or "perf is unavailable"
+            )
             continue
         if session.target.process_start_ticks is None:
             session.observations = _fill_missing_observations(
@@ -682,21 +700,22 @@ def collect(
                 [], event_groups, "perf_failed", detail
             )
             continue
-        parsed, diagnostics = parse_perf_output(
-            session.stderr, event_groups, minimum_running_percentage
-        )
+
+        parsed, diagnostics = parse_perf_output(session.stderr, event_groups)
         session.errors.extend(diagnostics)
         default_status, default_detail = _default_failure_status(
             session.stderr, session.return_code
         )
         if diagnostics and not parsed and default_status == "malformed_output":
-            default_status = "malformed_output"
             default_detail = "; ".join(diagnostics)
+
         session.observations = _fill_missing_observations(
             parsed, event_groups, default_status, default_detail
         )
         if session.return_code not in (None, 0):
             session.errors.append(default_detail)
+
+        # Reject counters if the PID no longer identifies the original process.
         if session.final_process_start_ticks is None:
             _override_observations(
                 session.observations, "target_exited", "target exited during perf collection"
@@ -706,8 +725,8 @@ def collect(
                 session.observations, "target_reused", "PID start ticks changed during collection"
             )
         elif session.return_code not in (None, 0) and default_status in (
-            "permission_denied",
-            "perf_failed",
+                "permission_denied",
+                "perf_failed",
         ):
             _override_observations(session.observations, default_status, default_detail)
 
@@ -724,9 +743,11 @@ def collect(
                     "record_order": record_order,
                     "role": session.target.role,
                     "pid": session.target.pid,
-                    "process_start_ticks": session.target.process_start_ticks
-                    if session.target.process_start_ticks is not None
-                    else "",
+                    "process_start_ticks": (
+                        session.target.process_start_ticks
+                        if session.target.process_start_ticks is not None
+                        else ""
+                    ),
                     "profile": profile,
                     "event_group": observation.group_index,
                     "event": observation.event,
@@ -746,20 +767,18 @@ def collect(
 
     accepted_count = sum(row["accepted_for_analysis"] == "1" for row in rows)
     complete = bool(rows) and all(row["accepted_for_analysis"] == "1" for row in rows)
-    host = _host_manifest(proc_root)
     manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "tool": {"name": "simnet_perf_stat", "version": TOOL_VERSION},
         "run_id": run_id,
         "collector_command_line": list(sys.argv),
         "perf": {
-            "requested_binary": perf_binary_requested or "perf",
             "resolved_binary": perf_binary,
             "version": version,
             "available": perf_binary is not None and version is not None,
             "error": perf_error or version_error,
         },
-        **host,
+        **_host_manifest(proc_root),
         "profile": {
             "name": profile,
             "event_groups": [list(group) for group in event_groups],
@@ -767,8 +786,7 @@ def collect(
             "complete": complete,
         },
         "duration_seconds": duration_seconds,
-        "minimum_running_percentage": minimum_running_percentage,
-        "require_complete_profile": require_complete_profile,
+        "minimum_running_percentage": MINIMUM_RUNNING_PERCENTAGE,
         "targets": [
             {
                 "role": session.target.role,
@@ -788,13 +806,13 @@ def collect(
             }
             for session in sessions
         ],
-        "errors": global_errors,
+        "errors": [error for error in (perf_error, version_error) if error],
         "measurement_notes": {
             "attribution": "Each perf process measures one complete attached process",
             "sampling": "Counters are run-level totals, not interval samples or SimNet stages",
             "multiplexing": (
-                "Use separate matched profile runs. Scaled counters and running percentages below "
-                "the threshold are not exact and are rejected for analysis"
+                "Separate matched profile runs limit multiplexing; counters below the "
+                "running threshold are rejected for analysis"
             ),
             "ratio_pairs": (
                 "Ratios are suitable only when both accepted source counters share an event group"
@@ -806,25 +824,16 @@ def collect(
 
     if interrupted:
         return 130
-    if accepted_count == 0:
-        return 1
-    if require_complete_profile and not complete:
-        return 1
-    return 0
+    return 0 if accepted_count else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Collect capability-aware run-level perf stat evidence for SimNet processes."
-    )
-    parser.add_argument("--output-dir", type=Path, required=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-directory", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--target", action="append", type=parse_target, required=True)
     parser.add_argument("--profile", choices=sorted(PROFILES), required=True)
     parser.add_argument("--duration-seconds", type=float, required=True)
-    parser.add_argument("--perf-binary")
-    parser.add_argument("--minimum-running-percent", type=float, default=95.0)
-    parser.add_argument("--require-complete-profile", action="store_true")
     return parser
 
 
@@ -833,16 +842,13 @@ def main() -> int:
     previous_sigterm = signal.signal(signal.SIGTERM, termination_signal_handler)
     try:
         return collect(
-            arguments.output_dir,
+            arguments.output_directory,
             arguments.run_id,
             arguments.target,
             arguments.profile,
             arguments.duration_seconds,
-            arguments.perf_binary,
-            arguments.minimum_running_percent,
-            arguments.require_complete_profile,
         )
-    except (FileExistsError, ValueError) as error:
+    except (FileExistsError, OSError, ValueError) as error:
         print(f"simnet_perf_stat: {error}", file=sys.stderr)
         return 2
     finally:

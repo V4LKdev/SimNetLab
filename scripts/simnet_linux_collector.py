@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect capability-aware Linux process and host evidence for SimNet runs."""
+"""Collect Linux process and host evidence for SimNet runs."""
 
 from __future__ import annotations
 
@@ -8,18 +8,29 @@ import csv
 import json
 import os
 import platform
+import re
 import signal
 import socket
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Mapping
 
 
-COLLECTOR_VERSION = "1.0.0"
+COLLECTOR_VERSION = "1.1.0"
+MANIFEST_SCHEMA_VERSION = 2
 PROCESS_SCHEMA_VERSION = 1
-HOST_SCHEMA_VERSION = 1
+HOST_SCHEMA_VERSION = 2
+
+SAMPLE_INTERVAL_SECONDS = 0.1
+SMAPS_EVERY_SAMPLES = 10
+
+RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+ROLE_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]*\Z")
+
+
+# Evidence schemas
 
 PROCESS_COLUMNS = [
     "schema_version",
@@ -112,11 +123,10 @@ HOST_COLUMNS = [
     "network_tx_packets",
     "network_tx_drops",
     "network_tx_errors",
-    "cpu_frequency_values_json",
-    "temperature_values_json",
-    "powercap_energy_values_json",
 ]
 
+
+# Linux data parsing
 
 class UnavailableError(RuntimeError):
     """A metric source is absent or unreadable and must not be represented as zero."""
@@ -152,12 +162,16 @@ def parse_key_values(text: str) -> dict[str, str]:
 
 
 def parse_proc_stat(text: str) -> dict[str, int]:
+    # The process name is parenthesized and may contain spaces, so locate its
+    # closing delimiter before splitting the remaining fixed-position fields.
     closing = text.rfind(")")
     if closing < 0:
         raise ValueError("process stat has no closing command delimiter")
+
     fields = text[closing + 2 :].split()
     if len(fields) < 37:
         raise ValueError("process stat is truncated")
+
     return {
         "minor_page_faults": int(fields[7]),
         "major_page_faults": int(fields[9]),
@@ -172,6 +186,7 @@ def parse_proc_stat(text: str) -> dict[str, int]:
 def parse_proc_status(text: str) -> dict[str, int]:
     values = parse_key_values(text)
     output: dict[str, int] = {}
+
     byte_fields = {
         "VmRSS": "vm_rss_bytes",
         "VmHWM": "vm_hwm_bytes",
@@ -186,12 +201,15 @@ def parse_proc_status(text: str) -> dict[str, int]:
         "voluntary_ctxt_switches": "voluntary_context_switches",
         "nonvoluntary_ctxt_switches": "involuntary_context_switches",
     }
+
     for source, destination in byte_fields.items():
         if source in values:
             output[destination] = _kilobytes_to_bytes(values[source])
+
     for source, destination in integer_fields.items():
         if source in values:
             output[destination] = int(values[source])
+
     return output
 
 
@@ -215,6 +233,7 @@ def parse_schedstat(text: str) -> dict[str, int]:
     fields = lines[0].split() if lines else []
     if len(fields) < 3:
         raise ValueError("schedstat is truncated")
+
     return {
         "scheduler_runtime_ns": int(fields[0]),
         "scheduler_wait_ns": int(fields[1]),
@@ -246,17 +265,21 @@ def parse_smaps_rollup(text: str) -> dict[str, int]:
 
 def parse_psi(text: str, resource: str) -> dict[str, float | int]:
     output: dict[str, float | int] = {}
+
     for line in text.splitlines():
         fields = line.split()
         if not fields:
             continue
+
         category = fields[0]
         for item in fields[1:]:
             key, separator, value = item.partition("=")
             if not separator:
                 continue
+
             destination = f"{resource}_psi_{category}_{key}{'_us' if key == 'total' else ''}"
             output[destination] = int(value) if key == "total" else float(value)
+
     return output
 
 
@@ -279,6 +302,7 @@ def parse_loadavg(text: str) -> dict[str, float]:
     fields = text.split()
     if len(fields) < 3:
         raise ValueError("loadavg is truncated")
+
     return {
         "load_average_1m": float(fields[0]),
         "load_average_5m": float(fields[1]),
@@ -293,6 +317,7 @@ def parse_net_dev(text: str, interface: str) -> dict[str, int]:
             fields = counters.split()
             if len(fields) < 16:
                 raise ValueError("network interface counters are truncated")
+
             return {
                 "network_rx_bytes": int(fields[0]),
                 "network_rx_packets": int(fields[1]),
@@ -303,8 +328,11 @@ def parse_net_dev(text: str, interface: str) -> dict[str, int]:
                 "network_tx_errors": int(fields[10]),
                 "network_tx_drops": int(fields[11]),
             }
+
     raise UnavailableError(f"network interface {interface!r} is absent from /proc/net/dev")
 
+
+# Process and host collection
 
 @dataclass(frozen=True)
 class Target:
@@ -315,113 +343,13 @@ class Target:
     command_line_error: str | None = None
 
 
-@dataclass(frozen=True)
-class Sensor:
-    key: str
-    path: Path
-    unit: str
-    metadata: dict[str, object]
-
-
 class LinuxSource:
-    def __init__(self, proc_root: Path = Path("/proc"), sys_root: Path = Path("/sys")) -> None:
+    def __init__(self, proc_root: Path = Path("/proc")) -> None:
         self.proc_root = proc_root
-        self.sys_root = sys_root
-        self.frequency_sensors = self._discover_frequency_sensors()
-        self.temperature_sensors = self._discover_temperature_sensors()
-        self.powercap_sensors = self._discover_powercap_sensors()
-
-    def _discover_frequency_sensors(self) -> list[Sensor]:
-        base = self.sys_root / "devices/system/cpu/cpufreq"
-        sensors: list[Sensor] = []
-        for path in sorted(base.glob("policy*/scaling_cur_freq")):
-            metadata: dict[str, object] = {
-                "policy": path.parent.name,
-                "path": str(path),
-                "unit": "kilohertz",
-            }
-            for name in (
-                "scaling_governor",
-                "scaling_min_freq",
-                "scaling_max_freq",
-                "cpuinfo_min_freq",
-                "cpuinfo_max_freq",
-            ):
-                try:
-                    metadata[name] = _read_text(path.parent / name).strip()
-                except UnavailableError:
-                    metadata[name] = None
-            sensors.append(
-                Sensor(
-                    key=path.parent.name,
-                    path=path,
-                    unit="kilohertz",
-                    metadata=metadata,
-                )
-            )
-        return sensors
-
-    def _discover_temperature_sensors(self) -> list[Sensor]:
-        sensors: list[Sensor] = []
-        for path in sorted((self.sys_root / "class/hwmon").glob("hwmon*/temp*_input")):
-            prefix = path.name.removesuffix("_input")
-            device = path.parent.name
-            try:
-                device = _read_text(path.parent / "name").strip() or device
-            except UnavailableError:
-                pass
-            try:
-                label = _read_text(path.parent / f"{prefix}_label").strip()
-            except UnavailableError:
-                label = prefix
-            key = f"{path.parent.name}/{prefix}"
-            sensors.append(
-                Sensor(
-                    key=key,
-                    path=path,
-                    unit="millidegree_celsius",
-                    metadata={
-                        "key": key,
-                        "device": device,
-                        "label": label,
-                        "path": str(path),
-                        "unit": "millidegree_celsius",
-                    },
-                )
-            )
-        return sensors
-
-    def _discover_powercap_sensors(self) -> list[Sensor]:
-        sensors: list[Sensor] = []
-        for path in sorted((self.sys_root / "class/powercap").glob("**/energy_uj")):
-            try:
-                name = _read_text(path.parent / "name").strip()
-            except UnavailableError:
-                name = path.parent.name
-            try:
-                maximum = int(_read_text(path.parent / "max_energy_range_uj").strip())
-            except (UnavailableError, ValueError):
-                maximum = None
-            key = str(path.parent.relative_to(self.sys_root / "class/powercap"))
-            sensors.append(
-                Sensor(
-                    key=key,
-                    path=path,
-                    unit="microjoule",
-                    metadata={
-                        "key": key,
-                        "name": name,
-                        "path": str(path),
-                        "unit": "microjoule",
-                        "max_energy_range_microjoule": maximum,
-                        "wraps_at_max_energy_range": maximum is not None,
-                    },
-                )
-            )
-        return sensors
 
     def inspect_target(self, role: str, pid: int) -> Target:
         stat = parse_proc_stat(_read_text(self.proc_root / str(pid) / "stat"))
+
         try:
             command_line = (
                 _read_text(self.proc_root / str(pid) / "cmdline").rstrip("\0").split("\0")
@@ -430,16 +358,18 @@ class LinuxSource:
         except UnavailableError as error:
             command_line = []
             command_line_error = str(error)
+
         return Target(
-            role,
-            pid,
-            stat["process_start_time_ticks"],
-            command_line,
-            command_line_error,
+            role=role,
+            pid=pid,
+            start_time_ticks=stat["process_start_time_ticks"],
+            command_line=command_line,
+            command_line_error=command_line_error,
         )
 
     def target_capabilities(self, target: Target) -> dict[str, object]:
         capabilities: dict[str, object] = {}
+
         for name in ("stat", "status", "io", "schedstat", "smaps_rollup"):
             path = self.proc_root / str(target.pid) / name
             try:
@@ -451,32 +381,42 @@ class LinuxSource:
                     "path": str(path),
                     "reason": str(error),
                 }
+
         return capabilities
 
     def sample_process(
-        self, target: Target, include_smaps: bool
+            self,
+            target: Target,
+            include_smaps: bool,
     ) -> tuple[dict[str, object], list[str], bool]:
         base = self.proc_root / str(target.pid)
         errors: list[str] = []
         values: dict[str, object] = {
             "smaps_rollup_attempted": 1 if include_smaps else 0,
         }
+
         try:
             stat = parse_proc_stat(_read_text(base / "stat"))
         except UnavailableError as error:
             return values, [str(error)], False
         except ValueError as error:
             return values, [f"invalid {base / 'stat'}: {error}"], False
+
+        # Linux can recycle a PID after a process exits. Start time keeps each
+        # sample tied to the exact process that was originally requested.
         if stat["process_start_time_ticks"] != target.start_time_ticks:
             return values, ["PID reuse detected from a changed process start time"], False
+
         values.update(stat)
-        readers: list[tuple[str, Callable[[str], dict[str, int]]]] = [
+
+        readers: list[tuple[str, Callable[[str], Mapping[str, object]]]] = [
             ("status", parse_proc_status),
             ("io", parse_proc_io),
             ("schedstat", parse_schedstat),
         ]
         if include_smaps:
             readers.append(("smaps_rollup", parse_smaps_rollup))
+
         for name, parser in readers:
             path = base / name
             try:
@@ -485,33 +425,21 @@ class LinuxSource:
                 errors.append(str(error))
             except ValueError as error:
                 errors.append(f"invalid {path}: {error}")
-        return values, errors, True
 
-    def _read_sensors(self, sensors: Iterable[Sensor]) -> tuple[dict[str, object], list[str]]:
-        values: dict[str, object] = {}
-        errors: list[str] = []
-        for sensor in sensors:
-            try:
-                values[sensor.key] = {
-                    "value": int(_read_text(sensor.path).strip()),
-                    "unit": sensor.unit,
-                }
-            except UnavailableError as error:
-                errors.append(str(error))
-            except ValueError as error:
-                errors.append(f"invalid {sensor.path}: {error}")
-        return values, errors
+        return values, errors, True
 
     def sample_host(self, interface: str | None) -> tuple[dict[str, object], list[str]]:
         values: dict[str, object] = {}
         errors: list[str] = []
-        sources: list[tuple[Path, Callable[[str], dict[str, object]]]] = [
+
+        sources: list[tuple[Path, Callable[[str], Mapping[str, object]]]] = [
             (self.proc_root / "pressure/cpu", lambda text: parse_psi(text, "cpu")),
             (self.proc_root / "pressure/memory", lambda text: parse_psi(text, "memory")),
             (self.proc_root / "pressure/io", lambda text: parse_psi(text, "io")),
             (self.proc_root / "meminfo", parse_meminfo),
             (self.proc_root / "loadavg", parse_loadavg),
         ]
+
         for path, parser in sources:
             try:
                 values.update(parser(_read_text(path)))
@@ -519,25 +447,14 @@ class LinuxSource:
                 errors.append(str(error))
             except ValueError as error:
                 errors.append(f"invalid {path}: {error}")
+
         if interface is not None:
             values["network_interface"] = interface
             try:
                 values.update(parse_net_dev(_read_text(self.proc_root / "net/dev"), interface))
             except (UnavailableError, ValueError) as error:
                 errors.append(str(error))
-        frequencies, frequency_errors = self._read_sensors(self.frequency_sensors)
-        temperatures, temperature_errors = self._read_sensors(self.temperature_sensors)
-        energy, energy_errors = self._read_sensors(self.powercap_sensors)
-        values["cpu_frequency_values_json"] = json.dumps(
-            frequencies, sort_keys=True, separators=(",", ":")
-        )
-        values["temperature_values_json"] = json.dumps(
-            temperatures, sort_keys=True, separators=(",", ":")
-        )
-        values["powercap_energy_values_json"] = json.dumps(
-            energy, sort_keys=True, separators=(",", ":")
-        )
-        errors.extend(frequency_errors + temperature_errors + energy_errors)
+
         return values, errors
 
     def capability_manifest(self, interface: str | None) -> dict[str, object]:
@@ -549,21 +466,6 @@ class LinuxSource:
                 return {"available": False, "path": str(path), "reason": str(error)}
 
         return {
-            "process": {
-                "stat": {"available": True, "source": "/proc/ROLE_PID/stat"},
-                "status": {"available": True, "source": "/proc/ROLE_PID/status"},
-                "io": {
-                    "available": True,
-                    "source": "/proc/ROLE_PID/io",
-                    "permission_may_vary": True,
-                },
-                "schedstat": {"available": True, "source": "/proc/ROLE_PID/schedstat"},
-                "smaps_rollup": {
-                    "available": True,
-                    "source": "/proc/ROLE_PID/smaps_rollup",
-                    "permission_may_vary": True,
-                },
-            },
             "host": {
                 "cpu_pressure": path_capability(self.proc_root / "pressure/cpu"),
                 "memory_pressure": path_capability(self.proc_root / "pressure/memory"),
@@ -571,48 +473,21 @@ class LinuxSource:
                 "memory": path_capability(self.proc_root / "meminfo"),
                 "load": path_capability(self.proc_root / "loadavg"),
                 "network_interface": {
-                    "available": interface is not None,
+                    "requested": interface is not None,
                     "interface": interface,
-                    "reason": (
-                        None if interface is not None else "no network interface was requested"
-                    ),
                 },
-                "cpu_frequency": {
-                    "available": bool(self.frequency_sensors),
-                    "sources": [sensor.metadata for sensor in self.frequency_sensors],
-                    "reason": (
-                        None
-                        if self.frequency_sensors
-                        else "no cpufreq policy sources discovered"
-                    ),
-                },
-                "temperature": {
-                    "available": bool(self.temperature_sensors),
-                    "sources": [sensor.metadata for sensor in self.temperature_sensors],
-                    "reason": (
-                        None
-                        if self.temperature_sensors
-                        else "no readable hwmon temperature sources discovered"
-                    ),
-                },
-                "powercap_energy": {
-                    "available": bool(self.powercap_sensors),
-                    "sources": [sensor.metadata for sensor in self.powercap_sensors],
-                    "reason": (
-                        None
-                        if self.powercap_sensors
-                        else "no readable powercap energy sources discovered"
-                    ),
-                },
-            },
+            }
         }
 
+
+# Evidence manifest
 
 def _cpu_model(proc_root: Path) -> str | None:
     try:
         values = parse_key_values(_read_text(proc_root / "cpuinfo"))
     except UnavailableError:
         return None
+
     return values.get("model name") or values.get("Hardware") or values.get("Processor")
 
 
@@ -624,23 +499,24 @@ def _optional_text(path: Path) -> str | None:
 
 
 def _write_manifest(
-    path: Path,
-    run_id: str,
-    targets: list[Target],
-    source: LinuxSource,
-    interface: str | None,
-    interval_seconds: float,
-    smaps_every: int,
-    started_unix_ns: int,
+        path: Path,
+        run_id: str,
+        targets: list[Target],
+        source: LinuxSource,
+        interface: str | None,
+        started_unix_ns: int,
 ) -> None:
     manifest = {
-        "schema_version": 1,
-        "collector": {"name": "simnet_linux_collector", "version": COLLECTOR_VERSION},
-        "collector_command_line": sys.argv,
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "collector": {
+            "name": "simnet_linux_collector",
+            "version": COLLECTOR_VERSION,
+        },
+        "collector_command_line": list(sys.argv),
         "run_id": run_id,
         "collection_started_unix_ns": started_unix_ns,
-        "sampling_interval_seconds": interval_seconds,
-        "smaps_rollup_every_samples": smaps_every,
+        "sampling_interval_seconds": SAMPLE_INTERVAL_SECONDS,
+        "smaps_rollup_every_samples": SMAPS_EVERY_SAMPLES,
         "kernel": platform.release(),
         "boot_id": _optional_text(source.proc_root / "sys/kernel/random/boot_id"),
         "hostname": socket.gethostname(),
@@ -662,113 +538,134 @@ def _write_manifest(
         "capabilities": source.capability_manifest(interface),
         "measurement_notes": {
             "timestamps": (
-                "Unix nanoseconds join files. Monotonic elapsed nanoseconds order samples"
+                "Unix nanoseconds join evidence across tools; monotonic elapsed nanoseconds "
+                "provide stable within-collector ordering"
             ),
-            "environmental_covariates": ["host_temperature", "powercap_energy", "pressure_stall"],
-            "attribution": (
-                "Environmental covariates are host-level and are not process-attributable"
+            "host_metrics": (
+                "Host pressure, memory, load, and network counters are environmental context "
+                "and are not process-attributable"
             ),
             "unavailable_values": (
-                "Empty CSV cells are unavailable. Consult errors_json and capabilities"
+                "Empty CSV cells are unavailable; consult errors_json and capabilities"
             ),
         },
     }
+
     with path.open("x", encoding="utf-8", newline="") as output:
         json.dump(manifest, output, indent=2, sort_keys=True)
         output.write("\n")
 
 
+# Collection loop
+
+def validate_run_id(run_id: str) -> None:
+    if RUN_ID_PATTERN.fullmatch(run_id) is None:
+        raise ValueError("run ID must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+
 def collect(
-    output_directory: Path,
-    run_id: str,
-    target_specs: list[tuple[str, int]],
-    interval_seconds: float,
-    interface: str | None,
-    duration_seconds: float | None,
-    smaps_every: int,
-    source: LinuxSource | None = None,
-    unix_ns: Callable[[], int] = time.time_ns,
-    monotonic_ns: Callable[[], int] = time.monotonic_ns,
-    sleep: Callable[[float], None] = time.sleep,
+        output_directory: Path,
+        run_id: str,
+        target_specs: list[tuple[str, int]],
+        interface: str | None,
+        duration_seconds: float,
+        source: LinuxSource | None = None,
+        unix_ns: Callable[[], int] = time.time_ns,
+        monotonic_ns: Callable[[], int] = time.monotonic_ns,
+        sleep: Callable[[float], None] = time.sleep,
 ) -> int:
-    if not run_id or len(run_id) > 64 or not run_id[0].isalnum() or any(
-        not (character.isascii() and (character.isalnum() or character in "._-"))
-        for character in run_id
-    ):
-        raise ValueError("run ID must match the SimNet evidence token contract")
-    if interval_seconds <= 0:
-        raise ValueError("sampling interval must be positive")
-    if smaps_every <= 0:
-        raise ValueError("smaps interval must be positive")
-    if duration_seconds is not None and duration_seconds < 0:
-        raise ValueError("duration must be nonnegative")
-    roles = [role for role, _ in target_specs]
-    if any(
-        not role or not role.isascii() or not role.replace("_", "").isalnum()
-        for role in roles
-    ):
-        raise ValueError("target roles must contain only letters, digits, and underscores")
+    validate_run_id(run_id)
+
+    if duration_seconds <= 0:
+        raise ValueError("duration must be positive")
+    if not target_specs:
+        raise ValueError("at least one target is required")
+
+    roles = [role for role, _pid in target_specs]
+    if any(ROLE_PATTERN.fullmatch(role) is None for role in roles):
+        raise ValueError("target roles must start with a letter and contain only letters, digits, _ or -")
     if len(set(roles)) != len(roles):
         raise ValueError("target roles must be unique")
+
     source = source or LinuxSource()
     targets = [source.inspect_target(role, pid) for role, pid in target_specs]
+
     output_directory.mkdir(parents=True, exist_ok=True)
     paths = {
-        "manifest": output_directory / "run_manifest_v1.json",
+        "manifest": output_directory / "run_manifest_v2.json",
         "process": output_directory / "process_samples_v1.csv",
-        "host": output_directory / "host_samples_v1.csv",
+        "host": output_directory / "host_samples_v2.csv",
     }
+
     collisions = [str(path) for path in paths.values() if path.exists()]
     if collisions:
         raise FileExistsError("collector output already exists: " + ", ".join(collisions))
 
+    # Wall-clock timestamps join this evidence to other tools. Monotonic time
+    # provides stable elapsed timing within this collector.
     started_unix_ns = unix_ns()
     started_monotonic_ns = monotonic_ns()
+
     _write_manifest(
-        paths["manifest"],
-        run_id,
-        targets,
-        source,
-        interface,
-        interval_seconds,
-        smaps_every,
-        started_unix_ns,
+        path=paths["manifest"],
+        run_id=run_id,
+        targets=targets,
+        source=source,
+        interface=interface,
+        started_unix_ns=started_unix_ns,
     )
+
     stopping = False
 
     def request_stop(_signum: int, _frame: object) -> None:
         nonlocal stopping
         stopping = True
 
-    previous_handlers: dict[int, object] = {}
+    previous_handlers = {}
     if source.proc_root == Path("/proc"):
         for signum in (signal.SIGINT, signal.SIGTERM):
             previous_handlers[signum] = signal.signal(signum, request_stop)
+
     active = {target.role: target for target in targets}
     process_order = 0
     host_order = 0
     sample_index = 0
+
     try:
-        with paths["process"].open("x", encoding="utf-8", newline="") as process_file, paths[
-            "host"
-        ].open("x", encoding="utf-8", newline="") as host_file:
+        with (
+            paths["process"].open("x", encoding="utf-8", newline="") as process_file,
+            paths["host"].open("x", encoding="utf-8", newline="") as host_file,
+        ):
             process_writer = csv.DictWriter(
-                process_file, fieldnames=PROCESS_COLUMNS, extrasaction="ignore"
+                process_file,
+                fieldnames=PROCESS_COLUMNS,
+                extrasaction="ignore",
             )
-            host_writer = csv.DictWriter(host_file, fieldnames=HOST_COLUMNS, extrasaction="ignore")
+            host_writer = csv.DictWriter(
+                host_file,
+                fieldnames=HOST_COLUMNS,
+                extrasaction="ignore",
+            )
             process_writer.writeheader()
             host_writer.writeheader()
+
             while not stopping:
                 recorded_unix_ns = unix_ns()
                 elapsed_ns = monotonic_ns() - started_monotonic_ns
+
                 for role, target in list(active.items()):
-                    values, errors, alive = source.sample_process(
-                        target,
-                        include_smaps=sample_index % smaps_every == 0,
-                    )
-                    status = "sampled" if alive else (
-                        "pid_reused" if any("PID reuse" in error for error in errors) else "exited"
-                    )
+                    # smaps_rollup is heavier than the other /proc sources, so
+                    # sample it less often to limit measurement overhead.
+                    include_smaps = sample_index % SMAPS_EVERY_SAMPLES == 0
+                    values, errors, alive = source.sample_process(target, include_smaps)
+
+                    if alive:
+                        status = "sampled"
+                    elif any("PID reuse" in error for error in errors):
+                        status = "pid_reused"
+                    else:
+                        status = "exited"
+
                     row: dict[str, object] = {
                         "schema_version": PROCESS_SCHEMA_VERSION,
                         "run_id": run_id,
@@ -784,8 +681,10 @@ def collect(
                     row.update(values)
                     process_writer.writerow(row)
                     process_order += 1
+
                     if not alive:
                         del active[role]
+
                 host_values, host_errors = source.sample_host(interface)
                 host_row: dict[str, object] = {
                     "schema_version": HOST_SCHEMA_VERSION,
@@ -799,37 +698,40 @@ def collect(
                 host_row.update(host_values)
                 host_writer.writerow(host_row)
                 host_order += 1
+
+                # Preserve completed samples if the run is interrupted.
                 process_file.flush()
                 host_file.flush()
+
                 sample_index += 1
                 if not active:
                     break
-                if duration_seconds is not None and elapsed_ns >= int(
-                    duration_seconds * 1_000_000_000
-                ):
+                if elapsed_ns >= int(duration_seconds * 1_000_000_000):
                     break
-                sleep(interval_seconds)
+
+                sleep(SAMPLE_INTERVAL_SECONDS)
     finally:
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)
+
     return 0
 
 
+# Command-line interface
+
 def parse_target(value: str) -> tuple[str, int]:
     role, separator, pid_text = value.partition(":")
-    if (
-        not separator
-        or not role
-        or not role.isascii()
-        or not role.replace("_", "").isalnum()
-    ):
+    if not separator or ROLE_PATTERN.fullmatch(role) is None:
         raise argparse.ArgumentTypeError("target must be ROLE:PID")
+
     try:
         pid = int(pid_text)
     except ValueError as error:
         raise argparse.ArgumentTypeError("target PID must be an integer") from error
+
     if pid <= 0:
         raise argparse.ArgumentTypeError("target PID must be positive")
+
     return role.lower(), pid
 
 
@@ -838,29 +740,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-directory", required=True, type=Path)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--target", required=True, action="append", type=parse_target)
-    parser.add_argument("--interval-ms", type=float, default=100.0)
     parser.add_argument("--network-interface")
-    parser.add_argument("--duration-seconds", type=float)
-    parser.add_argument("--smaps-every", type=int, default=10)
+    parser.add_argument("--duration-seconds", required=True, type=float)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
+
     try:
         return collect(
             output_directory=arguments.output_directory,
             run_id=arguments.run_id,
             target_specs=arguments.target,
-            interval_seconds=arguments.interval_ms / 1000.0,
             interface=arguments.network_interface,
             duration_seconds=arguments.duration_seconds,
-            smaps_every=arguments.smaps_every,
         )
     except (FileExistsError, OSError, UnavailableError, ValueError) as error:
         print(f"collector error: {error}", file=sys.stderr)
         return 2
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
