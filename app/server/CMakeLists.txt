@@ -22,6 +22,7 @@ target_sources(
         app_evidence.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_snapshot_delivery.cppm
+        server_replication.cppm
         server_runtime.cppm
 )
 
