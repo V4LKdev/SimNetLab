@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <functional>
+#include <thread>
 #include <variant>
 #include <vector>
 
@@ -14,17 +16,23 @@ import simnet.transport;
 namespace
 {
     constexpr auto poll_timeout = std::chrono::seconds(2);
+    constexpr auto port_range_min = std::uint16_t{20000U};
+    constexpr auto port_range_size = std::uint16_t{20000U};
+    constexpr auto max_port_attempts = std::size_t{64U};
 
     [[nodiscard]] std::uint64_t test_token()
     {
-        static auto const token =
-            static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        auto const token =
+            std::hash<std::thread::id>{}(std::this_thread::get_id()) ^
+            static_cast<std::size_t>(std::chrono::steady_clock::now().time_since_epoch().count());
         return token;
     }
 
     [[nodiscard]] std::uint16_t test_port()
     {
-        return static_cast<std::uint16_t>(20000U + test_token() % 20000U);
+        return static_cast<std::uint16_t>(
+            port_range_min + (test_token() % static_cast<std::uint64_t>(port_range_size))
+        );
     }
 
     [[nodiscard]] simnet::SessionIdentity identity(std::uint32_t protocol = 1)
@@ -35,6 +43,68 @@ namespace
             .application_wire_fingerprint = 0x5678U,
             .capabilities = 0U,
         };
+    }
+
+    struct TransportTestSettings
+    {
+        std::uint16_t port{test_port()};
+    };
+
+    [[nodiscard]] simnet::TransportServerSettings server_settings(
+        TransportTestSettings const& settings,
+        simnet::SessionIdentity expected_identity = identity()
+    )
+    {
+        return {
+            .bind_address = "127.0.0.1",
+            .port = settings.port,
+            .max_peers = 1U,
+            .expected_identity = expected_identity,
+        };
+    }
+
+    [[nodiscard]] bool start_server_with_retry(
+        simnet::TransportServer& server,
+        TransportTestSettings& settings,
+        simnet::SessionIdentity const& server_identity,
+        simnet::TransportLimits const* limits = nullptr,
+        std::size_t max_attempts = max_port_attempts
+    )
+    {
+        auto server_config = server_settings(settings, server_identity);
+        if (limits != nullptr)
+        {
+            server_config.limits = *limits;
+        }
+        auto const first_port = settings.port;
+        auto next_port = settings.port;
+        for (std::size_t attempt = 0U; attempt < max_attempts; ++attempt)
+        {
+            server_config.port = next_port;
+            auto const result = server.start(server_config);
+            if (result.ok)
+            {
+                settings.port = next_port;
+                return true;
+            }
+            std::cerr << "server start failed for port " << next_port << ": "
+                      << result.error.message << '\n';
+            server.stop();
+            if (attempt + 1 >= max_attempts)
+            {
+                break;
+            }
+            ++next_port;
+            if (next_port < port_range_min || next_port >= port_range_min + port_range_size)
+            {
+                next_port = static_cast<std::uint16_t>(
+                    port_range_min + ((next_port - port_range_min) % port_range_size)
+                );
+            }
+        }
+        std::cerr << "server startup exhausted " << max_attempts << " candidates starting at "
+                  << first_port << '\n';
+        return false;
     }
 
     struct HandshakeResult
@@ -124,24 +194,6 @@ namespace
         return false;
     }
 
-    struct TransportTestSettings
-    {
-        std::uint16_t port{test_port()};
-    };
-
-    [[nodiscard]] simnet::TransportServerSettings server_settings(
-        TransportTestSettings const& settings,
-        simnet::SessionIdentity expected_identity = identity()
-    )
-    {
-        return {
-            .bind_address = "127.0.0.1",
-            .port = settings.port,
-            .max_peers = 1U,
-            .expected_identity = expected_identity,
-        };
-    }
-
     [[nodiscard]] simnet::TransportClientSettings client_settings(
         TransportTestSettings const& settings,
         simnet::SessionIdentity client_identity = identity()
@@ -163,21 +215,22 @@ namespace
             .size_policy = simnet::SendSizePolicy::EnforceLimit,
         };
 
-        auto server_config = server_settings(settings);
-        server_config.limits = limits;
-        auto result = server.start(server_config);
-        if (!result.ok)
+        auto settings_copy = settings;
+        auto result = simnet::TransportResult{};
+        auto const started = start_server_with_retry(server, settings_copy, identity(), &limits);
+        if (!started)
         {
-            std::cerr << "server start failed: " << result.error.message << '\n';
+            std::cerr << "server start failed on all candidate ports\n";
             return false;
         }
 
-        auto client_config = client_settings(settings);
+        auto client_config = client_settings(settings_copy);
         client_config.limits = limits;
         result = client.connect(client_config);
         if (!result.ok)
         {
             std::cerr << "client connect failed: " << result.error.message << '\n';
+            server.stop();
             return false;
         }
 
@@ -358,18 +411,20 @@ namespace
     {
         auto server = simnet::TransportServer{};
         auto client = simnet::TransportClient{};
-
-        auto result = server.start(server_settings(settings));
-        if (!result.ok)
+        auto settings_copy = settings;
+        auto const started = start_server_with_retry(server, settings_copy, identity());
+        auto result = simnet::TransportResult{};
+        if (!started)
         {
-            std::cerr << "server start failed: " << result.error.message << '\n';
+            std::cerr << "server start failed on all candidate ports\n";
             return false;
         }
 
-        result = client.connect(client_settings(settings, mismatched_identity));
+        result = client.connect(client_settings(settings_copy, mismatched_identity));
         if (!result.ok)
         {
             std::cerr << "client connect failed: " << result.error.message << '\n';
+            server.stop();
             return false;
         }
 
@@ -394,18 +449,21 @@ namespace
     {
         auto server = simnet::TransportServer{};
         auto client = simnet::TransportClient{};
-        auto result = server.start(server_settings(settings));
-        if (!result.ok)
+        auto settings_copy = settings;
+        auto result = simnet::TransportResult{};
+        auto const started = start_server_with_retry(server, settings_copy, identity());
+        if (!started)
         {
-            std::cerr << "reconnect server start failed: " << result.error.message << '\n';
+            std::cerr << "reconnect server start failed on all candidate ports\n";
             return false;
         }
 
-        result = client.connect(client_settings(settings));
+        result = client.connect(client_settings(settings_copy));
         if (!result.ok)
         {
             std::cerr << "initial reconnect client connect failed: " << result.error.message
                       << '\n';
+            server.stop();
             return false;
         }
         auto first = HandshakeResult{};
@@ -441,10 +499,11 @@ namespace
             return false;
         }
 
-        result = client.connect(client_settings(settings));
+        result = client.connect(client_settings(settings_copy));
         if (!result.ok)
         {
             std::cerr << "second reconnect client connect failed: " << result.error.message << '\n';
+            server.stop();
             return false;
         }
         auto second = HandshakeResult{};
@@ -468,19 +527,20 @@ namespace
     {
         auto server = simnet::TransportServer{};
         auto client = simnet::TransportClient{};
-        auto server_config = server_settings(settings);
-        server_config.limits = {
+        auto settings_copy = settings;
+        auto limits = simnet::TransportLimits{
             .max_payload_bytes = 64U,
             .size_policy = simnet::SendSizePolicy::EnforceLimit,
         };
-        auto result = server.start(server_config);
-        if (!result.ok)
+        auto result = simnet::TransportResult{};
+        auto const started = start_server_with_retry(server, settings_copy, identity(), &limits);
+        if (!started)
         {
-            std::cerr << "receive-limit server start failed: " << result.error.message << '\n';
+            std::cerr << "receive-limit server start failed on all candidate ports\n";
             return false;
         }
 
-        auto client_config = client_settings(settings);
+        auto client_config = client_settings(settings_copy);
         client_config.limits = {
             .max_payload_bytes = 64U,
             .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
@@ -562,14 +622,14 @@ namespace
             .max_payload_bytes = 4096U,
             .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
         };
-        auto server_config = server_settings(settings);
-        server_config.limits = limits;
-        auto result = server.start(server_config);
-        if (!result.ok)
+        auto settings_copy = settings;
+        auto result = simnet::TransportResult{};
+        auto const started = start_server_with_retry(server, settings_copy, identity(), &limits);
+        if (!started)
         {
             return false;
         }
-        auto client_config = client_settings(settings);
+        auto client_config = client_settings(settings_copy);
         client_config.limits = limits;
         result = client.connect(client_config);
         if (!result.ok)
