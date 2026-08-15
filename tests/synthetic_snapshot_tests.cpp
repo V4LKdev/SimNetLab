@@ -69,11 +69,27 @@ namespace
         CHECK(same_vec3_bits(left.headings[index], right.headings[index]));
         CHECK(left.hues[index] == right.hues[index]);
     }
+
+    [[nodiscard]] simnet::WorldSnapshot synthetic_snapshot_at_tick(
+        simnet::SyntheticSnapshotSettings const& snapshot_settings,
+        simnet::SyntheticChangeSettings const& change_settings,
+        simnet::Tick tick
+    )
+    {
+        auto synthetic_state = simnet::SyntheticSnapshotState{};
+        return simnet::update_synthetic_world_snapshot(
+            snapshot_settings,
+            change_settings,
+            tick,
+            synthetic_state
+        );
+    }
 }
 
 TEST_CASE("synthetic snapshots use deterministic nonzero entity ids", "[synthetic][snapshot]")
 {
-    auto const snapshot = simnet::make_synthetic_world_snapshot(settings(), 7U);
+    auto const snapshot =
+        synthetic_snapshot_at_tick(settings(), simnet::SyntheticChangeSettings{}, 7U);
     REQUIRE(snapshot.size() == 10U);
     CHECK(snapshot.ids.front() == 1U);
     CHECK(snapshot.ids.back() == 10U);
@@ -105,7 +121,7 @@ TEST_CASE(
             second
         );
         auto const expected_snapshot =
-            simnet::make_synthetic_world_snapshot(snapshot_settings, tick);
+            synthetic_snapshot_at_tick(snapshot_settings, change_settings, tick);
         CHECK(same_snapshot_bits(first_snapshot, expected_snapshot));
         CHECK(same_snapshot_bits(first_snapshot, second_snapshot));
     }
@@ -130,7 +146,7 @@ TEST_CASE(
     {
         auto const previous = state.current;
         simnet::Tick const tick = 8U + static_cast<simnet::Tick>(step);
-        auto const candidate = simnet::make_synthetic_world_snapshot(snapshot_settings, tick);
+        auto const candidate = synthetic_snapshot_at_tick(snapshot_settings, changes, tick);
         auto const first_index = (step * 2U) % 10U;
         auto const& current =
             simnet::update_synthetic_world_snapshot(snapshot_settings, changes, tick, state);
@@ -188,7 +204,7 @@ TEST_CASE("synthetic field modes change only their named canonical groups", "[sy
         };
         auto const previous =
             simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 50U, state);
-        auto const candidate = simnet::make_synthetic_world_snapshot(snapshot_settings, 51U);
+        auto const candidate = synthetic_snapshot_at_tick(snapshot_settings, changes, 51U);
         auto const& current =
             simnet::update_synthetic_world_snapshot(snapshot_settings, changes, 51U, state);
 

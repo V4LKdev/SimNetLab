@@ -253,14 +253,6 @@ namespace
 
 namespace simnet
 {
-    WorldSnapshot
-    make_synthetic_world_snapshot(SyntheticSnapshotSettings const& settings, Tick tick)
-    {
-        auto snapshot = WorldSnapshot{};
-        fill_synthetic_world_snapshot(settings, tick, snapshot);
-        return snapshot;
-    }
-
     WorldSnapshot const& update_synthetic_world_snapshot(
         SyntheticSnapshotSettings const& snapshot_settings,
         SyntheticChangeSettings const& change_settings,
@@ -273,8 +265,7 @@ namespace simnet
 
         if (!state.initialized)
         {
-            auto initial = make_synthetic_world_snapshot(snapshot_settings, tick);
-            state.current = std::move(initial);
+            fill_synthetic_world_snapshot(snapshot_settings, tick, state.current);
             state.accepted_snapshot_settings = snapshot_settings;
             state.accepted_change_settings = change_settings;
             state.next_entity_index = 0U;

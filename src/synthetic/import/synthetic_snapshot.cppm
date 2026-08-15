@@ -23,10 +23,6 @@ export namespace simnet
         bool initialized{};
     };
 
-    /// Creates a deterministic valid world snapshot for the requested tick.
-    [[nodiscard]] WorldSnapshot
-    make_synthetic_world_snapshot(SyntheticSnapshotSettings const& settings, Tick tick);
-
     /// Initializes or advances one deterministic retained synthetic snapshot sequence.
     [[nodiscard]] WorldSnapshot const& update_synthetic_world_snapshot(
         SyntheticSnapshotSettings const& snapshot_settings,
