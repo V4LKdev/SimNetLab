@@ -20,6 +20,7 @@ target_sources(
         app_player_input.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_snapshot_delivery.cppm
+        client_replication.cppm
         client_runtime.cppm
 )
 
