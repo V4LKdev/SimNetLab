@@ -1,14 +1,16 @@
 {
   "version": 10,
   "$schema": "https://cmake.org/cmake/help/latest/manual/presets/schema.json",
+
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 31,
     "patch": 0
   },
+
   "configurePresets": [
     {
-      "name": "vcpkg-base",
+      "name": "base",
       "hidden": true,
       "generator": "Ninja",
       "toolchainFile": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
@@ -22,7 +24,7 @@
     {
       "name": "debug",
       "displayName": "Debug",
-      "inherits": "vcpkg-base",
+      "inherits": "base",
       "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -33,7 +35,7 @@
     {
       "name": "relWithDebInfo",
       "displayName": "RelWithDebInfo",
-      "inherits": "vcpkg-base",
+      "inherits": "base",
       "binaryDir": "${sourceDir}/build/relWithDebInfo",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
@@ -42,47 +44,14 @@
     {
       "name": "release",
       "displayName": "Release",
-      "inherits": "vcpkg-base",
+      "inherits": "base",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
-    },
-    {
-      "name": "analysis-base",
-      "hidden": true,
-      "inherits": "vcpkg-base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "BUILD_TESTING": true,
-        "SIMNET_WARNINGS_AS_ERRORS": false,
-        "SIMNET_ENABLE_STRICT_WARNINGS": true,
-        "SIMNET_ENABLE_ASAN": false,
-        "SIMNET_ENABLE_UBSAN": false,
-        "SIMNET_ENABLE_TRACY": false,
-        "SIMNET_ENABLE_RENDER": true,
-        "SIMNET_ENABLE_SYNTHETIC": true
-      }
-    },
-    {
-      "name": "gcc-analysis",
-      "displayName": "GCC advisory analysis",
-      "inherits": "analysis-base",
-      "binaryDir": "${sourceDir}/build/gcc-analysis",
-      "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "g++"
-      }
-    },
-    {
-      "name": "clang-analysis",
-      "displayName": "Clang advisory analysis",
-      "inherits": "analysis-base",
-      "binaryDir": "${sourceDir}/build/clang-analysis",
-      "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "clang++"
-      }
     }
   ],
+
   "buildPresets": [
     {
       "name": "debug",
@@ -95,16 +64,9 @@
     {
       "name": "release",
       "configurePreset": "release"
-    },
-    {
-      "name": "gcc-analysis",
-      "configurePreset": "gcc-analysis"
-    },
-    {
-      "name": "clang-analysis",
-      "configurePreset": "clang-analysis"
     }
   ],
+
   "testPresets": [
     {
       "name": "debug",
@@ -123,20 +85,6 @@
     {
       "name": "release",
       "configurePreset": "release",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "gcc-analysis",
-      "configurePreset": "gcc-analysis",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "clang-analysis",
-      "configurePreset": "clang-analysis",
       "output": {
         "outputOnFailure": true
       }

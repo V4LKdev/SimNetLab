@@ -1,18 +1,17 @@
 BasedOnStyle: LLVM
-Language: Cpp
-Standard: Latest
+Standard: Auto
 
+# General layout
 UseTab: Never
 IndentWidth: 4
-TabWidth: 4
 ContinuationIndentWidth: 4
 ColumnLimit: 100
 
 BreakBeforeBraces: Allman
-InsertBraces: true
 NamespaceIndentation: All
 IndentCaseLabels: true
 
+# Keep constructs expanded
 AllowShortBlocksOnASingleLine: Never
 AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: Never
@@ -22,20 +21,21 @@ AllowShortNamespacesOnASingleLine: false
 AllowShortEnumsOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false
 
-AlignAfterOpenBracket: BlockIndent
+# Wrapped arguments and parameters
+AlignAfterOpenBracket: true
 BinPackArguments: false
 BinPackParameters: OnePerLine
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
 
+# Pointer and reference style
 DerivePointerAlignment: false
 PointerAlignment: Left
 ReferenceAlignment: Pointer
-QualifierAlignment: Leave
 
+# Preserve deliberate source organization and comments
 SortIncludes: Never
-IncludeBlocks: Preserve
-ReflowComments: Never
+ReflowComments: IndentOnly
 FixNamespaceComments: false
-RemoveParentheses: Leave
+
 InsertNewlineAtEOF: true
