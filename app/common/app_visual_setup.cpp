@@ -1,6 +1,5 @@
 module;
 
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -169,11 +168,10 @@ namespace simnet::app
         end_section();
     }
 
-    void RunSetupStorage::add_shared_sections(SharedConfig const& shared)
+    void RunSetupStorage::add_workload(SharedConfig const& shared)
     {
-        begin_section("SIMULATION", false);
+        begin_section("WORKLOAD", false);
         add_row("Tick rate", format_float(shared.simulation.tick_rate_hz, 1) + " Hz");
-        add_row("Fixed timestep", format_float(1000.0 / shared.simulation.tick_rate_hz, 3) + " ms");
         add_row("Initial boids", format_unsigned_integer(shared.simulation.initial_boid_count));
         add_row(
             "World size",
@@ -182,67 +180,8 @@ namespace simnet::app
                 format_float(shared.simulation.world_half * 2.0F, 0)
         );
         add_row("Seed", format_unsigned_integer(shared.run.seed));
-        add_row("Deterministic", "Yes");
-        end_section();
-
-        begin_section("BOID RULES", false);
-        add_row(
-            "Speed min / cruise / max",
-            format_float(shared.boids.min_speed) + " / " + format_float(shared.boids.cruise_speed) +
-                " / " + format_float(shared.boids.max_speed)
-        );
-        add_row("Maximum acceleration", format_float(shared.boids.max_acceleration));
-        add_row("Separation radius", format_float(shared.boids.separation_radius));
-        add_row("Alignment radius", format_float(shared.boids.alignment_radius));
-        add_row("Cohesion radius", format_float(shared.boids.cohesion_radius));
-        add_row("Field of view", format_float(shared.boids.field_of_view_degrees, 1) + " deg");
-        add_row("Separation", enabled_label(shared.boids.enable_separation));
-        add_row("Alignment", enabled_label(shared.boids.enable_alignment));
-        add_row("Cohesion", enabled_label(shared.boids.enable_cohesion));
-        add_row("Containment", enabled_label(shared.boids.enable_containment));
-        add_row("Wander", enabled_label(shared.boids.enable_wander));
-        add_row("Hue assimilation", enabled_label(shared.boids.enable_hue_assimilation));
-        add_row("Hue drift", enabled_label(shared.boids.enable_hue_drift));
-        end_section();
-
-        begin_section("PLAYER MOVEMENT", false);
-        add_row(
-            "Speed cruise / boost / slow",
-            format_float(shared.player.cruise_speed) + " / " +
-                format_float(shared.player.boost_speed) + " / " +
-                format_float(shared.player.slow_speed)
-        );
-        add_row("Speed change rate", format_float(shared.player.speed_change_rate));
-        add_row(
-            "Yaw acceleration",
-            format_float(shared.player.yaw_acceleration_degrees, 1) + " deg/s2"
-        );
-        add_row(
-            "Pitch acceleration",
-            format_float(shared.player.pitch_acceleration_degrees, 1) + " deg/s2"
-        );
-        add_row("Maximum yaw rate", format_float(shared.player.max_yaw_rate_degrees, 1) + " deg/s");
-        add_row(
-            "Maximum pitch rate",
-            format_float(shared.player.max_pitch_rate_degrees, 1) + " deg/s"
-        );
-        add_row("Pitch limit", format_float(shared.player.pitch_limit_degrees, 1) + " deg");
-        end_section();
-
-        begin_section("SPATIAL PARTITION", false);
-        add_row("Implementation", "Deterministic uniform grid");
-        add_row("Cell size", format_float(shared.spatial.cell_size));
+        add_row("Spatial cell size", format_float(shared.spatial.cell_size));
         add_row("Maximum neighbors", format_unsigned_integer(shared.spatial.max_neighbors));
-        add_row(
-            "Query radius",
-            format_float(
-                std::max({
-                    shared.boids.separation_radius,
-                    shared.boids.alignment_radius,
-                    shared.boids.cohesion_radius,
-                })
-            )
-        );
         end_section();
     }
 
@@ -259,8 +198,6 @@ namespace simnet::app
         add_row("Viewer", "Server");
         add_row("Shared profile", shared_source.stem().string());
         add_row("Server profile", local_source.stem().string());
-        add_row("Shared source", shared_source.string());
-        add_row("Server source", local_source.string());
         add_row("Runtime fingerprint", format_hexadecimal(revision_));
         add_row(
             "Network fingerprint",
@@ -272,15 +209,7 @@ namespace simnet::app
         add_row("Flecs workers", format_unsigned_integer(local.flecs.thread_count));
         end_section();
         add_techniques(pipeline, shared);
-        add_shared_sections(shared);
-
-        begin_section("PRESENTATION", false);
-        add_row("Interpolation", enabled_label(local.visualization.interpolation_enabled));
-        add_row(
-            "Target frame rate",
-            format_unsigned_integer(local.visualization.target_fps) + " FPS"
-        );
-        end_section();
+        add_workload(shared);
 
         begin_section("TRANSPORT", false);
         add_row("Backend", "ENet");
@@ -306,8 +235,6 @@ namespace simnet::app
         add_row("Viewer", "Client");
         add_row("Shared profile", shared_source.stem().string());
         add_row("Client profile", local_source.stem().string());
-        add_row("Shared source", shared_source.string());
-        add_row("Client source", local_source.string());
         add_row("Runtime fingerprint", format_hexadecimal(revision_));
         add_row(
             "Network fingerprint",
@@ -319,15 +246,7 @@ namespace simnet::app
         add_row("Client role", local.gameplay.role);
         end_section();
         add_techniques(pipeline, shared);
-        add_shared_sections(shared);
-
-        begin_section("PRESENTATION", false);
-        add_row("Interpolation", enabled_label(local.visualization.interpolation_enabled));
-        add_row(
-            "Target frame rate",
-            format_unsigned_integer(local.visualization.target_fps) + " FPS"
-        );
-        end_section();
+        add_workload(shared);
 
         begin_section("TRANSPORT", false);
         add_row("Backend", "ENet");

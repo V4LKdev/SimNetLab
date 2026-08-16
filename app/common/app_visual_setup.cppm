@@ -46,12 +46,12 @@ export namespace simnet::app
         void begin_section(std::string_view title, bool expanded);
         void end_section();
         void add_row(std::string_view label, std::string value);
-        void add_shared_sections(SharedConfig const& shared);
+        void add_workload(SharedConfig const& shared);
         void add_techniques(PipelineDefinition const& pipeline, SharedConfig const& shared);
 
-        std::array<std::string, 128> values_{};
-        std::array<SetupRowView, 128> rows_{};
-        std::array<SetupSectionView, 8> sections_{};
+        std::array<std::string, 32> values_{};
+        std::array<SetupRowView, 32> rows_{};
+        std::array<SetupSectionView, 4> sections_{};
         std::size_t value_count_{};
         std::size_t row_count_{};
         std::size_t section_count_{};
