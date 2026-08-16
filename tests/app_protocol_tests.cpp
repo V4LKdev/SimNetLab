@@ -77,6 +77,45 @@ TEST_CASE("snapshot ACK round-trips replication progress", "[app_protocol][ack]"
     CHECK_FALSE(simnet::app::decode_snapshot_ack(malformed, decoded));
 }
 
+TEST_CASE("Player input round-trips every keyboard and mouse button", "[app_protocol][player]")
+{
+    using simnet::app::PlayerButton;
+    auto const buttons = std::array{
+        PlayerButton::W,
+        PlayerButton::A,
+        PlayerButton::S,
+        PlayerButton::D,
+        PlayerButton::Shift,
+        PlayerButton::Control,
+        PlayerButton::LeftMouse,
+        PlayerButton::RightMouse,
+    };
+    auto mask = std::uint8_t{};
+    for (auto const button : buttons)
+    {
+        mask |= static_cast<std::uint8_t>(button);
+    }
+
+    auto const bytes = simnet::app::encode_player_input({.buttons = mask});
+    CHECK(bytes.size() == 3U);
+    CHECK(
+        simnet::app::decode_app_message_kind(bytes) == simnet::app::AppMessageKind::PlayerInput
+    );
+
+    auto decoded = simnet::app::PlayerInputMessage{};
+    REQUIRE(simnet::app::decode_player_input(bytes, decoded));
+    CHECK(decoded.buttons == mask);
+    for (auto const button : buttons)
+    {
+        CHECK(simnet::app::button_down(decoded, button));
+    }
+
+    auto malformed = bytes;
+    malformed.pop_back();
+    CHECK_FALSE(simnet::app::decode_player_input(malformed, decoded));
+    CHECK(decoded.buttons == mask);
+}
+
 TEST_CASE("snapshot recovery request round-trips missing baseline identity", "[app_protocol][recovery]")
 {
     auto const expected = simnet::app::SnapshotRecoveryRequest{
