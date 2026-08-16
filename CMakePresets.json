@@ -49,6 +49,19 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "evidence",
+      "displayName": "Evidence (headless Release)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/evidence",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": false,
+        "SIMNET_ENABLE_RENDER": false,
+        "SIMNET_ENABLE_SYNTHETIC": false,
+        "SIMNET_ENABLE_TRACY": false
+      }
     }
   ],
 
@@ -64,6 +77,10 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "evidence",
+      "configurePreset": "evidence"
     }
   ],
 

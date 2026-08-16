@@ -62,6 +62,17 @@ Both applications accept `--config PATH`, `--shared-config PATH`, `--run-id TEXT
 `--max-steps-per-frame`. A zero limit is disabled. A supplied run ID correlates Server and Client
 CSV evidence. Without it, each process generates an independent process-local ID.
 
+Build binaries for final measurements with the explicit headless Release preset:
+
+```sh
+cmake --preset evidence
+cmake --build --preset evidence
+```
+
+This preset disables rendering, Tracy instrumentation, tests, sanitizers, and the optional synthetic
+workload so those facilities cannot enter the measured application binaries. Tracy remains available
+as an opt-in CMake feature for dedicated profiling builds.
+
 The developer-only Server option `--compression-corpus-dir PATH` captures whole-update compression
 inputs for offline dictionary training.
 

@@ -1,5 +1,5 @@
 # Features
-option(SIMNET_ENABLE_TRACY              "Enable Tracy profiling integration"            ON)
+option(SIMNET_ENABLE_TRACY              "Enable Tracy profiling integration"            OFF)
 option(SIMNET_ENABLE_RENDER             "Build render support"                          ON)
 option(SIMNET_ENABLE_SYNTHETIC          "Build synthetic research workload support"     OFF)
 
