@@ -1135,6 +1135,12 @@ namespace
                 );
                 if (admission != simnet::app::detail::PeerAdmission::Accept)
                 {
+                    simnet::log(
+                        simnet::LogCategory::Transport,
+                        simnet::LogLevel::Warn,
+                        "server rejected session at configured capacity peer=" +
+                            std::to_string(ready->peer)
+                    );
                     transport.disconnect(ready->peer, simnet::DisconnectCode::ServerFull);
                 }
                 else
@@ -1197,9 +1203,27 @@ namespace
                     if (message.kind == simnet::app::AppMessageKind::JoinRequest &&
                         !peer->role.has_value())
                     {
-                        peer->role = message.role;
                         if (message.role == simnet::app::ClientRole::Player)
                         {
+                            auto const player_already_connected = std::ranges::any_of(
+                                peers,
+                                [peer](PeerRuntimeState const& candidate)
+                                {
+                                    return candidate.peer != peer->peer &&
+                                           candidate.role == simnet::app::ClientRole::Player;
+                                }
+                            );
+                            if (player_already_connected)
+                            {
+                                simnet::log(
+                                    simnet::LogCategory::Simulation,
+                                    simnet::LogLevel::Warn,
+                                    "server rejected additional Player peer_id=" +
+                                        std::to_string(peer->peer)
+                                );
+                                reject_peer(simnet::DisconnectCode::ServerFull);
+                                continue;
+                            }
                             if (world == nullptr || snapshot_state == nullptr)
                             {
                                 simnet::log(
@@ -1210,6 +1234,7 @@ namespace
                                 reject_peer(simnet::DisconnectCode::ProtocolMismatch);
                                 continue;
                             }
+                            peer->role = message.role;
                             peer->player_id = simnet::spawn_authoritative_player(*world);
                             if (peer->player_id == 0U)
                             {
@@ -1222,6 +1247,10 @@ namespace
                                 continue;
                             }
                             snapshot_state->dirty = true;
+                        }
+                        else
+                        {
+                            peer->role = message.role;
                         }
                         simnet::log(
                             simnet::LogCategory::Simulation,
@@ -1388,10 +1417,12 @@ namespace
             {
                 simnet::log(
                     simnet::LogCategory::Transport,
-                    simnet::LogLevel::Error,
+                    simnet::LogLevel::Warn,
                     "server transport error: " + error->message
                 );
-                return false;
+                // TransportErrorEvent is a non-fatal diagnostic. Fatal backend failures are
+                // returned by poll() itself; a malformed or incompatible peer must not stop the
+                // authoritative Server.
             }
         }
         return true;
@@ -1583,7 +1614,9 @@ namespace simnet::app
             auto const started = transport.start({
                 .bind_address = local.transport.host,
                 .port = local.transport.port,
-                .max_peers = local.transport.max_clients,
+                // Keep one transport-level admission slot beyond the application capacity so a
+                // newly connecting peer can receive an explicit ServerFull rejection.
+                .max_peers = local.transport.max_clients + 1U,
                 .expected_identity = session_identity,
                 .limits = {
                     .max_payload_bytes = local.transport.max_payload_bytes,

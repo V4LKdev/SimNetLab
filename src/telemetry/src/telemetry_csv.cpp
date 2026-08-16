@@ -237,9 +237,65 @@ namespace
         return "unknown";
     }
 
+    void own_text(std::string_view& view, std::vector<std::string>& storage)
+    {
+        storage.emplace_back(view);
+        view = storage.back();
+    }
+
+    void own_measurement_text(
+        ServerReplicationMeasurement& measurement,
+        std::vector<std::string>& storage
+    )
+    {
+        storage.reserve(12U);
+        own_text(measurement.accepted_gameplay_role, storage);
+        own_text(measurement.outcome_detail, storage);
+        own_text(measurement.area_of_interest_mode, storage);
+        own_text(measurement.area_of_interest_source_status, storage);
+        own_text(measurement.level_of_detail_mode, storage);
+        own_text(measurement.representation_layout, storage);
+        own_text(measurement.compression_mode, storage);
+        own_text(measurement.compression_encoding, storage);
+        own_text(measurement.compression_dictionary, storage);
+        own_text(measurement.delivery_mode, storage);
+        own_text(measurement.recovery_reason, storage);
+    }
+
+    void own_measurement_text(
+        ClientReplicationMeasurement& measurement,
+        std::vector<std::string>& storage
+    )
+    {
+        storage.reserve(5U);
+        own_text(measurement.outcome_detail, storage);
+        own_text(measurement.compression_mode, storage);
+        own_text(measurement.decompression_encoding, storage);
+        own_text(measurement.decompression_result, storage);
+        own_text(measurement.compression_dictionary, storage);
+    }
+
     template <typename Measurement> struct BufferedMeasurement
     {
+        BufferedMeasurement(
+            Measurement const& measurement,
+            EvidenceRecordTimestamp record_timestamp,
+            std::uint64_t order
+        )
+            : value(measurement), timestamp(record_timestamp), record_order(order)
+        {
+            own_measurement_text(value, owned_text);
+        }
+
+        BufferedMeasurement(BufferedMeasurement const&) = delete;
+        BufferedMeasurement& operator=(BufferedMeasurement const&) = delete;
+        BufferedMeasurement(BufferedMeasurement&&) noexcept = default;
+        BufferedMeasurement& operator=(BufferedMeasurement&&) noexcept = default;
+
         Measurement value{};
+        // Measurement contracts use string_view so producers can report vocabulary cheaply.
+        // Buffered evidence records must own those bytes because they can outlive the producer.
+        std::vector<std::string> owned_text{};
         EvidenceRecordTimestamp timestamp{};
         std::uint64_t record_order{};
     };
@@ -291,11 +347,7 @@ namespace
                 failure = "replication CSV typed buffer overflow";
                 return false;
             }
-            buffer.push_back({
-                .value = measurement,
-                .timestamp = timestamp,
-                .record_order = submitted,
-            });
+            buffer.emplace_back(measurement, timestamp, submitted);
             ++submitted;
             return true;
         }
@@ -839,6 +891,10 @@ namespace simnet
         EvidenceRecordTimestamp timestamp
     )
     {
+        if (needs_drain() && !drain())
+        {
+            return false;
+        }
         return impl_->state.submit(measurement, timestamp);
     }
 
@@ -1001,6 +1057,10 @@ namespace simnet
         EvidenceRecordTimestamp timestamp
     )
     {
+        if (needs_drain() && !drain())
+        {
+            return false;
+        }
         return impl_->state.submit(measurement, timestamp);
     }
 

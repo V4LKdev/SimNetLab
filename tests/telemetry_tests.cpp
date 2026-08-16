@@ -282,3 +282,96 @@ TEST_CASE("Client replication CSV preserves application outcome bytes and timing
     CHECK(column_value(header, row, "canonical_snapshot_commit_elapsed_ns") == "6");
     CHECK(column_value(header, row, "decode_to_applied_elapsed_ns") == "21");
 }
+
+TEST_CASE(
+    "Client replication CSV owns buffered text after producer strings expire",
+    "[telemetry][csv][client][regression]"
+)
+{
+    auto temporary = TestTemporaryDirectory{"simnet_telemetry"};
+    auto writer = simnet::ClientReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "buffered-text-lifetime",
+            .process_role = simnet::EvidenceProcessRole::Client,
+            .process_started_unix_ns = 300U,
+        },
+    }};
+    REQUIRE(writer.set_accepted_gameplay_role("stationary_observer"));
+
+    {
+        auto outcome_detail = std::string{"temporary-applied-detail"};
+        auto compression_mode = std::string{"temporary-zstd-mode"};
+        auto decompression_encoding = std::string{"temporary-zstd-frame"};
+        auto decompression_result = std::string{"temporary-decompression-success"};
+        auto compression_dictionary = std::string{"temporary-dictionary-description"};
+        auto const measurement = simnet::ClientReplicationMeasurement{
+            .sequence = 1U,
+            .outcome = simnet::ClientReplicationOutcome::Applied,
+            .outcome_detail = outcome_detail,
+            .compression_mode = compression_mode,
+            .decompression_encoding = decompression_encoding,
+            .decompression_result = decompression_result,
+            .compression_dictionary = compression_dictionary,
+        };
+        REQUIRE(writer.submit(measurement));
+    }
+
+    REQUIRE(writer.buffered_count() == 1U);
+    REQUIRE(writer.close());
+
+    auto const lines = read_lines(writer.path());
+    REQUIRE(lines.size() == 2U);
+    auto const header = parse_csv_row(lines[0]);
+    auto const row = parse_csv_row(lines[1]);
+    REQUIRE(row.size() == header.size());
+    CHECK(column_value(header, row, "outcome_detail") == "temporary-applied-detail");
+    CHECK(column_value(header, row, "compression_mode") == "temporary-zstd-mode");
+    CHECK(column_value(header, row, "decompression_encoding") == "temporary-zstd-frame");
+    CHECK(
+        column_value(header, row, "decompression_result") ==
+        "temporary-decompression-success"
+    );
+    CHECK(
+        column_value(header, row, "compression_dictionary") ==
+        "temporary-dictionary-description"
+    );
+}
+
+TEST_CASE(
+    "Client replication CSV drains during a large receive batch",
+    "[telemetry][csv][client][regression]"
+)
+{
+    auto temporary = TestTemporaryDirectory{"simnet_telemetry"};
+    auto writer = simnet::ClientReplicationCsvWriter{{
+        .enabled = true,
+        .output_directory = temporary.path(),
+        .run = {
+            .run_id = "large-receive-batch",
+            .process_role = simnet::EvidenceProcessRole::Client,
+            .process_started_unix_ns = 400U,
+        },
+    }};
+    REQUIRE(writer.set_accepted_gameplay_role("stationary_observer"));
+
+    for (auto sequence = std::uint32_t{1}; sequence <= 300U; ++sequence)
+    {
+        auto detail = std::string{"temporary-batch-detail-"} + std::to_string(sequence);
+        REQUIRE(writer.submit({
+            .sequence = sequence,
+            .outcome = simnet::ClientReplicationOutcome::PacketIncomplete,
+            .outcome_detail = detail,
+        }));
+    }
+
+    REQUIRE(writer.submitted_count() == 300U);
+    REQUIRE(writer.close());
+    auto const lines = read_lines(writer.path());
+    REQUIRE(lines.size() == 301U);
+    auto const header = parse_csv_row(lines.front());
+    auto const final_row = parse_csv_row(lines.back());
+    CHECK(column_value(header, final_row, "sequence") == "300");
+    CHECK(column_value(header, final_row, "outcome_detail") == "temporary-batch-detail-300");
+}

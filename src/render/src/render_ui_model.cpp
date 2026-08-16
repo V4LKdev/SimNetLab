@@ -72,6 +72,9 @@ namespace simnet
             copy_text(row.label, label);
             std::snprintf(row.value.data(), row.value.size(), format, args...);
             row.state = state;
+            // PanelModel storage is reused across pages and frames. A slot that previously held
+            // full-width explanatory text must become a labelled row again explicitly.
+            row.full_width = false;
             ++model.sections[model.section_count - 1U].row_count;
         }
 
@@ -591,7 +594,7 @@ namespace simnet
             add_text(panel_model_, "Left-click an entity in the viewport.");
             if (!frame.info.capabilities.has_entity_diagnostics)
             {
-                add_text(panel_model_, "Detailed diagnostics require an authoritative source.");
+                add_text(panel_model_, "Server-only diagnostics unavailable.");
             }
             return;
         }

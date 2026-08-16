@@ -510,6 +510,9 @@ namespace simnet
                         .reject_code = mismatch,
                     }
                 ));
+                // An incompatible peer is an expected per-session rejection, not a failure of
+                // the authoritative transport. The Client receives ServerReject and the Server
+                // remains available to compatible peers.
                 events.push_back(
                     TransportErrorEvent{
                         .message = "client session identity mismatch",
