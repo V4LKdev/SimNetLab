@@ -176,7 +176,7 @@ export namespace simnet
     ///
     /// Retained reconstructed snapshots are canonical Client state. Sink preparation and sink
     /// application are separate so pipeline-only treatments can exclude the nonauthoritative
-    /// Client Flecs workload. total_receive_to_applied_elapsed_time is populated only for Applied.
+    /// Client Flecs workload. decode_to_applied_elapsed_time is populated only for Applied.
     struct ClientReplicationMeasurement
     {
         std::uint64_t runtime_config_fingerprint{};
@@ -243,7 +243,7 @@ export namespace simnet
         /// Steady-clock elapsed wall time around canonical state and ACK commit.
         Nanoseconds canonical_snapshot_commit_elapsed_time{};
         /// Steady-clock elapsed wall time from decode start through canonical commit.
-        Nanoseconds total_receive_to_applied_elapsed_time{};
+        Nanoseconds decode_to_applied_elapsed_time{};
     };
 
     /// Allocation-free current observer state for Server replication attempts.

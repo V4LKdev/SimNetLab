@@ -37,7 +37,7 @@ packetization boundaries.
 
 The Client records received outer bytes, reassembly outcomes, decompression, decode,
 retained-baseline resolution, reconstruction, sink preparation, Client Flecs sink application,
-canonical snapshot commit, ACK progression, and total receive-to-applied work. Incomplete,
+canonical snapshot commit, ACK progression, and total decode-to-applied work. Incomplete,
 duplicate, invalid, stale, expired, decompression-failed, and non-commit application outcomes are
 rows rather than implied successes. Retained reconstructed snapshots remain canonical Client
 state. Pipeline-only treatments exclude sink preparation and sink application. Full-system
@@ -61,7 +61,7 @@ writer after the measured stage ends.
 
 - `EvidenceRunContext` - immutable process role, process-start clocks, and validated run ID.
 - `ServerReplicationCsvWriter` - bounded peer-attributed Server rows and the Server v3 schema.
-- `ClientReplicationCsvWriter` - bounded typed Client rows and the Client v2 schema.
+- `ClientReplicationCsvWriter` - bounded typed Client rows and the Client v3 schema.
 - `EvidenceCsvFile` - exclusive creation and checked write, flush, and close operations.
 
 Server and Client accept optional `--run-id TEXT`. Supplied values must contain 1 to 64 ASCII
@@ -92,7 +92,7 @@ unsampled tick. The boid schema remains separate from replication because it des
 diagnostics and phase timings rather than a replication attempt.
 
 Enabled files are named `server_replication_v3_<process_started_unix_ns>.csv`,
-`client_replication_v2_<process_started_unix_ns>.csv`, and
+`client_replication_v3_<process_started_unix_ns>.csv`, and
 `server_boids_v1_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
 version.
 

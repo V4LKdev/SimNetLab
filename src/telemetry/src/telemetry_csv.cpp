@@ -539,7 +539,7 @@ namespace
         row.integer(value.sink_preparation_elapsed_time.count());
         row.integer(value.sink_application_elapsed_time.count());
         row.integer(value.canonical_snapshot_commit_elapsed_time.count());
-        row.integer(value.total_receive_to_applied_elapsed_time.count());
+        row.integer(value.decode_to_applied_elapsed_time.count());
     }
 
     template <typename Measurement, typename FormatEntry>
@@ -926,9 +926,9 @@ namespace simnet
         explicit Impl(ReplicationCsvWriterConfig config)
             : state(
                   std::move(config),
-                  "client_replication_v2_",
+                  "client_replication_v3_",
                   EvidenceProcessRole::Client,
-                  client_replication_csv_header_v2
+                  client_replication_csv_header_v3
               )
         {
         }

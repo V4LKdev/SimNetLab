@@ -17,7 +17,7 @@ import :metrics;
 export namespace simnet
 {
     inline constexpr std::uint32_t server_replication_csv_schema_version = 3;
-    inline constexpr std::uint32_t client_replication_csv_schema_version = 2;
+    inline constexpr std::uint32_t client_replication_csv_schema_version = 3;
 
     inline constexpr std::string_view server_replication_csv_header_v3 =
         "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
@@ -57,7 +57,7 @@ export namespace simnet
         "snapshot_extraction_elapsed_ns,baseline_resolution_elapsed_ns,encode_elapsed_ns,"
         "transport_send_elapsed_ns,snapshot_retention_elapsed_ns,total_replication_elapsed_ns";
 
-    inline constexpr std::string_view client_replication_csv_header_v2 =
+    inline constexpr std::string_view client_replication_csv_header_v3 =
         "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
         "elapsed_since_process_start_ns,record_order,runtime_config_fingerprint,"
         "network_compatibility_fingerprint,application_wire_fingerprint,peer_id,"
@@ -76,7 +76,7 @@ export namespace simnet
         "compression_payload_bytes,compression_envelope_bytes,uncompressed_bytes,"
         "decompression_elapsed_ns,decode_elapsed_ns,baseline_resolution_elapsed_ns,"
         "reconstruction_elapsed_ns,sink_preparation_elapsed_ns,sink_application_elapsed_ns,"
-        "canonical_snapshot_commit_elapsed_ns,total_receive_to_applied_elapsed_ns";
+        "canonical_snapshot_commit_elapsed_ns,decode_to_applied_elapsed_ns";
 
     enum class EvidenceProcessRole : std::uint8_t
     {

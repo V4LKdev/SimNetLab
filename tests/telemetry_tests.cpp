@@ -194,7 +194,7 @@ TEST_CASE("Server replication CSV preserves peer attribution byte ownership and 
 
 TEST_CASE("Client replication CSV preserves application outcome bytes and timings", "[telemetry][csv][client]")
 {
-    CHECK(simnet::client_replication_csv_schema_version == 2U);
+    CHECK(simnet::client_replication_csv_schema_version == 3U);
 
     auto temporary = TestTemporaryDirectory{"simnet_telemetry"};
     auto writer = simnet::ClientReplicationCsvWriter{{
@@ -236,7 +236,7 @@ TEST_CASE("Client replication CSV preserves application outcome bytes and timing
         .sink_preparation_elapsed_time = std::chrono::nanoseconds{4},
         .sink_application_elapsed_time = std::chrono::nanoseconds{5},
         .canonical_snapshot_commit_elapsed_time = std::chrono::nanoseconds{6},
-        .total_receive_to_applied_elapsed_time = std::chrono::nanoseconds{21},
+        .decode_to_applied_elapsed_time = std::chrono::nanoseconds{21},
     };
 
     REQUIRE(
@@ -249,13 +249,13 @@ TEST_CASE("Client replication CSV preserves application outcome bytes and timing
 
     auto const lines = read_lines(writer.path());
     REQUIRE(lines.size() == 2U);
-    CHECK(lines.front() == simnet::client_replication_csv_header_v2);
+    CHECK(lines.front() == simnet::client_replication_csv_header_v3);
 
     auto const header = parse_csv_row(lines[0]);
     auto const row = parse_csv_row(lines[1]);
     REQUIRE(row.size() == header.size());
 
-    CHECK(column_value(header, row, "schema_version") == "2");
+    CHECK(column_value(header, row, "schema_version") == "3");
     CHECK(column_value(header, row, "run_id") == "paired-run");
     CHECK(column_value(header, row, "process_role") == "client");
     CHECK(column_value(header, row, "process_started_unix_ns") == "200");
@@ -280,5 +280,5 @@ TEST_CASE("Client replication CSV preserves application outcome bytes and timing
     CHECK(column_value(header, row, "sink_preparation_elapsed_ns") == "4");
     CHECK(column_value(header, row, "sink_application_elapsed_ns") == "5");
     CHECK(column_value(header, row, "canonical_snapshot_commit_elapsed_ns") == "6");
-    CHECK(column_value(header, row, "total_receive_to_applied_elapsed_ns") == "21");
+    CHECK(column_value(header, row, "decode_to_applied_elapsed_ns") == "21");
 }

@@ -306,8 +306,8 @@ namespace simnet::app::client_replication
                 std::to_string(value.sink_application_elapsed_time.count()) +
                 " canonical_snapshot_commit_elapsed_ns=" +
                 std::to_string(value.canonical_snapshot_commit_elapsed_time.count()) +
-                " total_receive_to_applied_elapsed_ns=" +
-                std::to_string(value.total_receive_to_applied_elapsed_time.count())
+                " decode_to_applied_elapsed_ns=" +
+                std::to_string(value.decode_to_applied_elapsed_time.count())
         );
     }
 
@@ -502,7 +502,7 @@ namespace simnet::app::client_replication
     {
         auto measurement =
             make_client_measurement(evidence_identity, peer_id, ack_tracker, receive_evidence);
-        auto const total_start = simnet::steady_now_ns();
+        auto const decode_to_applied_start = simnet::steady_now_ns();
         auto const decode_start = simnet::steady_now_ns();
         auto const inspected =
             simnet::inspect_encoded_update_header(pipeline, decode_state, encoded_bytes);
@@ -730,7 +730,8 @@ namespace simnet::app::client_replication
         measurement.outcome = simnet::ClientReplicationOutcome::Applied;
         measurement.outcome_detail = "committed";
         measurement.acknowledged_sequence_after = ack_tracker.value.newest_applied_snapshot;
-        measurement.total_receive_to_applied_elapsed_time = simnet::steady_now_ns() - total_start;
+        measurement.decode_to_applied_elapsed_time =
+            simnet::steady_now_ns() - decode_to_applied_start;
         measurement.canonical_fingerprint =
             simnet::app::snapshot_diagnostic_fingerprint(snapshot_history.back().snapshot);
         observe_client_measurement(measurements, csv, measurement);
