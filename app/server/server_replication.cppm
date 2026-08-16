@@ -386,7 +386,7 @@ namespace simnet::app::server_replication
         }
     }
 
-    [[nodiscard]] bool prepare_per_packet_transport_group(
+    [[nodiscard]] bool prepare_transport_group(
         simnet::app::CompressionSettings const& compression,
         simnet::PacketizationSettings const& packetization,
         std::uint32_t transport_payload_limit,
@@ -396,11 +396,13 @@ namespace simnet::app::server_replication
     )
     {
         auto const maximum_storage =
-            static_cast<std::uint64_t>(prepared.chunk_count) * transport_payload_limit;
+            compression.mode == simnet::app::CompressionMode::PerPacket
+                ? static_cast<std::uint64_t>(prepared.chunk_count) * transport_payload_limit
+                : prepared.report.total_packet_bytes;
         if (maximum_storage > std::numeric_limits<std::uint32_t>::max() ||
             maximum_storage > peer.prepared_transport_group.bytes.max_size())
         {
-            report.error = "compressed transport group storage bound is invalid";
+            report.error = "transport group storage bound is invalid";
             return false;
         }
 
@@ -418,55 +420,62 @@ namespace simnet::app::server_replication
                 index,
                 peer.packet_serialization_scratch
             );
-            auto const compressed = simnet::compress_bytes(
-                peer.compressor,
-                packet,
-                compression.level,
-                {
-                    .max_uncompressed_bytes = packetization.max_payload_bytes,
-                    .max_output_bytes = transport_payload_limit,
-                },
-                simnet::CompressionEnvelopePolicy::OnlyWhenSmaller,
-                peer.compression_scratch
-            );
-            if (!compressed.valid)
+            auto payload = packet;
+            auto encoding = simnet::CompressionEncoding::Raw;
+            if (compression.mode == simnet::app::CompressionMode::PerPacket)
             {
-                report.error = compressed.error;
-                return false;
+                auto const compressed = simnet::compress_bytes(
+                    peer.compressor,
+                    packet,
+                    compression.level,
+                    {
+                        .max_uncompressed_bytes = packetization.max_payload_bytes,
+                        .max_output_bytes = transport_payload_limit,
+                    },
+                    simnet::CompressionEnvelopePolicy::OnlyWhenSmaller,
+                    peer.compression_scratch
+                );
+                if (!compressed.valid)
+                {
+                    report.error = compressed.error;
+                    return false;
+                }
+                payload = simnet::ByteSpan{peer.compression_scratch};
+                encoding = compressed.encoding;
+                report.compression_input_bytes += compressed.input_bytes;
+                report.compression_payload_bytes += compressed.encoded_payload_bytes;
+                report.compression_envelope_bytes += compressed.envelope_bytes;
+                report.compression_output_bytes += compressed.output_bytes;
+                report.compression_cpu_time += compressed.compression_cpu_time;
+                if (compressed.encoding == simnet::CompressionEncoding::Zstd)
+                {
+                    ++report.zstd_packet_count;
+                }
+                else
+                {
+                    ++report.raw_packet_count;
+                }
             }
             std::uint64_t next_size = transport_group.bytes.size();
-            next_size += compressed.output_bytes;
+            next_size += payload.size();
             if (next_size > maximum_storage ||
                 next_size > std::numeric_limits<std::uint32_t>::max())
             {
-                report.error = "compressed transport group exceeds its validated storage bound";
+                report.error = "transport group exceeds its validated storage bound";
                 return false;
             }
 
             auto const offset = static_cast<std::uint32_t>(transport_group.bytes.size());
             transport_group.bytes.insert(
                 transport_group.bytes.end(),
-                peer.compression_scratch.begin(),
-                peer.compression_scratch.end()
+                payload.begin(),
+                payload.end()
             );
             transport_group.payloads.push_back({
                 .offset = offset,
-                .size = compressed.output_bytes,
-                .encoding = compressed.encoding,
+                .size = static_cast<std::uint32_t>(payload.size()),
+                .encoding = encoding,
             });
-            report.compression_input_bytes += compressed.input_bytes;
-            report.compression_payload_bytes += compressed.encoded_payload_bytes;
-            report.compression_envelope_bytes += compressed.envelope_bytes;
-            report.compression_output_bytes += compressed.output_bytes;
-            report.compression_cpu_time += compressed.compression_cpu_time;
-            if (compressed.encoding == simnet::CompressionEncoding::Zstd)
-            {
-                ++report.zstd_packet_count;
-            }
-            else
-            {
-                ++report.raw_packet_count;
-            }
         }
         report.final_transport_bytes = static_cast<std::uint32_t>(transport_group.bytes.size());
         report.valid = true;
@@ -1410,19 +1419,14 @@ namespace simnet::app::server_replication
                 return false;
             }
             compression_report.bytes_after_packetization = preparation.total_packet_bytes;
-            if (compression.mode != simnet::app::CompressionMode::PerPacket)
-            {
-                compression_report.final_transport_bytes = preparation.total_packet_bytes;
-                compression_report.valid = true;
-            }
-            else if (!prepare_per_packet_transport_group(
-                         compression,
-                         packetization,
-                         packetization.max_payload_bytes,
-                         prepared,
-                         *peer,
-                         compression_report
-                     ))
+            if (!prepare_transport_group(
+                    compression,
+                    packetization,
+                    packetization.max_payload_bytes,
+                    prepared,
+                    *peer,
+                    compression_report
+                ))
             {
                 peer->latest_compression = compression_report;
                 peer->latest_submission_outcome = PacketSubmissionOutcome::Abandoned;
@@ -1435,14 +1439,16 @@ namespace simnet::app::server_replication
                     peer->latest_accepted_submissions
                 );
                 measurement.outcome = simnet::ServerReplicationOutcome::Abandoned;
-                measurement.outcome_detail = "per_packet_compression_failed";
+                measurement.outcome_detail =
+                    compression.mode == simnet::app::CompressionMode::PerPacket
+                        ? "per_packet_compression_failed"
+                        : "packet_serialization_failed";
                 measurement.total_replication_elapsed_time = finish_total_time();
                 observe_encoded_measurement();
                 simnet::log(
                     simnet::LogCategory::Pipeline,
                     simnet::LogLevel::Error,
-                    "snapshot per-packet compression preparation failed: " +
-                        compression_report.error
+                    "snapshot transport payload preparation failed: " + compression_report.error
                 );
                 return false;
             }
@@ -1468,22 +1474,9 @@ namespace simnet::app::server_replication
                 SIMNET_TRACE_SCOPE_CATEGORY("server.snapshot_send", simnet::LogCategory::Transport);
                 for (auto index = std::uint16_t{}; index < prepared.chunk_count; ++index)
                 {
-                    auto packet_bytes = simnet::ByteSpan{};
-                    if (compression.mode == simnet::app::CompressionMode::PerPacket)
-                    {
-                        auto const& payload = peer->prepared_transport_group.payloads[index];
-                        packet_bytes = simnet::ByteSpan{peer->prepared_transport_group.bytes}
-                                           .subspan(payload.offset, payload.size);
-                    }
-                    else
-                    {
-                        packet_bytes = simnet::serialize_group_chunk(
-                            packetization,
-                            prepared,
-                            index,
-                            peer->packet_serialization_scratch
-                        );
-                    }
+                    auto const& payload = peer->prepared_transport_group.payloads[index];
+                    auto const packet_bytes = simnet::ByteSpan{peer->prepared_transport_group.bytes}
+                                                  .subspan(payload.offset, payload.size);
                     ++peer->latest_attempted_submissions;
                     auto const sent = transport.send({
                         .peer = peer->peer,
