@@ -7,6 +7,7 @@ module;
 #include <deque>
 #include <flecs.h>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -134,6 +135,64 @@ namespace simnet::app::client_replication
         Ignored,
         RecoveryRequested,
         Fatal
+    };
+
+    struct ClientReplicationReceiver
+    {
+        ClientReplicationReceiver(
+            simnet::PipelineDefinition const& pipeline_definition,
+            simnet::app::CompressionSettings const& compression_settings,
+            simnet::ZstdDictionary const* dictionary,
+            simnet::PacketizationSettings const& packetization_settings,
+            simnet::TransportDelivery configured_delivery,
+            std::uint32_t maximum_transport_payload_bytes,
+            ClientEvidenceIdentity evidence
+        );
+
+        void begin_session();
+        void discard_incomplete();
+        void expire(
+            simnet::Nanoseconds now,
+            bool joined,
+            simnet::PeerId peer_id,
+            simnet::ClientReplicationCsvWriter& csv
+        );
+        [[nodiscard]] bool receive_snapshot(
+            simnet::ReceivedPacket const& packet,
+            simnet::PeerId peer_id,
+            simnet::Nanoseconds now,
+            flecs::world& world,
+            simnet::TransportClient& transport,
+            simnet::RuntimeStats& stats,
+            simnet::ClientReplicationCsvWriter& csv
+        );
+        void log_measurements() const;
+
+        simnet::PipelineDefinition const& pipeline;
+        simnet::app::CompressionSettings const& compression;
+        simnet::ZstdDictionary const* compression_dictionary{};
+        simnet::PacketizationSettings const& packetization;
+        simnet::TransportDelivery delivery{};
+        std::uint32_t maximum_transport_payload_bytes{};
+        ClientEvidenceIdentity evidence_identity{};
+        simnet::ClientReplicationState decode_state{};
+        simnet::SequenceId latest_applied_sequence{};
+        std::uint32_t latest_applied_upserts{};
+        std::uint32_t latest_applied_deletes{};
+        SnapshotAckTracker ack_tracker{};
+        simnet::app::ClientRecoveryRequestState recovery_request_state{};
+        std::uint64_t sequence_gap_count{};
+        std::uint64_t reliable_promotion_count{};
+        std::optional<simnet::TransportDelivery> effective_snapshot_delivery{};
+        simnet::ReassemblyState reassembly_state{};
+        simnet::ZstdDecompressor decompressor{};
+        std::vector<simnet::Byte> decompression_scratch{};
+        std::vector<PendingCompressionGroup> pending_compression_groups{};
+        ClientCompressionReport compression_report{};
+        std::deque<RetainedClientSnapshot> snapshot_history{};
+        bool logged_multi_packet_application{};
+        bool logged_compression_application{};
+        simnet::ClientReplicationMeasurements measurements{};
     };
 
     void expire_pending_compression_groups(
@@ -781,5 +840,483 @@ namespace simnet::app::client_replication
             );
         }
         return ApplyPacketOutcome::Applied;
+    }
+
+    ClientReplicationReceiver::ClientReplicationReceiver(
+        simnet::PipelineDefinition const& pipeline_definition,
+        simnet::app::CompressionSettings const& compression_settings,
+        simnet::ZstdDictionary const* dictionary,
+        simnet::PacketizationSettings const& packetization_settings,
+        simnet::TransportDelivery configured_delivery,
+        std::uint32_t maximum_payload_bytes,
+        ClientEvidenceIdentity evidence
+    )
+        : pipeline{pipeline_definition},
+          compression{compression_settings},
+          compression_dictionary{dictionary},
+          packetization{packetization_settings},
+          delivery{configured_delivery},
+          maximum_transport_payload_bytes{maximum_payload_bytes},
+          evidence_identity{evidence},
+          compression_report{
+              .mode = compression_settings.mode,
+              .dictionary_name = compression_settings.dictionary,
+              .dictionary_id = dictionary != nullptr ? dictionary->identity().dictionary_id : 0U,
+          }
+    {
+        pending_compression_groups.reserve(packetization.max_in_flight_groups);
+    }
+
+    void ClientReplicationReceiver::begin_session()
+    {
+        simnet::app::record_snapshot_progress(recovery_request_state);
+        effective_snapshot_delivery.reset();
+        simnet::clear_reassembly_state(reassembly_state);
+        pending_compression_groups.clear();
+    }
+
+    void ClientReplicationReceiver::discard_incomplete()
+    {
+        simnet::clear_reassembly_state(reassembly_state);
+        pending_compression_groups.clear();
+    }
+
+    void ClientReplicationReceiver::expire(
+        simnet::Nanoseconds now,
+        bool joined,
+        simnet::PeerId peer_id,
+        simnet::ClientReplicationCsvWriter& csv
+    )
+    {
+        auto const expired_groups_before = reassembly_state.report.expired_groups;
+        simnet::expire_incomplete_groups(packetization, reassembly_state, now);
+        auto const newly_expired_groups =
+            reassembly_state.report.expired_groups - expired_groups_before;
+        if (newly_expired_groups != 0U && joined)
+        {
+            observe_client_receive_outcome(
+                measurements,
+                csv,
+                evidence_identity,
+                peer_id,
+                ack_tracker,
+                {
+                    .expired_group_count = static_cast<std::uint32_t>(std::min(
+                        newly_expired_groups,
+                        static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())
+                    )),
+                    .retained_incomplete_group_count = reassembly_state.report.incomplete_groups,
+                    .retained_incomplete_bytes = reassembly_state.report.retained_incomplete_bytes,
+                },
+                simnet::ClientReplicationOutcome::PacketGroupExpired,
+                "reassembly_timeout"
+            );
+        }
+        expire_pending_compression_groups(
+            pending_compression_groups,
+            now,
+            packetization.reassembly_timeout
+        );
+    }
+
+    [[nodiscard]] bool ClientReplicationReceiver::receive_snapshot(
+        simnet::ReceivedPacket const& packet,
+        simnet::PeerId peer_id,
+        simnet::Nanoseconds now,
+        flecs::world& world,
+        simnet::TransportClient& transport,
+        simnet::RuntimeStats& stats,
+        simnet::ClientReplicationCsvWriter& csv
+    )
+    {
+        effective_snapshot_delivery = packet.delivery;
+        auto valid = true;
+        if (delivery == simnet::TransportDelivery::ReliableSequenced)
+        {
+            valid = packet.delivery == simnet::TransportDelivery::ReliableSequenced;
+        }
+        else if (packet.delivery == simnet::TransportDelivery::ReliableSequenced)
+        {
+            ++reliable_promotion_count;
+        }
+
+        auto application_packet = simnet::ByteSpan{packet.payload};
+        auto packet_decompression = PacketDecompressionObservation{};
+        if (valid && compression.mode == simnet::app::CompressionMode::PerPacket)
+        {
+            packet_decompression = {
+                .encoding = simnet::CompressionEncoding::Raw,
+                .input_bytes = static_cast<std::uint32_t>(application_packet.size()),
+                .payload_bytes = static_cast<std::uint32_t>(application_packet.size()),
+                .output_bytes = static_cast<std::uint32_t>(application_packet.size()),
+            };
+            if (simnet::has_compression_envelope(application_packet))
+            {
+                auto const decompressed = simnet::decompress_bytes(
+                    decompressor,
+                    application_packet,
+                    {
+                        .max_uncompressed_bytes = packetization.max_payload_bytes,
+                        .max_output_bytes = maximum_transport_payload_bytes,
+                    },
+                    decompression_scratch
+                );
+                compression_report.latest_input_bytes = decompressed.input_bytes;
+                compression_report.latest_encoding = decompressed.encoding;
+                compression_report.latest_payload_bytes = decompressed.encoded_payload_bytes;
+                compression_report.latest_envelope_bytes = decompressed.envelope_bytes;
+                compression_report.latest_output_bytes = decompressed.output_bytes;
+                compression_report.decompression_cpu_time += decompressed.decompression_cpu_time;
+                packet_decompression = {
+                    .encoding = decompressed.encoding,
+                    .input_bytes = decompressed.input_bytes,
+                    .payload_bytes = decompressed.encoded_payload_bytes,
+                    .envelope_bytes = decompressed.envelope_bytes,
+                    .output_bytes = decompressed.output_bytes,
+                    .cpu_time = decompressed.decompression_cpu_time,
+                };
+                if (!decompressed.valid ||
+                    decompressed.encoding != simnet::CompressionEncoding::Zstd)
+                {
+                    ++compression_report.invalid_payload_count;
+                    observe_client_receive_outcome(
+                        measurements,
+                        csv,
+                        evidence_identity,
+                        peer_id,
+                        ack_tracker,
+                        {
+                            .received_outer_bytes =
+                                static_cast<std::uint32_t>(packet.payload.size()),
+                            .received_packet_count = 1U,
+                            .invalid_packet_count = 1U,
+                            .decompression_encoding = "invalid",
+                            .decompression_result = "failed",
+                            .compressed_bytes = decompressed.input_bytes,
+                            .compression_payload_bytes = decompressed.encoded_payload_bytes,
+                            .compression_envelope_bytes = decompressed.envelope_bytes,
+                            .uncompressed_bytes = decompressed.output_bytes,
+                            .decompression_cpu_time = decompressed.decompression_cpu_time,
+                        },
+                        simnet::ClientReplicationOutcome::DecompressionFailed,
+                        "per_packet_decompression_failed"
+                    );
+                    simnet::log(
+                        simnet::LogCategory::Transport,
+                        simnet::LogLevel::Warn,
+                        "client rejected compressed snapshot packet: " + decompressed.error
+                    );
+                    return true;
+                }
+                ++compression_report.compressed_packet_count;
+                application_packet = decompression_scratch;
+            }
+            else
+            {
+                ++compression_report.raw_packet_count;
+            }
+        }
+
+        auto reassembled = valid
+                               ? simnet::accept_group_packet(
+                                     packetization,
+                                     reassembly_state,
+                                     application_packet,
+                                     now
+                                 )
+                               : simnet::ReassemblyResult{
+                                     .kind = simnet::ReassemblyResultKind::Invalid,
+                                     .error = "snapshot delivery does not match configuration",
+                                 };
+        if (reassembled.group_id != 0U &&
+            reassembled.kind != simnet::ReassemblyResultKind::Invalid &&
+            reassembled.kind != simnet::ReassemblyResultKind::LimitExceeded &&
+            reassembled.kind != simnet::ReassemblyResultKind::Stale)
+        {
+            record_group_transport_bytes(
+                pending_compression_groups,
+                reassembled.group_id,
+                static_cast<std::uint32_t>(packet.payload.size()),
+                now,
+                simnet::steady_now_ns(),
+                packet_decompression,
+                packetization.max_in_flight_groups
+            );
+        }
+
+        auto receive_evidence = ClientReceiveEvidence{
+            .group_id = reassembled.group_id,
+            .received_outer_bytes = static_cast<std::uint32_t>(packet.payload.size()),
+            .received_packet_count = 1U,
+            .retained_incomplete_group_count = reassembly_state.report.incomplete_groups,
+            .retained_incomplete_bytes = reassembly_state.report.retained_incomplete_bytes,
+        };
+        if (reassembled.kind == simnet::ReassemblyResultKind::Incomplete)
+        {
+            receive_evidence.incomplete_packet_count = 1U;
+        }
+        else if (reassembled.kind == simnet::ReassemblyResultKind::Duplicate)
+        {
+            receive_evidence.duplicate_packet_count = 1U;
+        }
+        else if (reassembled.kind == simnet::ReassemblyResultKind::Stale)
+        {
+            receive_evidence.stale_packet_count = 1U;
+        }
+        else if (reassembled.kind == simnet::ReassemblyResultKind::Invalid ||
+                 reassembled.kind == simnet::ReassemblyResultKind::LimitExceeded)
+        {
+            receive_evidence.invalid_packet_count = 1U;
+        }
+
+        auto const* pending_group =
+            find_pending_group(pending_compression_groups, reassembled.group_id);
+        if (pending_group != nullptr)
+        {
+            receive_evidence.group_wait_available = true;
+            receive_evidence.group_wait_time =
+                simnet::steady_now_ns() - pending_group->evidence_first_received_time;
+            if (compression.mode == simnet::app::CompressionMode::PerPacket)
+            {
+                auto const narrow = [](std::uint64_t value)
+                {
+                    return static_cast<std::uint32_t>(std::min(
+                        value,
+                        static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())
+                    ));
+                };
+                receive_evidence.decompression_encoding =
+                    pending_group->zstd_packet_count != 0U &&
+                            pending_group->raw_packet_count != 0U
+                        ? "mixed"
+                    : pending_group->zstd_packet_count != 0U ? "zstd"
+                                                             : "raw";
+                receive_evidence.decompression_result = "success";
+                receive_evidence.compressed_bytes =
+                    narrow(pending_group->compression_input_bytes);
+                receive_evidence.compression_payload_bytes =
+                    narrow(pending_group->compression_payload_bytes);
+                receive_evidence.compression_envelope_bytes =
+                    narrow(pending_group->compression_envelope_bytes);
+                receive_evidence.uncompressed_bytes =
+                    narrow(pending_group->compression_output_bytes);
+                receive_evidence.decompression_cpu_time = pending_group->decompression_cpu_time;
+            }
+        }
+
+        if (reassembled.kind == simnet::ReassemblyResultKind::Complete)
+        {
+            receive_evidence.group_id = reassembled.completed.group_id;
+            receive_evidence.group_chunk_count = reassembled.completed.chunk_count;
+            auto encoded_bytes = simnet::ByteSpan{reassembled.completed.bytes};
+            if (compression.mode == simnet::app::CompressionMode::WholeUpdate)
+            {
+                auto const limits = simnet::CompressionLimits{
+                    .max_uncompressed_bytes = packetization.max_group_bytes,
+                    .max_output_bytes = packetization.max_group_bytes,
+                };
+                auto const decompressed =
+                    compression_dictionary != nullptr
+                        ? simnet::decompress_bytes_with_dictionary(
+                              decompressor,
+                              *compression_dictionary,
+                              encoded_bytes,
+                              limits,
+                              decompression_scratch
+                          )
+                        : simnet::decompress_bytes(
+                              decompressor,
+                              encoded_bytes,
+                              limits,
+                              decompression_scratch
+                          );
+                compression_report.latest_input_bytes = decompressed.input_bytes;
+                compression_report.latest_encoding = decompressed.encoding;
+                compression_report.latest_payload_bytes = decompressed.encoded_payload_bytes;
+                compression_report.latest_envelope_bytes = decompressed.envelope_bytes;
+                compression_report.latest_output_bytes = decompressed.output_bytes;
+                compression_report.decompression_cpu_time += decompressed.decompression_cpu_time;
+                receive_evidence.decompression_encoding =
+                    decompressed.encoding == simnet::CompressionEncoding::Raw ? "raw"
+                    : decompressed.encoding == simnet::CompressionEncoding::ZstdDictionary
+                        ? "zstd_dictionary"
+                        : "zstd";
+                receive_evidence.decompression_result = decompressed.valid ? "success" : "failed";
+                receive_evidence.compressed_bytes = decompressed.input_bytes;
+                receive_evidence.compression_payload_bytes = decompressed.encoded_payload_bytes;
+                receive_evidence.compression_envelope_bytes = decompressed.envelope_bytes;
+                receive_evidence.uncompressed_bytes = decompressed.output_bytes;
+                receive_evidence.decompression_cpu_time = decompressed.decompression_cpu_time;
+                if (!decompressed.valid)
+                {
+                    ++compression_report.invalid_payload_count;
+                    observe_client_receive_outcome(
+                        measurements,
+                        csv,
+                        evidence_identity,
+                        peer_id,
+                        ack_tracker,
+                        receive_evidence,
+                        simnet::ClientReplicationOutcome::DecompressionFailed,
+                        "whole_update_decompression_failed"
+                    );
+                    simnet::log(
+                        simnet::LogCategory::Transport,
+                        simnet::LogLevel::Warn,
+                        "client rejected compressed snapshot group: " + decompressed.error
+                    );
+                    return true;
+                }
+                if (decompressed.encoding == simnet::CompressionEncoding::Raw)
+                {
+                    ++compression_report.whole_update_raw_fallback_count;
+                }
+                encoded_bytes = decompression_scratch;
+            }
+            if (compression.mode == simnet::app::CompressionMode::None)
+            {
+                receive_evidence.uncompressed_bytes =
+                    static_cast<std::uint32_t>(encoded_bytes.size());
+            }
+            auto const outer_bytes =
+                reassembled.completed.group_id == 0U
+                    ? static_cast<std::uint32_t>(packet.payload.size())
+                    : group_transport_bytes(
+                          pending_compression_groups,
+                          reassembled.completed.group_id,
+                          reassembled.completed.total_packet_bytes
+                      );
+            auto const apply_outcome = apply_packet(
+                evidence_identity,
+                peer_id,
+                receive_evidence,
+                reassembled.completed,
+                encoded_bytes,
+                packetization.enabled,
+                reassembly_state,
+                pipeline,
+                decode_state,
+                latest_applied_sequence,
+                ack_tracker,
+                snapshot_history,
+                world,
+                transport,
+                stats,
+                measurements,
+                csv,
+                logged_multi_packet_application,
+                recovery_request_state,
+                sequence_gap_count,
+                latest_applied_upserts,
+                latest_applied_deletes
+            );
+            valid = apply_outcome != ApplyPacketOutcome::Fatal;
+            if (apply_outcome == ApplyPacketOutcome::Applied)
+            {
+                compression_report.latest_completed_representation_bytes =
+                    static_cast<std::uint32_t>(encoded_bytes.size());
+                compression_report.latest_completed_transport_bytes = outer_bytes;
+                compression_report.canonical_entity_count =
+                    snapshot_history.empty()
+                        ? 0U
+                        : static_cast<std::uint32_t>(snapshot_history.back().snapshot.size());
+                std::erase_if(
+                    pending_compression_groups,
+                    [&](PendingCompressionGroup const& group)
+                    {
+                        return group.group_id <= reassembled.completed.group_id;
+                    }
+                );
+                if (compression.mode != simnet::app::CompressionMode::None &&
+                    !logged_compression_application)
+                {
+                    logged_compression_application = true;
+                    simnet::log(
+                        simnet::LogCategory::Transport,
+                        simnet::LogLevel::Info,
+                        "client compressed group applied group_id=" +
+                            std::to_string(reassembled.completed.group_id) +
+                            " compression_mode=" +
+                            std::string{simnet::app::compression_mode_name(compression.mode)} +
+                            " representation_bytes=" + std::to_string(encoded_bytes.size()) +
+                            " transport_bytes=" + std::to_string(outer_bytes) +
+                            " compressed_packets=" +
+                            std::to_string(compression_report.compressed_packet_count) +
+                            " raw_packets=" +
+                            std::to_string(compression_report.raw_packet_count) +
+                            " canonical_entities=" +
+                            std::to_string(compression_report.canonical_entity_count) +
+                            " ack_sequence=" +
+                            std::to_string(ack_tracker.value.newest_applied_snapshot)
+                    );
+                }
+            }
+        }
+        else
+        {
+            auto outcome = simnet::ClientReplicationOutcome::PacketInvalid;
+            auto detail = std::string_view{"reassembly_invalid"};
+            if (!valid)
+            {
+                outcome = simnet::ClientReplicationOutcome::DeliveryMismatch;
+                detail = "snapshot_delivery_mismatch";
+            }
+            else if (reassembled.kind == simnet::ReassemblyResultKind::Incomplete)
+            {
+                outcome = simnet::ClientReplicationOutcome::PacketIncomplete;
+                detail = "group_incomplete";
+            }
+            else if (reassembled.kind == simnet::ReassemblyResultKind::Duplicate)
+            {
+                outcome = simnet::ClientReplicationOutcome::PacketDuplicate;
+                detail = "duplicate_chunk";
+            }
+            else if (reassembled.kind == simnet::ReassemblyResultKind::Stale)
+            {
+                outcome = simnet::ClientReplicationOutcome::PacketStale;
+                detail = "stale_group";
+            }
+            else if (reassembled.kind == simnet::ReassemblyResultKind::LimitExceeded)
+            {
+                detail = "reassembly_limit_exceeded";
+            }
+            observe_client_receive_outcome(
+                measurements,
+                csv,
+                evidence_identity,
+                peer_id,
+                ack_tracker,
+                receive_evidence,
+                outcome,
+                detail
+            );
+        }
+
+        if (reassembled.kind == simnet::ReassemblyResultKind::Invalid ||
+            reassembled.kind == simnet::ReassemblyResultKind::LimitExceeded)
+        {
+            if (compression.mode == simnet::app::CompressionMode::PerPacket &&
+                reassembled.group_id != 0U)
+            {
+                std::erase_if(
+                    pending_compression_groups,
+                    [&](PendingCompressionGroup const& group)
+                    {
+                        return group.group_id == reassembled.group_id;
+                    }
+                );
+            }
+            simnet::log(
+                simnet::LogCategory::Transport,
+                simnet::LogLevel::Warn,
+                "client rejected snapshot chunk: " + reassembled.error
+            );
+        }
+        return valid;
+    }
+
+    void ClientReplicationReceiver::log_measurements() const
+    {
+        log_client_replication_measurements(measurements);
     }
 }
