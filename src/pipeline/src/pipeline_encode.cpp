@@ -95,6 +95,59 @@ namespace simnet
         return (tick % pipeline.send_interval.interval_ticks) == 0U;
     }
 
+    RepresentationReport measure_representation_quality(
+        PipelineDefinition const& pipeline,
+        WorldSnapshot const& source_snapshot,
+        SnapshotUpdate const& represented_update
+    )
+    {
+        validate_pipeline_definition(pipeline);
+        pipeline_validate::require_snapshot(
+            &source_snapshot,
+            "representation quality source snapshot"
+        );
+        if (represented_update.tick != source_snapshot.tick)
+        {
+            throw std::runtime_error(
+                "representation quality update tick does not match the source snapshot"
+            );
+        }
+
+        auto const layout = pipeline_records::resolve_record_layout(pipeline);
+        auto report = pipeline_records::make_representation_report(layout);
+        auto source_index = std::size_t{};
+        auto previous_id = EntityNetId{};
+        for (auto const& canonical : represented_update.upserts)
+        {
+            if (canonical.id == 0U || canonical.id <= previous_id)
+            {
+                throw std::runtime_error(
+                    "representation quality upserts must have nonzero ascending IDs"
+                );
+            }
+            while (source_index < source_snapshot.size() &&
+                   source_snapshot.ids[source_index] < canonical.id)
+            {
+                ++source_index;
+            }
+            if (source_index == source_snapshot.size() ||
+                source_snapshot.ids[source_index] != canonical.id)
+            {
+                throw std::runtime_error(
+                    "representation quality upsert is absent from the source snapshot"
+                );
+            }
+            pipeline_records::observe_representation_quality(
+                report,
+                source_snapshot.positions[source_index],
+                source_snapshot.headings[source_index],
+                canonical
+            );
+            previous_id = canonical.id;
+        }
+        return report;
+    }
+
     EncodeOutput encode_snapshot_unchecked(
         PipelineDefinition const& pipeline,
         ClientReplicationState& client_state,
@@ -379,9 +432,7 @@ namespace simnet
                     *selected_snapshot,
                     *input.baseline_snapshot,
                     layout,
-                    delta_field_mask_enabled,
-                    input.collect_representation_quality,
-                    representation
+                    delta_field_mask_enabled
                 );
             }
             else
@@ -391,9 +442,7 @@ namespace simnet
                     *selected_snapshot,
                     *input.baseline_snapshot,
                     layout,
-                    delta_field_mask_enabled,
-                    input.collect_representation_quality,
-                    representation
+                    delta_field_mask_enabled
                 );
             }
         }
@@ -502,15 +551,6 @@ namespace simnet
                 selected_snapshot->headings[source_index],
                 selected_snapshot->hues[source_index]
             );
-            if (input.collect_representation_quality)
-            {
-                pipeline_records::observe_representation_quality(
-                    representation,
-                    selected_snapshot->positions[source_index],
-                    selected_snapshot->headings[source_index],
-                    prepared
-                );
-            }
             pipeline_records::write_prepared_record(scratch.bytes, layout, prepared);
             scratch.logical_update.upserts.push_back(prepared.canonical);
         };

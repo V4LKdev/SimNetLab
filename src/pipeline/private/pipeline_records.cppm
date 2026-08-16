@@ -200,7 +200,7 @@ namespace simnet::pipeline_records
         RepresentationReport& report,
         Vec3f source_position,
         Vec3f source_heading,
-        PreparedRecord const& prepared
+        EntityState const& canonical
     ) noexcept
     {
         ++report.quality_sample_count;
@@ -210,18 +210,18 @@ namespace simnet::pipeline_records
         }
 
         auto const position_x = static_cast<double>(source_position.x) -
-                                static_cast<double>(prepared.canonical.position.x);
+                                static_cast<double>(canonical.position.x);
         auto const position_y = static_cast<double>(source_position.y) -
-                                static_cast<double>(prepared.canonical.position.y);
+                                static_cast<double>(canonical.position.y);
         auto const position_z = static_cast<double>(source_position.z) -
-                                static_cast<double>(prepared.canonical.position.z);
+                                static_cast<double>(canonical.position.z);
         auto const position_error =
             std::sqrt(position_x * position_x + position_y * position_y + position_z * position_z);
         report.position_error_sum += position_error;
         report.position_error_maximum = std::max(report.position_error_maximum, position_error);
 
         auto const normalized_source = normalize_or(source_heading, {.x = 1.0F});
-        auto const normalized_canonical = normalize_or(prepared.canonical.heading, {.x = 1.0F});
+        auto const normalized_canonical = normalize_or(canonical.heading, {.x = 1.0F});
         auto const cosine = std::clamp(
             static_cast<double>(dot(normalized_source, normalized_canonical)),
             -1.0,

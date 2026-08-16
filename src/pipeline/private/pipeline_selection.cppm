@@ -245,9 +245,7 @@ namespace simnet::pipeline_selection
         WorldSnapshot const& current,
         WorldSnapshot const& baseline,
         pipeline_records::RecordLayout const& layout,
-        bool field_mask_enabled,
-        bool collect_representation_quality,
-        RepresentationReport& representation
+        bool field_mask_enabled
     )
     {
         scratch.selected_indices.clear();
@@ -261,15 +259,6 @@ namespace simnet::pipeline_selection
         {
             auto const prepared = prepare_snapshot_record(layout, current, current_index);
             scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
-            if (collect_representation_quality)
-            {
-                pipeline_records::observe_representation_quality(
-                    representation,
-                    current.positions[current_index],
-                    current.headings[current_index],
-                    prepared
-                );
-            }
             retain_prepared_record(
                 scratch,
                 layout,
@@ -321,15 +310,6 @@ namespace simnet::pipeline_selection
                 if (!unchanged)
                 {
                     scratch.selected_indices.push_back(static_cast<std::uint32_t>(current_index));
-                    if (collect_representation_quality)
-                    {
-                        pipeline_records::observe_representation_quality(
-                            representation,
-                            current.positions[current_index],
-                            current.headings[current_index],
-                            prepared
-                        );
-                    }
                     retain_prepared_record(
                         scratch,
                         layout,
@@ -413,9 +393,7 @@ namespace simnet::pipeline_selection
         WorldSnapshot const& current,
         WorldSnapshot const& baseline,
         pipeline_records::RecordLayout const& layout,
-        bool field_mask_enabled,
-        bool collect_representation_quality,
-        RepresentationReport& representation
+        bool field_mask_enabled
     )
     {
         begin_delta_preparation(scratch, scratch.selected_indices.size());
@@ -459,15 +437,6 @@ namespace simnet::pipeline_selection
             if (!unchanged)
             {
                 scratch.selected_indices[retained_count++] = current_index;
-                if (collect_representation_quality)
-                {
-                    pipeline_records::observe_representation_quality(
-                        representation,
-                        current.positions[current_index],
-                        current.headings[current_index],
-                        prepared
-                    );
-                }
                 retain_prepared_record(
                     scratch,
                     layout,

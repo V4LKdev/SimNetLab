@@ -180,7 +180,12 @@ TEST_CASE(
             pipelines[index],
             encode_state,
             scratch,
-            {.snapshot = &source, .collect_representation_quality = true}
+            {.snapshot = &source}
+        );
+        outputs[index].report.representation = simnet::measure_representation_quality(
+            pipelines[index],
+            source,
+            scratch.logical_update
         );
 
         auto const& report = outputs[index].report.representation;

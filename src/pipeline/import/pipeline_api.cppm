@@ -31,6 +31,19 @@ export namespace simnet
     pipeline_decode_signature(PipelineDefinition const& definition) noexcept;
 
     /**
+     * Measures source-to-canonical error for the upserts produced by one successful encode.
+     *
+     * `source_snapshot` must be the authoritative snapshot supplied to that encode and
+     * `represented_update` must be its pipeline-owned logical update. The operation does not
+     * mutate pipeline state or encoded bytes.
+     */
+    [[nodiscard]] RepresentationReport measure_representation_quality(
+        PipelineDefinition const& pipeline,
+        WorldSnapshot const& source_snapshot,
+        SnapshotUpdate const& represented_update
+    );
+
+    /**
      * Inspects and validates the fixed encoded update header without allocation or mutation.
      *
      * This validates schema, signature, sequence admissibility, declared payload size, snapshot

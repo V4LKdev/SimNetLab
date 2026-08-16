@@ -1030,10 +1030,10 @@ namespace simnet::app::server_replication
                 tick
             );
             auto const total_start = simnet::steady_now_ns();
-            auto evidence_io_time = simnet::Nanoseconds{};
+            auto excluded_evidence_time = simnet::Nanoseconds{};
             auto const finish_total_time = [&]
             {
-                return simnet::steady_now_ns() - total_start - evidence_io_time;
+                return simnet::steady_now_ns() - total_start - excluded_evidence_time;
             };
             if (first_joined_peer)
             {
@@ -1203,7 +1203,6 @@ namespace simnet::app::server_replication
                         .replica_sequence = replica_sequence,
                         .recovery_upsert_ids = peer->recovery_upsert_ids,
                         .force_full_replace = peer->snapshot_delivery.recovery_active,
-                        .collect_representation_quality = collect_representation_quality,
                         .interest_source =
                             interest_source.has_value() ? &*interest_source : nullptr,
                         .candidate_indices = peer->area_of_interest_candidates,
@@ -1240,6 +1239,16 @@ namespace simnet::app::server_replication
                 measurement.total_replication_elapsed_time = finish_total_time();
                 observe_encoded_measurement();
                 return true;
+            }
+            if (collect_representation_quality)
+            {
+                auto const quality_start = simnet::steady_now_ns();
+                encoded.report.representation = simnet::measure_representation_quality(
+                    pipeline,
+                    *source_snapshot,
+                    peer->pipeline_scratch.logical_update
+                );
+                excluded_evidence_time += simnet::steady_now_ns() - quality_start;
             }
 
             auto const retention_plan = simnet::app::plan_snapshot_retention(
@@ -1313,7 +1322,7 @@ namespace simnet::app::server_replication
                 corpus_captured =
                     compression_corpus
                         .capture(peer->peer, pipeline, extraction.entity_count, encoded);
-                evidence_io_time += simnet::steady_now_ns() - corpus_capture_start;
+                excluded_evidence_time += simnet::steady_now_ns() - corpus_capture_start;
             }
             if (!corpus_captured)
             {

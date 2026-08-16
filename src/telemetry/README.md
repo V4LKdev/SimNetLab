@@ -50,8 +50,8 @@ total elapsed time starts after shared snapshot extraction and ends after retent
 Optional corpus file I/O is excluded from that elapsed duration. Client total elapsed time starts
 at encoded-header inspection after reassembly and decompression and ends at canonical commit.
 Canonical fingerprint work happens after these measured totals. Representation quality sampling
-is part of Server encoding when CSV evidence is enabled. The Server snapshot extraction duration
-appears only on the first joined peer row for a tick.
+runs after encoding and is excluded from both encode and total replication durations. The Server
+snapshot extraction duration appears only on the first joined peer row for a tick.
 
 The current runtime consumer keeps the latest attempt, latest successful result, and counts for
 the shutdown summary. Each application also submits every attempt to its role-specific CSV

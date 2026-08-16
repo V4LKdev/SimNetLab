@@ -123,8 +123,6 @@ export namespace simnet
         std::span<EntityNetId const> recovery_upsert_ids{};
         /// Emits a complete current population without advancing the Incremental cursor.
         bool force_full_replace{};
-        /// Collect source-to-canonical quality only for produced upserts.
-        bool collect_representation_quality{};
         /// Authoritative AOI pose. Required only when AOI is enabled and cadence emits.
         InterestSource const* interest_source{};
         /// Sorted source indices returned by the Server-owned coarse spatial query.
