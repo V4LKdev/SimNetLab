@@ -337,25 +337,14 @@ namespace
                 .applied_delete_count = applied_delete_count,
                 .reconstructed_entity_count = reconstructed_entity_count,
                 .packetization_enabled = config.packetization.enabled,
-                .received_packet_chunks = packet_report.received_chunks,
-                .unique_packet_chunks = packet_report.unique_chunks,
-                .duplicate_packet_chunks = packet_report.duplicate_chunks,
                 .incomplete_packet_groups = packet_report.incomplete_groups,
-                .retained_incomplete_bytes = packet_report.retained_incomplete_bytes,
-                .latest_completed_group_bytes = packet_report.latest_completed_group_bytes,
-                .completed_packet_groups = packet_report.completed_groups,
                 .expired_packet_groups = packet_report.expired_groups,
                 .invalid_packet_groups = packet_report.invalid_groups,
-                .stale_packet_groups = packet_report.stale_groups,
                 .compression_mode = simnet::app::compression_mode_name(compression_report.mode),
                 .compression_dictionary =
                     compression_report.dictionary_id == 0U
                         ? std::optional<std::string_view>{}
                         : std::optional<std::string_view>{compression_report.dictionary_name},
-                .compression_dictionary_id =
-                    compression_report.dictionary_id == 0U
-                        ? std::optional<std::uint32_t>{}
-                        : std::optional<std::uint32_t>{compression_report.dictionary_id},
                 .compression_outcome =
                     compression_report.mode == simnet::app::CompressionMode::None
                         ? std::optional<std::string_view>{"Disabled"}
@@ -369,17 +358,7 @@ namespace
                         ? std::optional<std::string_view>{"Zstd"}
                         : std::optional<std::string_view>{"Mixed"},
                 .representation_bytes = compression_report.latest_completed_representation_bytes,
-                .compression_input_bytes = compression_report.latest_input_bytes,
-                .compression_payload_bytes = compression_report.latest_payload_bytes,
-                .compression_envelope_bytes = compression_report.latest_envelope_bytes,
-                .compression_output_bytes = compression_report.latest_output_bytes,
                 .final_transport_bytes = compression_report.latest_completed_transport_bytes,
-                .compressed_packet_count = compression_report.compressed_packet_count,
-                .raw_packet_count = compression_report.raw_packet_count,
-                .invalid_compressed_payloads = compression_report.invalid_payload_count,
-                .decompression_cpu_ns = static_cast<std::uint64_t>(
-                    std::max(compression_report.decompression_cpu_time, simnet::Nanoseconds{}).count()
-                ),
             };
         }
         return {

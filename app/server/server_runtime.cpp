@@ -129,23 +129,6 @@ namespace
 
 #if defined(SIMNET_ENABLE_RENDER)
     [[nodiscard]] constexpr std::string_view
-    packet_submission_outcome_name(PacketSubmissionOutcome outcome) noexcept
-    {
-        switch (outcome)
-        {
-            case PacketSubmissionOutcome::None:
-                return "None";
-            case PacketSubmissionOutcome::Prepared:
-                return "Prepared";
-            case PacketSubmissionOutcome::Committed:
-                return "Committed";
-            case PacketSubmissionOutcome::Abandoned:
-                return "Abandoned";
-        }
-        return "Unknown";
-    }
-
-    [[nodiscard]] constexpr std::string_view
     compression_encoding_name(simnet::CompressionEncoding encoding) noexcept
     {
         switch (encoding)
@@ -401,36 +384,13 @@ namespace
             details.effective_delivery = config.snapshot_delivery.mode;
             details.ack_lag_updates = peer->snapshot_delivery.latest_submitted_sequence -
                                       peer->snapshot_delivery.latest_acknowledged_sequence;
-            auto const now = simnet::steady_now_ns();
-            auto const ack_lag_start =
-                peer->snapshot_delivery.latest_ack_progress_time != simnet::Nanoseconds{}
-                    ? peer->snapshot_delivery.latest_ack_progress_time
-                : peer->snapshot_delivery.submitted.empty()
-                    ? now
-                    : peer->snapshot_delivery.submitted.front().submitted_at;
-            details.ack_lag_ns =
-                peer->snapshot_delivery.latest_submitted_sequence == 0U
-                    ? 0U
-                    : static_cast<std::uint64_t>(
-                          std::max(now - ack_lag_start, simnet::Nanoseconds{}).count()
-                      );
-            details.retained_snapshot_capacity_bytes =
-                peer->snapshot_delivery.retained_capacity_bytes;
             details.snapshot_recovery_reason =
                 simnet::app::snapshot_recovery_reason_name(peer->snapshot_delivery.recovery_reason);
             details.forced_full_replace_count = peer->snapshot_delivery.forced_full_replace_count;
             details.recovery_request_count = peer->snapshot_delivery.recovery_request_count;
-            details.baseline_eviction_count = peer->snapshot_delivery.baseline_eviction_count;
-            details.reliable_group_count = peer->reliable_group_count;
-            details.unreliable_group_count = peer->unreliable_group_count;
-            details.reliable_packet_count = peer->reliable_packet_count;
-            details.unreliable_packet_count = peer->unreliable_packet_count;
-            details.repeated_recovery_upserts = peer->repeated_recovery_upserts;
-            details.repeated_recovery_deletes = peer->repeated_recovery_deletes;
             details.area_of_interest_mode = config.pipeline.area_of_interest.mode;
             details.level_of_detail_mode = config.pipeline.level_of_detail.mode;
             details.send_interval_ticks = config.pipeline.send_interval_ticks;
-            details.committed_emission_count = peer->committed_emission_count;
             details.cadence_skip_count = peer->cadence_skip_count;
             details.packetization_enabled = config.packetization.enabled;
             if (config.pipeline.area_of_interest.mode == "none")
@@ -462,25 +422,9 @@ namespace
                 details.lod_near_population = lod.population.near;
                 details.lod_medium_population = lod.population.medium;
                 details.lod_far_population = lod.population.far;
-                details.lod_near_eligible = lod.eligible.near;
-                details.lod_medium_eligible = lod.eligible.medium;
-                details.lod_far_eligible = lod.eligible.far;
-                details.lod_near_serviced = lod.serviced.near;
-                details.lod_medium_serviced = lod.serviced.medium;
-                details.lod_far_serviced = lod.serviced.far;
                 details.lod_near_represented = lod.represented.near;
                 details.lod_medium_represented = lod.represented.medium;
                 details.lod_far_represented = lod.represented.far;
-                details.lod_near_deferred = lod.deferred.near;
-                details.lod_medium_deferred = lod.deferred.medium;
-                details.lod_far_deferred = lod.deferred.far;
-                details.lod_pending_due = lod.pending_due_count;
-                details.lod_transitions = lod.transition_count;
-                details.lod_forced_immediate = lod.forced_immediate_count;
-                details.lod_recovery_forced = lod.recovery_forced_count;
-                details.lod_deletions_bypassing = lod.deletions_bypassing_count;
-                details.lod_full_replace_overrides =
-                    peer->level_of_detail_full_replace_override_count;
             }
             if (peer->snapshot_delivery.latest_submitted_sequence != 0U)
             {
@@ -492,7 +436,6 @@ namespace
                 auto const& representation = peer->latest_representation;
                 details.representation_layout = entity_record_layout_name(representation.layout);
                 details.entity_record_bytes = representation.record_bytes;
-                details.representation_quality_samples = representation.quality_sample_count;
                 if (representation.quality_sample_count != 0U)
                 {
                     auto const sample_count =
@@ -507,43 +450,22 @@ namespace
             }
             if (peer->latest_packetization.group_id != 0U)
             {
-                details.packet_group_id = peer->latest_packetization.group_id;
                 details.encoded_group_bytes = peer->latest_packetization.group_bytes;
                 details.packet_chunk_count = peer->latest_packetization.chunk_count;
-                details.packet_header_bytes = peer->latest_packetization.total_header_bytes;
                 details.application_packet_bytes = peer->latest_packetization.total_packet_bytes;
-                details.attempted_packet_submissions = peer->latest_attempted_submissions;
-                details.accepted_packet_submissions = peer->latest_accepted_submissions;
-                details.packet_submission_outcome =
-                    packet_submission_outcome_name(peer->latest_submission_outcome);
-                if (!peer->latest_submission_error.empty())
-                {
-                    details.packet_submission_failure = peer->latest_submission_error;
-                }
             }
             auto const& compression = peer->latest_compression;
             details.compression_mode = simnet::app::compression_mode_name(compression.mode);
             if (compression.dictionary_id != 0U)
             {
                 details.compression_dictionary = compression.dictionary_name;
-                details.compression_dictionary_id = compression.dictionary_id;
             }
             if (compression.group_id != 0U)
             {
                 details.representation_bytes = compression.representation_bytes;
-                details.compression_input_bytes = compression.compression_input_bytes;
-                details.compression_payload_bytes = compression.compression_payload_bytes;
-                details.compression_envelope_bytes = compression.compression_envelope_bytes;
                 details.compression_output_bytes = compression.compression_output_bytes;
-                details.bytes_before_packetization = compression.bytes_before_packetization;
-                details.bytes_after_packetization = compression.bytes_after_packetization;
                 details.final_transport_bytes = compression.final_transport_bytes;
-                details.compressed_packet_count = compression.zstd_packet_count;
-                details.raw_packet_count = compression.raw_packet_count;
                 details.compression_ratio = compression.ratio;
-                details.compression_cpu_ns = static_cast<std::uint64_t>(
-                    std::max(compression.compression_cpu_time, simnet::Nanoseconds{}).count()
-                );
                 if (compression.mode == simnet::app::CompressionMode::WholeUpdate)
                 {
                     details.compression_outcome =
@@ -561,16 +483,8 @@ namespace
                     details.compression_outcome = "Disabled";
                 }
             }
-            details.retained_snapshot_count = static_cast<std::uint32_t>(
-                peer->snapshot_delivery.submitted.size() +
-                (peer->snapshot_delivery.acknowledged.has_value() ? 1U : 0U)
-            );
             if (!peer->snapshot_delivery.submitted.empty())
             {
-                details.oldest_retained_sequence =
-                    peer->snapshot_delivery.submitted.front().sequence;
-                details.newest_retained_sequence =
-                    peer->snapshot_delivery.submitted.back().sequence;
                 details.latest_snapshot_tick =
                     peer->snapshot_delivery.submitted.back().snapshot.tick;
             }

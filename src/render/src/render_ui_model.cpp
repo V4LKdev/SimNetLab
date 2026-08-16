@@ -388,6 +388,42 @@ namespace simnet
                     add_row(panel_model_, label, Normal, "%u", *current);
                 }
             };
+            if (value.latest_snapshot_tick.has_value())
+            {
+                add_row(
+                    panel_model_,
+                    "Latest snapshot tick",
+                    Normal,
+                    "%llu",
+                    static_cast<unsigned long long>(*value.latest_snapshot_tick)
+                );
+            }
+            if (frame.info.context.kind == ViewerKind::Client &&
+                value.latest_snapshot_tick.has_value())
+            {
+                add_row(
+                    panel_model_,
+                    "Rendered tick",
+                    Normal,
+                    "%llu",
+                    static_cast<unsigned long long>(frame.info.tick)
+                );
+                auto const delay = *value.latest_snapshot_tick > frame.info.tick
+                                       ? *value.latest_snapshot_tick - frame.info.tick
+                                       : 0U;
+                add_row(
+                    panel_model_,
+                    "Presentation delay",
+                    delay > 1U ? Warning : Normal,
+                    "%llu tick%s",
+                    static_cast<unsigned long long>(delay),
+                    delay == 1U ? "" : "s"
+                );
+            }
+            count("Applied upserts", value.applied_upsert_count);
+            count("Applied deletes", value.applied_delete_count);
+            count("Reconstructed entities", value.reconstructed_entity_count);
+            add_section(panel_model_, "TREATMENT");
             text_value("AOI mode", value.area_of_interest_mode);
             text_value("Interest source", value.interest_source_status);
             count("Source entities", value.source_entity_count);
@@ -398,28 +434,13 @@ namespace simnet
             count("LOD Near population", value.lod_near_population);
             count("LOD Medium population", value.lod_medium_population);
             count("LOD Far population", value.lod_far_population);
-            count("LOD Near eligible", value.lod_near_eligible);
-            count("LOD Medium eligible", value.lod_medium_eligible);
-            count("LOD Far eligible", value.lod_far_eligible);
-            count("LOD Near serviced", value.lod_near_serviced);
-            count("LOD Medium serviced", value.lod_medium_serviced);
-            count("LOD Far serviced", value.lod_far_serviced);
             count("LOD Near represented", value.lod_near_represented);
             count("LOD Medium represented", value.lod_medium_represented);
             count("LOD Far represented", value.lod_far_represented);
-            count("LOD Near deferred", value.lod_near_deferred);
-            count("LOD Medium deferred", value.lod_medium_deferred);
-            count("LOD Far deferred", value.lod_far_deferred);
-            count("LOD pending due", value.lod_pending_due);
-            count("LOD transitions", value.lod_transitions);
-            count("LOD forced immediate", value.lod_forced_immediate);
-            count("LOD recovery forced", value.lod_recovery_forced);
-            count("LOD deletes bypassed", value.lod_deletions_bypassing);
             count("Transmitted upserts", value.transmitted_upsert_count);
             count("Transmitted deletes", value.transmitted_delete_count);
             text_value("Record layout", value.representation_layout);
             count("Record width", value.entity_record_bytes);
-            count("Quality samples", value.representation_quality_samples);
             if (value.mean_position_error.has_value())
             {
                 add_row(
@@ -461,9 +482,7 @@ namespace simnet
                 );
             }
             count("Send interval", value.send_interval_ticks);
-            count("Applied upserts", value.applied_upsert_count);
-            count("Applied deletes", value.applied_delete_count);
-            count("Reconstructed entities", value.reconstructed_entity_count);
+            add_section(panel_model_, "DELIVERY AND RECOVERY");
             if (value.packetization_enabled.has_value())
             {
                 add_row(
@@ -474,15 +493,9 @@ namespace simnet
                     *value.packetization_enabled ? "Enabled" : "Disabled"
                 );
             }
-            sequence("Packet group", value.packet_group_id);
             count("Encoded group bytes", value.encoded_group_bytes);
             count("Application chunks", value.packet_chunk_count);
-            count("Application header bytes", value.packet_header_bytes);
             count("Application packet bytes", value.application_packet_bytes);
-            count("Attempted submissions", value.attempted_packet_submissions);
-            count("Accepted submissions", value.accepted_packet_submissions);
-            text_value("Submission outcome", value.packet_submission_outcome);
-            text_value("Submission failure", value.packet_submission_failure);
             text_value("Configured delivery", value.configured_delivery);
             text_value("Effective delivery", value.effective_delivery);
             auto count64 = [&](std::string_view label, std::optional<std::uint64_t> current)
@@ -498,43 +511,22 @@ namespace simnet
                     );
                 }
             };
-            count64("LOD FullReplace overrides", value.lod_full_replace_overrides);
-            count64("Committed emissions", value.committed_emission_count);
             count64("Cadence skips", value.cadence_skip_count);
-            count64("Received chunks", value.received_packet_chunks);
-            count64("Unique chunks", value.unique_packet_chunks);
-            count64("Duplicate chunks", value.duplicate_packet_chunks);
             count("Incomplete groups", value.incomplete_packet_groups);
-            count("Incomplete bytes", value.retained_incomplete_bytes);
-            count("Completed group bytes", value.latest_completed_group_bytes);
-            count64("Completed groups", value.completed_packet_groups);
             count64("Expired groups", value.expired_packet_groups);
             count64("Invalid groups", value.invalid_packet_groups);
-            count64("Stale groups", value.stale_packet_groups);
             count("ACK lag", value.ack_lag_updates);
-            count64("ACK lag ns", value.ack_lag_ns);
-            count64("Retained capacity", value.retained_snapshot_capacity_bytes);
             text_value("Snapshot recovery", value.snapshot_recovery_reason);
             count64("Forced FullReplace", value.forced_full_replace_count);
             count64("Recovery requests", value.recovery_request_count);
             count64("Missing baselines", value.missing_baseline_rejection_count);
-            count64("Baseline evictions", value.baseline_eviction_count);
             count64("Sequence gaps", value.sequence_gap_count);
             count64("Reliable promotions", value.reliable_promotion_count);
-            count64("Reliable groups", value.reliable_group_count);
-            count64("Unreliable groups", value.unreliable_group_count);
-            count64("Reliable packets", value.reliable_packet_count);
-            count64("Unreliable packets", value.unreliable_packet_count);
-            count64("Repeated upserts", value.repeated_recovery_upserts);
-            count64("Repeated deletes", value.repeated_recovery_deletes);
+            add_section(panel_model_, "COMPRESSION AND SIZE");
             text_value("Compression", value.compression_mode);
             text_value("Compression dictionary", value.compression_dictionary);
-            count("Compression dictionary ID", value.compression_dictionary_id);
             text_value("Compression outcome", value.compression_outcome);
             count("Representation bytes", value.representation_bytes);
-            count("Compression input", value.compression_input_bytes);
-            count("Compressed payload", value.compression_payload_bytes);
-            count("Compression envelope", value.compression_envelope_bytes);
             count("Compression output", value.compression_output_bytes);
             if (value.compression_ratio.has_value())
             {
@@ -546,63 +538,7 @@ namespace simnet
                     *value.compression_ratio
                 );
             }
-            count("Before packetization", value.bytes_before_packetization);
-            count("After packetization", value.bytes_after_packetization);
             count("Final transport bytes", value.final_transport_bytes);
-            count64("Compressed packets", value.compressed_packet_count);
-            count64("Raw packets", value.raw_packet_count);
-            count64("Invalid compressed", value.invalid_compressed_payloads);
-            count64("Compression CPU ns", value.compression_cpu_ns);
-            count64("Decompression CPU ns", value.decompression_cpu_ns);
-            if (value.latest_snapshot_tick.has_value())
-            {
-                add_row(
-                    panel_model_,
-                    "Latest snapshot tick",
-                    Normal,
-                    "%llu",
-                    static_cast<unsigned long long>(*value.latest_snapshot_tick)
-                );
-            }
-            if (frame.info.context.kind == ViewerKind::Client &&
-                value.latest_snapshot_tick.has_value())
-            {
-                add_row(
-                    panel_model_,
-                    "Rendered tick",
-                    Normal,
-                    "%llu",
-                    static_cast<unsigned long long>(frame.info.tick)
-                );
-                auto const delay = *value.latest_snapshot_tick > frame.info.tick
-                                       ? *value.latest_snapshot_tick - frame.info.tick
-                                       : 0U;
-                add_row(
-                    panel_model_,
-                    "Presentation delay",
-                    delay > 1U ? Warning : Normal,
-                    "%llu tick%s",
-                    static_cast<unsigned long long>(delay),
-                    delay == 1U ? "" : "s"
-                );
-            }
-
-            if (value.retained_snapshot_count.has_value())
-            {
-                auto const index = panel_model_.section_count;
-                auto const expanded = (ui_.expanded_sections[static_cast<std::size_t>(Network)] &
-                                       (1U << index)) != 0U;
-                add_section(panel_model_, "ADVANCED HISTORY", true, expanded);
-                add_row(
-                    panel_model_,
-                    "Retained snapshots",
-                    Normal,
-                    "%u",
-                    *value.retained_snapshot_count
-                );
-                sequence("Oldest retained", value.oldest_retained_sequence);
-                sequence("Newest retained", value.newest_retained_sequence);
-            }
             return;
         }
 
