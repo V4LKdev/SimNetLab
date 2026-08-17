@@ -1,54 +1,11 @@
-# External research evidence collectors
+# External perf evidence collector
 
-SimNet research evidence has three layers:
-
-1. SimNet Server and Client CSV files record replication semantics and application stage elapsed
-   wall times.
-2. `simnet_linux_collector.py` records Linux process and host time series.
-3. `simnet_perf_stat.py` records run-level perf counters for each attached process.
-
-All layers share `run_id`. Join process evidence by `run_id`, role, PID identity, and overlapping
-Unix-nanosecond intervals. Perf measures the complete attached process, not an individual SimNet
-stage. Perf `task-clock` and hardware cycles are different measurements from the application's
-steady-clock stage durations.
-
-## Linux process and host samples
-
-`simnet_linux_collector.py` attaches to explicit Linux process IDs. It writes one versioned JSON
-manifest and fixed-schema process and host CSV files. It uses only the Python standard library and
-does not require elevated privileges.
-
-Example:
-
-```sh
-python3 scripts/simnet_linux_collector.py \
-    --output-directory results/run-001/linux \
-    --run-id run-001 \
-    --target server:1234 \
-    --target client:1235 \
-    --interval-ms 100 \
-    --network-interface lo \
-    --duration-seconds 30
-```
-
-The collector stops when all targets exit unless a duration ends first. It validates each PID by
-its Linux process start time so that PID reuse cannot be mistaken for the original process.
-`smaps_rollup` defaults to every tenth sample because it is a heavier kernel interface. Use
-`--smaps-every` to select another positive interval.
-
-Empty CSV cells mean unavailable. The row `errors_json` field and manifest capabilities explain
-missing files, permission failures, parse failures, and unsupported sensors. Zero is written only
-when Linux reports a real zero. Variable CPU frequency, hwmon temperature, and powercap sources use
-self-describing JSON cells so the process schema remains fixed.
-
-Process samples cover CPU and scheduler activity, memory residency, file IO, and process identity.
-Host samples cover pressure stalls, available memory, load, interface counters, and optional
-frequency, temperature, and energy sources.
-
-Unix nanoseconds join collector files to SimNet evidence for the supplied run ID. Monotonic elapsed
-nanoseconds and record order provide within-collector ordering. Host temperature, powercap energy,
-and pressure stall information are environmental covariates. They are not process-attributable
-measurements.
+SimNet Server and Client CSV files record replication semantics and application stage elapsed wall
+times. `simnet_perf_stat.py` records run-level perf counters for each attached process. Both layers
+share `run_id`. Join process evidence by `run_id`, role, PID identity, and overlapping Unix-nanosecond
+intervals. Perf measures the complete attached process, not an individual SimNet stage. Perf
+`task-clock` and hardware cycles are different measurements from the application's steady-clock
+stage durations.
 
 ## Perf run-level counters
 
@@ -94,12 +51,11 @@ per-peer normalization. Derived ratios are not stored as authoritative counters.
 
 Counts below `--minimum-running-percent` remain in the CSV but are rejected for analysis. A scaled
 count is never presented as exact. Use `--require-complete-profile` when every requested event must
-be accepted. Perf and Linux sampling overhead should be quantified with short instrumentation-on
-and instrumentation-off pilot runs before final evidence collection.
+be accepted. Perf attachment overhead should be quantified with a short instrumentation-on and
+instrumentation-off pilot before final evidence collection.
 
 On hybrid CPUs, perf may expand a generic event into one row per compatible PMU. The collector
 combines those components by event and group, summing their values and counter runtimes. The
 reported running percentage is their combined coverage, capped at 100 percent, and the normal
 acceptance threshold still applies. Perf-selected user-space event scope is preserved by the
-underlying event rows and does not replace the Linux collector's process-wide user and system CPU
-accounting.
+underlying event rows.

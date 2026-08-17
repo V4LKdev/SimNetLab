@@ -111,8 +111,7 @@ capture and row formatting. Application report flattening remains fixed-size val
 does no file I/O.
 
 No in-process field represents captured network bytes, operating-system counters, perf data,
-energy data, or netem data. `scripts/simnet_linux_collector.py` owns the separate Linux process and
-host evidence layer.
+energy data, or netem data. Whole-process evidence remains external to application telemetry.
 
 ## Trace Macros
 

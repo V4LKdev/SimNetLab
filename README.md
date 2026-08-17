@@ -132,7 +132,7 @@ authoritative ticks.
 - `simnet_render`: generic core-only Raylib viewer
 
 Benchmark orchestration is outside the production library graph. Server and Client expose bounded
-runtime controls and versioned CSV evidence for external automation and collectors.
+runtime controls and versioned CSV evidence for external analysis.
 
 Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the player role. Stationary observer remains the default.
 
