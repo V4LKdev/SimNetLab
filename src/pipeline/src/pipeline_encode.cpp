@@ -372,7 +372,6 @@ namespace simnet
                         *selected_snapshot,
                         input.recovery_upsert_ids
                     );
-                level_of_detail.recovery_forced_count = recovery_forced_addition_count;
                 if (!delta_enabled)
                 {
                     pipeline_selection::select_replica_deletes(

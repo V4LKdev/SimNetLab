@@ -64,7 +64,6 @@ using simnet::app::server_replication::entity_record_layout_name;
 using simnet::app::server_replication::erase_peer_state;
 using simnet::app::server_replication::find_peer;
 using simnet::app::server_replication::level_of_detail_mode_name;
-using simnet::app::server_replication::log_server_replication_measurements;
 using simnet::app::server_replication::log_snapshot_delivery_state;
 using simnet::app::server_replication::peer_role_name;
 using simnet::app::server_replication::run_tick;
@@ -1963,7 +1962,39 @@ namespace simnet::app
                     "server replication CSV close failed: " + std::string{replication_csv->error()}
                 );
             }
-            log_server_replication_measurements(replication_measurements);
+            auto const final_canonical_count =
+                replication_measurements.latest_sent.has_value()
+                    ? replication_measurements.latest_sent->canonical_entity_count
+                    : 0U;
+            auto const final_canonical_fingerprint =
+                replication_measurements.latest_sent.has_value()
+                    ? replication_measurements.latest_sent->canonical_fingerprint
+                    : 0U;
+            log(LogCategory::Telemetry,
+                LogLevel::Info,
+                "server evidence summary run_id=" + run_context.run_id + " path=" +
+                    (replication_csv->enabled() ? replication_csv->path().string()
+                                                : std::string{"disabled"}) +
+                    " shutdown_reason=" + std::string{shutdown_reason_name(stop.reason())} +
+                    " final_tick=" + std::to_string(stats.ticks) + " writer_healthy=" +
+                    std::string{replication_csv->healthy() ? "true" : "false"} +
+                    " submitted_rows=" + std::to_string(replication_csv->submitted_count()) +
+                    " attempts=" + std::to_string(replication_measurements.attempt_count) +
+                    " sent=" + std::to_string(replication_measurements.sent_count) +
+                    " final_canonical_count=" + std::to_string(final_canonical_count) +
+                    " final_canonical_fingerprint=" +
+                    std::to_string(final_canonical_fingerprint) +
+                    " recovery_forced_upserts=" +
+                    std::to_string(replication_measurements.recovery_forced_upsert_count) +
+                    " recovery_forced_deletes=" +
+                    std::to_string(replication_measurements.recovery_forced_delete_count) +
+                    " repeated_without_ack_upserts=" +
+                    std::to_string(replication_measurements.repeated_without_ack_upsert_count) +
+                    " repeated_without_ack_deletes=" +
+                    std::to_string(replication_measurements.repeated_without_ack_delete_count) +
+                    " dropped_ns=" + std::to_string(stats.dropped_time.count()) +
+                    " dropped_time_warning=" +
+                    std::string{stats.dropped_time > Nanoseconds{} ? "true" : "false"});
             log(LogCategory::Simulation,
                 LogLevel::Info,
                 "server runtime stopped reason=" +

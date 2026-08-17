@@ -248,17 +248,10 @@ namespace
         std::vector<std::string>& storage
     )
     {
-        storage.reserve(12U);
+        storage.reserve(4U);
         own_text(measurement.accepted_gameplay_role, storage);
         own_text(measurement.outcome_detail, storage);
-        own_text(measurement.area_of_interest_mode, storage);
-        own_text(measurement.area_of_interest_source_status, storage);
-        own_text(measurement.level_of_detail_mode, storage);
-        own_text(measurement.representation_layout, storage);
-        own_text(measurement.compression_mode, storage);
         own_text(measurement.compression_encoding, storage);
-        own_text(measurement.compression_dictionary, storage);
-        own_text(measurement.delivery_mode, storage);
         own_text(measurement.recovery_reason, storage);
     }
 
@@ -418,6 +411,7 @@ namespace
             entry.record_order
         );
         auto const& value = entry.value;
+        // Yes, this is a wall of fields. Keeping schema order explicit makes every CSV column auditable.
         row.integer(value.runtime_config_fingerprint);
         row.integer(value.network_compatibility_fingerprint);
         row.integer(value.application_wire_fingerprint);
@@ -427,32 +421,16 @@ namespace
         row.integer(value.sequence);
         row.integer(value.baseline_sequence);
         row.integer(value.acknowledged_sequence);
-        row.integer(value.latest_submitted_sequence);
         row.text(snapshot_kind_name(value.snapshot_kind));
         row.text(server_outcome_name(value.outcome));
         row.text(value.outcome_detail);
-        row.integer(value.cadence_enabled);
-        row.integer(value.incremental_enabled);
-        row.integer(value.quantization_enabled);
-        row.integer(value.oct_heading_enabled);
-        row.integer(value.delta_enabled);
-        row.integer(value.delta_field_mask_enabled);
-        row.integer(value.bit_packing_enabled);
-        row.integer(value.cadence_interval_ticks);
-        row.integer(value.incremental_limit);
-        row.integer(value.incremental_cursor_before);
-        row.integer(value.incremental_cursor_after);
-        row.integer(value.incremental_seeded_before);
-        row.integer(value.incremental_seeded_after);
-        row.text(value.area_of_interest_mode);
-        row.text(value.area_of_interest_source_status);
-        row.text(value.level_of_detail_mode);
         row.integer(value.source_entity_count);
         row.integer(value.selected_entity_count);
         row.integer(value.upsert_count);
         row.integer(value.delete_count);
-        row.integer(value.area_of_interest_candidate_count);
-        row.integer(value.area_of_interest_culled_count);
+        row.integer(value.canonical_entity_count);
+        row.integer(value.canonical_fingerprint);
+        row.integer(value.aoi_candidate_entity_count);
         row.integer(value.lod_near_population);
         row.integer(value.lod_medium_population);
         row.integer(value.lod_far_population);
@@ -462,65 +440,38 @@ namespace
         row.integer(value.lod_pending_due_count);
         row.integer(value.lod_transition_count);
         row.integer(value.lod_forced_immediate_count);
-        row.integer(value.lod_recovery_forced_count);
-        row.integer(value.lod_deletions_bypassing_count);
-        row.integer(value.lod_full_replace_override_count);
-        row.integer(value.delta_candidate_count);
-        row.integer(value.delta_unchanged_count);
-        row.integer(value.delta_changed_existing_count);
-        row.integer(value.delta_spawned_count);
-        row.integer(value.delta_whole_record_existing_count);
-        row.integer(value.delta_masked_existing_count);
+        row.integer(value.delta_unchanged_entity_count);
+        row.integer(value.delta_spawned_entity_count);
+        row.integer(value.delta_whole_record_entity_count);
+        row.integer(value.delta_field_mask_entity_count);
         row.integer(value.delta_classification_field_count);
         row.integer(value.delta_position_field_count);
         row.integer(value.delta_heading_field_count);
         row.integer(value.delta_hue_field_count);
-        row.integer(value.complete_record_equivalent_bytes);
-        row.integer(value.sparse_record_bytes);
-        row.text(value.representation_layout);
-        row.integer(value.complete_record_bytes);
-        row.integer(value.representation_quality_sample_count);
-        row.real(value.position_error_sum);
-        row.real(value.position_error_maximum);
+        row.integer(value.delta_complete_record_equivalent_bytes);
+        row.integer(value.delta_encoded_record_bytes);
+        row.integer(value.representation_sample_count);
+        row.real(value.position_error_world_units_sum);
+        row.real(value.position_error_world_units_max);
         row.real(value.heading_error_degrees_sum);
-        row.real(value.heading_error_degrees_maximum);
+        row.real(value.heading_error_degrees_max);
         row.integer(value.encoded_update_bytes);
-        row.integer(value.application_payload_bytes);
-        row.integer(value.transport_payload_bytes);
-        row.text(value.compression_mode);
         row.text(value.compression_encoding);
-        row.text(value.compression_dictionary);
-        row.integer(value.compression_dictionary_id);
-        row.integer(value.compression_dictionary_fingerprint);
         row.integer(value.compression_raw_fallback);
         row.integer(value.compression_input_bytes);
-        row.integer(value.compression_payload_bytes);
-        row.integer(value.compression_envelope_bytes);
         row.integer(value.compression_output_bytes);
         row.integer(value.compression_elapsed_time.count());
-        row.integer(value.packetization_enabled);
-        row.integer(value.packet_group_id);
-        row.integer(value.packet_group_bytes);
-        row.integer(value.packet_payload_bytes);
         row.integer(value.packet_header_bytes);
-        row.integer(value.packet_chunk_count);
-        row.integer(value.attempted_submissions);
-        row.integer(value.accepted_submissions);
-        row.text(value.delivery_mode);
-        row.integer(value.recovery_active);
+        row.integer(value.transport_accepted_bytes);
+        row.integer(value.transport_accepted_packet_count);
         row.text(value.recovery_reason);
         row.integer(value.recovery_forced_upsert_count);
         row.integer(value.recovery_forced_delete_count);
         row.integer(value.repeated_without_ack_upsert_count);
         row.integer(value.repeated_without_ack_delete_count);
         row.integer(value.submissions_since_ack_progress);
-        row.integer(value.canonical_entity_count);
-        row.integer(value.canonical_fingerprint);
-        row.integer(value.snapshot_extraction_elapsed_time.count());
-        row.integer(value.baseline_resolution_elapsed_time.count());
         row.integer(value.encode_elapsed_time.count());
-        row.integer(value.transport_send_elapsed_time.count());
-        row.integer(value.snapshot_retention_elapsed_time.count());
+        row.integer(value.transport_submission_elapsed_time.count());
         row.integer(value.total_replication_elapsed_time.count());
     }
 
@@ -847,9 +798,9 @@ namespace simnet
         explicit Impl(ReplicationCsvWriterConfig config)
             : state(
                   std::move(config),
-                  "server_replication_v3_",
+                  "server_replication_v4_",
                   EvidenceProcessRole::Server,
-                  server_replication_csv_header_v3
+                  server_replication_csv_header_v4
               )
         {
         }

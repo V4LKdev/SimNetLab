@@ -10,9 +10,7 @@ TEST_CASE(
     "[telemetry][pipeline][evidence]"
 )
 {
-    auto measurement = simnet::ServerReplicationMeasurement{
-        .area_of_interest_mode = "radius",
-    };
+    auto measurement = simnet::ServerReplicationMeasurement{};
     auto report = simnet::EncodeReport{
         .tick = 40,
         .sequence = 9,
@@ -20,6 +18,7 @@ TEST_CASE(
         .snapshot_kind = simnet::SnapshotKind::Patch,
         .upsert_count = 7,
         .delete_count = 2,
+        .recovery_forced_addition_count = 3,
         .representation =
             {
                 .layout = simnet::EntityRecordLayout::Quantized,
@@ -61,43 +60,27 @@ TEST_CASE(
             .pending_due_count = 3,
             .transition_count = 1,
             .forced_immediate_count = 2,
-            .recovery_forced_count = 1,
             .deletions_bypassing_count = 2,
             .full_replace_override_count = 1,
         },
     };
-    auto state = simnet::ClientReplicationState{
-        .incremental_cursor = 17,
-        .incremental_seeded = true,
-        .level_of_detail_schedule = {},
-    };
 
-    simnet::app::flatten_server_encode_report(measurement, report, state);
+    simnet::app::flatten_server_encode_report(measurement, report);
 
     CHECK(measurement.tick == 40);
     CHECK(measurement.sequence == 9);
     CHECK(measurement.baseline_sequence == 8);
     CHECK(measurement.selected_entity_count == 12);
-    CHECK(measurement.area_of_interest_source_status == "available");
-    CHECK(measurement.area_of_interest_candidate_count == 15);
-    CHECK(measurement.area_of_interest_culled_count == 8);
+    CHECK(measurement.recovery_forced_upsert_count == 3);
+    CHECK(measurement.aoi_candidate_entity_count == 15);
     CHECK(measurement.lod_near_population == 2);
     CHECK(measurement.lod_medium_scheduled == 2);
-    CHECK(measurement.lod_recovery_forced_count == 1);
-    CHECK(measurement.delta_unchanged_count == 5);
-    CHECK(measurement.delta_masked_existing_count == 3);
+    CHECK(measurement.delta_unchanged_entity_count == 5);
+    CHECK(measurement.delta_field_mask_entity_count == 3);
     CHECK(measurement.delta_heading_field_count == 3);
-    CHECK(measurement.complete_record_equivalent_bytes == 126);
-    CHECK(measurement.sparse_record_bytes == 71);
-    CHECK(measurement.representation_layout == "quantized");
-    CHECK(measurement.complete_record_bytes == 18);
-    CHECK(measurement.representation_quality_sample_count == 7);
-    CHECK(measurement.position_error_maximum == 0.004);
-    CHECK(measurement.heading_error_degrees_maximum == 0.03);
-    CHECK(measurement.incremental_cursor_after == 17);
-    CHECK(measurement.incremental_seeded_after);
-
-    auto no_area_of_interest = simnet::ServerReplicationMeasurement{};
-    simnet::app::flatten_server_encode_report(no_area_of_interest, report, state);
-    CHECK(no_area_of_interest.area_of_interest_source_status == "not_required");
+    CHECK(measurement.delta_complete_record_equivalent_bytes == 126);
+    CHECK(measurement.delta_encoded_record_bytes == 71);
+    CHECK(measurement.representation_sample_count == 7);
+    CHECK(measurement.position_error_world_units_max == 0.004);
+    CHECK(measurement.heading_error_degrees_max == 0.03);
 }

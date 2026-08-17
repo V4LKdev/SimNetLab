@@ -26,14 +26,24 @@ The application runtimes own all timing boundaries. The telemetry module owns on
 records and the allocation-free current observers. Snapshot, pipeline, transport, game, and render
 reports remain domain results. They do not write research output.
 
-The Server records snapshot extraction, baseline resolution, encoding, compression,
-packetization, transport submission, and retained-baseline storage. It also flattens the active
-techniques, AOI, LOD, Incremental, Delta, representation quality, delivery, recovery, ACK, and
-canonical-state reports that the application owns. `encoded_update_bytes` is the complete
-pipeline update. `application_payload_bytes` is the complete prepared application packet group.
-`transport_payload_bytes` is the portion accepted by transport and excludes network protocol
-overhead. Packet group, application header, and payload columns preserve the intervening
-packetization boundaries.
+Server v4 records one row for every replication attempt. Static treatment configuration remains in
+the archived JSON and the configuration fingerprints rather than being repeated on every row. The
+retained technique evidence covers AOI and LOD populations and scheduling, Delta selection and byte
+savings, representation error, compression, recovery, and canonical state identity.
+
+`encoded_update_bytes` is the complete pipeline update including its application header.
+`transport_accepted_bytes` is the sum of application payload bytes accepted by the transport API.
+`transport_accepted_packet_count` is the number of accepted application packet submissions. These
+values do not claim to be physical UDP wire bytes or datagrams. Mean accepted application packet
+size is derived by dividing accepted bytes by accepted packet count. `packet_header_bytes` is the
+total explicit application packet header size prepared for the update.
+
+`compression_input_bytes` and `compression_output_bytes` bound the complete ordinary Raw or Zstd
+transform. `compression_encoding` is `disabled`, `raw`, `zstd`, or `mixed`.
+`compression_raw_fallback` is true for whole-update Raw output or when any per-packet transform used
+Raw. Whole-update values describe the transform before packetization. Per-packet values are sums
+over complete packet transforms, so their input includes the explicit packet headers. Server v4
+has no dictionary, compression payload, or compression envelope columns.
 
 The Client records received outer bytes, reassembly outcomes, decompression, decode,
 retained-baseline resolution, reconstruction, sink preparation, Client Flecs sink application,
@@ -45,13 +55,12 @@ treatments include both and report sink application separately. A failed attempt
 `latest_applied` and never increments `applied_count`.
 
 Every replication duration column ending in `_elapsed_ns` is elapsed wall time measured with
-`std::chrono::steady_clock` around the named application stage. It is not process CPU time. Server
-total elapsed time starts after shared snapshot extraction and ends after retention commit.
-Client total elapsed time starts at encoded-header inspection after reassembly and decompression
-and ends at canonical commit.
-Canonical fingerprint work happens after these measured totals. Representation quality sampling
-runs after encoding and is excluded from both encode and total replication durations. The Server
-snapshot extraction duration appears only on the first joined peer row for a tick.
+`std::chrono::steady_clock`. It is not process CPU time. Server v4 retains only encode, compression,
+transport submission, and total replication elapsed time. Compression elapsed time covers the
+complete successful caller-visible transform, including envelope work, Raw copying, scratch work,
+and final output construction. Server total elapsed time starts with per-peer baseline work and ends
+after retention commit. Representation quality sampling runs after encoding and is excluded from
+both encode and total replication durations. The Client v3 timing contract remains unchanged.
 
 The current runtime consumer keeps the latest attempt, latest successful result, and counts for
 the shutdown summary. Each application also submits every attempt to its role-specific CSV
@@ -60,7 +69,7 @@ writer after the measured stage ends.
 ### simnet.telemetry:csv
 
 - `EvidenceRunContext` - immutable process role, process-start clocks, and validated run ID.
-- `ServerReplicationCsvWriter` - bounded peer-attributed Server rows and the Server v3 schema.
+- `ServerReplicationCsvWriter` - bounded peer-attributed Server rows and the Server v4 schema.
 - `ClientReplicationCsvWriter` - bounded typed Client rows and the Client v3 schema.
 - `EvidenceCsvFile` - exclusive creation and checked write, flush, and close operations.
 
@@ -75,7 +84,9 @@ The application captures each record envelope after its measured replication sta
 approximate cross-process alignment. `elapsed_since_process_start_ns` is monotonic within the
 process. The role and process-start timestamp identify the producing process. Server rows store
 the Server-assigned peer ID and accepted gameplay role. Client rows store the Server-assigned peer
-ID and authoritative role from `JoinAccepted`.
+ID and authoritative role from `JoinAccepted`. Runtime configuration fingerprints are role-local
+and are not expected to match. Network compatibility and application-wire fingerprints are
+expected to match between Server and Client.
 
 Replication writers reserve 256 typed records at startup and request a drain at 128. Submission
 copies only the measurement and envelope. Formatting and file I/O occur during explicit
@@ -86,7 +97,7 @@ exclusive creation and are never truncated, appended to, or overwritten.
 Applications use explicit `close()` calls as the failure-reporting boundary. Destructors perform
 only best-effort fallback cleanup and do not report failures.
 
-Enabled files are named `server_replication_v3_<process_started_unix_ns>.csv`,
+Enabled files are named `server_replication_v4_<process_started_unix_ns>.csv`,
 `client_replication_v3_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
 version.
 

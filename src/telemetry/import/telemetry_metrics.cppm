@@ -36,36 +36,19 @@ export namespace simnet
         SequenceId sequence{};
         SequenceId baseline_sequence{};
         SequenceId acknowledged_sequence{};
-        SequenceId latest_submitted_sequence{};
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
         ServerReplicationOutcome outcome{ServerReplicationOutcome::SnapshotExtractionFailed};
         /// Stable application-owned detail for skipped and failed terminal outcomes.
         std::string_view outcome_detail{"snapshot_extraction_failed"};
 
-        bool cadence_enabled{};
-        bool incremental_enabled{};
-        bool quantization_enabled{};
-        bool oct_heading_enabled{};
-        bool delta_enabled{};
-        bool delta_field_mask_enabled{};
-        bool bit_packing_enabled{};
-        std::uint32_t cadence_interval_ticks{1};
-        std::uint32_t incremental_limit{};
-        std::uint32_t incremental_cursor_before{};
-        std::uint32_t incremental_cursor_after{};
-        bool incremental_seeded_before{};
-        bool incremental_seeded_after{};
-        std::string_view area_of_interest_mode{"none"};
-        std::string_view area_of_interest_source_status{"not_required"};
-        std::string_view level_of_detail_mode{"none"};
-
         std::uint32_t source_entity_count{};
         std::uint32_t selected_entity_count{};
         std::uint32_t upsert_count{};
         std::uint32_t delete_count{};
+        std::uint32_t canonical_entity_count{};
+        std::uint64_t canonical_fingerprint{};
 
-        std::uint32_t area_of_interest_candidate_count{};
-        std::uint32_t area_of_interest_culled_count{};
+        std::uint32_t aoi_candidate_entity_count{};
         std::uint32_t lod_near_population{};
         std::uint32_t lod_medium_population{};
         std::uint32_t lod_far_population{};
@@ -75,81 +58,51 @@ export namespace simnet
         std::uint32_t lod_pending_due_count{};
         std::uint32_t lod_transition_count{};
         std::uint32_t lod_forced_immediate_count{};
-        std::uint32_t lod_recovery_forced_count{};
-        std::uint32_t lod_deletions_bypassing_count{};
-        std::uint32_t lod_full_replace_override_count{};
 
-        std::uint32_t delta_candidate_count{};
-        std::uint32_t delta_unchanged_count{};
-        std::uint32_t delta_changed_existing_count{};
-        std::uint32_t delta_spawned_count{};
-        std::uint32_t delta_whole_record_existing_count{};
-        std::uint32_t delta_masked_existing_count{};
+        std::uint32_t delta_unchanged_entity_count{};
+        std::uint32_t delta_spawned_entity_count{};
+        std::uint32_t delta_whole_record_entity_count{};
+        std::uint32_t delta_field_mask_entity_count{};
         std::uint32_t delta_classification_field_count{};
         std::uint32_t delta_position_field_count{};
         std::uint32_t delta_heading_field_count{};
         std::uint32_t delta_hue_field_count{};
-        std::uint64_t complete_record_equivalent_bytes{};
-        std::uint64_t sparse_record_bytes{};
+        std::uint64_t delta_complete_record_equivalent_bytes{};
+        std::uint64_t delta_encoded_record_bytes{};
 
-        std::string_view representation_layout{"unknown"};
-        std::uint32_t complete_record_bytes{};
-        std::uint32_t representation_quality_sample_count{};
-        double position_error_sum{};
-        double position_error_maximum{};
+        std::uint32_t representation_sample_count{};
+        double position_error_world_units_sum{};
+        double position_error_world_units_max{};
         double heading_error_degrees_sum{};
-        double heading_error_degrees_maximum{};
+        double heading_error_degrees_max{};
 
         /// Complete pipeline update including its application header.
         std::uint32_t encoded_update_bytes{};
-        /// Complete prepared application packet group offered to transport.
-        std::uint32_t application_payload_bytes{};
-        /// Application payload bytes accepted by transport, excluding network overhead.
-        std::uint32_t transport_payload_bytes{};
 
-        std::string_view compression_mode{"none"};
         std::string_view compression_encoding{"disabled"};
-        std::string_view compression_dictionary{"none"};
-        std::uint32_t compression_dictionary_id{};
-        std::uint64_t compression_dictionary_fingerprint{};
         bool compression_raw_fallback{};
         std::uint32_t compression_input_bytes{};
-        std::uint32_t compression_payload_bytes{};
-        std::uint32_t compression_envelope_bytes{};
         std::uint32_t compression_output_bytes{};
         /// Steady-clock elapsed wall time around production compression.
         Nanoseconds compression_elapsed_time{};
 
-        bool packetization_enabled{};
-        std::uint32_t packet_group_id{};
-        std::uint32_t packet_group_bytes{};
-        std::uint32_t packet_payload_bytes{};
         std::uint32_t packet_header_bytes{};
-        std::uint32_t packet_chunk_count{};
-        std::uint32_t attempted_submissions{};
-        std::uint32_t accepted_submissions{};
+        /// Application payload bytes accepted by transport, excluding network overhead.
+        std::uint32_t transport_accepted_bytes{};
+        /// Application packet submissions accepted by transport.
+        std::uint32_t transport_accepted_packet_count{};
 
-        std::string_view delivery_mode{"unknown"};
-        bool recovery_active{};
         std::string_view recovery_reason{"none"};
         std::uint32_t recovery_forced_upsert_count{};
         std::uint32_t recovery_forced_delete_count{};
         std::uint32_t repeated_without_ack_upsert_count{};
         std::uint32_t repeated_without_ack_delete_count{};
         std::uint32_t submissions_since_ack_progress{};
-        std::uint32_t canonical_entity_count{};
-        std::uint64_t canonical_fingerprint{};
 
-        /// Steady-clock elapsed wall time around authoritative snapshot extraction.
-        Nanoseconds snapshot_extraction_elapsed_time{};
-        /// Steady-clock elapsed wall time around retained-baseline resolution.
-        Nanoseconds baseline_resolution_elapsed_time{};
         /// Steady-clock elapsed wall time around pipeline encoding.
         Nanoseconds encode_elapsed_time{};
         /// Steady-clock elapsed wall time around transport submissions.
-        Nanoseconds transport_send_elapsed_time{};
-        /// Steady-clock elapsed wall time around retained-baseline commit.
-        Nanoseconds snapshot_retention_elapsed_time{};
+        Nanoseconds transport_submission_elapsed_time{};
         /// Steady-clock elapsed wall time from per-peer baseline work through terminal outcome.
         Nanoseconds total_replication_elapsed_time{};
     };
@@ -251,12 +204,20 @@ export namespace simnet
     {
         std::uint64_t attempt_count{};
         std::uint64_t sent_count{};
+        std::uint64_t recovery_forced_upsert_count{};
+        std::uint64_t recovery_forced_delete_count{};
+        std::uint64_t repeated_without_ack_upsert_count{};
+        std::uint64_t repeated_without_ack_delete_count{};
         std::optional<ServerReplicationMeasurement> latest_attempt{};
         std::optional<ServerReplicationMeasurement> latest_sent{};
 
         void observe(ServerReplicationMeasurement const& measurement) noexcept
         {
             ++attempt_count;
+            recovery_forced_upsert_count += measurement.recovery_forced_upsert_count;
+            recovery_forced_delete_count += measurement.recovery_forced_delete_count;
+            repeated_without_ack_upsert_count += measurement.repeated_without_ack_upsert_count;
+            repeated_without_ack_delete_count += measurement.repeated_without_ack_delete_count;
             latest_attempt = measurement;
             if (measurement.outcome == ServerReplicationOutcome::Sent)
             {

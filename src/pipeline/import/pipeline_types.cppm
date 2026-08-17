@@ -185,7 +185,6 @@ export namespace simnet
         std::uint32_t pending_due_count{};
         std::uint32_t transition_count{};
         std::uint32_t forced_immediate_count{};
-        std::uint32_t recovery_forced_count{};
         std::uint32_t deletions_bypassing_count{};
         std::uint32_t full_replace_override_count{};
         std::uint32_t encoded_bytes{};

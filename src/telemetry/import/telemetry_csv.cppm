@@ -16,46 +16,33 @@ import :metrics;
 
 export namespace simnet
 {
-    inline constexpr std::uint32_t server_replication_csv_schema_version = 3;
+    inline constexpr std::uint32_t server_replication_csv_schema_version = 4;
     inline constexpr std::uint32_t client_replication_csv_schema_version = 3;
 
-    inline constexpr std::string_view server_replication_csv_header_v3 =
+    inline constexpr std::string_view server_replication_csv_header_v4 =
         "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
         "elapsed_since_process_start_ns,record_order,runtime_config_fingerprint,"
         "network_compatibility_fingerprint,application_wire_fingerprint,peer_id,"
         "accepted_gameplay_role,tick,sequence,baseline_sequence,acknowledged_sequence,"
-        "latest_submitted_sequence,snapshot_kind,outcome,outcome_detail,"
-        "cadence_enabled,incremental_enabled,quantization_enabled,oct_heading_enabled,"
-        "delta_enabled,delta_field_mask_enabled,bit_packing_enabled,cadence_interval_ticks,"
-        "incremental_limit,"
-        "incremental_cursor_before,incremental_cursor_after,incremental_seeded_before,"
-        "incremental_seeded_after,area_of_interest_mode,area_of_interest_source_status,"
-        "level_of_detail_mode,source_entity_count,selected_entity_count,upsert_count,"
-        "delete_count,area_of_interest_candidate_count,area_of_interest_culled_count,"
+        "snapshot_kind,outcome,outcome_detail,source_entity_count,selected_entity_count,"
+        "upsert_count,delete_count,canonical_entity_count,canonical_fingerprint,"
+        "aoi_candidate_entity_count,"
         "lod_near_population,lod_medium_population,lod_far_population,lod_near_scheduled,"
         "lod_medium_scheduled,lod_far_scheduled,lod_pending_due_count,lod_transition_count,"
-        "lod_forced_immediate_count,lod_recovery_forced_count,"
-        "lod_deletions_bypassing_count,lod_full_replace_override_count,"
-        "delta_candidate_count,delta_unchanged_count,delta_changed_existing_count,"
-        "delta_spawned_count,delta_whole_record_existing_count,"
-        "delta_masked_existing_count,delta_classification_field_count,"
+        "lod_forced_immediate_count,delta_unchanged_entity_count,delta_spawned_entity_count,"
+        "delta_whole_record_entity_count,delta_field_mask_entity_count,"
+        "delta_classification_field_count,"
         "delta_position_field_count,delta_heading_field_count,delta_hue_field_count,"
-        "complete_record_equivalent_bytes,sparse_record_bytes,representation_layout,"
-        "complete_record_bytes,representation_quality_sample_count,position_error_sum,"
-        "position_error_maximum,heading_error_degrees_sum,"
-        "heading_error_degrees_maximum,encoded_update_bytes,application_payload_bytes,"
-        "transport_payload_bytes,compression_mode,compression_encoding,"
-        "compression_dictionary,compression_dictionary_id,"
-        "compression_dictionary_fingerprint,compression_raw_fallback,"
-        "compression_input_bytes,compression_payload_bytes,compression_envelope_bytes,"
-        "compression_output_bytes,compression_elapsed_ns,packetization_enabled,packet_group_id,"
-        "packet_group_bytes,packet_payload_bytes,packet_header_bytes,packet_chunk_count,"
-        "attempted_submissions,accepted_submissions,delivery_mode,recovery_active,"
+        "delta_complete_record_equivalent_bytes,delta_encoded_record_bytes,"
+        "representation_sample_count,position_error_world_units_sum,"
+        "position_error_world_units_max,heading_error_degrees_sum,heading_error_degrees_max,"
+        "encoded_update_bytes,compression_encoding,compression_raw_fallback,"
+        "compression_input_bytes,compression_output_bytes,compression_elapsed_ns,"
+        "packet_header_bytes,transport_accepted_bytes,transport_accepted_packet_count,"
         "recovery_reason,recovery_forced_upsert_count,recovery_forced_delete_count,"
         "repeated_without_ack_upsert_count,repeated_without_ack_delete_count,"
-        "submissions_since_ack_progress,canonical_entity_count,canonical_fingerprint,"
-        "snapshot_extraction_elapsed_ns,baseline_resolution_elapsed_ns,encode_elapsed_ns,"
-        "transport_send_elapsed_ns,snapshot_retention_elapsed_ns,total_replication_elapsed_ns";
+        "submissions_since_ack_progress,encode_elapsed_ns,transport_submission_elapsed_ns,"
+        "total_replication_elapsed_ns";
 
     inline constexpr std::string_view client_replication_csv_header_v3 =
         "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
