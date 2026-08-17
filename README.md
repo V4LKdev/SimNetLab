@@ -1,37 +1,57 @@
 # SimNetLab
 
-SimNetLab is a C++23 bachelor research project for evaluating snapshot replication techniques in a server-authoritative ECS simulation.
+SimNetLab is a C++23 bachelor research project developed over approximately 12 weeks by one
+student. It investigates how snapshot replication techniques affect application bandwidth,
+application packet submissions, representation quality, recovery behavior, and coarse processing
+cost in a Server-authoritative ECS simulation.
 
-The current foundation separates core vocabulary, fixed-step runtime planning, configuration, snapshots, pipeline encoding, ENet transport, telemetry, and Flecs game contracts. Server and Client are the composition boundary.
+## Technique dimensions
 
-## Current capability
+The retained comparison dimensions are:
 
-- ENet transport with a session handshake and generic bounded post-session byte lanes
-- Versioned application messages for acknowledgments, control, player input, and stationary observer interest
-- Configurable hard application packetization with bounded complete-group Client reassembly
-- Toggleable bounded ordinary Zstd compression for complete updates or individual application packets
-- Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
-- Bounded multi-client Server coordination with isolated Player and stationary observer sessions
-- Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
-- Application configuration for cadence, full replacement, incremental selection, quantization, octahedral headings, bit packing, exact-baseline delta reconstruction, radius or conical-FOV AOI, and packetization
-- Catch2 coverage for runtime timing, pipeline behavior, transport session behavior, and replication contracts
-- Deterministic Server-authoritative boids with switchable separation, alignment, cohesion, containment, wander, and circular hue behavior
-- 1,000-entity Server to Client replication in the bounded runtime path
-- Optional interpolated Server and Client visualization with instanced directional entities, stable entity navigation, paged panels, local stationary observer views, and authoritative remote pause
-- Stationary observer and authoritative Player join roles with per-session Player ownership and a locked third-person Client chase camera
+- Area of interest using radius or conical field of view selection
+- Snapshot emission cadence
+- Temporal distance-band level of detail
+- Raw, quantized, octahedral, and bit-packed representation
+- Whole-record and field-mask Delta encoding
+- Reliable-sequenced and unreliable-sequenced delivery
+- No compression, whole-update ordinary Zstd, and per-packet ordinary Zstd
+- Bounded application packetization
+- Four controlled synthetic Delta workloads
 
-## Requirements
+Detailed contracts live with the [pipeline](src/pipeline/README.md),
+[compression](src/compression/README.md), [packetization](src/packetization/README.md),
+[transport](src/transport/README.md), and [synthetic workload](src/synthetic/README.md) modules.
+
+## Evidence model
+
+Server replication CSV v4 records one row per replication attempt. Client replication CSV v4
+records one row per received Snapshot-lane application packet. Final statistical analysis uses
+run-level aggregates rather than treating individual tick or packet rows as independent subjects.
+
+Evidence builds exclude rendering. Direct whole-process perf measurements use separate process
+executions from semantic CSV runs. The authoritative collection procedure, fixed tick window,
+validity rules, commands, and archive convention are in
+[EVIDENCE_PROTOCOL.md](EVIDENCE_PROTOCOL.md).
+
+## Supported environment
+
+Code-freeze support is limited to:
 
 - Linux
-- CMake 4.3 or newer
-- Ninja
+- CMake and Ninja
 - Git
-- A C++23 compiler with C++ module support
-- Raylib development package when render support is enabled
+- A C++23 compiler with named-module support
+- GNU C++ 16.2.1 as the code-freeze validation compiler
+- Raylib only when optional rendering is enabled
+- Project dependencies supplied through the vcpkg submodule
 
-Other dependencies are managed through the vcpkg submodule.
+Headless Debug, ordinary evidence, and synthetic evidence builds were validated at code freeze.
+The optional renderer was not part of the final headless evidence validation environment.
 
 ## Setup
+
+Clone with submodules and build the default Debug preset:
 
 ```sh
 git clone --recurse-submodules https://github.com/V4LKdev/SimNetLab.git
@@ -39,16 +59,7 @@ cd SimNetLab
 ./bootstrap.sh
 ```
 
-The bootstrap script initializes vcpkg, configures the Debug preset, and builds the applications, libraries, and tests.
-
-To select another preset:
-
-```sh
-./bootstrap.sh relWithDebInfo
-./bootstrap.sh release
-```
-
-## Build and test
+The equivalent direct commands are:
 
 ```sh
 cmake --preset debug
@@ -56,101 +67,94 @@ cmake --build --preset debug
 ctest --preset debug
 ```
 
-Both applications accept `--config PATH`, `--shared-config PATH`, `--run-id TEXT`, `--max-ticks`,
-`--max-frames`, and `--max-runtime-ms`. Server additionally accepts `--max-frame-delta-ms` and
-`--max-steps-per-frame`. A zero limit is disabled. A supplied run ID correlates Server and Client
-CSV evidence. Without it, each process generates an independent process-local ID.
+Dependencies are resolved through `vcpkg/`.
 
-Build binaries for final measurements with the explicit headless Release preset:
+## Evidence builds
+
+Build the ordinary headless Release binaries with:
 
 ```sh
 cmake --preset evidence
 cmake --build --preset evidence
 ```
 
-This preset disables rendering, Tracy instrumentation, tests, sanitizers, and the optional synthetic
-workload so those facilities cannot enter the measured application binaries. Tracy remains available
-as an opt-in CMake feature for dedicated profiling builds.
-
-The default profiles are headless. To start the visual development profiles from the repository root:
+Build the controlled synthetic workloads with:
 
 ```sh
-build/debug/app/Server --config config/server_visual.json
-build/debug/app/Client --config config/client_visual.json
+cmake --preset evidence-synthetic
+cmake --build --preset evidence-synthetic
 ```
 
-To join as the one supported player instead of a stationary observer:
+Both presets disable rendering, Tracy, tests, and sanitizers. The ordinary preset compiles
+synthetic support out. The synthetic preset enables it for the four tracked synthetic profiles.
+
+## One matched headless run
+
+Run Server and Client in separate terminals with the same shared profile and run ID:
 
 ```sh
-build/debug/app/Client --config config/client_player_visual.json
+build/evidence/app/Server \
+  --config config/server_default.json \
+  --shared-config config/shared_compression_none_aoi_radius_visual.json \
+  --run-id example-no-compression \
+  --max-ticks 2460
 ```
-
-The player camera is locked behind and above the replicated fish. `W`/`S` apply
-pitch steering, `A`/`D` apply yaw steering, Shift accelerates, and Ctrl slows.
-Angular velocity, damping, and rate limits give steering inertia, while
-Shift+Ctrl selects cruise speed.
-Input is latest-state unreliable-sequenced data, while join and pause remain
-reliable controls. `C` opens the cameras available to the current role and
-selection. `F4` opens the read-only Setup inspector. Leaving Game sends one
-neutral input state immediately. The Client also repeats the latest active or
-neutral state every 100 ms, including when rendering is disabled. There is no
-client prediction yet.
-
-The Server visual profile uses the tracked `assets/render/boid.obj` mesh. Set the local `visualization.entity_mesh_path` to another OBJ file to replace it. An empty or unavailable path keeps the instanced wedge fallback.
-
-For the matched radius-AOI representation control, start both processes with the same shared
-profile:
 
 ```sh
-build/debug/app/Server --config config/server_visual.json --shared-config config/shared_representation_raw_aoi_radius_visual.json
-build/debug/app/Client --config config/client_visual.json --shared-config config/shared_representation_raw_aoi_radius_visual.json
+build/evidence/app/Client \
+  --config config/client_default.json \
+  --shared-config config/shared_compression_none_aoi_radius_visual.json \
+  --run-id example-no-compression \
+  --max-ticks 2460
 ```
 
-Replace the shared profile with `shared_representation_quantized_aoi_radius_visual.json`,
-`shared_representation_oct_heading_aoi_radius_visual.json`,
-`shared_representation_bit_packed_aoi_radius_visual.json`, or
-`shared_cadence_reduced_aoi_radius_visual.json` for each matched treatment. The bit-packed and
-byte-aligned octahedral records are both 16 bytes. The reduced-cadence treatment emits every four
-authoritative ticks.
+Use the archived logging configuration, 30 repetitions, treatment ordering, and aggregation rules
+from the [final evidence protocol](EVIDENCE_PROTOCOL.md) for thesis data collection.
+
+## Optional visual demonstration
+
+After building the `relWithDebInfo` preset with rendering enabled, run:
+
+```sh
+build/relWithDebInfo/app/Server \
+  --config config/server_visual.json \
+  --shared-config config/shared_demo_visual.json
+```
+
+```sh
+build/relWithDebInfo/app/Client \
+  --config config/client_visual.json \
+  --shared-config config/shared_demo_visual.json
+```
+
+`config/client_player_visual.json` requests the optional Player role. Visual state is local
+presentation only and is excluded from final evidence builds. See the
+[render](src/render/README.md) and [configuration](config/README.md) references.
 
 ## Project structure
 
-- `simnet_core`: dependency-free math, time, bytes, and identifiers
-- `simnet_runtime`: frame planning, run limits, counters, and stop state
-- `simnet_config`: JSON configuration and compatibility fingerprints
-- `simnet_snapshot`: replicated world snapshots and client patches
-- `simnet_synthetic`: deterministic snapshot generation
-- `simnet_telemetry`: logging, typed measurement contracts, and profiling hooks
-- `simnet_spatial`: sparse uniform-grid queries
-- `simnet_game_shared`: shared Flecs contracts
-- `simnet_game_server`: authoritative lifecycle, boid simulation, and snapshot extraction
-- `simnet_game_client`: client patch application and replicated-world extraction
-- `simnet_pipeline`: snapshot selection, transformation, encoding, and decoding
-- `simnet_compression`: bounded Raw and ordinary Zstd byte envelopes
-- `simnet_packetization`: bounded opaque byte groups and Client reassembly
-- `simnet_transport`: ENet transport and session protocol
-- `simnet_render`: generic core-only Raylib viewer
+- `simnet_core` provides bytes, identifiers, math, and fixed-step vocabulary.
+- `simnet_runtime` provides frame planning, limits, counters, and stop state.
+- `simnet_config` loads strict JSON configuration and computes fingerprints.
+- `simnet_snapshot` owns complete snapshots, patches, validation, and reconstruction.
+- `simnet_pipeline` selects, transforms, encodes, and decodes snapshot updates.
+- `simnet_compression` provides bounded Raw and ordinary Zstd envelopes.
+- `simnet_packetization` provides bounded application packet groups and reassembly.
+- `simnet_transport` provides ENet sessions and opaque byte delivery.
+- `simnet_game_server` owns authoritative Flecs simulation and snapshot extraction.
+- `simnet_game_client` applies reconstructed state to the nonauthoritative Flecs sink.
+- `simnet_spatial` provides deterministic sparse-grid queries.
+- `simnet_synthetic` provides controlled deterministic snapshot workloads.
+- `simnet_telemetry` owns logging and v4 CSV persistence contracts.
+- `simnet_render` is the optional Raylib demonstrator.
+- `app/server` and `app/client` compose the executable runtimes.
 
-Benchmark orchestration is outside the production library graph. Server and Client expose bounded
-runtime controls and versioned CSV evidence for external analysis.
+## Limitations
 
-Default configuration is in `config/shared_default.json`, `config/server_default.json`, and `config/client_default.json`. `config/server_visual.json` and `config/client_visual.json` enable the same local visualization settings without changing simulation, pipeline, or transport configuration. `config/client_player_visual.json` requests the player role. Stationary observer remains the default.
-
-Server-local `flecs.thread_count` defaults to one. Values above one enable Flecs worker scheduling for systems explicitly marked as multithreaded. They do not parallelize queries or application code automatically.
-
-For a visual demonstration profile:
-
-```sh
-build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_demo_visual.json
-build/relWithDebInfo/app/Client --config config/client_visual.json --shared-config config/shared_demo_visual.json
-```
-
-The Server keeps velocity, precise hue phase, and neighbor-computation state private. Replication remains the stable ID, position, normalized heading, and one-byte hue snapshot contract. The Server selected-entity panel remains available while paused and shows velocity, acceleration, query and neighbor counts, rule settings, flags, hue decisions, and steering contributions. Its optional generic gizmos show the queried cells, rule radii, FOV, and steering vectors. The Client does not receive those private facts.
-
-Visual interpolation is local and presentation-only. The Server blends adjacent authoritative ticks with the fixed-step alpha. The Client renders directly from retained reconstructed snapshots and derives its interval from snapshot ticks. It does not query the replicated Flecs world every frame. Pause snaps both viewers to their latest exact state. Set `visualization.interpolation_enabled` to `false` for exact snapshot debugging.
-
-For local high-count stress and visual inspection, use the 50,000-entity shared profile with the visual Server profile. This is not a realistic network-replication workload:
-
-```sh
-build/relWithDebInfo/app/Server --config config/server_visual.json --shared-config config/shared_stress_50k.json
-```
+- The project is Linux-focused.
+- ENet is the only retained transport.
+- Transport-accepted application bytes are not physical network wire bytes.
+- The Client has no prediction.
+- Rendering is demonstrative and excluded from evidence.
+- Unreliable recovery efficacy requires actual packet impairment with the command archived.
+- SimNetLab is a thesis prototype rather than a release product.
