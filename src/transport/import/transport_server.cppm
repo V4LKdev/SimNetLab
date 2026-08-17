@@ -61,12 +61,6 @@ export namespace simnet
         /// Immediate transport path is best effort.
         void disconnect(PeerId peer, DisconnectCode code) noexcept;
 
-        /// Snapshot read for transport-owned counters and bytes.
-        [[nodiscard]] TransportStats stats() const;
-
-        /// Peer counter snapshot returns zero state if peer is not known.
-        [[nodiscard]] PeerStats peer_stats(PeerId peer) const;
-
       private:
         struct Impl;
         Impl* impl_{};

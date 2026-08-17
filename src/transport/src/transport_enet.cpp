@@ -26,15 +26,13 @@ namespace simnet
             return {};
         }
 
-        [[nodiscard]] TransportResult
-        fail(TransportErrorCode code, std::string message, std::uint32_t native_code = 0)
+        [[nodiscard]] TransportResult fail(TransportErrorCode code, std::string message)
         {
             return {
                 .ok = false,
                 .error = {
                     .code = code,
                     .message = std::move(message),
-                    .native_code = native_code,
                 },
             };
         }
@@ -42,9 +40,9 @@ namespace simnet
         constexpr PeerId server_peer_id = 1;
         constexpr auto handshake_timeout = std::chrono::seconds(5);
 
-        [[nodiscard]] DisconnectCode disconnect_code(std::uint32_t native_code) noexcept
+        [[nodiscard]] DisconnectCode disconnect_code(std::uint32_t reason) noexcept
         {
-            auto const code = static_cast<DisconnectCode>(native_code);
+            auto const code = static_cast<DisconnectCode>(reason);
             return valid_disconnect_code(code) ? code : DisconnectCode::TransportError;
         }
 
@@ -150,27 +148,8 @@ namespace simnet
                    enet_address_set_host(&address, host.c_str()) == 0;
         }
 
-        void add_send_stats(TransportStats& stats, TransportLane lane, std::size_t bytes)
-        {
-            auto const index = lane_index(lane);
-            ++stats.packets_sent;
-            stats.bytes_sent += bytes;
-            ++stats.lane_packets_sent[index];
-            stats.lane_bytes_sent[index] += bytes;
-        }
-
-        void add_receive_stats(TransportStats& stats, TransportLane lane, std::size_t bytes)
-        {
-            auto const index = lane_index(lane);
-            ++stats.packets_received;
-            stats.bytes_received += bytes;
-            ++stats.lane_packets_received[index];
-            stats.lane_bytes_received[index] += bytes;
-        }
-
         [[nodiscard]] TransportResult send_to_peer(
             ENetPeer* peer,
-            TransportStats& stats,
             TransportLimits const& limits,
             TransportLane lane,
             TransportDelivery delivery,
@@ -179,19 +158,15 @@ namespace simnet
         {
             if (!valid_lane(lane))
             {
-                ++stats.send_failures;
                 return fail(TransportErrorCode::InvalidLane, "invalid transport lane");
             }
             if (!valid_delivery(delivery))
             {
-                ++stats.send_failures;
                 return fail(TransportErrorCode::InvalidDelivery, "invalid transport delivery mode");
             }
             if (limits.size_policy == SendSizePolicy::EnforceLimit &&
                 payload.size() > limits.max_payload_bytes)
             {
-                ++stats.send_failures;
-                ++stats.oversize_drops;
                 return fail(
                     TransportErrorCode::PayloadTooLarge,
                     "transport payload exceeds configured limit"
@@ -199,8 +174,6 @@ namespace simnet
             }
             if (payload.size() > max_reassembled_payload_bytes)
             {
-                ++stats.send_failures;
-                ++stats.oversize_drops;
                 return fail(
                     TransportErrorCode::PayloadTooLarge,
                     "transport payload exceeds hard payload limit"
@@ -209,8 +182,6 @@ namespace simnet
             if (delivery == TransportDelivery::UnreliableSequenced &&
                 payload.size() > unfragmented_payload_limit(*peer))
             {
-                ++stats.send_failures;
-                ++stats.oversize_drops;
                 return fail(
                     TransportErrorCode::PayloadTooLarge,
                     "unreliable sequenced payload would require ENet fragmentation"
@@ -221,34 +192,15 @@ namespace simnet
                 enet_packet_create(payload.data(), payload.size(), delivery_flags(delivery));
             if (packet == nullptr)
             {
-                ++stats.send_failures;
                 return fail(TransportErrorCode::BackendError, "ENet packet allocation failed");
             }
             if (enet_peer_send(peer, lane_index(lane), packet) != 0)
             {
                 enet_packet_destroy(packet);
-                ++stats.send_failures;
                 return fail(TransportErrorCode::BackendError, "ENet send failed");
             }
 
-            add_send_stats(stats, lane, payload.size());
             return ok();
-        }
-
-        [[nodiscard]] PeerStats make_peer_stats(ENetPeer const* peer) noexcept
-        {
-            if (peer == nullptr)
-            {
-                return {};
-            }
-            return {
-                .rtt_ms = static_cast<double>(peer->roundTripTime),
-                .packet_loss_ratio = static_cast<double>(peer->packetLoss) /
-                                     static_cast<double>(ENET_PEER_PACKET_LOSS_SCALE),
-                .reliable_bytes_in_flight = peer->reliableDataInTransit,
-                .waiting_bytes = peer->totalWaitingData,
-                .mtu = peer->mtu,
-            };
         }
 
         struct PeerSlot
@@ -279,7 +231,6 @@ namespace simnet
                 );
             }
             settings_ = settings;
-            counters_ = {};
             peers_.clear();
             expired_peer_ids_.clear();
             next_peer_id_ = 1;
@@ -367,12 +318,10 @@ namespace simnet
                 else if (event.type == ENET_EVENT_TYPE_DISCONNECT)
                 {
                     auto const id = event_peer_id(event.peer);
-                    ++counters_.disconnects;
                     out_events.push_back(
                         PeerDisconnected{
                             .peer = id,
                             .code = disconnect_code(event.data),
-                            .native_reason = event.data,
                         }
                     );
                     peers_.erase(
@@ -413,7 +362,6 @@ namespace simnet
             }
             return send_to_peer(
                 slot->peer,
-                counters_,
                 settings_.limits,
                 packet.lane,
                 packet.delivery,
@@ -431,31 +379,8 @@ namespace simnet
             }
         }
 
-        TransportStats stats() const
-        {
-            return counters_;
-        }
-
-        PeerStats peer_stats(PeerId peer) const
-        {
-            auto const* slot = find(peer);
-            return slot == nullptr ? PeerStats{} : make_peer_stats(slot->peer);
-        }
-
       private:
         [[nodiscard]] PeerSlot* find(PeerId id) noexcept
-        {
-            auto found = std::ranges::find_if(
-                peers_,
-                [id](PeerSlot const& slot)
-                {
-                    return slot.id == id;
-                }
-            );
-            return found == peers_.end() ? nullptr : &*found;
-        }
-
-        [[nodiscard]] PeerSlot const* find(PeerId id) const noexcept
         {
             auto found = std::ranges::find_if(
                 peers_,
@@ -472,7 +397,6 @@ namespace simnet
             auto bytes = encode_session_message(message);
             return send_to_peer(
                 peer,
-                counters_,
                 {
                     .max_payload_bytes = settings_.limits.max_payload_bytes,
                     .size_policy = SendSizePolicy::AllowBackendFragmentation,
@@ -558,7 +482,6 @@ namespace simnet
                                  : payload_size_allowed(event.packet->dataLength, settings_.limits);
             if (!size_allowed)
             {
-                ++counters_.oversize_drops;
                 out_events.push_back(
                     TransportErrorEvent{
                         .message = "received ENet packet exceeds transport receive limit"
@@ -567,8 +490,6 @@ namespace simnet
                 disconnect(peer, DisconnectCode::ProtocolMismatch);
                 return;
             }
-            add_receive_stats(counters_, lane, event.packet->dataLength);
-
             if (slot == nullptr)
             {
                 return;
@@ -612,12 +533,10 @@ namespace simnet
                         static_cast<std::uint32_t>(DisconnectCode::Timeout)
                     );
                     slot.peer->data = nullptr;
-                    ++counters_.disconnects;
                     out_events.push_back(
                         PeerDisconnected{
                             .peer = slot.id,
                             .code = DisconnectCode::Timeout,
-                            .native_reason = static_cast<std::uint32_t>(DisconnectCode::Timeout),
                         }
                     );
                     expired_peer_ids_.push_back(slot.id);
@@ -639,7 +558,6 @@ namespace simnet
 
         ENetHost* host_{};
         TransportServerSettings settings_{};
-        TransportStats counters_{};
         std::vector<PeerSlot> peers_;
         std::vector<PeerId> expired_peer_ids_;
         PeerId next_peer_id_{1};
@@ -663,7 +581,6 @@ namespace simnet
                 );
             }
             settings_ = settings;
-            counters_ = {};
             transport_connected_ = false;
             session_ready_ = false;
 
@@ -819,12 +736,10 @@ namespace simnet
                 }
                 else if (event.type == ENET_EVENT_TYPE_DISCONNECT)
                 {
-                    ++counters_.disconnects;
                     out_events.push_back(
                         PeerDisconnected{
                             .peer = server_peer_id,
                             .code = disconnect_code(event.data),
-                            .native_reason = event.data,
                         }
                     );
                     server_ = nullptr;
@@ -850,17 +765,7 @@ namespace simnet
                     "transport server session is not ready"
                 );
             }
-            return send_to_peer(server_, counters_, settings_.limits, lane, delivery, payload);
-        }
-
-        TransportStats stats() const
-        {
-            return counters_;
-        }
-
-        PeerStats server_stats() const
-        {
-            return make_peer_stats(server_);
+            return send_to_peer(server_, settings_.limits, lane, delivery, payload);
         }
 
       private:
@@ -870,7 +775,6 @@ namespace simnet
             auto bytes = encode_session_message(message);
             return send_to_peer(
                 server_,
-                counters_,
                 {
                     .max_payload_bytes = settings_.limits.max_payload_bytes,
                     .size_policy = SendSizePolicy::AllowBackendFragmentation,
@@ -920,10 +824,8 @@ namespace simnet
                     PeerDisconnected{
                         .peer = server_peer_id,
                         .code = message.reject_code,
-                        .native_reason = static_cast<std::uint32_t>(message.reject_code),
                     }
                 );
-                ++counters_.disconnects;
                 enet_peer_disconnect_now(
                     event.peer,
                     static_cast<std::uint32_t>(message.reject_code)
@@ -966,7 +868,6 @@ namespace simnet
                                  : payload_size_allowed(event.packet->dataLength, settings_.limits);
             if (!size_allowed)
             {
-                ++counters_.oversize_drops;
                 out_events.push_back(
                     TransportErrorEvent{
                         .message = "received ENet packet exceeds transport receive limit"
@@ -976,11 +877,8 @@ namespace simnet
                     PeerDisconnected{
                         .peer = server_peer_id,
                         .code = DisconnectCode::ProtocolMismatch,
-                        .native_reason =
-                            static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch),
                     }
                 );
-                ++counters_.disconnects;
                 enet_peer_disconnect_now(
                     event.peer,
                     static_cast<std::uint32_t>(DisconnectCode::ProtocolMismatch)
@@ -990,8 +888,6 @@ namespace simnet
                 session_ready_ = false;
                 return;
             }
-            add_receive_stats(counters_, lane, event.packet->dataLength);
-
             if (!session_ready_)
             {
                 handle_session_receive(event, lane, out_events);
@@ -1011,12 +907,10 @@ namespace simnet
             server_ = nullptr;
             transport_connected_ = false;
             session_ready_ = false;
-            ++counters_.disconnects;
             out_events.push_back(
                 PeerDisconnected{
                     .peer = server_peer_id,
                     .code = DisconnectCode::Timeout,
-                    .native_reason = static_cast<std::uint32_t>(DisconnectCode::Timeout),
                 }
             );
         }
@@ -1024,7 +918,6 @@ namespace simnet
         ENetHost* host_{};
         ENetPeer* server_{};
         TransportClientSettings settings_{};
-        TransportStats counters_{};
         bool transport_connected_{};
         bool session_ready_{};
         std::chrono::steady_clock::time_point connect_started_at_{};
@@ -1103,16 +996,6 @@ namespace simnet
         {
             impl_->disconnect(peer, code);
         }
-    }
-
-    TransportStats TransportServer::stats() const
-    {
-        return impl_ == nullptr ? TransportStats{} : impl_->stats();
-    }
-
-    PeerStats TransportServer::peer_stats(PeerId peer) const
-    {
-        return impl_ == nullptr ? PeerStats{} : impl_->peer_stats(peer);
     }
 
     TransportClient::TransportClient() : impl_(new Impl{})
@@ -1194,13 +1077,4 @@ namespace simnet
         return impl_->send(lane, delivery, payload);
     }
 
-    TransportStats TransportClient::stats() const
-    {
-        return impl_ == nullptr ? TransportStats{} : impl_->stats();
-    }
-
-    PeerStats TransportClient::server_stats() const
-    {
-        return impl_ == nullptr ? PeerStats{} : impl_->server_stats();
-    }
 } // namespace simnet

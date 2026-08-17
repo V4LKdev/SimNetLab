@@ -58,12 +58,6 @@ export namespace simnet
         [[nodiscard]] TransportResult
         send(TransportLane lane, TransportDelivery delivery, std::span<Byte const> payload);
 
-        /// Snapshot read for transport-owned counters and bytes.
-        [[nodiscard]] TransportStats stats() const;
-
-        /// Returns known server transport counters or zero state if session is not active.
-        [[nodiscard]] PeerStats server_stats() const;
-
       private:
         struct Impl;
         Impl* impl_{};

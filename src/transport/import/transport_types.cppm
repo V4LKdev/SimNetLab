@@ -1,6 +1,5 @@
 module;
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -85,7 +84,6 @@ export namespace simnet
     {
         TransportErrorCode code{TransportErrorCode::None};
         std::string message{};
-        std::uint32_t native_code{};
     };
 
     /// `ok` means no transport-level or lifecycle failure and `error` is stable contract text.
@@ -130,7 +128,6 @@ export namespace simnet
     {
         PeerId peer{};
         DisconnectCode code{};
-        std::uint32_t native_reason{};
     };
 
     /// Non-fatal transport diagnostic. Transport call may continue afterward.
@@ -146,27 +143,4 @@ export namespace simnet
         ReceivedPacket,
         TransportErrorEvent>;
 
-    struct TransportStats
-    {
-        std::uint64_t packets_sent{};
-        std::uint64_t bytes_sent{};
-        std::uint64_t packets_received{};
-        std::uint64_t bytes_received{};
-        std::uint64_t send_failures{};
-        std::uint64_t oversize_drops{};
-        std::uint64_t disconnects{};
-        std::array<std::uint64_t, 3> lane_packets_sent{};
-        std::array<std::uint64_t, 3> lane_packets_received{};
-        std::array<std::uint64_t, 3> lane_bytes_sent{};
-        std::array<std::uint64_t, 3> lane_bytes_received{};
-    };
-
-    struct PeerStats
-    {
-        double rtt_ms{};
-        double packet_loss_ratio{};
-        std::uint64_t reliable_bytes_in_flight{};
-        std::uint64_t waiting_bytes{};
-        std::uint32_t mtu{};
-    };
 }

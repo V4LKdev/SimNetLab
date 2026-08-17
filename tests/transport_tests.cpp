@@ -381,7 +381,6 @@ TEST_CASE("ENet enforces the receiver payload limit", "[transport][enet][limits]
 
     CHECK_FALSE(received);
     CHECK(rejected);
-    CHECK(server.stats().oversize_drops > 0U);
 
     client.disconnect(simnet::DisconnectCode::None);
     server.stop();
