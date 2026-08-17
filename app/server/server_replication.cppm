@@ -850,10 +850,19 @@ namespace simnet::app::server_replication
     {
         measurement.compression_encoding = compression_result_name(compression);
         measurement.compression_dictionary_id = compression.dictionary_id;
-        measurement.compression_raw_fallback =
-            compression.mode != simnet::app::CompressionMode::None &&
-            (compression.whole_encoding == simnet::CompressionEncoding::Raw ||
-             compression.raw_packet_count != 0U);
+        switch (compression.mode)
+        {
+            case simnet::app::CompressionMode::None:
+                measurement.compression_raw_fallback = false;
+                break;
+            case simnet::app::CompressionMode::WholeUpdate:
+                measurement.compression_raw_fallback =
+                    compression.whole_encoding == simnet::CompressionEncoding::Raw;
+                break;
+            case simnet::app::CompressionMode::PerPacket:
+                measurement.compression_raw_fallback = compression.raw_packet_count != 0U;
+                break;
+        }
         measurement.compression_input_bytes = compression.compression_input_bytes;
         measurement.compression_payload_bytes = compression.compression_payload_bytes;
         measurement.compression_envelope_bytes = compression.compression_envelope_bytes;
