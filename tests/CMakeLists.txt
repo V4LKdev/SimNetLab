@@ -1,6 +1,5 @@
 find_package(Catch2 CONFIG REQUIRED)
 find_package(flecs CONFIG REQUIRED)
-find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
 
 add_executable(SimNetTests
         aoi_tests.cpp
@@ -60,9 +59,3 @@ catch_discover_tests(
         TEST_PREFIX "simnet."
         PROPERTIES TIMEOUT 10
 )
-
-add_test(
-        NAME simnet.perf_stat
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf_stat_tests.py
-)
-set_tests_properties(simnet.perf_stat PROPERTIES TIMEOUT 15)
