@@ -34,7 +34,7 @@ export namespace simnet
         std::uint32_t max_output_bytes{};
     };
 
-    /// Per-call compression outcome and timing contract.
+    /// Per-call compression outcome and complete-transform elapsed wall-time contract.
     struct CompressionReport
     {
         CompressionEncoding encoding{CompressionEncoding::Raw};
@@ -42,12 +42,12 @@ export namespace simnet
         std::uint32_t encoded_payload_bytes{};
         std::uint32_t envelope_bytes{};
         std::uint32_t output_bytes{};
-        Nanoseconds compression_cpu_time{};
+        Nanoseconds compression_elapsed_time{};
         bool valid{};
         std::string error{};
     };
 
-    /// Per-call decompression outcome and timing contract.
+    /// Per-call decompression outcome and complete-transform elapsed wall-time contract.
     struct DecompressionReport
     {
         CompressionEncoding encoding{CompressionEncoding::Raw};
@@ -55,7 +55,7 @@ export namespace simnet
         std::uint32_t encoded_payload_bytes{};
         std::uint32_t envelope_bytes{};
         std::uint32_t output_bytes{};
-        Nanoseconds decompression_cpu_time{};
+        Nanoseconds decompression_elapsed_time{};
         bool valid{};
         std::string error{};
     };

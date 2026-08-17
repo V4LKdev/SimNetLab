@@ -61,7 +61,12 @@ TEST_CASE("ordinary compression round-trips and only keeps useful compression", 
     CHECK(compressed_report.output_bytes < compressed_report.input_bytes);
 
     auto restored = std::vector<simnet::Byte>{};
-    REQUIRE(simnet::decompress_bytes(decompressor, compressed, limits(), restored).valid);
+    auto const decompressed_report =
+        simnet::decompress_bytes(decompressor, compressed, limits(), restored);
+    REQUIRE(decompressed_report.valid);
+    CHECK(decompressed_report.encoding == simnet::CompressionEncoding::Zstd);
+    CHECK(decompressed_report.input_bytes == compressed.size());
+    CHECK(decompressed_report.output_bytes == compressible.size());
     CHECK(restored == compressible);
 
     auto const incompressible = incompressible_bytes(1024U);
@@ -93,7 +98,12 @@ TEST_CASE("ordinary compression round-trips and only keeps useful compression", 
     CHECK(simnet::has_compression_envelope(raw_envelope));
 
     restored.clear();
-    REQUIRE(simnet::decompress_bytes(decompressor, raw_envelope, limits(), restored).valid);
+    auto const raw_decompression_report =
+        simnet::decompress_bytes(decompressor, raw_envelope, limits(), restored);
+    REQUIRE(raw_decompression_report.valid);
+    CHECK(raw_decompression_report.encoding == simnet::CompressionEncoding::Raw);
+    CHECK(raw_decompression_report.input_bytes == raw_envelope.size());
+    CHECK(raw_decompression_report.output_bytes == tiny.size());
     CHECK(restored == tiny);
 }
 

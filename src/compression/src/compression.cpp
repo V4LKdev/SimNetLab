@@ -258,6 +258,7 @@ namespace simnet
             return report;
         }
 
+        auto const start = now_ns();
         auto const bound = ZSTD_compressBound(input.size());
         if (ZSTD_isError(bound) != 0U || bound > compressor.impl_->frame_scratch.max_size())
         {
@@ -265,7 +266,6 @@ namespace simnet
             return report;
         }
 
-        auto const start = now_ns();
         compressor.impl_->frame_scratch.resize(bound);
         auto const compressed = ZSTD_compressCCtx(
             compressor.impl_->context,
@@ -275,7 +275,6 @@ namespace simnet
             input.size(),
             level
         );
-        report.compression_cpu_time = now_ns() - start;
         if (ZSTD_isError(compressed) != 0U)
         {
             report.error = std::string{"Zstd compression failed: "} + ZSTD_getErrorName(compressed);
@@ -305,6 +304,7 @@ namespace simnet
             report.encoded_payload_bytes = report.input_bytes;
             report.output_bytes = report.input_bytes;
             report.valid = true;
+            report.compression_elapsed_time = now_ns() - start;
             return report;
         }
 
@@ -326,6 +326,7 @@ namespace simnet
             use_zstd ? CompressionEncoding::Zstd : CompressionEncoding::Raw,
             payload
         );
+        report.compression_elapsed_time = now_ns() - start;
         return report;
     }
 
@@ -342,6 +343,7 @@ namespace simnet
             return report;
         }
 
+        auto const start = now_ns();
         auto header = EnvelopeHeader{};
         if (!read_header(input, header) || !valid_header_identity(header) ||
             (header.encoding != static_cast<std::uint8_t>(CompressionEncoding::Raw) &&
@@ -372,11 +374,10 @@ namespace simnet
                 report.error = "Raw envelope sizes must match";
                 return report;
             }
-            auto const start = now_ns();
             output.assign(payload.begin(), payload.end());
-            report.decompression_cpu_time = now_ns() - start;
             report.output_bytes = header.uncompressed_bytes;
             report.valid = true;
+            report.decompression_elapsed_time = now_ns() - start;
             return report;
         }
         if (!frame_content_size_matches(payload, header.uncompressed_bytes))
@@ -391,7 +392,6 @@ namespace simnet
         }
 
         decompressor.impl_->frame_scratch.resize(header.uncompressed_bytes);
-        auto const start = now_ns();
         auto const decompressed = ZSTD_decompressDCtx(
             decompressor.impl_->context,
             decompressor.impl_->frame_scratch.data(),
@@ -399,7 +399,6 @@ namespace simnet
             payload.data(),
             payload.size()
         );
-        report.decompression_cpu_time = now_ns() - start;
         if (ZSTD_isError(decompressed) != 0U || decompressed != header.uncompressed_bytes)
         {
             report.error =
@@ -411,6 +410,7 @@ namespace simnet
         output = decompressor.impl_->frame_scratch;
         report.output_bytes = header.uncompressed_bytes;
         report.valid = true;
+        report.decompression_elapsed_time = now_ns() - start;
         return report;
     }
 }

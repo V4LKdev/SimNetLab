@@ -1114,9 +1114,12 @@ namespace simnet::app
                         " output_bytes=" + std::to_string(replication.compression_report.latest_output_bytes) +
                         " raw_fallbacks=" +
                         std::to_string(replication.compression_report.whole_update_raw_fallback_count) +
-                        " decompression_cpu_ns=" +
+                        " decompression_elapsed_ns=" +
                         std::to_string(
-                            std::max(replication.compression_report.decompression_cpu_time, Nanoseconds{})
+                            std::max(
+                                replication.compression_report.decompression_elapsed_time,
+                                Nanoseconds{}
+                            )
                                 .count()
                         ));
             }

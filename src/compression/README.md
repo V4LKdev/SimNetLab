@@ -16,3 +16,9 @@ caller output unchanged.
 Whole-update compression always uses the envelope. Per-packet composition uses a Zstd envelope only
 when the complete envelope is smaller than the original application packet. Otherwise it preserves
 the original packet bytes.
+
+Compression and decompression report elapsed wall time measured with `std::chrono::steady_clock`
+around the complete successful transform. The boundary begins after basic argument and limit
+validation and ends after the caller's output vector contains the final bytes. It includes envelope
+work, Zstd work when selected, required scratch-buffer work, Raw fallback copying, and the final
+output copy.

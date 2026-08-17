@@ -55,7 +55,7 @@ namespace simnet::app::client_replication
         std::uint64_t compression_payload_bytes{};
         std::uint64_t compression_envelope_bytes{};
         std::uint64_t compression_output_bytes{};
-        simnet::Nanoseconds decompression_cpu_time{};
+        simnet::Nanoseconds decompression_elapsed_time{};
         std::uint32_t zstd_packet_count{};
         std::uint32_t raw_packet_count{};
     };
@@ -67,7 +67,7 @@ namespace simnet::app::client_replication
         std::uint32_t payload_bytes{};
         std::uint32_t envelope_bytes{};
         std::uint32_t output_bytes{};
-        simnet::Nanoseconds cpu_time{};
+        simnet::Nanoseconds elapsed_time{};
     };
 
     struct ClientEvidenceIdentity
@@ -100,7 +100,7 @@ namespace simnet::app::client_replication
         std::uint32_t compression_payload_bytes{};
         std::uint32_t compression_envelope_bytes{};
         std::uint32_t uncompressed_bytes{};
-        simnet::Nanoseconds decompression_cpu_time{};
+        simnet::Nanoseconds decompression_elapsed_time{};
     };
 
     struct ClientCompressionReport
@@ -118,7 +118,7 @@ namespace simnet::app::client_replication
         std::uint32_t latest_completed_representation_bytes{};
         std::uint32_t latest_completed_transport_bytes{};
         std::uint32_t canonical_entity_count{};
-        simnet::Nanoseconds decompression_cpu_time{};
+        simnet::Nanoseconds decompression_elapsed_time{};
     };
 
     constexpr std::size_t retained_snapshot_limit = 64;
@@ -225,7 +225,7 @@ namespace simnet::app::client_replication
             found->compression_payload_bytes += decompression.payload_bytes;
             found->compression_envelope_bytes += decompression.envelope_bytes;
             found->compression_output_bytes += decompression.output_bytes;
-            found->decompression_cpu_time += decompression.cpu_time;
+            found->decompression_elapsed_time += decompression.elapsed_time;
             if (decompression.encoding == simnet::CompressionEncoding::Zstd)
             {
                 ++found->zstd_packet_count;
@@ -249,7 +249,7 @@ namespace simnet::app::client_replication
             .compression_payload_bytes = decompression.payload_bytes,
             .compression_envelope_bytes = decompression.envelope_bytes,
             .compression_output_bytes = decompression.output_bytes,
-            .decompression_cpu_time = decompression.cpu_time,
+            .decompression_elapsed_time = decompression.elapsed_time,
             .zstd_packet_count =
                 decompression.encoding == simnet::CompressionEncoding::Zstd ? 1U : 0U,
             .raw_packet_count =
@@ -415,7 +415,7 @@ namespace simnet::app::client_replication
             .compression_payload_bytes = receive.compression_payload_bytes,
             .compression_envelope_bytes = receive.compression_envelope_bytes,
             .uncompressed_bytes = receive.uncompressed_bytes,
-            .decompression_elapsed_time = receive.decompression_cpu_time,
+            .decompression_elapsed_time = receive.decompression_elapsed_time,
         };
     }
 
@@ -949,14 +949,15 @@ namespace simnet::app::client_replication
                 compression_report.latest_payload_bytes = decompressed.encoded_payload_bytes;
                 compression_report.latest_envelope_bytes = decompressed.envelope_bytes;
                 compression_report.latest_output_bytes = decompressed.output_bytes;
-                compression_report.decompression_cpu_time += decompressed.decompression_cpu_time;
+                compression_report.decompression_elapsed_time +=
+                    decompressed.decompression_elapsed_time;
                 packet_decompression = {
                     .encoding = decompressed.encoding,
                     .input_bytes = decompressed.input_bytes,
                     .payload_bytes = decompressed.encoded_payload_bytes,
                     .envelope_bytes = decompressed.envelope_bytes,
                     .output_bytes = decompressed.output_bytes,
-                    .cpu_time = decompressed.decompression_cpu_time,
+                    .elapsed_time = decompressed.decompression_elapsed_time,
                 };
                 if (!decompressed.valid ||
                     decompressed.encoding != simnet::CompressionEncoding::Zstd)
@@ -979,7 +980,7 @@ namespace simnet::app::client_replication
                             .compression_payload_bytes = decompressed.encoded_payload_bytes,
                             .compression_envelope_bytes = decompressed.envelope_bytes,
                             .uncompressed_bytes = decompressed.output_bytes,
-                            .decompression_cpu_time = decompressed.decompression_cpu_time,
+                            .decompression_elapsed_time = decompressed.decompression_elapsed_time,
                         },
                         simnet::ClientReplicationOutcome::DecompressionFailed,
                         "per_packet_decompression_failed"
@@ -1083,7 +1084,8 @@ namespace simnet::app::client_replication
                     narrow(pending_group->compression_envelope_bytes);
                 receive_evidence.uncompressed_bytes =
                     narrow(pending_group->compression_output_bytes);
-                receive_evidence.decompression_cpu_time = pending_group->decompression_cpu_time;
+                receive_evidence.decompression_elapsed_time =
+                    pending_group->decompression_elapsed_time;
             }
         }
 
@@ -1109,7 +1111,8 @@ namespace simnet::app::client_replication
                 compression_report.latest_payload_bytes = decompressed.encoded_payload_bytes;
                 compression_report.latest_envelope_bytes = decompressed.envelope_bytes;
                 compression_report.latest_output_bytes = decompressed.output_bytes;
-                compression_report.decompression_cpu_time += decompressed.decompression_cpu_time;
+                compression_report.decompression_elapsed_time +=
+                    decompressed.decompression_elapsed_time;
                 receive_evidence.decompression_encoding =
                     decompressed.encoding == simnet::CompressionEncoding::Raw ? "raw" : "zstd";
                 receive_evidence.decompression_result = decompressed.valid ? "success" : "failed";
@@ -1117,7 +1120,8 @@ namespace simnet::app::client_replication
                 receive_evidence.compression_payload_bytes = decompressed.encoded_payload_bytes;
                 receive_evidence.compression_envelope_bytes = decompressed.envelope_bytes;
                 receive_evidence.uncompressed_bytes = decompressed.output_bytes;
-                receive_evidence.decompression_cpu_time = decompressed.decompression_cpu_time;
+                receive_evidence.decompression_elapsed_time =
+                    decompressed.decompression_elapsed_time;
                 if (!decompressed.valid)
                 {
                     ++compression_report.invalid_payload_count;

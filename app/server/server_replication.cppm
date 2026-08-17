@@ -68,7 +68,7 @@ namespace simnet::app::server_replication
         std::uint32_t raw_packet_count{};
         double ratio{1.0};
         simnet::CompressionEncoding whole_encoding{simnet::CompressionEncoding::Raw};
-        simnet::Nanoseconds compression_cpu_time{};
+        simnet::Nanoseconds compression_elapsed_time{};
         bool valid{};
         std::string error{};
     };
@@ -227,7 +227,7 @@ namespace simnet::app::server_replication
         PreparedTransportGroup prepared_transport_group{};
         ServerCompressionReport latest_compression{};
         std::uint64_t whole_update_raw_fallback_count{};
-        simnet::Nanoseconds whole_update_compression_cpu_time{};
+        simnet::Nanoseconds whole_update_compression_elapsed_time{};
         simnet::PacketizationReport latest_packetization{};
         std::uint32_t latest_attempted_submissions{};
         std::uint32_t latest_accepted_submissions{};
@@ -350,18 +350,18 @@ namespace simnet::app::server_replication
                     std::to_string(peer.latest_compression.bytes_after_packetization) +
                     " transport_bytes=" +
                     std::to_string(peer.latest_compression.final_transport_bytes) +
-                    " latest_compression_cpu_ns=" +
+                    " latest_compression_elapsed_ns=" +
                     std::to_string(
                         std::max(
-                            peer.latest_compression.compression_cpu_time,
+                            peer.latest_compression.compression_elapsed_time,
                             simnet::Nanoseconds{}
                         )
                             .count()
                     ) +
                     " raw_fallbacks=" + std::to_string(peer.whole_update_raw_fallback_count) +
-                    " compression_cpu_ns=" +
+                    " compression_elapsed_ns=" +
                     std::to_string(
-                        std::max(peer.whole_update_compression_cpu_time, simnet::Nanoseconds{})
+                        std::max(peer.whole_update_compression_elapsed_time, simnet::Nanoseconds{})
                             .count()
                     )
             );
@@ -440,7 +440,7 @@ namespace simnet::app::server_replication
                 report.compression_payload_bytes += compressed.encoded_payload_bytes;
                 report.compression_envelope_bytes += compressed.envelope_bytes;
                 report.compression_output_bytes += compressed.output_bytes;
-                report.compression_cpu_time += compressed.compression_cpu_time;
+                report.compression_elapsed_time += compressed.compression_elapsed_time;
                 if (compressed.encoding == simnet::CompressionEncoding::Zstd)
                 {
                     ++report.zstd_packet_count;
@@ -855,7 +855,7 @@ namespace simnet::app::server_replication
         measurement.compression_payload_bytes = compression.compression_payload_bytes;
         measurement.compression_envelope_bytes = compression.compression_envelope_bytes;
         measurement.compression_output_bytes = compression.compression_output_bytes;
-        measurement.compression_elapsed_time = compression.compression_cpu_time;
+        measurement.compression_elapsed_time = compression.compression_elapsed_time;
         measurement.packet_group_id = packetization.group_id;
         measurement.packet_group_bytes = packetization.group_bytes;
         measurement.packet_payload_bytes =
@@ -1324,7 +1324,7 @@ namespace simnet::app::server_replication
                 compression_report.compression_payload_bytes = compressed.encoded_payload_bytes;
                 compression_report.compression_envelope_bytes = compressed.envelope_bytes;
                 compression_report.compression_output_bytes = compressed.output_bytes;
-                compression_report.compression_cpu_time = compressed.compression_cpu_time;
+                compression_report.compression_elapsed_time = compressed.compression_elapsed_time;
                 compression_report.whole_encoding = compressed.encoding;
                 compression_report.bytes_before_packetization = compressed.output_bytes;
                 if (!compressed.valid)
@@ -1351,7 +1351,7 @@ namespace simnet::app::server_replication
                     );
                     return false;
                 }
-                peer->whole_update_compression_cpu_time += compressed.compression_cpu_time;
+                peer->whole_update_compression_elapsed_time += compressed.compression_elapsed_time;
                 if (compressed.encoding == simnet::CompressionEncoding::Raw)
                 {
                     ++peer->whole_update_raw_fallback_count;
