@@ -29,13 +29,6 @@ export namespace simnet
         UnreliableSequenced
     };
 
-    /// Governs send-time size handling before ENet transmission.
-    enum class SendSizePolicy : std::uint8_t
-    {
-        EnforceLimit,
-        AllowBackendFragmentation
-    };
-
     /// Disconnect classification surfaced to callers after session-level teardown events.
     enum class DisconnectCode : std::uint16_t
     {
@@ -76,7 +69,6 @@ export namespace simnet
     struct TransportLimits
     {
         std::uint32_t max_payload_bytes{1200};
-        SendSizePolicy size_policy{SendSizePolicy::EnforceLimit};
     };
 
     /// Failure contract returned for lifecycle operations and transport send.

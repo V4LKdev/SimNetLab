@@ -53,8 +53,7 @@ namespace simnet
             {
                 return false;
             }
-            return limits.size_policy != SendSizePolicy::EnforceLimit ||
-                   size <= limits.max_payload_bytes;
+            return size <= limits.max_payload_bytes;
         }
 
         [[nodiscard]] enet_uint32 delivery_flags(TransportDelivery delivery) noexcept
@@ -164,8 +163,7 @@ namespace simnet
             {
                 return fail(TransportErrorCode::InvalidDelivery, "invalid transport delivery mode");
             }
-            if (limits.size_policy == SendSizePolicy::EnforceLimit &&
-                payload.size() > limits.max_payload_bytes)
+            if (payload.size() > limits.max_payload_bytes)
             {
                 return fail(
                     TransportErrorCode::PayloadTooLarge,
@@ -398,8 +396,7 @@ namespace simnet
             return send_to_peer(
                 peer,
                 {
-                    .max_payload_bytes = settings_.limits.max_payload_bytes,
-                    .size_policy = SendSizePolicy::AllowBackendFragmentation,
+                    .max_payload_bytes = static_cast<std::uint32_t>(max_session_message_bytes),
                 },
                 TransportLane::Lane0,
                 TransportDelivery::ReliableSequenced,
@@ -776,8 +773,7 @@ namespace simnet
             return send_to_peer(
                 server_,
                 {
-                    .max_payload_bytes = settings_.limits.max_payload_bytes,
-                    .size_policy = SendSizePolicy::AllowBackendFragmentation,
+                    .max_payload_bytes = static_cast<std::uint32_t>(max_session_message_bytes),
                 },
                 lane,
                 TransportDelivery::ReliableSequenced,

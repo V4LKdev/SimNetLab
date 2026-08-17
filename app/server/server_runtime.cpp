@@ -1523,8 +1523,7 @@ namespace simnet::app
 #endif
             auto const compression = make_compression_settings(shared);
             auto const packetization = make_packetization_settings(shared);
-            if (packetization.max_payload_bytes > local.transport.max_payload_bytes ||
-                (packetization.enabled && local.transport.send_size_policy != "enforce_limit"))
+            if (packetization.max_payload_bytes > local.transport.max_payload_bytes)
             {
                 throw std::runtime_error(
                     "packetization payload limit must fit the hard transport payload limit"
@@ -1556,7 +1555,6 @@ namespace simnet::app
                 .expected_identity = session_identity,
                 .limits = {
                     .max_payload_bytes = local.transport.max_payload_bytes,
-                    .size_policy = transport_send_size_policy(local.transport),
                 },
             });
             if (!started.ok)

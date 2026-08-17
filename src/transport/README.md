@@ -20,7 +20,7 @@ ENet connect
 
 `PeerConnected` reports an ENet connection. `PeerSessionReady` reports a matching SimNet session identity and permits app payloads. Duplicate hello messages after readiness are protocol errors. Identity mismatches identify the first mismatching field.
 
-The handshake payload is protocol version 3 and uses fixed-field message shapes for client hello, server accept, and server reject.
+The handshake payload is protocol version 4 and uses fixed-field message shapes for client hello, server accept, and server reject.
 
 ## Lanes and delivery
 
@@ -30,10 +30,10 @@ The API exposes only reliable sequenced and unreliable sequenced delivery. Relia
 to `ENET_PACKET_FLAG_RELIABLE`. Unreliable sequenced maps to flags zero and therefore retains ENet's
 per-channel sequencing without reliability. Application configuration selects snapshot delivery.
 
-`TransportLimits` applies real send-time limits. `EnforceLimit` rejects oversized payloads before
-ENet. `AllowBackendFragmentation` permits reliable ENet fragmentation. Unreliable sequenced sends
-always reject payloads above the live peer MTU after public ENet protocol overhead because ENet
-would otherwise promote fragmentation to reliable delivery.
+`TransportLimits` rejects payloads above the configured application limit before ENet. Reliable
+sends within that limit may use ENet's internal fragmentation. Unreliable sequenced sends also
+reject payloads above the live peer MTU after public ENet protocol overhead because ENet would
+otherwise promote fragmentation to reliable delivery.
 
 ## Threading
 
@@ -41,7 +41,7 @@ One owner thread uses each `TransportServer` or `TransportClient`. All lifecycle
 
 Transport integration coverage is under `tests/` and verifies handshake readiness, identity rejection, lane traffic, limits, disconnects, timeout behavior, and reconnects.
 
-Lanes follow ENet channel ordering per protocol version 3 session rules.
+Lanes follow ENet channel ordering per protocol version 4 session rules.
 Reliable and unreliable delivery are session-transported application payload paths only.
 Transport remains byte-opaque.
 Disconnect events are application-visible commit points for lifecycle ownership changes.

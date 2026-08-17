@@ -946,13 +946,12 @@ namespace
         validate_known_fields(
             json,
             "transport",
-            {"host", "port", "max_clients", "max_payload_bytes", "send_size_policy"}
+            {"host", "port", "max_clients", "max_payload_bytes"}
         );
         read_optional(json, "host", config.host);
         read_optional(json, "port", config.port);
         read_optional(json, "max_clients", config.max_clients);
         read_optional(json, "max_payload_bytes", config.max_payload_bytes);
-        read_optional(json, "send_size_policy", config.send_size_policy);
 
         if (config.port == 0)
         {
@@ -968,11 +967,6 @@ namespace
             );
         }
         validate_non_zero("transport.max_payload_bytes", config.max_payload_bytes);
-        validate_one_of(
-            "transport.send_size_policy",
-            config.send_size_policy,
-            {"enforce_limit", "allow_backend_fragmentation"}
-        );
     }
 
     void apply_flecs(Json const& json, simnet::FlecsConfig& config)
@@ -1426,7 +1420,6 @@ namespace
         hash_bytes(hash, transport.port);
         hash_bytes(hash, transport.max_clients);
         hash_bytes(hash, transport.max_payload_bytes);
-        hash_string(hash, transport.send_size_policy);
         hash_bytes(hash, telemetry.console_log_enabled);
         hash_bytes(hash, telemetry.file_log_enabled);
         hash_string(hash, telemetry.min_level);

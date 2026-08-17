@@ -102,7 +102,6 @@ export namespace simnet::app
     [[nodiscard]] std::chrono::milliseconds
     milliseconds_option(int& index, int argc, char** argv, std::string_view option);
 
-    [[nodiscard]] SendSizePolicy transport_send_size_policy(TransportConfig const& config);
     [[nodiscard]] TransportDelivery
     snapshot_transport_delivery(SnapshotDeliveryConfig const& config);
     [[nodiscard]] constexpr std::string_view

@@ -201,19 +201,6 @@ namespace simnet::app
         return std::chrono::milliseconds{static_cast<std::int64_t>(value)};
     }
 
-    SendSizePolicy transport_send_size_policy(TransportConfig const& config)
-    {
-        if (config.send_size_policy == "enforce_limit")
-        {
-            return SendSizePolicy::EnforceLimit;
-        }
-        if (config.send_size_policy == "allow_backend_fragmentation")
-        {
-            return SendSizePolicy::AllowBackendFragmentation;
-        }
-        throw std::runtime_error("unsupported send size policy: " + config.send_size_policy);
-    }
-
     TransportDelivery snapshot_transport_delivery(SnapshotDeliveryConfig const& config)
     {
         if (config.mode == "reliable_sequenced")

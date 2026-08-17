@@ -3,8 +3,7 @@
     "host": "127.0.0.1",
     "port": 7777,
     "max_clients": 2,
-    "max_payload_bytes": 1200,
-    "send_size_policy": "enforce_limit"
+    "max_payload_bytes": 1200
   },
   "flecs": {
     "thread_count": 8

@@ -1,7 +1,11 @@
+#include "test_temporary_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
 #include <filesystem>
+#include <fstream>
+#include <stdexcept>
 #include <string>
 
 import simnet.app_common;
@@ -56,6 +60,31 @@ TEST_CASE("every maintained JSON profile loads through its production loader", "
     }
 
     CHECK(loaded_count > 0U);
+}
+
+TEST_CASE("removed send size policy is rejected as unknown", "[config][transport]")
+{
+    auto const temporary = simnet::test::TestTemporaryDirectory{"simnet_config"};
+    auto const path = temporary.path() / "client.json";
+    {
+        auto output = std::ofstream{path};
+        REQUIRE(output);
+        output << R"({"transport":{"send_size_policy":"enforce_limit"}})";
+        REQUIRE(output.good());
+    }
+
+    try
+    {
+        static_cast<void>(simnet::load_client_config(path));
+        FAIL("removed send_size_policy was accepted");
+    }
+    catch (std::runtime_error const& error)
+    {
+        CHECK(
+            std::string{error.what()} ==
+            "invalid config field 'transport.send_size_policy': unknown field"
+        );
+    }
 }
 
 TEST_CASE("shipped default profiles match typed defaults semantically", "[config][defaults]")

@@ -228,7 +228,6 @@ TEST_CASE("ENet establishes a matching session and preserves delivery semantics"
 {
     auto const limits = simnet::TransportLimits{
         .max_payload_bytes = 64U,
-        .size_policy = simnet::SendSizePolicy::EnforceLimit,
     };
 
     auto server = simnet::TransportServer{};
@@ -323,11 +322,9 @@ TEST_CASE("ENet enforces the receiver payload limit", "[transport][enet][limits]
 {
     auto const server_limits = simnet::TransportLimits{
         .max_payload_bytes = 64U,
-        .size_policy = simnet::SendSizePolicy::EnforceLimit,
     };
     auto const client_limits = simnet::TransportLimits{
-        .max_payload_bytes = 64U,
-        .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
+        .max_payload_bytes = 128U,
     };
 
     auto server = simnet::TransportServer{};
@@ -393,7 +390,6 @@ TEST_CASE(
 {
     auto const limits = simnet::TransportLimits{
         .max_payload_bytes = 4096U,
-        .size_policy = simnet::SendSizePolicy::AllowBackendFragmentation,
     };
 
     auto server = simnet::TransportServer{};

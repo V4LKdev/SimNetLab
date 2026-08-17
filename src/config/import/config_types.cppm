@@ -161,7 +161,6 @@ export namespace simnet
         std::uint16_t port{7777};
         std::uint32_t max_clients{1};
         std::uint32_t max_payload_bytes{1200};
-        std::string send_size_policy{"enforce_limit"};
     };
 
     /// Server-local Flecs scheduler settings.

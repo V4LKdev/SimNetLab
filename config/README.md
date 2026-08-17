@@ -177,8 +177,7 @@ Both keys are required when this object is present.
 
 When packetization is enabled, `(max_payload_bytes - 25) * max_chunks_per_update` must cover
 `max_update_bytes`. For both roles, the packetization payload limit must not exceed
-`transport.max_payload_bytes`. Enabled packetization also requires transport policy
-`enforce_limit`.
+`transport.max_payload_bytes`.
 
 ## Server-local configuration
 
@@ -190,7 +189,6 @@ When packetization is enabled, `(max_payload_bytes - 25) * max_chunks_per_update
 | `port` | Unsigned 16-bit integer from `1` through `65535` | `7777` | ENet port |
 | `max_clients` | Unsigned integer from `1` through `64` | `1` | Session capacity |
 | `max_payload_bytes` | Positive unsigned 32-bit integer | `1200` | Transport send-size limit |
-| `send_size_policy` | `enforce_limit` or `allow_backend_fragmentation` | `enforce_limit` | Oversize send policy |
 
 The same `transport` object and constraints are available in Client-local configuration.
 
