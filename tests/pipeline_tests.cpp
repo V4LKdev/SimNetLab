@@ -527,6 +527,57 @@ TEST_CASE("Incremental patches eventually converge removals and spawns", "[pipel
     CHECK(third.resulting_snapshot.ids == source.ids);
 }
 
+TEST_CASE("Incremental recovery reports only IDs added to selection", "[pipeline][incremental][recovery]")
+{
+    auto pipeline = simnet::PipelineDefinition{};
+    pipeline.techniques = simnet::PipelineTechniqueFlags::Incremental;
+    pipeline.incremental.max_entities_per_update = 1U;
+
+    auto state = simnet::ClientReplicationState{};
+    auto scratch = simnet::PipelineScratch{};
+    auto source = make_linear_snapshot(1U, 3U);
+    auto const full = simnet::encode_snapshot(pipeline, state, scratch, {.snapshot = &source});
+    REQUIRE(full.report.snapshot_kind == simnet::SnapshotKind::FullReplace);
+    source.tick = 2U;
+
+    auto encode_with_recovery = [&](simnet::EntityNetId recovery_id)
+    {
+        auto const recovery_ids = std::array{recovery_id};
+        return simnet::encode_snapshot(
+            pipeline,
+            state,
+            scratch,
+            {
+                .snapshot = &source,
+                .replica_snapshot = &full.resulting_snapshot,
+                .replica_sequence = full.update.sequence,
+                .recovery_upsert_ids = recovery_ids,
+            }
+        );
+    };
+
+    SECTION("already-selected ID contributes zero")
+    {
+        auto const encoded = encode_with_recovery(1U);
+        CHECK(encoded.report.recovery_forced_addition_count == 0U);
+        CHECK(encoded.report.upsert_count == 1U);
+    }
+
+    SECTION("absent ID contributes zero")
+    {
+        auto const encoded = encode_with_recovery(99U);
+        CHECK(encoded.report.recovery_forced_addition_count == 0U);
+        CHECK(encoded.report.upsert_count == 1U);
+    }
+
+    SECTION("recovery-only ID contributes one")
+    {
+        auto const encoded = encode_with_recovery(3U);
+        CHECK(encoded.report.recovery_forced_addition_count == 1U);
+        CHECK(encoded.report.upsert_count == 2U);
+    }
+}
+
 TEST_CASE("send interval emits the configured deterministic cadence", "[pipeline][cadence]")
 {
     auto pipeline = simnet::PipelineDefinition{};

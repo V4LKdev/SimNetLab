@@ -332,7 +332,11 @@ TEST_CASE("LOD recovery forces a lost deferred update to be represented again", 
         }
     );
 
-    CHECK(repeated.report.level_of_detail.recovery_forced_count == 1U);
+    CHECK(repeated.report.recovery_forced_addition_count == 1U);
+    CHECK(
+        repeated.report.level_of_detail.recovery_forced_count ==
+        repeated.report.recovery_forced_addition_count
+    );
     CHECK(encode_state.level_of_detail_schedule[1].next_due_tick == nominal_due_after_attempt);
     CHECK(update_ids(scratch.logical_update) == std::vector<simnet::EntityNetId>{2U});
 

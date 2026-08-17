@@ -51,6 +51,7 @@ export namespace simnet
         SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
         std::uint32_t upsert_count{};
         std::uint32_t delete_count{};
+        std::uint32_t recovery_forced_addition_count{};
         RepresentationReport representation{};
         DeltaReport delta{};
         AreaOfInterestReport area_of_interest{};

@@ -337,6 +337,7 @@ namespace simnet
             throw std::runtime_error("recovery upserts require a partial Patch");
         }
 
+        auto recovery_forced_addition_count = std::uint32_t{};
         auto level_of_detail = LevelOfDetailReport{};
         if (level_of_detail_enabled)
         {
@@ -365,12 +366,13 @@ namespace simnet
                     scratch.selected_indices,
                     level_of_detail
                 );
-                level_of_detail.recovery_forced_count =
+                recovery_forced_addition_count =
                     pipeline_selection::merge_recovery_upsert_indices(
                         scratch,
                         *selected_snapshot,
                         input.recovery_upsert_ids
                     );
+                level_of_detail.recovery_forced_count = recovery_forced_addition_count;
                 if (!delta_enabled)
                 {
                     pipeline_selection::select_replica_deletes(
@@ -401,11 +403,11 @@ namespace simnet
                 pipeline.incremental.max_entities_per_update
             );
             incremental_selection_count = scratch.selected_indices.size();
-            static_cast<void>(pipeline_selection::merge_recovery_upsert_indices(
+            recovery_forced_addition_count = pipeline_selection::merge_recovery_upsert_indices(
                 scratch,
                 *selected_snapshot,
                 input.recovery_upsert_ids
-            ));
+            );
             if (!delta_enabled)
             {
                 pipeline_selection::select_replica_deletes(
@@ -613,6 +615,7 @@ namespace simnet
         report.snapshot_kind = snapshot_kind;
         report.upsert_count = static_cast<std::uint32_t>(selected_count);
         report.delete_count = static_cast<std::uint32_t>(delete_count);
+        report.recovery_forced_addition_count = recovery_forced_addition_count;
         report.representation = representation;
         report.delta = delta;
         report.area_of_interest = area_of_interest;

@@ -1216,8 +1216,7 @@ namespace simnet::app::server_replication
                 simnet::app::snapshot_recovery_reason_name(peer->snapshot_delivery.recovery_reason);
             measurement.recovery_forced_upsert_count =
                 force_full_replace ? encoded.report.upsert_count
-                                   : static_cast<std::uint32_t>(peer->recovery_upsert_ids.size()) +
-                                         encoded.report.level_of_detail.recovery_forced_count;
+                                   : encoded.report.recovery_forced_addition_count;
             measurement.recovery_forced_delete_count =
                 force_full_replace ? encoded.report.delete_count : 0U;
             measurement.encoded_update_bytes =
