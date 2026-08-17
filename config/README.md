@@ -106,9 +106,10 @@ present, all three keys are required and no other keys are accepted.
 | `entity_change_fraction` | Finite number in `[0, 1]` | `1` inside an active object | Fraction serviced per tick |
 | `field_change_mode` | `all`, `transform`, `position_only`, or `heading_only` | `all` inside an active object | Canonical field groups copied from each serviced candidate |
 
-Synthetic mode requires a Server built with `SIMNET_ENABLE_SYNTHETIC=ON`. It rejects Server
-visualization and Player clients. Stationary observer clients can render the reconstructed
-snapshot. Omitting the object preserves the Flecs producer and the default fingerprints.
+Synthetic mode requires a Server built with the `evidence-synthetic` preset or an equivalent build
+with `SIMNET_ENABLE_SYNTHETIC=ON`. It rejects Server visualization and Player clients. Stationary
+observer clients can render the reconstructed snapshot. Omitting the object preserves the Flecs
+producer and the default fingerprints.
 
 ### `pipeline`
 
@@ -345,18 +346,24 @@ Use `client_visual.json` for a stationary observer Client. Use the same AOI, LOD
 representation, delivery, compression, or packetization shared profile in both processes for its
 named treatment.
 
-Synthetic treatments require a build configured with `SIMNET_ENABLE_SYNTHETIC=ON`. Start the
-full-change control in two terminals and substitute the same other synthetic profile in both
-commands for each treatment:
+Build the synthetic treatments with the dedicated headless Release preset:
 
 ```sh
-build/release/app/Server \
+cmake --preset evidence-synthetic
+cmake --build --preset evidence-synthetic
+```
+
+Start the full-change control in two terminals and substitute the same other synthetic profile in
+both commands for each treatment:
+
+```sh
+build/evidence-synthetic/app/Server \
   --config config/server_default.json \
   --shared-config config/shared_synthetic_delta_full_change.json
 ```
 
 ```sh
-build/release/app/Client \
+build/evidence-synthetic/app/Client \
   --config config/client_default.json \
   --shared-config config/shared_synthetic_delta_full_change.json
 ```

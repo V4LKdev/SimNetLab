@@ -62,6 +62,19 @@
         "SIMNET_ENABLE_SYNTHETIC": false,
         "SIMNET_ENABLE_TRACY": false
       }
+    },
+    {
+      "name": "evidence-synthetic",
+      "displayName": "Evidence synthetic (headless Release)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/evidence-synthetic",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": false,
+        "SIMNET_ENABLE_RENDER": false,
+        "SIMNET_ENABLE_SYNTHETIC": true,
+        "SIMNET_ENABLE_TRACY": false
+      }
     }
   ],
 
@@ -81,6 +94,10 @@
     {
       "name": "evidence",
       "configurePreset": "evidence"
+    },
+    {
+      "name": "evidence-synthetic",
+      "configurePreset": "evidence-synthetic"
     }
   ],
 
