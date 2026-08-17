@@ -229,7 +229,7 @@ not affect network compatibility.
 | `file_log_enabled` | Boolean | `true` | Enables `simnet.log` |
 | `log_directory` | String path | `logs` | Directory for enabled logs and CSV evidence |
 | `min_level` | `trace`, `debug`, `info`, `warn`, `error`, `critical`, or `off` | `info` | Exact lowercase logging threshold |
-| `metrics_csv_enabled` | Boolean | `true` | Enables role-specific replication CSV output and Server boid sampling |
+| `metrics_csv_enabled` | Boolean | `true` | Enables role-specific replication CSV output |
 
 The Client accepts the same telemetry object. `log_directory` does not participate in runtime
 fingerprints. The other telemetry fields do.

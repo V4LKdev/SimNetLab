@@ -194,7 +194,7 @@ export namespace simnet
         std::string entity_mesh_path{};
     };
 
-    /// Logging settings and current sampled Server evidence control.
+    /// Logging and replication evidence settings.
     struct TelemetryConfig
     {
         bool console_log_enabled{true};
@@ -202,7 +202,7 @@ export namespace simnet
         /// Directory for enabled log files and CSV evidence files.
         std::string log_directory{"logs"};
         std::string min_level{"info"};
-        /// Enables Server replication and boid CSVs or the Client replication CSV.
+        /// Enables the role-specific replication CSV.
         bool metrics_csv_enabled{true};
     };
 

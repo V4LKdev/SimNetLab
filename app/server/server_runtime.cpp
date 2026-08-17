@@ -1483,7 +1483,6 @@ namespace simnet::app
     int run_server(int argc, char** argv)
     {
         auto replication_csv = std::optional<ServerReplicationCsvWriter>{};
-        auto boid_csv = std::optional<ServerBoidCsvWriter>{};
         try
         {
             auto const options = parse_options(argc, argv);
@@ -1680,21 +1679,6 @@ namespace simnet::app
                     "server.flecs.thread_count",
                     static_cast<double>(local.flecs.thread_count)
                 );
-                boid_csv.emplace(
-                    ServerBoidCsvWriterConfig{
-                        .enabled = local.telemetry.metrics_csv_enabled,
-                        .output_directory = local.telemetry.log_directory,
-                        .run = run_context,
-                        .tick_rate_hz = shared.simulation.tick_rate_hz,
-                        .worker_count = local.flecs.thread_count,
-                    }
-                );
-                if (boid_csv->enabled())
-                {
-                    log(LogCategory::Telemetry,
-                        LogLevel::Info,
-                        "Server boid CSV path=" + boid_csv->path().string());
-                }
             }
 
             auto stats = RuntimeStats{};
@@ -1833,12 +1817,6 @@ namespace simnet::app
                         retain_presentation_snapshot(presentation, current_snapshot->snapshot);
                     }
 #endif
-                    if (boid_csv.has_value() && !boid_csv->sample(tick, game->last_step_report()))
-                    {
-                        throw std::runtime_error(
-                            "Server boid CSV submission failed: " + std::string{boid_csv->error()}
-                        );
-                    }
                 }
 
                 if (replication_csv->needs_drain() && !replication_csv->drain())
@@ -1848,13 +1826,6 @@ namespace simnet::app
                         std::string{replication_csv->error()}
                     );
                 }
-                if (boid_csv.has_value() && boid_csv->needs_drain() && !boid_csv->drain())
-                {
-                    throw std::runtime_error(
-                        "Server boid CSV drain failed: " + std::string{boid_csv->error()}
-                    );
-                }
-
                 if (frame.step_limit_reached && log_enabled(LogLevel::Warn))
                 {
                     log(LogCategory::Core,
@@ -1980,15 +1951,6 @@ namespace simnet::app
                 SIMNET_TRACE_FRAME("server");
             }
 
-            if (stats.ticks != 0U && boid_csv.has_value())
-            {
-                if (!boid_csv->sample(stats.ticks, game->last_step_report(), true))
-                {
-                    throw std::runtime_error(
-                        "Server boid CSV final submission failed: " + std::string{boid_csv->error()}
-                    );
-                }
-            }
             for (auto const& peer : peers)
             {
                 log_snapshot_delivery_state(peer, shared.snapshot_delivery.mode);
@@ -1999,12 +1961,6 @@ namespace simnet::app
             {
                 throw std::runtime_error(
                     "server replication CSV close failed: " + std::string{replication_csv->error()}
-                );
-            }
-            if (boid_csv.has_value() && !boid_csv->close())
-            {
-                throw std::runtime_error(
-                    "Server boid CSV close failed: " + std::string{boid_csv->error()}
                 );
             }
             log_server_replication_measurements(replication_measurements);
@@ -2027,14 +1983,6 @@ namespace simnet::app
                     close_error += ". ";
                 }
                 close_error += std::string{replication_csv->error()};
-            }
-            if (boid_csv.has_value() && !boid_csv->close())
-            {
-                if (!close_error.empty())
-                {
-                    close_error += ". ";
-                }
-                close_error += std::string{boid_csv->error()};
             }
             std::cerr << "Server failed: " << error.what();
             if (!close_error.empty())

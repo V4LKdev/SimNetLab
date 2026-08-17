@@ -86,14 +86,8 @@ exclusive creation and are never truncated, appended to, or overwritten.
 Applications use explicit `close()` calls as the failure-reporting boundary. Destructors perform
 only best-effort fallback cleanup and do not report failures.
 
-The Server boid evidence path uses the same process envelope, exclusive file lifecycle, buffer
-capacity, and drain threshold. It samples one aggregate report per simulated second plus the last
-unsampled tick. The boid schema remains separate from replication because it describes simulation
-diagnostics and phase timings rather than a replication attempt.
-
 Enabled files are named `server_replication_v3_<process_started_unix_ns>.csv`,
-`client_replication_v3_<process_started_unix_ns>.csv`, and
-`server_boids_v1_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
+`client_replication_v3_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
 version.
 
 When CSV evidence is disabled, writers create no directory or file. They also skip timestamp
