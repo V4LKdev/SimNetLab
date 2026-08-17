@@ -112,6 +112,79 @@ TEST_CASE("FullReplace recovery ends only after a retained FullReplace is ACKed"
     CHECK_FALSE(state.recovery_active);
 }
 
+TEST_CASE("Delayed ACK reconciles recovery against the newest submitted result", "[delivery][ack][recovery]")
+{
+    auto state = simnet::app::SnapshotDeliveryState{};
+    auto submit = [&](simnet::SequenceId sequence, simnet::WorldSnapshot result)
+    {
+        auto const plan = simnet::app::plan_snapshot_retention(state, result);
+        REQUIRE(plan.valid);
+        simnet::app::commit_submitted_snapshot(
+            state,
+            sequence,
+            std::move(result),
+            simnet::SnapshotKind::Patch,
+            simnet::Nanoseconds{sequence},
+            plan
+        );
+    };
+
+    SECTION("newer spawn remains queued")
+    {
+        submit(1U, snapshot({1U}));
+        auto newest = snapshot({1U, 8U});
+        auto const spawned = simnet::app::find_entity_state(newest, 8U);
+        REQUIRE(spawned.has_value());
+        state.recovery_upserts.push_back(*spawned);
+        submit(2U, std::move(newest));
+
+        REQUIRE(
+            simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{3U}) ==
+            simnet::app::AckPromotionOutcome::Promoted
+        );
+        REQUIRE(state.recovery_upserts.size() == 1U);
+        CHECK(simnet::app::same_entity_state(state.recovery_upserts.front(), *spawned));
+    }
+
+    SECTION("newer changed state replaces an older queued state")
+    {
+        auto older = snapshot({7U});
+        auto const older_entity = simnet::app::find_entity_state(older, 7U);
+        REQUIRE(older_entity.has_value());
+        submit(1U, std::move(older));
+
+        auto newest = snapshot({7U});
+        newest.positions.front().x = 70.0F;
+        auto const newest_entity = simnet::app::find_entity_state(newest, 7U);
+        REQUIRE(newest_entity.has_value());
+        state.recovery_upserts.push_back(*older_entity);
+        submit(2U, std::move(newest));
+
+        REQUIRE(
+            simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{3U}) ==
+            simnet::app::AckPromotionOutcome::Promoted
+        );
+        REQUIRE(state.recovery_upserts.size() == 1U);
+        CHECK(simnet::app::same_entity_state(state.recovery_upserts.front(), *newest_entity));
+    }
+
+    SECTION("newest deletion removes the queued state")
+    {
+        auto older = snapshot({7U});
+        auto const deleted_entity = simnet::app::find_entity_state(older, 7U);
+        REQUIRE(deleted_entity.has_value());
+        state.recovery_upserts.push_back(*deleted_entity);
+        submit(1U, std::move(older));
+        submit(2U, snapshot({}));
+
+        REQUIRE(
+            simnet::app::promote_snapshot_ack(state, 1U, simnet::Nanoseconds{3U}) ==
+            simnet::app::AckPromotionOutcome::Promoted
+        );
+        CHECK(state.recovery_upserts.empty());
+    }
+}
+
 TEST_CASE(
     "ACK-relative Incremental Delta recovers lost deletes and spawns",
     "[delivery][loss][pipeline]"

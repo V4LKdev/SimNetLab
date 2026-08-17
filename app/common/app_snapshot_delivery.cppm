@@ -386,12 +386,22 @@ export namespace simnet::app
         state.submissions_since_ack_progress = 0U;
 
         auto retained_count = std::size_t{};
-        for (auto const& recovery : state.recovery_upserts)
+        if (!state.submitted.empty())
         {
-            auto const acknowledged = find_entity_state(state.acknowledged->snapshot, recovery.id);
-            if (acknowledged.has_value() && !same_entity_state(*acknowledged, recovery))
+            auto const& newest_submitted = state.submitted.back().snapshot;
+            for (auto const& recovery : state.recovery_upserts)
             {
-                state.recovery_upserts[retained_count++] = recovery;
+                auto const newest = find_entity_state(newest_submitted, recovery.id);
+                if (!newest.has_value())
+                {
+                    continue;
+                }
+                auto const acknowledged =
+                    find_entity_state(state.acknowledged->snapshot, recovery.id);
+                if (!acknowledged.has_value() || !same_entity_state(*acknowledged, *newest))
+                {
+                    state.recovery_upserts[retained_count++] = *newest;
+                }
             }
         }
         state.recovery_upserts.resize(retained_count);
