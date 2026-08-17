@@ -25,7 +25,6 @@ import :replication;
 import simnet.config;
 import simnet.app_camera;
 import simnet.app_common;
-import simnet.app_compression_dictionary;
 import simnet.app_player_input;
 import simnet.app_protocol;
 import simnet.app_snapshot_delivery;
@@ -68,8 +67,6 @@ namespace
                 return "Raw";
             case simnet::CompressionEncoding::Zstd:
                 return "Zstd";
-            case simnet::CompressionEncoding::ZstdDictionary:
-                return "ZstdDictionary";
         }
         return "Unknown";
     }
@@ -341,10 +338,7 @@ namespace
                 .expired_packet_groups = packet_report.expired_groups,
                 .invalid_packet_groups = packet_report.invalid_groups,
                 .compression_mode = simnet::app::compression_mode_name(compression_report.mode),
-                .compression_dictionary =
-                    compression_report.dictionary_id == 0U
-                        ? std::optional<std::string_view>{}
-                        : std::optional<std::string_view>{compression_report.dictionary_name},
+                .compression_dictionary = "none",
                 .compression_outcome =
                     compression_report.mode == simnet::app::CompressionMode::None
                         ? std::optional<std::string_view>{"Disabled"}
@@ -559,17 +553,6 @@ namespace simnet::app
             auto signals = SignalHandlers{};
             auto const pipeline = make_snapshot_pipeline(shared);
             auto const compression = make_compression_settings(shared);
-            auto compression_dictionary = load_compression_dictionary(compression);
-            if (compression_dictionary.has_value())
-            {
-                auto const& identity = compression_dictionary->dictionary.identity();
-                log(LogCategory::Pipeline,
-                    LogLevel::Info,
-                    "compression dictionary name=" + std::string{compression_dictionary->name} +
-                        " id=" + std::to_string(identity.dictionary_id) +
-                        " bytes=" + std::to_string(identity.byte_count) +
-                        " fingerprint=" + std::to_string(identity.content_fingerprint));
-            }
             auto const packetization = make_packetization_settings(shared);
             auto const delivery = snapshot_transport_delivery(shared.snapshot_delivery);
             if (packetization.max_payload_bytes > local.transport.max_payload_bytes ||
@@ -579,26 +562,12 @@ namespace simnet::app
                     "packetization payload limit must fit the hard transport payload limit"
                 );
             }
-            auto const session_identity = make_session_identity(
-                shared,
-                pipeline,
-                compression_dictionary.has_value() ? &compression_dictionary->dictionary.identity()
-                                                   : nullptr
-            );
+            auto const session_identity = make_session_identity(shared, pipeline);
             auto const evidence_identity = ClientEvidenceIdentity{
                 .runtime_config_fingerprint = fingerprint_runtime_config(shared, local).value,
                 .network_compatibility_fingerprint = session_identity.compatibility_fingerprint,
                 .application_wire_fingerprint = session_identity.application_wire_fingerprint,
                 .compression_mode = compression_mode_name(compression.mode),
-                .compression_dictionary = compression.dictionary,
-                .compression_dictionary_id =
-                    compression_dictionary.has_value()
-                        ? compression_dictionary->dictionary.identity().dictionary_id
-                        : 0U,
-                .compression_dictionary_fingerprint =
-                    compression_dictionary.has_value()
-                        ? compression_dictionary->dictionary.identity().content_fingerprint
-                        : 0U,
                 .packetization_enabled = packetization.enabled,
             };
 #if defined(SIMNET_ENABLE_RENDER)
@@ -682,7 +651,6 @@ namespace simnet::app
             auto replication = ClientReplicationReceiver{
                 pipeline,
                 compression,
-                compression_dictionary.has_value() ? &compression_dictionary->dictionary : nullptr,
                 packetization,
                 delivery,
                 local.transport.max_payload_bytes,
@@ -1136,10 +1104,8 @@ namespace simnet::app
             {
                 log(LogCategory::Pipeline,
                     LogLevel::Info,
-                    "client whole-update compression dictionary=" +
-                        std::string{replication.compression_report.dictionary_name} +
-                        " dictionary_id=" + std::to_string(replication.compression_report.dictionary_id) +
-                        " sequence=" + std::to_string(replication.latest_applied_sequence) +
+                    "client whole-update compression sequence=" +
+                        std::to_string(replication.latest_applied_sequence) +
                         " envelope_input_bytes=" +
                         std::to_string(replication.compression_report.latest_input_bytes) + " payload_bytes=" +
                         std::to_string(replication.compression_report.latest_payload_bytes) +

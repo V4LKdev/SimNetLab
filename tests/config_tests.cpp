@@ -5,7 +5,6 @@
 #include <string>
 
 import simnet.app_common;
-import simnet.app_compression_dictionary;
 import simnet.config;
 import simnet.core;
 import simnet.pipeline;
@@ -208,24 +207,6 @@ TEST_CASE("maintained networking profiles are matched treatments", "[config][pro
         CHECK(network_fingerprint(per_packet) == network_fingerprint(none));
     }
 
-    SECTION("compression dictionary")
-    {
-        auto control = simnet::load_shared_config(
-            directory / "shared_compression_zstd_delta_field_mask_aoi_radius_visual.json"
-        );
-        auto treatment = simnet::load_shared_config(
-            directory /
-            "shared_compression_zstd_pipeline_v1_delta_field_mask_aoi_radius_visual.json"
-        );
-
-        CHECK(control.compression.dictionary == "none");
-        CHECK(treatment.compression.dictionary == "pipeline_v1");
-        CHECK(network_fingerprint(control) != network_fingerprint(treatment));
-
-        treatment.compression.dictionary = control.compression.dictionary;
-        CHECK(network_fingerprint(control) == network_fingerprint(treatment));
-    }
-
     SECTION("forced packetization")
     {
         auto const packetized =
@@ -284,42 +265,4 @@ TEST_CASE("representative profiles map to the intended pipeline techniques", "[c
         )
     );
     CHECK(cadence_pipeline.send_interval.interval_ticks == 4U);
-}
-
-TEST_CASE("dictionary profile identity is fixed before transport", "[config][compression][transport]")
-{
-    auto const directory = maintained_config_directory();
-
-    auto const ordinary = simnet::load_shared_config(
-        directory / "shared_compression_zstd_delta_field_mask_aoi_radius_visual.json"
-    );
-    auto const selected = simnet::load_shared_config(
-        directory / "shared_compression_zstd_pipeline_v1_delta_field_mask_aoi_radius_visual.json"
-    );
-
-    auto const ordinary_pipeline = simnet::app::make_snapshot_pipeline(ordinary);
-    auto const selected_pipeline = simnet::app::make_snapshot_pipeline(selected);
-
-    auto loaded =
-        simnet::app::load_compression_dictionary(simnet::app::make_compression_settings(selected));
-    REQUIRE(loaded.has_value());
-    CHECK(loaded->name == "pipeline_v1");
-    CHECK(loaded->dictionary.identity().dictionary_id == 0x534E0001U);
-    CHECK(loaded->dictionary.identity().byte_count == 16384U);
-    CHECK(loaded->dictionary.identity().content_fingerprint == 0x5fe43e7c3e7804a1ULL);
-
-    auto const ordinary_identity = simnet::app::make_session_identity(ordinary, ordinary_pipeline);
-    auto const selected_identity = simnet::app::make_session_identity(
-        selected,
-        selected_pipeline,
-        &loaded->dictionary.identity()
-    );
-
-    CHECK(
-        selected_identity.compatibility_fingerprint != ordinary_identity.compatibility_fingerprint
-    );
-    CHECK(
-        selected_identity.application_wire_fingerprint ==
-        ordinary_identity.application_wire_fingerprint
-    );
 }

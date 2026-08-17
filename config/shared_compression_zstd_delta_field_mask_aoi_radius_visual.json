@@ -41,8 +41,7 @@
   },
   "compression": {
     "mode": "whole_update",
-    "level": 1,
-    "dictionary": "none"
+    "level": 1
   },
   "packetization": {
     "enabled": true,

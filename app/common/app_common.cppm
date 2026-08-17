@@ -10,7 +10,6 @@ module;
 export module simnet.app_common;
 
 import simnet.config;
-import simnet.compression;
 import simnet.core;
 import simnet.pipeline;
 import simnet.packetization;
@@ -31,7 +30,6 @@ export namespace simnet::app
     {
         CompressionMode mode{CompressionMode::None};
         int level{1};
-        std::string dictionary{"none"};
     };
 
     /// App-local stationary interest/debug view state.
@@ -135,10 +133,7 @@ export namespace simnet::app
         return "unknown";
     }
     [[nodiscard]] PacketizationSettings make_packetization_settings(SharedConfig const& shared);
-    [[nodiscard]] SessionIdentity make_session_identity(
-        SharedConfig const& shared,
-        PipelineDefinition const& pipeline,
-        ZstdDictionaryIdentity const* dictionary_identity = nullptr
-    );
+    [[nodiscard]] SessionIdentity
+    make_session_identity(SharedConfig const& shared, PipelineDefinition const& pipeline);
     [[nodiscard]] std::string_view shutdown_reason_name(ShutdownReason reason);
 }

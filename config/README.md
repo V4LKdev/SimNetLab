@@ -160,10 +160,8 @@ Both keys are required when this object is present.
 | --- | --- | --- | --- |
 | `mode` | `none`, `whole_update`, or `per_packet` | `none` | Compression placement |
 | `level` | Integer from `1` through `19`, required for active modes | `1` internally | Zstd compression level |
-| `dictionary` | `none` or `pipeline_v1` | `none` | Static dictionary identity |
 
-`none` rejects `level` and `dictionary`. `per_packet` rejects a non-none dictionary.
-`pipeline_v1` is valid only with `whole_update`.
+`none` rejects `level`.
 
 ### `packetization`
 
@@ -258,10 +256,9 @@ object rejects unknown keys. Invalid enumerated values are rejected instead of b
 default.
 
 All shared fields affect Server and Client runtime fingerprints. They also affect the canonical
-network compatibility fingerprint, with three compatibility-preserving exceptions. An absent
+network compatibility fingerprint, with two compatibility-preserving exceptions. An absent
 `synthetic` object adds no synthetic marker. Disabled `enable_delta_field_mask` adds no field-mask
-marker. Dictionary `none` adds no dictionary-name marker. Compression dictionary asset identity
-is added separately during session compatibility.
+marker.
 
 Server-local runtime fingerprints include transport except `log_directory`, Flecs, visualization,
 and telemetry except `log_directory`. Client-local runtime fingerprints include transport except
@@ -293,7 +290,6 @@ Shared controls and treatments:
 - `shared_compression_whole_aoi_radius_visual.json`
 - `shared_compression_per_packet_aoi_radius_visual.json`
 - `shared_compression_zstd_delta_field_mask_aoi_radius_visual.json`
-- `shared_compression_zstd_pipeline_v1_delta_field_mask_aoi_radius_visual.json`
 - `shared_player_influence_control_visual.json`
 - `shared_player_lure_visual.json`
 - `shared_player_predator_visual.json`

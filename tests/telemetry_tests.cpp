@@ -305,7 +305,6 @@ TEST_CASE(
         auto compression_mode = std::string{"temporary-zstd-mode"};
         auto decompression_encoding = std::string{"temporary-zstd-frame"};
         auto decompression_result = std::string{"temporary-decompression-success"};
-        auto compression_dictionary = std::string{"temporary-dictionary-description"};
         auto const measurement = simnet::ClientReplicationMeasurement{
             .sequence = 1U,
             .outcome = simnet::ClientReplicationOutcome::Applied,
@@ -313,7 +312,6 @@ TEST_CASE(
             .compression_mode = compression_mode,
             .decompression_encoding = decompression_encoding,
             .decompression_result = decompression_result,
-            .compression_dictionary = compression_dictionary,
         };
         REQUIRE(writer.submit(measurement));
     }
@@ -332,10 +330,6 @@ TEST_CASE(
     CHECK(
         column_value(header, row, "decompression_result") ==
         "temporary-decompression-success"
-    );
-    CHECK(
-        column_value(header, row, "compression_dictionary") ==
-        "temporary-dictionary-description"
     );
 }
 

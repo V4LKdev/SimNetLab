@@ -27,7 +27,6 @@ module simnet.server_runtime;
 import :replication;
 
 import simnet.config;
-import simnet.app_compression_dictionary;
 import simnet.app_evidence;
 import simnet.app_common;
 import simnet.app_protocol;
@@ -135,8 +134,6 @@ namespace
                 return "Raw";
             case simnet::CompressionEncoding::Zstd:
                 return "Zstd";
-            case simnet::CompressionEncoding::ZstdDictionary:
-                return "ZstdDictionary";
         }
         return "Unknown";
     }
@@ -448,10 +445,7 @@ namespace
             }
             auto const& compression = peer->latest_compression;
             details.compression_mode = simnet::app::compression_mode_name(compression.mode);
-            if (compression.dictionary_id != 0U)
-            {
-                details.compression_dictionary = compression.dictionary_name;
-            }
+            details.compression_dictionary = "none";
             if (compression.group_id != 0U)
             {
                 details.representation_bytes = compression.representation_bytes;
@@ -1536,17 +1530,6 @@ namespace simnet::app
             auto const collect_representation_quality = local.telemetry.metrics_csv_enabled;
 #endif
             auto const compression = make_compression_settings(shared);
-            auto compression_dictionary = load_compression_dictionary(compression);
-            if (compression_dictionary.has_value())
-            {
-                auto const& identity = compression_dictionary->dictionary.identity();
-                log(LogCategory::Pipeline,
-                    LogLevel::Info,
-                    "compression dictionary name=" + std::string{compression_dictionary->name} +
-                        " id=" + std::to_string(identity.dictionary_id) +
-                        " bytes=" + std::to_string(identity.byte_count) +
-                        " fingerprint=" + std::to_string(identity.content_fingerprint));
-            }
             auto const packetization = make_packetization_settings(shared);
             if (packetization.max_payload_bytes > local.transport.max_payload_bytes ||
                 (packetization.enabled && local.transport.send_size_policy != "enforce_limit"))
@@ -1555,20 +1538,11 @@ namespace simnet::app
                     "packetization payload limit must fit the hard transport payload limit"
                 );
             }
-            auto const session_identity = make_session_identity(
-                shared,
-                pipeline,
-                compression_dictionary.has_value() ? &compression_dictionary->dictionary.identity()
-                                                   : nullptr
-            );
+            auto const session_identity = make_session_identity(shared, pipeline);
             auto const evidence_identity = ServerEvidenceIdentity{
                 .runtime_config_fingerprint = fingerprint_runtime_config(shared, local).value,
                 .network_compatibility_fingerprint = session_identity.compatibility_fingerprint,
                 .application_wire_fingerprint = session_identity.application_wire_fingerprint,
-                .compression_dictionary_fingerprint =
-                    compression_dictionary.has_value()
-                        ? compression_dictionary->dictionary.identity().content_fingerprint
-                        : 0U,
             };
 #if defined(SIMNET_ENABLE_RENDER)
             auto const run_setup = RunSetupStorage{
@@ -1837,8 +1811,7 @@ namespace simnet::app
                             current_snapshot.has_value() ? &*current_snapshot : nullptr,
                             area_of_interest_grid_state,
                             replication_measurements,
-                            *replication_csv,
-                            compression_dictionary.has_value() ? &*compression_dictionary : nullptr
+                            *replication_csv
                         ))
                     {
                         static_cast<void>(stop.request(ShutdownReason::FatalError));

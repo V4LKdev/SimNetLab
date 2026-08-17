@@ -145,7 +145,6 @@ export namespace simnet
     {
         std::string mode{"none"};
         int level{1};
-        std::string dictionary{"none"};
     };
 
     /// Shared snapshot delivery and bounded recovery treatment.

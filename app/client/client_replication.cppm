@@ -76,9 +76,6 @@ namespace simnet::app::client_replication
         std::uint64_t network_compatibility_fingerprint{};
         std::uint64_t application_wire_fingerprint{};
         std::string_view compression_mode{"none"};
-        std::string_view compression_dictionary{"none"};
-        std::uint32_t compression_dictionary_id{};
-        std::uint64_t compression_dictionary_fingerprint{};
         bool packetization_enabled{};
     };
 
@@ -109,8 +106,6 @@ namespace simnet::app::client_replication
     struct ClientCompressionReport
     {
         simnet::app::CompressionMode mode{simnet::app::CompressionMode::None};
-        std::string_view dictionary_name{"none"};
-        std::uint32_t dictionary_id{};
         simnet::CompressionEncoding latest_encoding{simnet::CompressionEncoding::Raw};
         std::uint64_t raw_packet_count{};
         std::uint64_t compressed_packet_count{};
@@ -125,7 +120,6 @@ namespace simnet::app::client_replication
         std::uint32_t canonical_entity_count{};
         simnet::Nanoseconds decompression_cpu_time{};
     };
-
 
     constexpr std::size_t retained_snapshot_limit = 64;
 
@@ -142,7 +136,6 @@ namespace simnet::app::client_replication
         ClientReplicationReceiver(
             simnet::PipelineDefinition const& pipeline_definition,
             simnet::app::CompressionSettings const& compression_settings,
-            simnet::ZstdDictionary const* dictionary,
             simnet::PacketizationSettings const& packetization_settings,
             simnet::TransportDelivery configured_delivery,
             std::uint32_t maximum_transport_payload_bytes,
@@ -170,7 +163,6 @@ namespace simnet::app::client_replication
 
         simnet::PipelineDefinition const& pipeline;
         simnet::app::CompressionSettings const& compression;
-        simnet::ZstdDictionary const* compression_dictionary{};
         simnet::PacketizationSettings const& packetization;
         simnet::TransportDelivery delivery{};
         std::uint32_t maximum_transport_payload_bytes{};
@@ -419,9 +411,6 @@ namespace simnet::app::client_replication
             .compression_mode = identity.compression_mode,
             .decompression_encoding = receive.decompression_encoding,
             .decompression_result = receive.decompression_result,
-            .compression_dictionary = identity.compression_dictionary,
-            .compression_dictionary_id = identity.compression_dictionary_id,
-            .compression_dictionary_fingerprint = identity.compression_dictionary_fingerprint,
             .compressed_bytes = receive.compressed_bytes,
             .compression_payload_bytes = receive.compression_payload_bytes,
             .compression_envelope_bytes = receive.compression_envelope_bytes,
@@ -845,7 +834,6 @@ namespace simnet::app::client_replication
     ClientReplicationReceiver::ClientReplicationReceiver(
         simnet::PipelineDefinition const& pipeline_definition,
         simnet::app::CompressionSettings const& compression_settings,
-        simnet::ZstdDictionary const* dictionary,
         simnet::PacketizationSettings const& packetization_settings,
         simnet::TransportDelivery configured_delivery,
         std::uint32_t maximum_payload_bytes,
@@ -853,16 +841,11 @@ namespace simnet::app::client_replication
     )
         : pipeline{pipeline_definition},
           compression{compression_settings},
-          compression_dictionary{dictionary},
           packetization{packetization_settings},
           delivery{configured_delivery},
           maximum_transport_payload_bytes{maximum_payload_bytes},
           evidence_identity{evidence},
-          compression_report{
-              .mode = compression_settings.mode,
-              .dictionary_name = compression_settings.dictionary,
-              .dictionary_id = dictionary != nullptr ? dictionary->identity().dictionary_id : 0U,
-          }
+          compression_report{.mode = compression_settings.mode}
     {
         pending_compression_groups.reserve(packetization.max_in_flight_groups);
     }
@@ -1115,21 +1098,12 @@ namespace simnet::app::client_replication
                     .max_uncompressed_bytes = packetization.max_group_bytes,
                     .max_output_bytes = packetization.max_group_bytes,
                 };
-                auto const decompressed =
-                    compression_dictionary != nullptr
-                        ? simnet::decompress_bytes_with_dictionary(
-                              decompressor,
-                              *compression_dictionary,
-                              encoded_bytes,
-                              limits,
-                              decompression_scratch
-                          )
-                        : simnet::decompress_bytes(
-                              decompressor,
-                              encoded_bytes,
-                              limits,
-                              decompression_scratch
-                          );
+                auto const decompressed = simnet::decompress_bytes(
+                    decompressor,
+                    encoded_bytes,
+                    limits,
+                    decompression_scratch
+                );
                 compression_report.latest_input_bytes = decompressed.input_bytes;
                 compression_report.latest_encoding = decompressed.encoding;
                 compression_report.latest_payload_bytes = decompressed.encoded_payload_bytes;
@@ -1137,10 +1111,7 @@ namespace simnet::app::client_replication
                 compression_report.latest_output_bytes = decompressed.output_bytes;
                 compression_report.decompression_cpu_time += decompressed.decompression_cpu_time;
                 receive_evidence.decompression_encoding =
-                    decompressed.encoding == simnet::CompressionEncoding::Raw ? "raw"
-                    : decompressed.encoding == simnet::CompressionEncoding::ZstdDictionary
-                        ? "zstd_dictionary"
-                        : "zstd";
+                    decompressed.encoding == simnet::CompressionEncoding::Raw ? "raw" : "zstd";
                 receive_evidence.decompression_result = decompressed.valid ? "success" : "failed";
                 receive_evidence.compressed_bytes = decompressed.input_bytes;
                 receive_evidence.compression_payload_bytes = decompressed.encoded_payload_bytes;

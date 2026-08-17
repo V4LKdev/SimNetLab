@@ -9,8 +9,7 @@ The current foundation separates core vocabulary, fixed-step runtime planning, c
 - ENet transport with a session handshake and generic bounded post-session byte lanes
 - Versioned application messages for acknowledgments, control, player input, and stationary observer interest
 - Configurable hard application packetization with bounded complete-group Client reassembly
-- Toggleable bounded Zstd compression for complete updates or individual application packets, with
-  an optional maintained `pipeline_v1` whole-update dictionary
+- Toggleable bounded ordinary Zstd compression for complete updates or individual application packets
 - Fixed-step Server and Client runtime loops with bounded frame, tick, and duration limits
 - Bounded multi-client Server coordination with isolated Player and stationary observer sessions
 - Pipeline-library support for full replacement, incremental selection, quantization, octahedral heading encoding, delta snapshots, and bit-packed records
@@ -127,7 +126,7 @@ authoritative ticks.
 - `simnet_game_server`: authoritative lifecycle, boid simulation, and snapshot extraction
 - `simnet_game_client`: client patch application and replicated-world extraction
 - `simnet_pipeline`: snapshot selection, transformation, encoding, and decoding
-- `simnet_compression`: bounded Raw, ordinary Zstd, and dictionary Zstd byte envelopes
+- `simnet_compression`: bounded Raw and ordinary Zstd byte envelopes
 - `simnet_packetization`: bounded opaque byte groups and Client reassembly
 - `simnet_transport`: ENet transport and session protocol
 - `simnet_render`: generic core-only Raylib viewer

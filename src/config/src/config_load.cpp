@@ -874,18 +874,15 @@ namespace
 
     void apply_compression(Json const& json, simnet::CompressionConfig& config)
     {
-        validate_known_fields(json, "compression", {"mode", "level", "dictionary"});
+        validate_known_fields(json, "compression", {"mode", "level"});
 
         auto const has_level = json.contains("level");
-        auto const has_dictionary = json.contains("dictionary");
         read_optional(json, "mode", config.mode);
         if (config.mode == "none")
         {
-            if (has_level || has_dictionary)
+            if (has_level)
             {
-                throw std::runtime_error(
-                    "invalid compression config: none mode accepts no level or dictionary"
-                );
+                throw std::runtime_error("invalid compression config: none mode accepts no level");
             }
             return;
         }
@@ -901,23 +898,10 @@ namespace
             throw std::runtime_error("invalid compression config: active mode requires level");
         }
         read_optional(json, "level", config.level);
-        read_optional(json, "dictionary", config.dictionary);
         if (config.level < 1 || config.level > 19)
         {
             throw std::runtime_error(
                 "invalid config field 'compression.level': expected integer in [1, 19]"
-            );
-        }
-        if (config.dictionary != "none" && config.dictionary != "pipeline_v1")
-        {
-            throw std::runtime_error(
-                "invalid config field 'compression.dictionary': expected none or pipeline_v1"
-            );
-        }
-        if (config.mode == "per_packet" && config.dictionary != "none")
-        {
-            throw std::runtime_error(
-                "invalid compression config: per_packet mode does not support dictionaries"
             );
         }
     }
@@ -1327,10 +1311,6 @@ namespace
         hash_bytes(hash, config.snapshot_delivery.full_replace_after_unacknowledged_updates);
         hash_string(hash, config.compression.mode);
         hash_bytes(hash, config.compression.level);
-        if (config.compression.dictionary != "none")
-        {
-            hash_string(hash, config.compression.dictionary);
-        }
         hash_bytes(hash, config.packetization.enabled);
         hash_bytes(hash, config.packetization.max_payload_bytes);
         hash_bytes(hash, config.packetization.max_update_bytes);
@@ -1427,10 +1407,6 @@ namespace
         );
         hash_string(hash, config.compression.mode);
         hash_canonical_u32(hash, static_cast<std::uint32_t>(config.compression.level));
-        if (config.compression.dictionary != "none")
-        {
-            hash_string(hash, config.compression.dictionary);
-        }
         hash_canonical_bool(hash, config.packetization.enabled);
         hash_canonical_u32(hash, config.packetization.max_payload_bytes);
         hash_canonical_u32(hash, config.packetization.max_update_bytes);

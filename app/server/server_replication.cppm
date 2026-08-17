@@ -18,7 +18,6 @@ module;
 module simnet.server_runtime:replication;
 
 import simnet.app_common;
-import simnet.app_compression_dictionary;
 import simnet.app_evidence;
 import simnet.app_protocol;
 import simnet.app_snapshot_delivery;
@@ -56,8 +55,6 @@ namespace simnet::app::server_replication
     struct ServerCompressionReport
     {
         simnet::app::CompressionMode mode{simnet::app::CompressionMode::None};
-        std::string_view dictionary_name{"none"};
-        std::uint32_t dictionary_id{};
         simnet::PacketGroupId group_id{};
         std::uint32_t representation_bytes{};
         std::uint32_t compression_input_bytes{};
@@ -340,8 +337,6 @@ namespace simnet::app::server_replication
                 simnet::LogCategory::Pipeline,
                 simnet::LogLevel::Info,
                 "server whole-update compression peer_id=" + std::to_string(peer.peer) +
-                    " dictionary=" + std::string{peer.latest_compression.dictionary_name} +
-                    " dictionary_id=" + std::to_string(peer.latest_compression.dictionary_id) +
                     " sequence=" + std::to_string(peer.latest_compression.group_id) +
                     " source_bytes=" +
                     std::to_string(peer.latest_compression.compression_input_bytes) +
@@ -742,7 +737,6 @@ namespace simnet::app::server_replication
         std::uint64_t runtime_config_fingerprint{};
         std::uint64_t network_compatibility_fingerprint{};
         std::uint64_t application_wire_fingerprint{};
-        std::uint64_t compression_dictionary_fingerprint{};
     };
 
     [[nodiscard]] simnet::ServerReplicationMeasurement make_server_measurement(
@@ -802,8 +796,6 @@ namespace simnet::app::server_replication
                                                                                    : "unavailable",
             .level_of_detail_mode = level_of_detail_mode_name(pipeline.level_of_detail.mode),
             .compression_mode = simnet::app::compression_mode_name(compression.mode),
-            .compression_dictionary = compression.dictionary,
-            .compression_dictionary_fingerprint = identity.compression_dictionary_fingerprint,
             .packetization_enabled = packetization.enabled,
             .delivery_mode = simnet::app::transport_delivery_name(delivery),
             .recovery_active = peer.snapshot_delivery.recovery_active,
@@ -828,8 +820,6 @@ namespace simnet::app::server_replication
                     return "raw";
                 case simnet::CompressionEncoding::Zstd:
                     return "zstd";
-                case simnet::CompressionEncoding::ZstdDictionary:
-                    return "zstd_dictionary";
             }
         }
         if (report.zstd_packet_count != 0U && report.raw_packet_count != 0U)
@@ -848,7 +838,6 @@ namespace simnet::app::server_replication
     ) noexcept
     {
         measurement.compression_encoding = compression_result_name(compression);
-        measurement.compression_dictionary_id = compression.dictionary_id;
         switch (compression.mode)
         {
             case simnet::app::CompressionMode::None:
@@ -900,8 +889,7 @@ namespace simnet::app::server_replication
         CurrentSnapshotState* snapshot_state,
         AreaOfInterestGridState& area_of_interest_grid_state,
         simnet::ServerReplicationMeasurements& measurements,
-        simnet::ServerReplicationCsvWriter& csv,
-        simnet::app::LoadedCompressionDictionary const* compression_dictionary
+        simnet::ServerReplicationCsvWriter& csv
     )
     {
         SIMNET_TRACE_SCOPE_CATEGORY("server.fixed_tick", simnet::LogCategory::Simulation);
@@ -1304,10 +1292,6 @@ namespace simnet::app::server_replication
 
             auto compression_report = ServerCompressionReport{
                 .mode = compression.mode,
-                .dictionary_name = compression.dictionary,
-                .dictionary_id = compression_dictionary == nullptr
-                                     ? 0U
-                                     : compression_dictionary->dictionary.identity().dictionary_id,
                 .group_id = encoded.update.sequence,
                 .representation_bytes = measurement.encoded_update_bytes,
                 .bytes_before_packetization = measurement.encoded_update_bytes,
@@ -1328,22 +1312,14 @@ namespace simnet::app::server_replication
                     .max_uncompressed_bytes = packetization.max_group_bytes,
                     .max_output_bytes = packetization.max_group_bytes,
                 };
-                auto const compressed = compression_dictionary == nullptr
-                                            ? simnet::compress_bytes(
-                                                  peer->compressor,
-                                                  group_bytes,
-                                                  compression.level,
-                                                  limits,
-                                                  simnet::CompressionEnvelopePolicy::Always,
-                                                  peer->compression_scratch
-                                              )
-                                            : simnet::compress_bytes_with_dictionary(
-                                                  peer->compressor,
-                                                  compression_dictionary->dictionary,
-                                                  group_bytes,
-                                                  limits,
-                                                  peer->compression_scratch
-                                              );
+                auto const compressed = simnet::compress_bytes(
+                    peer->compressor,
+                    group_bytes,
+                    compression.level,
+                    limits,
+                    simnet::CompressionEnvelopePolicy::Always,
+                    peer->compression_scratch
+                );
                 compression_report.compression_input_bytes = compressed.input_bytes;
                 compression_report.compression_payload_bytes = compressed.encoded_payload_bytes;
                 compression_report.compression_envelope_bytes = compressed.envelope_bytes;

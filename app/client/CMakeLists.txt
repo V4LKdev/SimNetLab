@@ -6,7 +6,6 @@ add_executable(
         client_runtime.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_common.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cpp
-        ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cpp
 )
 
 set_target_properties(Client PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/app")
@@ -18,7 +17,6 @@ target_sources(
         FILES
         app_camera.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_common.cppm
-        ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cppm
         app_player_input.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_snapshot_delivery.cppm
@@ -58,11 +56,5 @@ if (SIMNET_ENABLE_RENDER)
             SIMNET_BUILD_CONFIG="$<CONFIG>"
     )
 endif ()
-
-target_compile_definitions(
-        Client
-        PRIVATE
-        SIMNET_COMPRESSION_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets/compression"
-)
 
 simnet_configure_target(Client)

@@ -1,7 +1,6 @@
 find_package(Catch2 CONFIG REQUIRED)
 find_package(flecs CONFIG REQUIRED)
 find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
-find_package(zstd CONFIG REQUIRED)
 
 add_executable(SimNetTests
         aoi_tests.cpp
@@ -19,7 +18,6 @@ add_executable(SimNetTests
         telemetry_tests.cpp
         transport_tests.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_common.cpp
-        ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cpp
         ${PROJECT_SOURCE_DIR}/app/server/app_evidence.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cpp
 )
@@ -30,7 +28,6 @@ target_sources(SimNetTests
         BASE_DIRS ${PROJECT_SOURCE_DIR}
         FILES
         ${PROJECT_SOURCE_DIR}/app/common/app_common.cppm
-        ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cppm
         ${PROJECT_SOURCE_DIR}/app/server/app_evidence.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_snapshot_delivery.cppm
@@ -51,12 +48,7 @@ target_link_libraries(SimNetTests
         simnet_telemetry
         simnet_transport
         Catch2::Catch2WithMain
-        zstd::libzstd
         $<IF:$<TARGET_EXISTS:flecs::flecs>,flecs::flecs,flecs::flecs_static>
-)
-
-target_compile_definitions(
-        SimNetTests PRIVATE SIMNET_COMPRESSION_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets/compression"
 )
 
 simnet_configure_target(SimNetTests)

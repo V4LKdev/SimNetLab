@@ -16,7 +16,6 @@ import simnet.app_protocol;
 
 namespace
 {
-    constexpr std::uint64_t fnv_prime = 1099511628211ULL;
     volatile std::sig_atomic_t signal_stop_latch = 0;
 
     extern "C" void request_signal_stop(int)
@@ -103,19 +102,6 @@ namespace
         if (shared.pipeline.enable_delta_field_mask)
         {
             pipeline.techniques |= simnet::PipelineTechniqueFlags::DeltaFieldMask;
-        }
-    }
-
-    void mix_session_identity_value(std::uint64_t& fingerprint, std::uint64_t value) noexcept
-    {
-        for (auto bit_shift = 56U;; bit_shift -= 8U)
-        {
-            fingerprint ^= (value >> bit_shift) & 0xffU;
-            fingerprint *= fnv_prime;
-            if (bit_shift == 0U)
-            {
-                return;
-            }
         }
     }
 }
@@ -272,22 +258,9 @@ namespace simnet::app
         {
             throw std::runtime_error("unsupported Zstd compression level");
         }
-        if (shared.compression.dictionary != "none" &&
-            shared.compression.dictionary != "pipeline_v1")
-        {
-            throw std::runtime_error(
-                "unsupported compression dictionary: " + shared.compression.dictionary
-            );
-        }
-        if ((mode == CompressionMode::None || mode == CompressionMode::PerPacket) &&
-            shared.compression.dictionary != "none")
-        {
-            throw std::runtime_error("compression dictionary requires whole_update mode");
-        }
         return {
             .mode = mode,
             .level = shared.compression.level,
-            .dictionary = shared.compression.dictionary,
         };
     }
 
@@ -308,29 +281,12 @@ namespace simnet::app
         return settings;
     }
 
-    SessionIdentity make_session_identity(
-        SharedConfig const& shared,
-        PipelineDefinition const& pipeline,
-        ZstdDictionaryIdentity const* dictionary_identity
-    )
+    SessionIdentity
+    make_session_identity(SharedConfig const& shared, PipelineDefinition const& pipeline)
     {
-        auto compatibility = fingerprint_network_compatibility(shared).value;
-        auto const dictionary_selected = shared.compression.dictionary != "none";
-        if (dictionary_selected != (dictionary_identity != nullptr))
-        {
-            throw std::runtime_error(
-                "selected compression dictionary identity is unavailable or unexpected"
-            );
-        }
-        if (dictionary_identity != nullptr)
-        {
-            mix_session_identity_value(compatibility, dictionary_identity->dictionary_id);
-            mix_session_identity_value(compatibility, dictionary_identity->byte_count);
-            mix_session_identity_value(compatibility, dictionary_identity->content_fingerprint);
-        }
         return {
             .application_protocol_version = application_protocol_version,
-            .compatibility_fingerprint = compatibility,
+            .compatibility_fingerprint = fingerprint_network_compatibility(shared).value,
             .application_wire_fingerprint = pipeline_decode_signature(pipeline),
             .capabilities = 0,
         };
