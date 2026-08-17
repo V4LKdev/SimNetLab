@@ -45,7 +45,6 @@ export namespace simnet
         ProtocolMismatch,
         IncompatibleConfig,
         IncompatibleWireProfile,
-        UnsupportedCapability,
         ServerFull,
         Rejected,
         TransportError
@@ -72,7 +71,6 @@ export namespace simnet
         std::uint32_t application_protocol_version{};
         std::uint64_t compatibility_fingerprint{};
         std::uint64_t application_wire_fingerprint{};
-        std::uint32_t capabilities{};
     };
 
     /// Send-time transport limits checked before ENet queueing or serialization.

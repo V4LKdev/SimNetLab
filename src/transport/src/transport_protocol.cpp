@@ -14,7 +14,7 @@ namespace simnet::transport_protocol
     namespace
     {
         constexpr std::uint32_t session_magic = 0x534E5453U;
-        constexpr std::uint16_t session_version = 3;
+        constexpr std::uint16_t session_version = 4;
         constexpr std::uint32_t session_header_bytes = 11;
     } // namespace
 
@@ -32,10 +32,6 @@ namespace simnet::transport_protocol
         if (actual.application_wire_fingerprint != expected.application_wire_fingerprint)
         {
             return DisconnectCode::IncompatibleWireProfile;
-        }
-        if (actual.capabilities != expected.capabilities)
-        {
-            return DisconnectCode::UnsupportedCapability;
         }
         return DisconnectCode::None;
     }
@@ -70,7 +66,6 @@ namespace simnet::transport_protocol
             case DisconnectCode::ProtocolMismatch:
             case DisconnectCode::IncompatibleConfig:
             case DisconnectCode::IncompatibleWireProfile:
-            case DisconnectCode::UnsupportedCapability:
             case DisconnectCode::ServerFull:
             case DisconnectCode::Rejected:
             case DisconnectCode::TransportError:
@@ -87,7 +82,6 @@ namespace simnet::transport_protocol
             append_big_endian(payload, message.identity.application_protocol_version);
             append_big_endian(payload, message.identity.compatibility_fingerprint);
             append_big_endian(payload, message.identity.application_wire_fingerprint);
-            append_big_endian(payload, message.identity.capabilities);
         }
         else if (message.kind == SessionMessageKind::ServerReject)
         {
@@ -127,11 +121,10 @@ namespace simnet::transport_protocol
         };
         if (candidate.kind == SessionMessageKind::ClientHello)
         {
-            if (payload_size != 24U ||
+            if (payload_size != 20U ||
                 !read_big_endian(bytes, offset, candidate.identity.application_protocol_version) ||
                 !read_big_endian(bytes, offset, candidate.identity.compatibility_fingerprint) ||
-                !read_big_endian(bytes, offset, candidate.identity.application_wire_fingerprint) ||
-                !read_big_endian(bytes, offset, candidate.identity.capabilities))
+                !read_big_endian(bytes, offset, candidate.identity.application_wire_fingerprint))
             {
                 return false;
             }

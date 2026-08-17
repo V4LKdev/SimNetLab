@@ -35,7 +35,6 @@ namespace
             .application_protocol_version = 1U,
             .compatibility_fingerprint = 0x1234U,
             .application_wire_fingerprint = 0x5678U,
-            .capabilities = 0U,
         };
     }
 

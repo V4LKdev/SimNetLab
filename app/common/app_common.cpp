@@ -288,7 +288,6 @@ namespace simnet::app
             .application_protocol_version = application_protocol_version,
             .compatibility_fingerprint = fingerprint_network_compatibility(shared).value,
             .application_wire_fingerprint = pipeline_decode_signature(pipeline),
-            .capabilities = 0,
         };
     }
 
