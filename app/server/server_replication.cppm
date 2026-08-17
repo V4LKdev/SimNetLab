@@ -13,8 +13,6 @@ module;
 
 #include <simnet/telemetry_trace.hpp>
 
-#include "server_peer_iteration.hpp"
-
 module simnet.server_runtime:replication;
 
 import simnet.app_common;
@@ -1526,19 +1524,18 @@ namespace simnet::app::server_replication
             return true;
         };
 
-        simnet::app::detail::process_sorted_peer_states(
-            peers,
-            [](PeerRuntimeState const& peer)
+        auto peer = peers.begin();
+        while (peer != peers.end())
+        {
+            if (!peer->role.has_value() || replicate_peer(*peer))
             {
-                return peer.role.has_value();
-            },
-            replicate_peer,
-            [&](PeerRuntimeState const& failed_peer)
-            {
-                transport.disconnect(failed_peer.peer, simnet::DisconnectCode::TransportError);
-                remove_failed_peer_state(world, failed_peer, snapshot_state, delivery);
+                ++peer;
+                continue;
             }
-        );
+            transport.disconnect(peer->peer, simnet::DisconnectCode::TransportError);
+            remove_failed_peer_state(world, *peer, snapshot_state, delivery);
+            peer = peers.erase(peer);
+        }
         return true;
     }
 }

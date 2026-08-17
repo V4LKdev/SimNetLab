@@ -20,8 +20,6 @@ module;
 
 #include <simnet/telemetry_trace.hpp>
 
-#include "server_peer_iteration.hpp"
-
 module simnet.server_runtime;
 
 import :replication;
@@ -1106,13 +1104,8 @@ namespace
             if (auto const* ready = std::get_if<simnet::PeerSessionReady>(&event))
             {
                 auto const found = find_peer(peers, ready->peer);
-                auto const admission = simnet::app::detail::peer_admission(
-                    peers,
-                    ready->peer,
-                    max_clients,
-                    &PeerRuntimeState::peer
-                );
-                if (admission != simnet::app::detail::PeerAdmission::Accept)
+                if ((found != peers.end() && found->peer == ready->peer) ||
+                    peers.size() >= max_clients)
                 {
                     simnet::log(
                         simnet::LogCategory::Transport,
