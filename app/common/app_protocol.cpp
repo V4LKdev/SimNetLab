@@ -19,7 +19,7 @@ namespace
     constexpr std::size_t join_request_bytes = 3U;
     constexpr std::size_t join_accepted_bytes = 9U;
     constexpr std::size_t player_input_bytes = 3U;
-    constexpr std::size_t snapshot_ack_bytes = 14U;
+    constexpr std::size_t snapshot_ack_bytes = 6U;
     constexpr std::size_t snapshot_recovery_request_bytes = 10U;
     constexpr std::size_t stationary_observer_interest_bytes = 26U;
 
@@ -209,8 +209,6 @@ namespace simnet::app
             static_cast<Byte>(app_message_version),
         };
         bytes.reserve(snapshot_ack_bytes);
-        append_big_endian(bytes, ack.newest_received_snapshot);
-        append_big_endian(bytes, ack.received_mask);
         append_big_endian(bytes, ack.newest_applied_snapshot);
         return bytes;
     }
@@ -222,8 +220,6 @@ namespace simnet::app
         if (bytes.size() != snapshot_ack_bytes ||
             bytes[0] != static_cast<Byte>(AppMessageKind::SnapshotAck) ||
             bytes[1] != static_cast<Byte>(app_message_version) ||
-            !read_big_endian(bytes, offset, decoded.newest_received_snapshot) ||
-            !read_big_endian(bytes, offset, decoded.received_mask) ||
             !read_big_endian(bytes, offset, decoded.newest_applied_snapshot))
         {
             return false;

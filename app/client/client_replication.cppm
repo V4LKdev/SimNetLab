@@ -32,11 +32,6 @@ import simnet.transport;
 
 namespace simnet::app::client_replication
 {
-    struct SnapshotAckTracker
-    {
-        simnet::app::SnapshotAck value{};
-    };
-
     struct RetainedClientSnapshot
     {
         simnet::SequenceId sequence{};
@@ -221,7 +216,6 @@ namespace simnet::app::client_replication
         simnet::SequenceId latest_applied_sequence{};
         std::uint32_t latest_applied_upserts{};
         std::uint32_t latest_applied_deletes{};
-        SnapshotAckTracker ack_tracker{};
         simnet::app::ClientRecoveryRequestState recovery_request_state{};
         std::uint64_t sequence_gap_count{};
         std::uint64_t reliable_promotion_count{};
@@ -345,35 +339,6 @@ namespace simnet::app::client_replication
         observe_client_measurement(measurements, csv, measurement);
     }
 
-    [[nodiscard]] bool
-    record_received_snapshot(SnapshotAckTracker& tracker, simnet::SequenceId sequence) noexcept
-    {
-        auto const previous = tracker.value.newest_received_snapshot;
-        if (sequence == 0 || sequence <= previous)
-        {
-            return false;
-        }
-        if (previous == 0)
-        {
-            tracker.value.newest_received_snapshot = sequence;
-            tracker.value.received_mask = 0;
-            return true;
-        }
-
-        auto const shift = sequence - previous;
-        if (shift >= 33U)
-        {
-            tracker.value.received_mask = 0;
-        }
-        else
-        {
-            auto const shifted_history = shift == 32U ? 0U : tracker.value.received_mask << shift;
-            tracker.value.received_mask = shifted_history | (1U << (shift - 1U));
-        }
-        tracker.value.newest_received_snapshot = sequence;
-        return true;
-    }
-
     [[nodiscard]] simnet::WorldSnapshot const* find_retained_snapshot(
         std::deque<RetainedClientSnapshot> const& history,
         simnet::SequenceId sequence
@@ -443,7 +408,6 @@ namespace simnet::app::client_replication
         simnet::PipelineDefinition const& pipeline,
         simnet::ClientReplicationState& decode_state,
         simnet::SequenceId& latest_applied_sequence,
-        SnapshotAckTracker& ack_tracker,
         std::deque<RetainedClientSnapshot>& snapshot_history,
         flecs::world& world,
         simnet::TransportClient& transport,
@@ -579,19 +543,6 @@ namespace simnet::app::client_replication
             );
             return ApplyPacketOutcome::Fatal;
         }
-        auto candidate_ack_tracker = ack_tracker;
-        if (!record_received_snapshot(candidate_ack_tracker, decoded.report.sequence))
-        {
-            measurement.outcome = simnet::ClientReplicationOutcome::StaleSequenceIgnored;
-            measurement.outcome_detail = "ack_tracker_rejected_sequence";
-            observe_client_measurement(measurements, csv, measurement);
-            simnet::log(
-                simnet::LogCategory::Transport,
-                simnet::LogLevel::Warn,
-                "client ignored stale snapshot sequence=" + std::to_string(decoded.report.sequence)
-            );
-            return ApplyPacketOutcome::Ignored;
-        }
         if (latest_applied_sequence != 0U && decoded.report.sequence > latest_applied_sequence + 1U)
         {
             ++sequence_gap_count;
@@ -656,8 +607,6 @@ namespace simnet::app::client_replication
         }
 
         decode_state = candidate_decode_state;
-        candidate_ack_tracker.value.newest_applied_snapshot = decoded.report.sequence;
-        ack_tracker = candidate_ack_tracker;
         latest_applied_sequence = decoded.report.sequence;
         latest_applied_upserts = static_cast<std::uint32_t>(decoded.update.upserts.size());
         latest_applied_deletes = static_cast<std::uint32_t>(decoded.update.deletes.size());
@@ -677,7 +626,9 @@ namespace simnet::app::client_replication
         auto sent = simnet::TransportResult{};
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_ack", simnet::LogCategory::Transport);
-            auto const bytes = simnet::app::encode_snapshot_ack(ack_tracker.value);
+            auto const bytes = simnet::app::encode_snapshot_ack({
+                .newest_applied_snapshot = latest_applied_sequence,
+            });
             sent = transport.send(
                 simnet::app::input_lane,
                 simnet::TransportDelivery::ReliableSequenced,
@@ -704,7 +655,7 @@ namespace simnet::app::client_replication
                     " chunks=" + std::to_string(group.chunk_count) +
                     " application_packet_bytes=" + std::to_string(group.total_packet_bytes) +
                     " canonical_entities=" + std::to_string(applied.final_entities) +
-                    " ack_sequence=" + std::to_string(ack_tracker.value.newest_applied_snapshot)
+                    " ack_sequence=" + std::to_string(latest_applied_sequence)
             );
         }
 
@@ -916,7 +867,6 @@ namespace simnet::app::client_replication
                 pipeline,
                 decode_state,
                 latest_applied_sequence,
-                ack_tracker,
                 snapshot_history,
                 world,
                 transport,
@@ -952,8 +902,7 @@ namespace simnet::app::client_replication
                             std::to_string(compression_report.raw_packet_count) +
                             " canonical_entities=" +
                             std::to_string(snapshot_history.back().snapshot.size()) +
-                            " ack_sequence=" +
-                            std::to_string(ack_tracker.value.newest_applied_snapshot)
+                            " ack_sequence=" + std::to_string(latest_applied_sequence)
                     );
                 }
             }

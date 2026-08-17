@@ -10,7 +10,7 @@ import simnet.core;
 TEST_CASE("application join protocol preserves role and peer identity", "[app_protocol][join]")
 {
     CHECK(simnet::app::application_protocol_version == 7U);
-    CHECK(simnet::app::app_message_version == 2U);
+    CHECK(simnet::app::app_message_version == 3U);
 
     for (auto const role :
          {simnet::app::ClientRole::StationaryObserver, simnet::app::ClientRole::Player})
@@ -57,24 +57,34 @@ TEST_CASE("application join protocol preserves role and peer identity", "[app_pr
 TEST_CASE("snapshot ACK round-trips replication progress", "[app_protocol][ack]")
 {
     auto const expected = simnet::app::SnapshotAck{
-        .newest_received_snapshot = 9U,
-        .received_mask = 0x12345678U,
         .newest_applied_snapshot = 8U,
     };
     auto const bytes = simnet::app::encode_snapshot_ack(expected);
 
-    CHECK(bytes.size() == 14U);
+    CHECK(bytes.size() == 6U);
+    CHECK(
+        bytes == std::vector<simnet::Byte>{
+                     simnet::Byte{5U},
+                     simnet::Byte{3U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{0U},
+                     simnet::Byte{8U},
+                 }
+    );
     CHECK(simnet::app::decode_app_message_kind(bytes) == simnet::app::AppMessageKind::SnapshotAck);
 
     auto decoded = simnet::app::SnapshotAck{};
     REQUIRE(simnet::app::decode_snapshot_ack(bytes, decoded));
-    CHECK(decoded.newest_received_snapshot == expected.newest_received_snapshot);
-    CHECK(decoded.received_mask == expected.received_mask);
     CHECK(decoded.newest_applied_snapshot == expected.newest_applied_snapshot);
 
     auto malformed = bytes;
     malformed.push_back(simnet::Byte{});
     CHECK_FALSE(simnet::app::decode_snapshot_ack(malformed, decoded));
+
+    auto incompatible = bytes;
+    incompatible[1] = simnet::Byte{2U};
+    CHECK_FALSE(simnet::app::decode_snapshot_ack(incompatible, decoded));
 }
 
 TEST_CASE("Player input round-trips every keyboard and mouse button", "[app_protocol][player]")

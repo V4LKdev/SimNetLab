@@ -355,16 +355,10 @@ namespace
             {
                 details.latest_emitted_sequence = peer->snapshot_delivery.latest_submitted_sequence;
             }
-            if (peer->latest_ack.newest_received_snapshot != 0)
-            {
-                details.latest_received_sequence = peer->latest_ack.newest_received_snapshot;
-            }
-            if (peer->latest_ack.newest_applied_snapshot != 0)
-            {
-                details.latest_applied_sequence = peer->latest_ack.newest_applied_snapshot;
-            }
             if (peer->snapshot_delivery.latest_acknowledged_sequence != 0U)
             {
+                details.latest_applied_sequence =
+                    peer->snapshot_delivery.latest_acknowledged_sequence;
                 details.acknowledged_baseline_sequence =
                     peer->snapshot_delivery.latest_acknowledged_sequence;
             }

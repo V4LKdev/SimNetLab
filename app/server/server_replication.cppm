@@ -150,7 +150,6 @@ namespace simnet::app::server_replication
         bool has_representation_report{};
         std::uint32_t latest_upsert_count{};
         std::uint32_t latest_delete_count{};
-        simnet::app::SnapshotAck latest_ack{};
         simnet::app::SnapshotDeliveryState snapshot_delivery{};
         std::vector<simnet::EntityNetId> recovery_upsert_ids{};
         simnet::ZstdCompressor compressor{};
@@ -431,18 +430,8 @@ namespace simnet::app::server_replication
 
     [[nodiscard]] bool valid_ack(PeerRuntimeState const& peer, simnet::app::SnapshotAck const& ack)
     {
-        if (ack.newest_received_snapshot == 0U ||
-            ack.newest_received_snapshot != ack.newest_applied_snapshot ||
-            ack.newest_received_snapshot > peer.snapshot_delivery.latest_submitted_sequence)
-        {
-            return false;
-        }
-        if (ack.newest_applied_snapshot == peer.latest_ack.newest_applied_snapshot)
-        {
-            return ack.newest_received_snapshot == peer.latest_ack.newest_received_snapshot &&
-                   ack.received_mask == peer.latest_ack.received_mask;
-        }
-        return true;
+        return ack.newest_applied_snapshot != 0U &&
+               ack.newest_applied_snapshot <= peer.snapshot_delivery.latest_submitted_sequence;
     }
 
     [[nodiscard]] simnet::ServerSnapshotExtractionReport ensure_current_snapshot(
@@ -582,7 +571,6 @@ namespace simnet::app::server_replication
         using enum simnet::app::AckPromotionOutcome;
         if (outcome == Promoted)
         {
-            peer.latest_ack = ack;
             simnet::log(
                 simnet::LogCategory::Pipeline,
                 simnet::LogLevel::Info,

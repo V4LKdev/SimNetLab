@@ -280,7 +280,6 @@ namespace
         simnet::RunSetupView setup
     )
     {
-        auto const& ack = client_replication.ack_tracker.value;
         auto const& packet_report = client_replication.reassembly_state.report;
         auto const& compression_report = client_replication.compression_report;
         auto const reconstructed_entity_count =
@@ -298,16 +297,14 @@ namespace
                 ? std::optional<std::uint32_t>{}
                 : std::optional<std::uint32_t>{client_replication.latest_applied_deletes};
         auto replication = std::optional<simnet::RenderReplicationInfo>{};
-        if (session_ready || ack.newest_received_snapshot != 0 || ack.newest_applied_snapshot != 0)
+        if (session_ready || client_replication.latest_applied_sequence != 0U)
         {
             replication = simnet::RenderReplicationInfo{
-                .latest_received_sequence =
-                    ack.newest_received_snapshot != 0
-                        ? std::optional<simnet::SequenceId>{ack.newest_received_snapshot}
-                        : std::optional<simnet::SequenceId>{},
                 .latest_applied_sequence =
-                    ack.newest_applied_snapshot != 0
-                        ? std::optional<simnet::SequenceId>{ack.newest_applied_snapshot}
+                    client_replication.latest_applied_sequence != 0U
+                        ? std::optional<simnet::SequenceId>{
+                              client_replication.latest_applied_sequence
+                          }
                         : std::optional<simnet::SequenceId>{},
                 .configured_delivery = config.snapshot_delivery.mode,
                 .effective_delivery =
@@ -1104,8 +1101,7 @@ namespace simnet::app
                     " final_canonical_count=" + std::to_string(canonical_entities) +
                     " final_canonical_fingerprint=" + std::to_string(canonical_fingerprint) +
                     " latest_applied_sequence=" +
-                    std::to_string(replication.latest_applied_sequence) + " ack_sequence=" +
-                    std::to_string(replication.ack_tracker.value.newest_applied_snapshot) +
+                    std::to_string(replication.latest_applied_sequence) +
                     " sequence_gaps=" + std::to_string(replication.sequence_gap_count) +
                     " recovery_requests=" +
                     std::to_string(replication.recovery_request_state.sent_count) +

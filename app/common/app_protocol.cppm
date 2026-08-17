@@ -15,7 +15,7 @@ import simnet.transport;
 export namespace simnet::app
 {
     inline constexpr std::uint32_t application_protocol_version = 7U;
-    inline constexpr std::uint8_t app_message_version = 2U;
+    inline constexpr std::uint8_t app_message_version = 3U;
     inline constexpr Nanoseconds stationary_observer_interest_min_interval{50'000'000};
     inline constexpr Nanoseconds stationary_observer_interest_heartbeat_interval{500'000'000};
     inline constexpr TransportLane control_lane{TransportLane::Lane0};
@@ -67,11 +67,9 @@ export namespace simnet::app
         std::uint8_t buttons{};
     };
 
-    /// Cumulative acknowledgment of decoded and applied snapshot groups.
+    /// Acknowledgment of the newest successfully applied snapshot group.
     struct SnapshotAck
     {
-        SequenceId newest_received_snapshot{};
-        std::uint32_t received_mask{};
         SequenceId newest_applied_snapshot{};
     };
 
@@ -127,7 +125,7 @@ export namespace simnet::app
     [[nodiscard]] bool
     decode_player_input(std::span<Byte const> bytes, PlayerInputMessage& input) noexcept;
 
-    /// Encodes a snapshot acknowledgment as a 14-byte control message.
+    /// Encodes a snapshot acknowledgment as a 6-byte control message.
     [[nodiscard]] std::vector<Byte> encode_snapshot_ack(SnapshotAck const& ack);
 
     /// Decodes one complete snapshot acknowledgment. Failure leaves the destination unchanged.
