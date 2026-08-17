@@ -17,7 +17,7 @@ import :metrics;
 export namespace simnet
 {
     inline constexpr std::uint32_t server_replication_csv_schema_version = 4;
-    inline constexpr std::uint32_t client_replication_csv_schema_version = 3;
+    inline constexpr std::uint32_t client_replication_csv_schema_version = 4;
 
     inline constexpr std::string_view server_replication_csv_header_v4 =
         "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
@@ -44,26 +44,15 @@ export namespace simnet
         "submissions_since_ack_progress,encode_elapsed_ns,transport_submission_elapsed_ns,"
         "total_replication_elapsed_ns";
 
-    inline constexpr std::string_view client_replication_csv_header_v3 =
+    inline constexpr std::string_view client_replication_csv_header_v4 =
         "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
         "elapsed_since_process_start_ns,record_order,runtime_config_fingerprint,"
         "network_compatibility_fingerprint,application_wire_fingerprint,peer_id,"
-        "accepted_gameplay_role,tick,sequence,baseline_sequence,"
-        "acknowledged_sequence_before,received_sequence_after,"
-        "acknowledged_sequence_after,snapshot_kind,outcome,outcome_detail,"
-        "encoded_update_bytes,upsert_count,delete_count,reconstructed_entity_count,"
-        "final_sink_entity_count,canonical_fingerprint,packetization_enabled,"
-        "packet_group_id,received_outer_bytes,group_chunk_count,received_packet_count,"
-        "duplicate_packet_count,invalid_packet_count,stale_packet_count,"
-        "incomplete_packet_count,expired_group_count,retained_incomplete_group_count,"
-        "retained_incomplete_bytes,packet_group_wait_available,packet_group_wait_ns,"
-        "compression_mode,"
-        "decompression_encoding,decompression_result,compression_dictionary,"
-        "compression_dictionary_id,compression_dictionary_fingerprint,compressed_bytes,"
-        "compression_payload_bytes,compression_envelope_bytes,uncompressed_bytes,"
-        "decompression_elapsed_ns,decode_elapsed_ns,baseline_resolution_elapsed_ns,"
-        "reconstruction_elapsed_ns,sink_preparation_elapsed_ns,sink_application_elapsed_ns,"
-        "canonical_snapshot_commit_elapsed_ns,decode_to_applied_elapsed_ns";
+        "accepted_gameplay_role,tick,sequence,baseline_sequence,snapshot_kind,outcome,"
+        "outcome_detail,packet_group_id,received_packet_bytes,decompression_encoding,"
+        "decompression_input_bytes,decompression_output_bytes,decompression_elapsed_ns,"
+        "encoded_update_bytes,upsert_count,delete_count,canonical_entity_count,"
+        "canonical_fingerprint,decode_elapsed_ns,decode_to_applied_elapsed_ns";
 
     enum class EvidenceProcessRole : std::uint8_t
     {

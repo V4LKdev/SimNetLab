@@ -215,8 +215,6 @@ namespace
                 return "packet_invalid";
             case ClientReplicationOutcome::PacketStale:
                 return "packet_stale";
-            case ClientReplicationOutcome::PacketGroupExpired:
-                return "packet_group_expired";
             case ClientReplicationOutcome::DeliveryMismatch:
                 return "delivery_mismatch";
             case ClientReplicationOutcome::DecompressionFailed:
@@ -260,12 +258,10 @@ namespace
         std::vector<std::string>& storage
     )
     {
-        storage.reserve(5U);
+        storage.reserve(3U);
+        own_text(measurement.snapshot_kind, storage);
         own_text(measurement.outcome_detail, storage);
-        own_text(measurement.compression_mode, storage);
         own_text(measurement.decompression_encoding, storage);
-        own_text(measurement.decompression_result, storage);
-        own_text(measurement.compression_dictionary, storage);
     }
 
     template <typename Measurement> struct BufferedMeasurement
@@ -499,49 +495,21 @@ namespace
         row.integer(value.tick);
         row.integer(value.sequence);
         row.integer(value.baseline_sequence);
-        row.integer(value.acknowledged_sequence_before);
-        row.integer(value.received_sequence_after);
-        row.integer(value.acknowledged_sequence_after);
-        row.text(snapshot_kind_name(value.snapshot_kind));
+        row.text(value.snapshot_kind);
         row.text(client_outcome_name(value.outcome));
         row.text(value.outcome_detail);
+        row.integer(value.packet_group_id);
+        row.integer(value.received_packet_bytes);
+        row.text(value.decompression_encoding);
+        row.integer(value.decompression_input_bytes);
+        row.integer(value.decompression_output_bytes);
+        row.integer(value.decompression_elapsed_time.count());
         row.integer(value.encoded_update_bytes);
         row.integer(value.upsert_count);
         row.integer(value.delete_count);
-        row.integer(value.reconstructed_entity_count);
-        row.integer(value.final_sink_entity_count);
+        row.integer(value.canonical_entity_count);
         row.integer(value.canonical_fingerprint);
-        row.integer(value.packetization_enabled);
-        row.integer(value.packet_group_id);
-        row.integer(value.received_outer_bytes);
-        row.integer(value.group_chunk_count);
-        row.integer(value.received_packet_count);
-        row.integer(value.duplicate_packet_count);
-        row.integer(value.invalid_packet_count);
-        row.integer(value.stale_packet_count);
-        row.integer(value.incomplete_packet_count);
-        row.integer(value.expired_group_count);
-        row.integer(value.retained_incomplete_group_count);
-        row.integer(value.retained_incomplete_bytes);
-        row.integer(value.packet_group_wait_available);
-        row.integer(value.packet_group_wait_time.count());
-        row.text(value.compression_mode);
-        row.text(value.decompression_encoding);
-        row.text(value.decompression_result);
-        row.text(value.compression_dictionary);
-        row.integer(value.compression_dictionary_id);
-        row.integer(value.compression_dictionary_fingerprint);
-        row.integer(value.compressed_bytes);
-        row.integer(value.compression_payload_bytes);
-        row.integer(value.compression_envelope_bytes);
-        row.integer(value.uncompressed_bytes);
-        row.integer(value.decompression_elapsed_time.count());
         row.integer(value.decode_elapsed_time.count());
-        row.integer(value.baseline_resolution_elapsed_time.count());
-        row.integer(value.reconstruction_elapsed_time.count());
-        row.integer(value.sink_preparation_elapsed_time.count());
-        row.integer(value.sink_application_elapsed_time.count());
-        row.integer(value.canonical_snapshot_commit_elapsed_time.count());
         row.integer(value.decode_to_applied_elapsed_time.count());
     }
 
@@ -933,9 +901,9 @@ namespace simnet
         explicit Impl(ReplicationCsvWriterConfig config)
             : state(
                   std::move(config),
-                  "client_replication_v3_",
+                  "client_replication_v4_",
                   EvidenceProcessRole::Client,
-                  client_replication_csv_header_v3
+                  client_replication_csv_header_v4
               )
         {
         }

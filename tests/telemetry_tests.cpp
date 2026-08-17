@@ -348,9 +348,21 @@ TEST_CASE("Server replication CSV drains a large evidence batch", "[telemetry][c
     CHECK(column_value(header, final_row, "outcome_detail") == "temporary-server-detail-300");
 }
 
-TEST_CASE("Client replication CSV preserves application outcome bytes and timings", "[telemetry][csv][client]")
+TEST_CASE("Client replication CSV has the exact ordered v4 schema", "[telemetry][csv][client]")
 {
-    CHECK(simnet::client_replication_csv_schema_version == 3U);
+    CHECK(simnet::client_replication_csv_schema_version == 4U);
+    CHECK(
+        simnet::client_replication_csv_header_v4 ==
+        "schema_version,run_id,process_role,process_started_unix_ns,recorded_at_unix_ns,"
+        "elapsed_since_process_start_ns,record_order,runtime_config_fingerprint,"
+        "network_compatibility_fingerprint,application_wire_fingerprint,peer_id,"
+        "accepted_gameplay_role,tick,sequence,baseline_sequence,snapshot_kind,outcome,"
+        "outcome_detail,packet_group_id,received_packet_bytes,decompression_encoding,"
+        "decompression_input_bytes,decompression_output_bytes,decompression_elapsed_ns,"
+        "encoded_update_bytes,upsert_count,delete_count,canonical_entity_count,"
+        "canonical_fingerprint,decode_elapsed_ns,decode_to_applied_elapsed_ns"
+    );
+    CHECK(parse_csv_row(simnet::client_replication_csv_header_v4).size() == 31U);
 
     auto temporary = TestTemporaryDirectory{"simnet_telemetry"};
     auto writer = simnet::ClientReplicationCsvWriter{{
@@ -363,35 +375,32 @@ TEST_CASE("Client replication CSV preserves application outcome bytes and timing
         },
     }};
 
+    CHECK(writer.path().filename() == "client_replication_v4_200.csv");
     REQUIRE(writer.set_accepted_gameplay_role("player"));
 
     auto const measurement = simnet::ClientReplicationMeasurement{
+        .runtime_config_fingerprint = 101U,
+        .network_compatibility_fingerprint = 102U,
+        .application_wire_fingerprint = 103U,
+        .peer_id = 7U,
         .tick = 9U,
         .sequence = 5U,
         .baseline_sequence = 4U,
-        .acknowledged_sequence_before = 4U,
-        .received_sequence_after = 5U,
-        .acknowledged_sequence_after = 5U,
-        .snapshot_kind = simnet::SnapshotKind::Patch,
+        .snapshot_kind = "patch",
         .outcome = simnet::ClientReplicationOutcome::Applied,
-        .outcome_detail = "committed",
+        .outcome_detail = "committed, \"verified\"",
+        .packet_group_id = 55U,
+        .received_packet_bytes = 113U,
+        .decompression_encoding = "zstd",
+        .decompression_input_bytes = 113U,
+        .decompression_output_bytes = 188U,
+        .decompression_elapsed_time = std::chrono::nanoseconds{7},
         .encoded_update_bytes = 88U,
         .upsert_count = 5U,
         .delete_count = 1U,
-        .reconstructed_entity_count = 12U,
-        .final_sink_entity_count = 12U,
+        .canonical_entity_count = 12U,
         .canonical_fingerprint = 5678U,
-        .packet_group_id = 5U,
-        .received_outer_bytes = 113U,
-        .group_chunk_count = 2U,
-        .received_packet_count = 1U,
-        .decompression_elapsed_time = std::chrono::nanoseconds{7},
         .decode_elapsed_time = std::chrono::nanoseconds{1},
-        .baseline_resolution_elapsed_time = std::chrono::nanoseconds{2},
-        .reconstruction_elapsed_time = std::chrono::nanoseconds{3},
-        .sink_preparation_elapsed_time = std::chrono::nanoseconds{4},
-        .sink_application_elapsed_time = std::chrono::nanoseconds{5},
-        .canonical_snapshot_commit_elapsed_time = std::chrono::nanoseconds{6},
         .decode_to_applied_elapsed_time = std::chrono::nanoseconds{21},
     };
 
@@ -402,41 +411,51 @@ TEST_CASE("Client replication CSV preserves application outcome bytes and timing
         )
     );
     REQUIRE(writer.close());
+    REQUIRE(writer.close());
 
     auto const lines = read_lines(writer.path());
     REQUIRE(lines.size() == 2U);
-    CHECK(lines.front() == simnet::client_replication_csv_header_v3);
+    CHECK(lines.front() == simnet::client_replication_csv_header_v4);
+    CHECK(lines[1].find("\"committed, \"\"verified\"\"\"") != std::string::npos);
 
     auto const header = parse_csv_row(lines[0]);
     auto const row = parse_csv_row(lines[1]);
-    REQUIRE(row.size() == header.size());
-
-    CHECK(column_value(header, row, "schema_version") == "3");
-    CHECK(column_value(header, row, "run_id") == "paired-run");
-    CHECK(column_value(header, row, "process_role") == "client");
-    CHECK(column_value(header, row, "process_started_unix_ns") == "200");
-    CHECK(column_value(header, row, "recorded_at_unix_ns") == "220");
-    CHECK(column_value(header, row, "elapsed_since_process_start_ns") == "20");
-    CHECK(column_value(header, row, "record_order") == "0");
-
-    CHECK(column_value(header, row, "accepted_gameplay_role") == "player");
-    CHECK(column_value(header, row, "sequence") == "5");
-    CHECK(column_value(header, row, "baseline_sequence") == "4");
-    CHECK(column_value(header, row, "outcome") == "applied");
-
-    CHECK(column_value(header, row, "encoded_update_bytes") == "88");
-    CHECK(column_value(header, row, "received_outer_bytes") == "113");
-    CHECK(column_value(header, row, "group_chunk_count") == "2");
-    CHECK(column_value(header, row, "canonical_fingerprint") == "5678");
-
-    CHECK(column_value(header, row, "decompression_elapsed_ns") == "7");
-    CHECK(column_value(header, row, "decode_elapsed_ns") == "1");
-    CHECK(column_value(header, row, "baseline_resolution_elapsed_ns") == "2");
-    CHECK(column_value(header, row, "reconstruction_elapsed_ns") == "3");
-    CHECK(column_value(header, row, "sink_preparation_elapsed_ns") == "4");
-    CHECK(column_value(header, row, "sink_application_elapsed_ns") == "5");
-    CHECK(column_value(header, row, "canonical_snapshot_commit_elapsed_ns") == "6");
-    CHECK(column_value(header, row, "decode_to_applied_elapsed_ns") == "21");
+    REQUIRE(header.size() == 31U);
+    CHECK(
+        row == std::vector<std::string>{
+                   "4",
+                   "paired-run",
+                   "client",
+                   "200",
+                   "220",
+                   "20",
+                   "0",
+                   "101",
+                   "102",
+                   "103",
+                   "7",
+                   "player",
+                   "9",
+                   "5",
+                   "4",
+                   "patch",
+                   "applied",
+                   "committed, \"verified\"",
+                   "55",
+                   "113",
+                   "zstd",
+                   "113",
+                   "188",
+                   "7",
+                   "88",
+                   "5",
+                   "1",
+                   "12",
+                   "5678",
+                   "1",
+                   "21",
+               }
+    );
 }
 
 TEST_CASE(
@@ -458,16 +477,14 @@ TEST_CASE(
 
     {
         auto outcome_detail = std::string{"temporary-applied-detail"};
-        auto compression_mode = std::string{"temporary-zstd-mode"};
+        auto snapshot_kind = std::string{"temporary-patch"};
         auto decompression_encoding = std::string{"temporary-zstd-frame"};
-        auto decompression_result = std::string{"temporary-decompression-success"};
         auto const measurement = simnet::ClientReplicationMeasurement{
             .sequence = 1U,
+            .snapshot_kind = snapshot_kind,
             .outcome = simnet::ClientReplicationOutcome::Applied,
             .outcome_detail = outcome_detail,
-            .compression_mode = compression_mode,
             .decompression_encoding = decompression_encoding,
-            .decompression_result = decompression_result,
         };
         REQUIRE(writer.submit(measurement));
     }
@@ -481,12 +498,8 @@ TEST_CASE(
     auto const row = parse_csv_row(lines[1]);
     REQUIRE(row.size() == header.size());
     CHECK(column_value(header, row, "outcome_detail") == "temporary-applied-detail");
-    CHECK(column_value(header, row, "compression_mode") == "temporary-zstd-mode");
+    CHECK(column_value(header, row, "snapshot_kind") == "temporary-patch");
     CHECK(column_value(header, row, "decompression_encoding") == "temporary-zstd-frame");
-    CHECK(
-        column_value(header, row, "decompression_result") ==
-        "temporary-decompression-success"
-    );
 }
 
 TEST_CASE(
@@ -506,13 +519,15 @@ TEST_CASE(
     }};
     REQUIRE(writer.set_accepted_gameplay_role("stationary_observer"));
 
-    for (auto sequence = std::uint32_t{1}; sequence <= 300U; ++sequence)
+    for (auto group = std::uint32_t{1}; group <= 300U; ++group)
     {
-        auto detail = std::string{"temporary-batch-detail-"} + std::to_string(sequence);
+        auto detail = std::string{"temporary-batch-detail-"} + std::to_string(group);
         REQUIRE(writer.submit({
-            .sequence = sequence,
             .outcome = simnet::ClientReplicationOutcome::PacketIncomplete,
             .outcome_detail = detail,
+            .packet_group_id = group,
+            .received_packet_bytes = 1200U,
+            .decompression_encoding = "not_required",
         }));
     }
 
@@ -522,6 +537,10 @@ TEST_CASE(
     REQUIRE(lines.size() == 301U);
     auto const header = parse_csv_row(lines.front());
     auto const final_row = parse_csv_row(lines.back());
-    CHECK(column_value(header, final_row, "sequence") == "300");
+    REQUIRE(header.size() == 31U);
+    CHECK(column_value(header, final_row, "packet_group_id") == "300");
+    CHECK(column_value(header, final_row, "received_packet_bytes") == "1200");
+    CHECK(column_value(header, final_row, "sequence") == "0");
+    CHECK(column_value(header, final_row, "snapshot_kind") == "not_available");
     CHECK(column_value(header, final_row, "outcome_detail") == "temporary-batch-detail-300");
 }

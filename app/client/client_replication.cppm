@@ -1,12 +1,10 @@
 module;
 
 #include <algorithm>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <flecs.h>
-#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -45,20 +43,10 @@ namespace simnet::app::client_replication
         std::uint64_t capacity_bytes{};
     };
 
-    struct PendingCompressionGroup
-    {
-        simnet::PacketGroupId group_id{};
-        simnet::Nanoseconds first_received_time{};
-        simnet::Nanoseconds evidence_first_received_time{};
-        std::uint64_t transport_bytes{};
-    };
-
     struct PacketDecompressionObservation
     {
         simnet::CompressionEncoding encoding{simnet::CompressionEncoding::Raw};
         std::uint32_t input_bytes{};
-        std::uint32_t payload_bytes{};
-        std::uint32_t envelope_bytes{};
         std::uint32_t output_bytes{};
         simnet::Nanoseconds elapsed_time{};
     };
@@ -68,46 +56,37 @@ namespace simnet::app::client_replication
         std::uint64_t runtime_config_fingerprint{};
         std::uint64_t network_compatibility_fingerprint{};
         std::uint64_t application_wire_fingerprint{};
-        std::string_view compression_mode{"none"};
-        bool packetization_enabled{};
     };
 
     struct ClientReceiveEvidence
     {
         simnet::PacketGroupId group_id{};
-        std::uint32_t received_outer_bytes{};
-        std::uint32_t group_chunk_count{};
-        std::uint32_t received_packet_count{};
-        std::uint32_t duplicate_packet_count{};
-        std::uint32_t invalid_packet_count{};
-        std::uint32_t stale_packet_count{};
-        std::uint32_t incomplete_packet_count{};
-        std::uint32_t expired_group_count{};
-        std::uint32_t retained_incomplete_group_count{};
-        std::uint32_t retained_incomplete_bytes{};
-        bool group_wait_available{};
-        simnet::Nanoseconds group_wait_time{};
+        std::uint32_t received_packet_bytes{};
         std::string_view decompression_encoding{"disabled"};
-        std::string_view decompression_result{"not_required"};
-        std::uint32_t compressed_bytes{};
-        std::uint32_t compression_payload_bytes{};
-        std::uint32_t compression_envelope_bytes{};
-        std::uint32_t uncompressed_bytes{};
+        std::uint32_t decompression_input_bytes{};
+        std::uint32_t decompression_output_bytes{};
         simnet::Nanoseconds decompression_elapsed_time{};
     };
 
     constexpr void flatten_packet_decompression(
         ClientReceiveEvidence& receive,
+        simnet::app::CompressionMode mode,
+        bool delivery_valid,
         PacketDecompressionObservation const& decompression
     ) noexcept
     {
+        if (!delivery_valid || mode != simnet::app::CompressionMode::PerPacket)
+        {
+            if (mode != simnet::app::CompressionMode::None)
+            {
+                receive.decompression_encoding = "not_required";
+            }
+            return;
+        }
         receive.decompression_encoding =
             decompression.encoding == simnet::CompressionEncoding::Raw ? "raw" : "zstd";
-        receive.decompression_result = "success";
-        receive.compressed_bytes = decompression.input_bytes;
-        receive.compression_payload_bytes = decompression.payload_bytes;
-        receive.compression_envelope_bytes = decompression.envelope_bytes;
-        receive.uncompressed_bytes = decompression.output_bytes;
+        receive.decompression_input_bytes = decompression.input_bytes;
+        receive.decompression_output_bytes = decompression.output_bytes;
         receive.decompression_elapsed_time = decompression.elapsed_time;
     }
 
@@ -119,12 +98,17 @@ namespace simnet::app::client_replication
         std::uint32_t output_bytes
     )
     {
-        auto receive = ClientReceiveEvidence{.received_outer_bytes = received_packet_bytes};
-        flatten_packet_decompression(receive, decompression);
+        auto receive = ClientReceiveEvidence{.received_packet_bytes = received_packet_bytes};
+        flatten_packet_decompression(
+            receive,
+            simnet::app::CompressionMode::PerPacket,
+            true,
+            decompression
+        );
         return receive.decompression_encoding == encoding &&
-               receive.received_outer_bytes == received_packet_bytes &&
-               receive.compressed_bytes == input_bytes &&
-               receive.uncompressed_bytes == output_bytes &&
+               receive.received_packet_bytes == received_packet_bytes &&
+               receive.decompression_input_bytes == input_bytes &&
+               receive.decompression_output_bytes == output_bytes &&
                receive.decompression_elapsed_time == decompression.elapsed_time;
     }
 
@@ -165,22 +149,32 @@ namespace simnet::app::client_replication
         157U
     ));
 
+    [[nodiscard]] consteval bool decompression_is_not_fabricated(
+        simnet::app::CompressionMode mode,
+        std::string_view encoding
+    )
+    {
+        auto receive = ClientReceiveEvidence{.received_packet_bytes = 127U};
+        flatten_packet_decompression(receive, mode, true, {});
+        return receive.received_packet_bytes == 127U &&
+               receive.decompression_encoding == encoding &&
+               receive.decompression_input_bytes == 0U &&
+               receive.decompression_output_bytes == 0U &&
+               receive.decompression_elapsed_time == simnet::Nanoseconds{};
+    }
+
+    static_assert(decompression_is_not_fabricated(simnet::app::CompressionMode::None, "disabled"));
+    static_assert(
+        decompression_is_not_fabricated(simnet::app::CompressionMode::WholeUpdate, "not_required")
+    );
+
     struct ClientCompressionReport
     {
         simnet::app::CompressionMode mode{simnet::app::CompressionMode::None};
         simnet::CompressionEncoding latest_encoding{simnet::CompressionEncoding::Raw};
         std::uint64_t raw_packet_count{};
         std::uint64_t compressed_packet_count{};
-        std::uint64_t invalid_payload_count{};
-        std::uint64_t whole_update_raw_fallback_count{};
-        std::uint32_t latest_input_bytes{};
-        std::uint32_t latest_payload_bytes{};
-        std::uint32_t latest_envelope_bytes{};
-        std::uint32_t latest_output_bytes{};
         std::uint32_t latest_completed_representation_bytes{};
-        std::uint32_t latest_completed_transport_bytes{};
-        std::uint32_t canonical_entity_count{};
-        simnet::Nanoseconds decompression_elapsed_time{};
     };
 
     constexpr std::size_t retained_snapshot_limit = 64;
@@ -206,12 +200,7 @@ namespace simnet::app::client_replication
 
         void begin_session();
         void discard_incomplete();
-        void expire(
-            simnet::Nanoseconds now,
-            bool joined,
-            simnet::PeerId peer_id,
-            simnet::ClientReplicationCsvWriter& csv
-        );
+        void expire(simnet::Nanoseconds now);
         [[nodiscard]] bool receive_snapshot(
             simnet::ReceivedPacket const& packet,
             simnet::PeerId peer_id,
@@ -221,8 +210,6 @@ namespace simnet::app::client_replication
             simnet::RuntimeStats& stats,
             simnet::ClientReplicationCsvWriter& csv
         );
-        void log_measurements() const;
-
         simnet::PipelineDefinition const& pipeline;
         simnet::app::CompressionSettings const& compression;
         simnet::PacketizationSettings const& packetization;
@@ -241,166 +228,12 @@ namespace simnet::app::client_replication
         simnet::ReassemblyState reassembly_state{};
         simnet::ZstdDecompressor decompressor{};
         std::vector<simnet::Byte> decompression_scratch{};
-        std::vector<PendingCompressionGroup> pending_compression_groups{};
         ClientCompressionReport compression_report{};
         std::deque<RetainedClientSnapshot> snapshot_history{};
         bool logged_multi_packet_application{};
         bool logged_compression_application{};
         simnet::ClientReplicationMeasurements measurements{};
     };
-
-    void expire_pending_compression_groups(
-        std::vector<PendingCompressionGroup>& groups,
-        simnet::Nanoseconds now,
-        simnet::Nanoseconds timeout
-    )
-    {
-        std::erase_if(
-            groups,
-            [&](PendingCompressionGroup const& group)
-            {
-                return now >= group.first_received_time &&
-                       now - group.first_received_time >= timeout;
-            }
-        );
-    }
-
-    void record_group_transport_bytes(
-        std::vector<PendingCompressionGroup>& groups,
-        simnet::PacketGroupId group_id,
-        std::uint32_t bytes,
-        simnet::Nanoseconds now,
-        simnet::Nanoseconds evidence_now,
-        std::uint32_t maximum_groups
-    )
-    {
-        if (group_id == 0U)
-        {
-            return;
-        }
-        auto const found = std::ranges::find(groups, group_id, &PendingCompressionGroup::group_id);
-        if (found != groups.end())
-        {
-            found->transport_bytes += bytes;
-            return;
-        }
-        if (groups.size() >= maximum_groups)
-        {
-            return;
-        }
-        groups.push_back({
-            .group_id = group_id,
-            .first_received_time = now,
-            .evidence_first_received_time = evidence_now,
-            .transport_bytes = bytes,
-        });
-    }
-
-    [[nodiscard]] PendingCompressionGroup const* find_pending_group(
-        std::vector<PendingCompressionGroup> const& groups,
-        simnet::PacketGroupId group_id
-    ) noexcept
-    {
-        auto const found = std::ranges::find(groups, group_id, &PendingCompressionGroup::group_id);
-        return found == groups.end() ? nullptr : &*found;
-    }
-
-    [[nodiscard]] std::uint32_t group_transport_bytes(
-        std::vector<PendingCompressionGroup> const& groups,
-        simnet::PacketGroupId group_id,
-        std::uint32_t fallback
-    ) noexcept
-    {
-        auto const found = std::ranges::find(groups, group_id, &PendingCompressionGroup::group_id);
-        return found == groups.end() ||
-                       found->transport_bytes > std::numeric_limits<std::uint32_t>::max()
-                   ? fallback
-                   : static_cast<std::uint32_t>(found->transport_bytes);
-    }
-
-    [[nodiscard]] std::string_view
-    client_replication_outcome_name(simnet::ClientReplicationOutcome outcome) noexcept
-    {
-        using enum simnet::ClientReplicationOutcome;
-        switch (outcome)
-        {
-            case PacketIncomplete:
-                return "packet_incomplete";
-            case PacketDuplicate:
-                return "packet_duplicate";
-            case PacketInvalid:
-                return "packet_invalid";
-            case PacketStale:
-                return "packet_stale";
-            case PacketGroupExpired:
-                return "packet_group_expired";
-            case DeliveryMismatch:
-                return "delivery_mismatch";
-            case DecompressionFailed:
-                return "decompression_failed";
-            case DecodeFailed:
-                return "decode_failed";
-            case StaleSequenceIgnored:
-                return "stale_sequence_ignored";
-            case BaselineUnavailable:
-                return "baseline_unavailable";
-            case ReconstructionFailed:
-                return "reconstruction_failed";
-            case SinkApplicationFailed:
-                return "sink_application_failed";
-            case Applied:
-                return "applied";
-        }
-        return "unknown";
-    }
-
-    void
-    log_client_replication_measurements(simnet::ClientReplicationMeasurements const& measurements)
-    {
-        if (!measurements.latest_attempt.has_value())
-        {
-            simnet::log(
-                simnet::LogCategory::Telemetry,
-                simnet::LogLevel::Info,
-                "client replication measurements attempts=0 applied=0"
-            );
-            return;
-        }
-
-        auto const& value = *measurements.latest_attempt;
-        simnet::log(
-            simnet::LogCategory::Telemetry,
-            simnet::LogLevel::Info,
-            "client replication measurements attempts=" +
-                std::to_string(measurements.attempt_count) +
-                " applied=" + std::to_string(measurements.applied_count) +
-                " latest_outcome=" + std::string{client_replication_outcome_name(value.outcome)} +
-                " tick=" + std::to_string(value.tick) +
-                " sequence=" + std::to_string(value.sequence) +
-                " baseline_sequence=" + std::to_string(value.baseline_sequence) +
-                " snapshot_kind=" + std::to_string(static_cast<unsigned>(value.snapshot_kind)) +
-                " encoded_update_bytes=" + std::to_string(value.encoded_update_bytes) +
-                " received_outer_bytes=" + std::to_string(value.received_outer_bytes) +
-                " upserts=" + std::to_string(value.upsert_count) +
-                " deletes=" + std::to_string(value.delete_count) +
-                " reconstructed_entities=" + std::to_string(value.reconstructed_entity_count) +
-                " final_sink_entities=" + std::to_string(value.final_sink_entity_count) +
-                " decode_elapsed_ns=" + std::to_string(value.decode_elapsed_time.count()) +
-                " baseline_resolution_elapsed_ns=" +
-                std::to_string(value.baseline_resolution_elapsed_time.count()) +
-                " reconstruction_elapsed_ns=" +
-                std::to_string(value.reconstruction_elapsed_time.count()) +
-                " sink_preparation_elapsed_ns=" +
-                std::to_string(value.sink_preparation_elapsed_time.count()) +
-                " sink_application_elapsed_ns=" +
-                std::to_string(value.sink_application_elapsed_time.count()) +
-                " canonical_snapshot_commit_elapsed_ns=" +
-                std::to_string(value.canonical_snapshot_commit_elapsed_time.count()) +
-                " decode_to_applied_elapsed_ns=" +
-                std::to_string(value.decode_to_applied_elapsed_time.count())
-        );
-    }
-
 
     void observe_client_measurement(
         simnet::ClientReplicationMeasurements& measurements,
@@ -420,7 +253,6 @@ namespace simnet::app::client_replication
     [[nodiscard]] simnet::ClientReplicationMeasurement make_client_measurement(
         ClientEvidenceIdentity const& identity,
         simnet::PeerId peer_id,
-        SnapshotAckTracker const& ack,
         ClientReceiveEvidence const& receive
     ) noexcept
     {
@@ -429,47 +261,84 @@ namespace simnet::app::client_replication
             .network_compatibility_fingerprint = identity.network_compatibility_fingerprint,
             .application_wire_fingerprint = identity.application_wire_fingerprint,
             .peer_id = peer_id,
-            .sequence = receive.group_id,
-            .acknowledged_sequence_before = ack.value.newest_applied_snapshot,
-            .received_sequence_after = ack.value.newest_received_snapshot,
-            .acknowledged_sequence_after = ack.value.newest_applied_snapshot,
-            .packetization_enabled = identity.packetization_enabled,
             .packet_group_id = receive.group_id,
-            .received_outer_bytes = receive.received_outer_bytes,
-            .group_chunk_count = receive.group_chunk_count,
-            .received_packet_count = receive.received_packet_count,
-            .duplicate_packet_count = receive.duplicate_packet_count,
-            .invalid_packet_count = receive.invalid_packet_count,
-            .stale_packet_count = receive.stale_packet_count,
-            .incomplete_packet_count = receive.incomplete_packet_count,
-            .expired_group_count = receive.expired_group_count,
-            .retained_incomplete_group_count = receive.retained_incomplete_group_count,
-            .retained_incomplete_bytes = receive.retained_incomplete_bytes,
-            .packet_group_wait_available = receive.group_wait_available,
-            .packet_group_wait_time = receive.group_wait_time,
-            .compression_mode = identity.compression_mode,
+            .received_packet_bytes = receive.received_packet_bytes,
             .decompression_encoding = receive.decompression_encoding,
-            .decompression_result = receive.decompression_result,
-            .compressed_bytes = receive.compressed_bytes,
-            .compression_payload_bytes = receive.compression_payload_bytes,
-            .compression_envelope_bytes = receive.compression_envelope_bytes,
-            .uncompressed_bytes = receive.uncompressed_bytes,
+            .decompression_input_bytes = receive.decompression_input_bytes,
+            .decompression_output_bytes = receive.decompression_output_bytes,
             .decompression_elapsed_time = receive.decompression_elapsed_time,
         };
     }
+
+    constexpr void flatten_update_identity(
+        simnet::ClientReplicationMeasurement& measurement,
+        simnet::EncodedUpdateHeaderInspection const& inspected,
+        std::uint32_t encoded_update_bytes
+    ) noexcept
+    {
+        if (inspected.error != simnet::EncodedUpdateHeaderError::None)
+        {
+            return;
+        }
+        measurement.tick = inspected.tick;
+        measurement.sequence = inspected.sequence;
+        measurement.baseline_sequence = inspected.baseline_sequence;
+        measurement.snapshot_kind =
+            inspected.snapshot_kind == simnet::SnapshotKind::FullReplace ? "full_replace" : "patch";
+        measurement.encoded_update_bytes = encoded_update_bytes;
+    }
+
+    [[nodiscard]] consteval bool unavailable_update_identity_is_explicit()
+    {
+        auto measurement = simnet::ClientReplicationMeasurement{.packet_group_id = 41U};
+        flatten_update_identity(
+            measurement,
+            {
+                .error = simnet::EncodedUpdateHeaderError::Truncated,
+                .tick = 7U,
+                .sequence = 41U,
+                .snapshot_kind = simnet::SnapshotKind::FullReplace,
+            },
+            73U
+        );
+        return measurement.packet_group_id == 41U && measurement.tick == 0U &&
+               measurement.sequence == 0U && measurement.baseline_sequence == 0U &&
+               measurement.snapshot_kind == "not_available" &&
+               measurement.encoded_update_bytes == 0U;
+    }
+
+    [[nodiscard]] consteval bool available_update_identity_is_decoded()
+    {
+        auto measurement = simnet::ClientReplicationMeasurement{.packet_group_id = 43U};
+        flatten_update_identity(
+            measurement,
+            {
+                .tick = 9U,
+                .sequence = 43U,
+                .baseline_sequence = 42U,
+                .snapshot_kind = simnet::SnapshotKind::Patch,
+            },
+            79U
+        );
+        return measurement.packet_group_id == 43U && measurement.tick == 9U &&
+               measurement.sequence == 43U && measurement.baseline_sequence == 42U &&
+               measurement.snapshot_kind == "patch" && measurement.encoded_update_bytes == 79U;
+    }
+
+    static_assert(unavailable_update_identity_is_explicit());
+    static_assert(available_update_identity_is_decoded());
 
     void observe_client_receive_outcome(
         simnet::ClientReplicationMeasurements& measurements,
         simnet::ClientReplicationCsvWriter& csv,
         ClientEvidenceIdentity const& identity,
         simnet::PeerId peer_id,
-        SnapshotAckTracker const& ack,
         ClientReceiveEvidence const& receive,
         simnet::ClientReplicationOutcome outcome,
         std::string_view detail
     )
     {
-        auto measurement = make_client_measurement(identity, peer_id, ack, receive);
+        auto measurement = make_client_measurement(identity, peer_id, receive);
         measurement.outcome = outcome;
         measurement.outcome_detail = detail;
         observe_client_measurement(measurements, csv, measurement);
@@ -587,18 +456,12 @@ namespace simnet::app::client_replication
         std::uint32_t& latest_applied_deletes
     )
     {
-        auto measurement =
-            make_client_measurement(evidence_identity, peer_id, ack_tracker, receive_evidence);
+        auto measurement = make_client_measurement(evidence_identity, peer_id, receive_evidence);
         auto const decode_to_applied_start = simnet::steady_now_ns();
         auto const decode_start = simnet::steady_now_ns();
         auto const inspected =
             simnet::inspect_encoded_update_header(pipeline, decode_state, encoded_bytes);
         measurement.decode_elapsed_time = simnet::steady_now_ns() - decode_start;
-        measurement.tick = inspected.tick;
-        measurement.sequence = inspected.sequence;
-        measurement.baseline_sequence = inspected.baseline_sequence;
-        measurement.snapshot_kind = inspected.snapshot_kind;
-        measurement.encoded_update_bytes = static_cast<std::uint32_t>(encoded_bytes.size());
         if (!inspected.valid())
         {
             if (inspected.error == simnet::EncodedUpdateHeaderError::StaleSequence)
@@ -619,6 +482,11 @@ namespace simnet::app::client_replication
             );
             return ApplyPacketOutcome::Fatal;
         }
+        flatten_update_identity(
+            measurement,
+            inspected,
+            static_cast<std::uint32_t>(encoded_bytes.size())
+        );
         if (packetization_enabled && inspected.sequence != group.group_id)
         {
             measurement.outcome = simnet::ClientReplicationOutcome::DecodeFailed;
@@ -632,15 +500,12 @@ namespace simnet::app::client_replication
             return ApplyPacketOutcome::Fatal;
         }
 
-        auto const baseline_start = simnet::steady_now_ns();
         auto const* baseline = static_cast<simnet::WorldSnapshot const*>(nullptr);
         if (inspected.baseline_sequence != 0U)
         {
             baseline = find_retained_snapshot(snapshot_history, inspected.baseline_sequence);
             if (baseline == nullptr)
             {
-                measurement.baseline_resolution_elapsed_time =
-                    simnet::steady_now_ns() - baseline_start;
                 measurement.outcome = simnet::ClientReplicationOutcome::BaselineUnavailable;
                 measurement.outcome_detail = "baseline_not_retained";
                 observe_client_measurement(measurements, csv, measurement);
@@ -682,7 +547,6 @@ namespace simnet::app::client_replication
                 return ApplyPacketOutcome::RecoveryRequested;
             }
         }
-        measurement.baseline_resolution_elapsed_time = simnet::steady_now_ns() - baseline_start;
 
         auto decoded = simnet::DecodeOutput{};
         auto candidate_decode_state = decode_state;
@@ -727,7 +591,6 @@ namespace simnet::app::client_replication
             );
             return ApplyPacketOutcome::Ignored;
         }
-        measurement.received_sequence_after = candidate_ack_tracker.value.newest_received_snapshot;
         if (latest_applied_sequence != 0U && decoded.report.sequence > latest_applied_sequence + 1U)
         {
             ++sequence_gap_count;
@@ -735,10 +598,8 @@ namespace simnet::app::client_replication
 
         auto reconstructed = simnet::WorldSnapshot{};
         // Decode validated the update. The baseline is locally empty or a retained reconstruction.
-        auto const reconstruction_start = simnet::steady_now_ns();
         auto const reconstruction =
             simnet::reconstruct_world_snapshot_unchecked(baseline, decoded.update, reconstructed);
-        measurement.reconstruction_elapsed_time = simnet::steady_now_ns() - reconstruction_start;
         if (!reconstruction.valid)
         {
             measurement.outcome = simnet::ClientReplicationOutcome::ReconstructionFailed;
@@ -764,9 +625,6 @@ namespace simnet::app::client_replication
             );
             return ApplyPacketOutcome::Fatal;
         }
-        measurement.reconstructed_entity_count = static_cast<std::uint32_t>(reconstructed.size());
-
-        auto const sink_preparation_start = simnet::steady_now_ns();
         auto const baseline_is_current = baseline != nullptr && !snapshot_history.empty() &&
                                          baseline == &snapshot_history.back().snapshot;
         auto replacement = simnet::SnapshotUpdate{};
@@ -776,19 +634,13 @@ namespace simnet::app::client_replication
             replacement = make_full_replace_patch(reconstructed);
             patch_to_apply = &replacement;
         }
-        measurement.sink_preparation_elapsed_time =
-            simnet::steady_now_ns() - sink_preparation_start;
 
         auto applied = simnet::ApplyPatchReport{};
-        auto const sink_application_start = simnet::steady_now_ns();
         {
             SIMNET_TRACE_SCOPE_CATEGORY("client.snapshot_apply", simnet::LogCategory::Simulation);
             // The update passed decode validation or was built from successful reconstruction.
             applied = simnet::apply_client_snapshot_patch_unchecked(world, *patch_to_apply);
         }
-        measurement.sink_application_elapsed_time =
-            simnet::steady_now_ns() - sink_application_start;
-        measurement.final_sink_entity_count = applied.final_entities;
         if (!applied.valid)
         {
             measurement.outcome = simnet::ClientReplicationOutcome::SinkApplicationFailed;
@@ -802,7 +654,6 @@ namespace simnet::app::client_replication
             return ApplyPacketOutcome::Fatal;
         }
 
-        auto const commit_start = simnet::steady_now_ns();
         decode_state = candidate_decode_state;
         candidate_ack_tracker.value.newest_applied_snapshot = decoded.report.sequence;
         ack_tracker = candidate_ack_tracker;
@@ -813,12 +664,12 @@ namespace simnet::app::client_replication
         simnet::app::record_snapshot_progress(recovery_request_state);
         stats.ticks = applied.tick;
         simnet::commit_reassembled_group(reassembly_state, decoded.report.sequence);
-        measurement.canonical_snapshot_commit_elapsed_time = simnet::steady_now_ns() - commit_start;
         measurement.outcome = simnet::ClientReplicationOutcome::Applied;
         measurement.outcome_detail = "committed";
-        measurement.acknowledged_sequence_after = ack_tracker.value.newest_applied_snapshot;
         measurement.decode_to_applied_elapsed_time =
             simnet::steady_now_ns() - decode_to_applied_start;
+        measurement.canonical_entity_count =
+            static_cast<std::uint32_t>(snapshot_history.back().snapshot.size());
         measurement.canonical_fingerprint =
             simnet::app::snapshot_diagnostic_fingerprint(snapshot_history.back().snapshot);
         observe_client_measurement(measurements, csv, measurement);
@@ -886,7 +737,6 @@ namespace simnet::app::client_replication
           evidence_identity{evidence},
           compression_report{.mode = compression_settings.mode}
     {
-        pending_compression_groups.reserve(packetization.max_in_flight_groups);
     }
 
     void ClientReplicationReceiver::begin_session()
@@ -894,51 +744,16 @@ namespace simnet::app::client_replication
         simnet::app::record_snapshot_progress(recovery_request_state);
         effective_snapshot_delivery.reset();
         simnet::clear_reassembly_state(reassembly_state);
-        pending_compression_groups.clear();
     }
 
     void ClientReplicationReceiver::discard_incomplete()
     {
         simnet::clear_reassembly_state(reassembly_state);
-        pending_compression_groups.clear();
     }
 
-    void ClientReplicationReceiver::expire(
-        simnet::Nanoseconds now,
-        bool joined,
-        simnet::PeerId peer_id,
-        simnet::ClientReplicationCsvWriter& csv
-    )
+    void ClientReplicationReceiver::expire(simnet::Nanoseconds now)
     {
-        auto const expired_groups_before = reassembly_state.report.expired_groups;
         simnet::expire_incomplete_groups(packetization, reassembly_state, now);
-        auto const newly_expired_groups =
-            reassembly_state.report.expired_groups - expired_groups_before;
-        if (newly_expired_groups != 0U && joined)
-        {
-            observe_client_receive_outcome(
-                measurements,
-                csv,
-                evidence_identity,
-                peer_id,
-                ack_tracker,
-                {
-                    .expired_group_count = static_cast<std::uint32_t>(std::min(
-                        newly_expired_groups,
-                        static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())
-                    )),
-                    .retained_incomplete_group_count = reassembly_state.report.incomplete_groups,
-                    .retained_incomplete_bytes = reassembly_state.report.retained_incomplete_bytes,
-                },
-                simnet::ClientReplicationOutcome::PacketGroupExpired,
-                "reassembly_timeout"
-            );
-        }
-        expire_pending_compression_groups(
-            pending_compression_groups,
-            now,
-            packetization.reassembly_timeout
-        );
     }
 
     [[nodiscard]] bool ClientReplicationReceiver::receive_snapshot(
@@ -969,7 +784,6 @@ namespace simnet::app::client_replication
             packet_decompression = {
                 .encoding = simnet::CompressionEncoding::Raw,
                 .input_bytes = static_cast<std::uint32_t>(application_packet.size()),
-                .payload_bytes = static_cast<std::uint32_t>(application_packet.size()),
                 .output_bytes = static_cast<std::uint32_t>(application_packet.size()),
             };
             if (simnet::has_compression_envelope(application_packet))
@@ -983,42 +797,27 @@ namespace simnet::app::client_replication
                     },
                     decompression_scratch
                 );
-                compression_report.latest_input_bytes = decompressed.input_bytes;
                 compression_report.latest_encoding = decompressed.encoding;
-                compression_report.latest_payload_bytes = decompressed.encoded_payload_bytes;
-                compression_report.latest_envelope_bytes = decompressed.envelope_bytes;
-                compression_report.latest_output_bytes = decompressed.output_bytes;
-                compression_report.decompression_elapsed_time +=
-                    decompressed.decompression_elapsed_time;
                 packet_decompression = {
                     .encoding = decompressed.encoding,
                     .input_bytes = decompressed.input_bytes,
-                    .payload_bytes = decompressed.encoded_payload_bytes,
-                    .envelope_bytes = decompressed.envelope_bytes,
                     .output_bytes = decompressed.output_bytes,
                     .elapsed_time = decompressed.decompression_elapsed_time,
                 };
                 if (!decompressed.valid ||
                     decompressed.encoding != simnet::CompressionEncoding::Zstd)
                 {
-                    ++compression_report.invalid_payload_count;
                     observe_client_receive_outcome(
                         measurements,
                         csv,
                         evidence_identity,
                         peer_id,
-                        ack_tracker,
                         {
-                            .received_outer_bytes =
+                            .received_packet_bytes =
                                 static_cast<std::uint32_t>(packet.payload.size()),
-                            .received_packet_count = 1U,
-                            .invalid_packet_count = 1U,
                             .decompression_encoding = "invalid",
-                            .decompression_result = "failed",
-                            .compressed_bytes = decompressed.input_bytes,
-                            .compression_payload_bytes = decompressed.encoded_payload_bytes,
-                            .compression_envelope_bytes = decompressed.envelope_bytes,
-                            .uncompressed_bytes = decompressed.output_bytes,
+                            .decompression_input_bytes = decompressed.input_bytes,
+                            .decompression_output_bytes = decompressed.output_bytes,
                             .decompression_elapsed_time = decompressed.decompression_elapsed_time,
                         },
                         simnet::ClientReplicationOutcome::DecompressionFailed,
@@ -1051,67 +850,19 @@ namespace simnet::app::client_replication
                                      .kind = simnet::ReassemblyResultKind::Invalid,
                                      .error = "snapshot delivery does not match configuration",
                                  };
-        if (reassembled.group_id != 0U &&
-            reassembled.kind != simnet::ReassemblyResultKind::Invalid &&
-            reassembled.kind != simnet::ReassemblyResultKind::LimitExceeded &&
-            reassembled.kind != simnet::ReassemblyResultKind::Stale)
-        {
-            record_group_transport_bytes(
-                pending_compression_groups,
-                reassembled.group_id,
-                static_cast<std::uint32_t>(packet.payload.size()),
-                now,
-                simnet::steady_now_ns(),
-                packetization.max_in_flight_groups
-            );
-        }
-
         auto receive_evidence = ClientReceiveEvidence{
             .group_id = reassembled.group_id,
-            .received_outer_bytes = static_cast<std::uint32_t>(packet.payload.size()),
-            .received_packet_count = 1U,
-            .retained_incomplete_group_count = reassembly_state.report.incomplete_groups,
-            .retained_incomplete_bytes = reassembly_state.report.retained_incomplete_bytes,
+            .received_packet_bytes = static_cast<std::uint32_t>(packet.payload.size()),
         };
-        if (compression.mode == simnet::app::CompressionMode::WholeUpdate)
-        {
-            receive_evidence.decompression_encoding = "not_required";
-        }
-        else if (valid && compression.mode == simnet::app::CompressionMode::PerPacket)
-        {
-            flatten_packet_decompression(receive_evidence, packet_decompression);
-        }
-        if (reassembled.kind == simnet::ReassemblyResultKind::Incomplete)
-        {
-            receive_evidence.incomplete_packet_count = 1U;
-        }
-        else if (reassembled.kind == simnet::ReassemblyResultKind::Duplicate)
-        {
-            receive_evidence.duplicate_packet_count = 1U;
-        }
-        else if (reassembled.kind == simnet::ReassemblyResultKind::Stale)
-        {
-            receive_evidence.stale_packet_count = 1U;
-        }
-        else if (reassembled.kind == simnet::ReassemblyResultKind::Invalid ||
-                 reassembled.kind == simnet::ReassemblyResultKind::LimitExceeded)
-        {
-            receive_evidence.invalid_packet_count = 1U;
-        }
-
-        auto const* pending_group =
-            find_pending_group(pending_compression_groups, reassembled.group_id);
-        if (pending_group != nullptr)
-        {
-            receive_evidence.group_wait_available = true;
-            receive_evidence.group_wait_time =
-                simnet::steady_now_ns() - pending_group->evidence_first_received_time;
-        }
-
+        flatten_packet_decompression(
+            receive_evidence,
+            compression.mode,
+            valid,
+            packet_decompression
+        );
         if (reassembled.kind == simnet::ReassemblyResultKind::Complete)
         {
             receive_evidence.group_id = reassembled.completed.group_id;
-            receive_evidence.group_chunk_count = reassembled.completed.chunk_count;
             auto encoded_bytes = simnet::ByteSpan{reassembled.completed.bytes};
             if (compression.mode == simnet::app::CompressionMode::WholeUpdate)
             {
@@ -1125,31 +876,21 @@ namespace simnet::app::client_replication
                     limits,
                     decompression_scratch
                 );
-                compression_report.latest_input_bytes = decompressed.input_bytes;
                 compression_report.latest_encoding = decompressed.encoding;
-                compression_report.latest_payload_bytes = decompressed.encoded_payload_bytes;
-                compression_report.latest_envelope_bytes = decompressed.envelope_bytes;
-                compression_report.latest_output_bytes = decompressed.output_bytes;
-                compression_report.decompression_elapsed_time +=
-                    decompressed.decompression_elapsed_time;
                 receive_evidence.decompression_encoding =
                     decompressed.encoding == simnet::CompressionEncoding::Raw ? "raw" : "zstd";
-                receive_evidence.decompression_result = decompressed.valid ? "success" : "failed";
-                receive_evidence.compressed_bytes = decompressed.input_bytes;
-                receive_evidence.compression_payload_bytes = decompressed.encoded_payload_bytes;
-                receive_evidence.compression_envelope_bytes = decompressed.envelope_bytes;
-                receive_evidence.uncompressed_bytes = decompressed.output_bytes;
+                receive_evidence.decompression_input_bytes = decompressed.input_bytes;
+                receive_evidence.decompression_output_bytes = decompressed.output_bytes;
                 receive_evidence.decompression_elapsed_time =
                     decompressed.decompression_elapsed_time;
                 if (!decompressed.valid)
                 {
-                    ++compression_report.invalid_payload_count;
+                    receive_evidence.decompression_encoding = "invalid";
                     observe_client_receive_outcome(
                         measurements,
                         csv,
                         evidence_identity,
                         peer_id,
-                        ack_tracker,
                         receive_evidence,
                         simnet::ClientReplicationOutcome::DecompressionFailed,
                         "whole_update_decompression_failed"
@@ -1161,20 +902,8 @@ namespace simnet::app::client_replication
                     );
                     return true;
                 }
-                if (decompressed.encoding == simnet::CompressionEncoding::Raw)
-                {
-                    ++compression_report.whole_update_raw_fallback_count;
-                }
                 encoded_bytes = decompression_scratch;
             }
-            auto const outer_bytes =
-                reassembled.completed.group_id == 0U
-                    ? static_cast<std::uint32_t>(packet.payload.size())
-                    : group_transport_bytes(
-                          pending_compression_groups,
-                          reassembled.completed.group_id,
-                          reassembled.completed.total_packet_bytes
-                      );
             auto const apply_outcome = apply_packet(
                 evidence_identity,
                 peer_id,
@@ -1204,18 +933,6 @@ namespace simnet::app::client_replication
             {
                 compression_report.latest_completed_representation_bytes =
                     static_cast<std::uint32_t>(encoded_bytes.size());
-                compression_report.latest_completed_transport_bytes = outer_bytes;
-                compression_report.canonical_entity_count =
-                    snapshot_history.empty()
-                        ? 0U
-                        : static_cast<std::uint32_t>(snapshot_history.back().snapshot.size());
-                std::erase_if(
-                    pending_compression_groups,
-                    [&](PendingCompressionGroup const& group)
-                    {
-                        return group.group_id <= reassembled.completed.group_id;
-                    }
-                );
                 if (compression.mode != simnet::app::CompressionMode::None &&
                     !logged_compression_application)
                 {
@@ -1228,13 +945,12 @@ namespace simnet::app::client_replication
                             " compression_mode=" +
                             std::string{simnet::app::compression_mode_name(compression.mode)} +
                             " representation_bytes=" + std::to_string(encoded_bytes.size()) +
-                            " transport_bytes=" + std::to_string(outer_bytes) +
                             " compressed_packets=" +
                             std::to_string(compression_report.compressed_packet_count) +
                             " raw_packets=" +
                             std::to_string(compression_report.raw_packet_count) +
                             " canonical_entities=" +
-                            std::to_string(compression_report.canonical_entity_count) +
+                            std::to_string(snapshot_history.back().snapshot.size()) +
                             " ack_sequence=" +
                             std::to_string(ack_tracker.value.newest_applied_snapshot)
                     );
@@ -1274,7 +990,6 @@ namespace simnet::app::client_replication
                 csv,
                 evidence_identity,
                 peer_id,
-                ack_tracker,
                 receive_evidence,
                 outcome,
                 detail
@@ -1284,17 +999,6 @@ namespace simnet::app::client_replication
         if (reassembled.kind == simnet::ReassemblyResultKind::Invalid ||
             reassembled.kind == simnet::ReassemblyResultKind::LimitExceeded)
         {
-            if (compression.mode == simnet::app::CompressionMode::PerPacket &&
-                reassembled.group_id != 0U)
-            {
-                std::erase_if(
-                    pending_compression_groups,
-                    [&](PendingCompressionGroup const& group)
-                    {
-                        return group.group_id == reassembled.group_id;
-                    }
-                );
-            }
             simnet::log(
                 simnet::LogCategory::Transport,
                 simnet::LogLevel::Warn,
@@ -1302,10 +1006,5 @@ namespace simnet::app::client_replication
             );
         }
         return valid;
-    }
-
-    void ClientReplicationReceiver::log_measurements() const
-    {
-        log_client_replication_measurements(measurements);
     }
 }

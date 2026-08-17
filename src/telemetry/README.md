@@ -17,10 +17,9 @@
 ### simnet.telemetry:metrics
 - `ServerReplicationMeasurement` - one Server replication attempt with application-owned stage
   durations and explicit byte ownership.
-- `ClientReplicationMeasurement` - one Client Snapshot-lane attempt from decode through canonical
-  snapshot commit and the nonauthoritative Flecs sink.
-- `ServerReplicationMeasurements` / `ClientReplicationMeasurements` - allocation-free latest
-  record and completion counts used by the current application runtimes.
+- `ClientReplicationMeasurement` - one Snapshot-lane application packet received by the Client.
+- `ServerReplicationMeasurements` / `ClientReplicationMeasurements` - allocation-free summary
+  counts and current Server records used by the application runtimes.
 
 The application runtimes own all timing boundaries. The telemetry module owns only value-like
 records and the allocation-free current observers. Snapshot, pipeline, transport, game, and render
@@ -45,12 +44,19 @@ Raw. Whole-update values describe the transform before packetization. Per-packet
 over complete packet transforms, so their input includes the explicit packet headers. Server v4
 has no dictionary, compression payload, or compression envelope columns.
 
-The Client records one row for each received Snapshot-lane application packet. In Client v3,
-`received_outer_bytes` is the current packet payload size. Per-packet decompression fields describe
-only the current packet rather than accumulated group work. Whole-update decompression appears only
-on the packet that completes reassembly, while earlier packets contain no decompression observation.
-Retained reconstructed snapshots remain canonical Client state. A failed attempt never enters
-`latest_applied` and never increments `applied_count`.
+Client v4 records exactly one row for each received Snapshot-lane application packet.
+`received_packet_bytes` is the current transport payload size. `packet_group_id` is reassembly
+identity, while `sequence` is decoded update identity. Before valid header inspection, sequence and
+update fields are zero and `snapshot_kind` is `not_available`. Functional reassembly expiry produces
+no CSV row.
+
+Per-packet decompression fields describe only the current packet. Raw and Zstd packets retain their
+own encoding, input, output, and complete transform elapsed time. Whole-update decompression appears
+only on the packet that completes reassembly. Earlier whole-update packets use `not_required` with
+zero decompression values. Disabled compression uses `disabled` with zero decompression values.
+Outcomes are the status authority, so packet outcome totals are derived by counting rows. Retained
+reconstructed snapshots remain canonical Client state, and canonical count and fingerprint appear
+only after successful application.
 
 Every replication duration column ending in `_elapsed_ns` is elapsed wall time measured with
 `std::chrono::steady_clock`. It is not process CPU time. Server v4 retains only encode, compression,
@@ -58,7 +64,8 @@ transport submission, and total replication elapsed time. Compression elapsed ti
 complete successful caller-visible transform, including envelope work, Raw copying, scratch work,
 and final output construction. Server total elapsed time starts with per-peer baseline work and ends
 after retention commit. Representation quality sampling runs after encoding and is excluded from
-both encode and total replication durations. The Client v3 timing contract remains unchanged.
+both encode and total replication durations. Client v4 retains only decompression, decode, and
+decode-to-applied elapsed time. Decode-to-applied is populated only for `applied` rows.
 
 The current runtime consumer keeps the latest attempt, latest successful result, and counts for
 the shutdown summary. Each application also submits every attempt to its role-specific CSV
@@ -68,7 +75,7 @@ writer after the measured stage ends.
 
 - `EvidenceRunContext` - immutable process role, process-start clocks, and validated run ID.
 - `ServerReplicationCsvWriter` - bounded peer-attributed Server rows and the Server v4 schema.
-- `ClientReplicationCsvWriter` - bounded typed Client rows and the Client v3 schema.
+- `ClientReplicationCsvWriter` - bounded typed Client packet rows and the Client v4 schema.
 - `EvidenceCsvFile` - exclusive creation and checked write, flush, and close operations.
 
 Server and Client accept optional `--run-id TEXT`. Supplied values must contain 1 to 64 ASCII
@@ -95,8 +102,8 @@ exclusive creation and are never truncated, appended to, or overwritten.
 Applications use explicit `close()` calls as the failure-reporting boundary. Destructors perform
 only best-effort fallback cleanup and do not report failures.
 
-Enabled files are named `server_replication_v4_<process_started_unix_ns>.csv`,
-`client_replication_v3_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
+Enabled files are named `server_replication_v4_<process_started_unix_ns>.csv` and
+`client_replication_v4_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
 version.
 
 When CSV evidence is disabled, writers create no directory or file. They also skip timestamp

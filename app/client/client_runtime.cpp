@@ -338,7 +338,6 @@ namespace
                 .expired_packet_groups = packet_report.expired_groups,
                 .invalid_packet_groups = packet_report.invalid_groups,
                 .compression_mode = simnet::app::compression_mode_name(compression_report.mode),
-                .compression_dictionary = "none",
                 .compression_outcome =
                     compression_report.mode == simnet::app::CompressionMode::None
                         ? std::optional<std::string_view>{"Disabled"}
@@ -352,7 +351,6 @@ namespace
                         ? std::optional<std::string_view>{"Zstd"}
                         : std::optional<std::string_view>{"Mixed"},
                 .representation_bytes = compression_report.latest_completed_representation_bytes,
-                .final_transport_bytes = compression_report.latest_completed_transport_bytes,
             };
         }
         return {
@@ -567,8 +565,6 @@ namespace simnet::app
                 .runtime_config_fingerprint = fingerprint_runtime_config(shared, local).value,
                 .network_compatibility_fingerprint = session_identity.compatibility_fingerprint,
                 .application_wire_fingerprint = session_identity.application_wire_fingerprint,
-                .compression_mode = compression_mode_name(compression.mode),
-                .packetization_enabled = packetization.enabled,
             };
 #if defined(SIMNET_ENABLE_RENDER)
             auto const run_setup = RunSetupStorage{
@@ -701,12 +697,7 @@ namespace simnet::app
                     break;
                 }
 
-                replication.expire(
-                    stats.raw_time,
-                    join_accepted,
-                    assigned_peer_id,
-                    *replication_csv
-                );
+                replication.expire(stats.raw_time);
 
                 for (auto& event : events)
                 {
@@ -1093,36 +1084,34 @@ namespace simnet::app
                     "client replication CSV close failed: " + std::string{replication_csv->error()}
                 );
             }
-            replication.log_measurements();
             auto const canonical_entities =
                 replication.snapshot_history.empty() ? 0U : replication.snapshot_history.back().snapshot.size();
             auto const canonical_fingerprint =
                 replication.snapshot_history.empty()
                     ? 0U
                     : app::snapshot_diagnostic_fingerprint(replication.snapshot_history.back().snapshot);
-            if (compression.mode == CompressionMode::WholeUpdate)
-            {
-                log(LogCategory::Pipeline,
-                    LogLevel::Info,
-                    "client whole-update compression sequence=" +
-                        std::to_string(replication.latest_applied_sequence) +
-                        " envelope_input_bytes=" +
-                        std::to_string(replication.compression_report.latest_input_bytes) + " payload_bytes=" +
-                        std::to_string(replication.compression_report.latest_payload_bytes) +
-                        " envelope_bytes=" +
-                        std::to_string(replication.compression_report.latest_envelope_bytes) +
-                        " output_bytes=" + std::to_string(replication.compression_report.latest_output_bytes) +
-                        " raw_fallbacks=" +
-                        std::to_string(replication.compression_report.whole_update_raw_fallback_count) +
-                        " decompression_elapsed_ns=" +
-                        std::to_string(
-                            std::max(
-                                replication.compression_report.decompression_elapsed_time,
-                                Nanoseconds{}
-                            )
-                                .count()
-                        ));
-            }
+            log(LogCategory::Telemetry,
+                LogLevel::Info,
+                "client evidence summary run_id=" + run_context.run_id + " path=" +
+                    (replication_csv->enabled() ? replication_csv->path().string()
+                                                : std::string{"disabled"}) +
+                    " shutdown_reason=" + std::string{shutdown_reason_name(stop.reason())} +
+                    " final_tick=" + std::to_string(stats.ticks) + " writer_healthy=" +
+                    std::string{replication_csv->healthy() ? "true" : "false"} +
+                    " submitted_packet_rows=" +
+                    std::to_string(replication_csv->submitted_count()) + " applied_updates=" +
+                    std::to_string(replication.measurements.applied_count) +
+                    " final_canonical_count=" + std::to_string(canonical_entities) +
+                    " final_canonical_fingerprint=" + std::to_string(canonical_fingerprint) +
+                    " latest_applied_sequence=" +
+                    std::to_string(replication.latest_applied_sequence) + " ack_sequence=" +
+                    std::to_string(replication.ack_tracker.value.newest_applied_snapshot) +
+                    " sequence_gaps=" + std::to_string(replication.sequence_gap_count) +
+                    " recovery_requests=" +
+                    std::to_string(replication.recovery_request_state.sent_count) +
+                    " dropped_ns=" + std::to_string(stats.dropped_time.count()) +
+                    " dropped_time_warning=" +
+                    std::string{stats.dropped_time > Nanoseconds{} ? "true" : "false"});
             log(LogCategory::Transport,
                 LogLevel::Info,
                 "client snapshot delivery mode=" + shared.snapshot_delivery.mode + " effective=" +
@@ -1131,13 +1120,8 @@ namespace simnet::app
                             ? app::transport_delivery_name(*replication.effective_snapshot_delivery)
                             : "unavailable"
                     } +
-                    " applied_sequence=" + std::to_string(replication.latest_applied_sequence) + " peer_id=" +
-                    std::to_string(assigned_peer_id) + " player_id=" + std::to_string(player_id) +
-                    " ack_sequence=" + std::to_string(replication.ack_tracker.value.newest_applied_snapshot) +
-                    " canonical_entities=" + std::to_string(canonical_entities) +
-                    " canonical_fingerprint=" + std::to_string(canonical_fingerprint) +
-                    " sequence_gaps=" + std::to_string(replication.sequence_gap_count) +
-                    " recovery_requests=" + std::to_string(replication.recovery_request_state.sent_count) +
+                    " peer_id=" + std::to_string(assigned_peer_id) +
+                    " player_id=" + std::to_string(player_id) +
                     " reliable_promotions=" + std::to_string(replication.reliable_promotion_count) +
                     " player_input_state_changes=" +
                     std::to_string(player_input_delivery.state_change_submission_count) +

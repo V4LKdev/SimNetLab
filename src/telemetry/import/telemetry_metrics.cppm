@@ -114,7 +114,6 @@ export namespace simnet
         PacketDuplicate,
         PacketInvalid,
         PacketStale,
-        PacketGroupExpired,
         DeliveryMismatch,
         DecompressionFailed,
         DecodeFailed,
@@ -125,11 +124,8 @@ export namespace simnet
         Applied
     };
 
-    /// One Client Snapshot-lane packet measured by the application runtime.
-    ///
-    /// Retained reconstructed snapshots are canonical Client state. Sink preparation and sink
-    /// application are separate so pipeline-only treatments can exclude the nonauthoritative
-    /// Client Flecs workload. decode_to_applied_elapsed_time is populated only for Applied.
+    /// One Snapshot-lane application packet received by the Client runtime.
+    /// Retained reconstructed snapshots are canonical Client state.
     struct ClientReplicationMeasurement
     {
         std::uint64_t runtime_config_fingerprint{};
@@ -139,62 +135,27 @@ export namespace simnet
         Tick tick{};
         SequenceId sequence{};
         SequenceId baseline_sequence{};
-        SequenceId acknowledged_sequence_before{};
-        SequenceId received_sequence_after{};
-        SequenceId acknowledged_sequence_after{};
-        SnapshotKind snapshot_kind{SnapshotKind::FullReplace};
+        std::string_view snapshot_kind{"not_available"};
         ClientReplicationOutcome outcome{ClientReplicationOutcome::DecodeFailed};
         std::string_view outcome_detail{"decode_failed"};
 
-        /// Complete pipeline update reported by decode.
+        std::uint32_t packet_group_id{};
+        std::uint32_t received_packet_bytes{};
+        std::string_view decompression_encoding{"disabled"};
+        std::uint32_t decompression_input_bytes{};
+        std::uint32_t decompression_output_bytes{};
+        /// Complete successful transform or the work completed by the failed current attempt.
+        Nanoseconds decompression_elapsed_time{};
+
+        /// Complete encoded update after a valid header establishes its identity.
         std::uint32_t encoded_update_bytes{};
         std::uint32_t upsert_count{};
         std::uint32_t delete_count{};
-        std::uint32_t reconstructed_entity_count{};
-        std::uint32_t final_sink_entity_count{};
+        std::uint32_t canonical_entity_count{};
         std::uint64_t canonical_fingerprint{};
-
-        bool packetization_enabled{};
-        std::uint32_t packet_group_id{};
-        std::uint32_t received_outer_bytes{};
-        std::uint32_t group_chunk_count{};
-        std::uint32_t received_packet_count{};
-        std::uint32_t duplicate_packet_count{};
-        std::uint32_t invalid_packet_count{};
-        std::uint32_t stale_packet_count{};
-        std::uint32_t incomplete_packet_count{};
-        std::uint32_t expired_group_count{};
-        std::uint32_t retained_incomplete_group_count{};
-        std::uint32_t retained_incomplete_bytes{};
-        bool packet_group_wait_available{};
-        /// Steady-clock elapsed wall time from the first packet to group completion.
-        Nanoseconds packet_group_wait_time{};
-
-        std::string_view compression_mode{"none"};
-        std::string_view decompression_encoding{"disabled"};
-        std::string_view decompression_result{"not_required"};
-        std::string_view compression_dictionary{"none"};
-        std::uint32_t compression_dictionary_id{};
-        std::uint64_t compression_dictionary_fingerprint{};
-        std::uint32_t compressed_bytes{};
-        std::uint32_t compression_payload_bytes{};
-        std::uint32_t compression_envelope_bytes{};
-        std::uint32_t uncompressed_bytes{};
-        /// Steady-clock elapsed wall time around production decompression.
-        Nanoseconds decompression_elapsed_time{};
 
         /// Steady-clock elapsed wall time around pipeline decoding.
         Nanoseconds decode_elapsed_time{};
-        /// Steady-clock elapsed wall time around retained-baseline lookup.
-        Nanoseconds baseline_resolution_elapsed_time{};
-        /// Steady-clock elapsed wall time around canonical snapshot reconstruction.
-        Nanoseconds reconstruction_elapsed_time{};
-        /// Steady-clock elapsed wall time around Flecs sink preparation.
-        Nanoseconds sink_preparation_elapsed_time{};
-        /// Steady-clock elapsed wall time around Flecs sink application.
-        Nanoseconds sink_application_elapsed_time{};
-        /// Steady-clock elapsed wall time around canonical state and ACK commit.
-        Nanoseconds canonical_snapshot_commit_elapsed_time{};
         /// Steady-clock elapsed wall time from decode start through canonical commit.
         Nanoseconds decode_to_applied_elapsed_time{};
     };
@@ -230,19 +191,13 @@ export namespace simnet
     /// Allocation-free current observer state for Client replication attempts.
     struct ClientReplicationMeasurements
     {
-        std::uint64_t attempt_count{};
         std::uint64_t applied_count{};
-        std::optional<ClientReplicationMeasurement> latest_attempt{};
-        std::optional<ClientReplicationMeasurement> latest_applied{};
 
         void observe(ClientReplicationMeasurement const& measurement) noexcept
         {
-            ++attempt_count;
-            latest_attempt = measurement;
             if (measurement.outcome == ClientReplicationOutcome::Applied)
             {
                 ++applied_count;
-                latest_applied = measurement;
             }
         }
     };
