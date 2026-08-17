@@ -6,7 +6,6 @@ add_executable(
         server_runtime.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_common.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cpp
-        app_compression_corpus.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cpp
         app_evidence.cpp
 )
@@ -19,7 +18,6 @@ target_sources(
         BASE_DIRS ${PROJECT_SOURCE_DIR}/app
         FILES
         ${PROJECT_SOURCE_DIR}/app/common/app_common.cppm
-        app_compression_corpus.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cppm
         app_evidence.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cppm

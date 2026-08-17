@@ -5,7 +5,6 @@ find_package(zstd CONFIG REQUIRED)
 
 add_executable(SimNetTests
         aoi_tests.cpp
-        app_compression_corpus_tests.cpp
         app_evidence_tests.cpp
         app_protocol_tests.cpp
         app_snapshot_delivery_tests.cpp
@@ -20,7 +19,6 @@ add_executable(SimNetTests
         telemetry_tests.cpp
         transport_tests.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_common.cpp
-        ${PROJECT_SOURCE_DIR}/app/server/app_compression_corpus.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cpp
         ${PROJECT_SOURCE_DIR}/app/server/app_evidence.cpp
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cpp
@@ -32,7 +30,6 @@ target_sources(SimNetTests
         BASE_DIRS ${PROJECT_SOURCE_DIR}
         FILES
         ${PROJECT_SOURCE_DIR}/app/common/app_common.cppm
-        ${PROJECT_SOURCE_DIR}/app/server/app_compression_corpus.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_compression_dictionary.cppm
         ${PROJECT_SOURCE_DIR}/app/server/app_evidence.cppm
         ${PROJECT_SOURCE_DIR}/app/common/app_protocol.cppm

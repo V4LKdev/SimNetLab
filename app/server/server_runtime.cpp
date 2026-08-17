@@ -27,7 +27,6 @@ module simnet.server_runtime;
 import :replication;
 
 import simnet.config;
-import simnet.app_compression_corpus;
 import simnet.app_compression_dictionary;
 import simnet.app_evidence;
 import simnet.app_common;
@@ -105,7 +104,6 @@ namespace
     {
         std::optional<std::filesystem::path> config_path{};
         std::optional<std::filesystem::path> shared_config_path{};
-        std::optional<std::filesystem::path> compression_corpus_directory{};
         std::optional<std::string> run_id{};
         std::uint64_t max_frames{};
         simnet::Tick max_ticks{};
@@ -166,12 +164,6 @@ namespace
             else if (option == "--run-id")
             {
                 options.run_id = simnet::app::next_option_value(index, argc, argv, option);
-            }
-            else if (option == "--compression-corpus-dir")
-            {
-                options.compression_corpus_directory = std::filesystem::path{
-                    simnet::app::next_option_value(index, argc, argv, option)
-                };
             }
             else if (option == "--max-frames")
             {
@@ -1498,7 +1490,6 @@ namespace simnet::app
     {
         auto replication_csv = std::optional<ServerReplicationCsvWriter>{};
         auto boid_csv = std::optional<ServerBoidCsvWriter>{};
-        auto compression_corpus = std::optional<CompressionCorpusWriter>{};
         try
         {
             auto const options = parse_options(argc, argv);
@@ -1545,27 +1536,6 @@ namespace simnet::app
             auto const collect_representation_quality = local.telemetry.metrics_csv_enabled;
 #endif
             auto const compression = make_compression_settings(shared);
-            if (options.compression_corpus_directory.has_value() &&
-                compression.mode != CompressionMode::WholeUpdate)
-            {
-                throw std::runtime_error(
-                    "--compression-corpus-dir requires whole_update compression"
-                );
-            }
-            compression_corpus.emplace(
-                CompressionCorpusWriterConfig{
-                    .output_directory = options.compression_corpus_directory,
-                    .run = run_context,
-                    .seed = shared.run.seed,
-                }
-            );
-            if (compression_corpus->enabled())
-            {
-                log(LogCategory::Pipeline,
-                    LogLevel::Info,
-                    "compression corpus manifest path=" +
-                        compression_corpus->manifest_path().string());
-            }
             auto compression_dictionary = load_compression_dictionary(compression);
             if (compression_dictionary.has_value())
             {
@@ -1868,7 +1838,6 @@ namespace simnet::app
                             area_of_interest_grid_state,
                             replication_measurements,
                             *replication_csv,
-                            *compression_corpus,
                             compression_dictionary.has_value() ? &*compression_dictionary : nullptr
                         ))
                     {
@@ -2053,12 +2022,6 @@ namespace simnet::app
             }
             disconnect_before_stop(transport, peers);
             transport.stop();
-            if (!compression_corpus->close())
-            {
-                throw std::runtime_error(
-                    "compression corpus close failed: " + std::string{compression_corpus->error()}
-                );
-            }
             if (!replication_csv->close())
             {
                 throw std::runtime_error(
@@ -2084,10 +2047,6 @@ namespace simnet::app
         catch (std::exception const& error)
         {
             auto close_error = std::string{};
-            if (compression_corpus.has_value() && !compression_corpus->close())
-            {
-                close_error = std::string{compression_corpus->error()};
-            }
             if (replication_csv.has_value() && !replication_csv->close())
             {
                 if (!close_error.empty())

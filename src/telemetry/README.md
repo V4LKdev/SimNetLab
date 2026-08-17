@@ -47,8 +47,8 @@ treatments include both and report sink application separately. A failed attempt
 Every replication duration column ending in `_elapsed_ns` is elapsed wall time measured with
 `std::chrono::steady_clock` around the named application stage. It is not process CPU time. Server
 total elapsed time starts after shared snapshot extraction and ends after retention commit.
-Optional corpus file I/O is excluded from that elapsed duration. Client total elapsed time starts
-at encoded-header inspection after reassembly and decompression and ends at canonical commit.
+Client total elapsed time starts at encoded-header inspection after reassembly and decompression
+and ends at canonical commit.
 Canonical fingerprint work happens after these measured totals. Representation quality sampling
 runs after encoding and is excluded from both encode and total replication durations. The Server
 snapshot extraction duration appears only on the first joined peer row for a tick.

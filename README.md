@@ -73,9 +73,6 @@ This preset disables rendering, Tracy instrumentation, tests, sanitizers, and th
 workload so those facilities cannot enter the measured application binaries. Tracy remains available
 as an opt-in CMake feature for dedicated profiling builds.
 
-The developer-only Server option `--compression-corpus-dir PATH` captures whole-update compression
-inputs for offline dictionary training.
-
 The default profiles are headless. To start the visual development profiles from the repository root:
 
 ```sh

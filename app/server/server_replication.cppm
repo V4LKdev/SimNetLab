@@ -18,7 +18,6 @@ module;
 module simnet.server_runtime:replication;
 
 import simnet.app_common;
-import simnet.app_compression_corpus;
 import simnet.app_compression_dictionary;
 import simnet.app_evidence;
 import simnet.app_protocol;
@@ -902,7 +901,6 @@ namespace simnet::app::server_replication
         AreaOfInterestGridState& area_of_interest_grid_state,
         simnet::ServerReplicationMeasurements& measurements,
         simnet::ServerReplicationCsvWriter& csv,
-        simnet::app::CompressionCorpusWriter& compression_corpus,
         simnet::app::LoadedCompressionDictionary const* compression_dictionary
     )
     {
@@ -1323,25 +1321,6 @@ namespace simnet::app::server_replication
             peer->latest_attempted_submissions = 0U;
             peer->latest_accepted_submissions = 0U;
             peer->latest_submission_error.clear();
-            auto corpus_captured = true;
-            if (compression_corpus.enabled())
-            {
-                auto const corpus_capture_start = simnet::steady_now_ns();
-                corpus_captured =
-                    compression_corpus
-                        .capture(peer->peer, pipeline, extraction.entity_count, encoded);
-                excluded_evidence_time += simnet::steady_now_ns() - corpus_capture_start;
-            }
-            if (!corpus_captured)
-            {
-                measurement.outcome = simnet::ServerReplicationOutcome::Abandoned;
-                measurement.outcome_detail = "corpus_capture_failed";
-                measurement.total_replication_elapsed_time = finish_total_time();
-                observe_encoded_measurement();
-                throw std::runtime_error(
-                    "compression corpus capture failed: " + std::string{compression_corpus.error()}
-                );
-            }
             auto group_bytes = std::move(encoded.update.bytes);
             if (compression.mode == simnet::app::CompressionMode::WholeUpdate)
             {
