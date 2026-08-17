@@ -45,13 +45,11 @@ Raw. Whole-update values describe the transform before packetization. Per-packet
 over complete packet transforms, so their input includes the explicit packet headers. Server v4
 has no dictionary, compression payload, or compression envelope columns.
 
-The Client records received outer bytes, reassembly outcomes, decompression, decode,
-retained-baseline resolution, reconstruction, sink preparation, Client Flecs sink application,
-canonical snapshot commit, ACK progression, and total decode-to-applied work. Incomplete,
-duplicate, invalid, stale, expired, decompression-failed, and non-commit application outcomes are
-rows rather than implied successes. Retained reconstructed snapshots remain canonical Client
-state. Pipeline-only treatments exclude sink preparation and sink application. Full-system
-treatments include both and report sink application separately. A failed attempt never enters
+The Client records one row for each received Snapshot-lane application packet. In Client v3,
+`received_outer_bytes` is the current packet payload size. Per-packet decompression fields describe
+only the current packet rather than accumulated group work. Whole-update decompression appears only
+on the packet that completes reassembly, while earlier packets contain no decompression observation.
+Retained reconstructed snapshots remain canonical Client state. A failed attempt never enters
 `latest_applied` and never increments `applied_count`.
 
 Every replication duration column ending in `_elapsed_ns` is elapsed wall time measured with
