@@ -6,7 +6,7 @@
 
 - `PipelineDefinition` describes the enabled techniques and their settings.
 - `ClientReplicationState` holds per-client sequence and incremental cursor state.
-- `PipelineScratch` owns reusable encode and decode buffers.
+- `PipelineScratch` owns reusable encode-side selection, preparation, and byte buffers.
 - `validate_pipeline_definition` rejects unsupported technique combinations and invalid settings.
 - `should_emit_snapshot` provides the pure cadence preflight used before baseline resolution.
 - `encode_snapshot` produces an encoded update or a skipped result. Emitted output includes the
@@ -17,7 +17,8 @@
 - `decode_update` validates encoded update bytes and returns a state update or an error report.
 - `pipeline_decode_signature` identifies the receiver-side representation.
 
-Each concurrent caller needs its own `ClientReplicationState` and `PipelineScratch`.
+Each concurrent encoder needs its own `ClientReplicationState` and `PipelineScratch`. Each
+concurrent decoder needs its own `ClientReplicationState`.
 
 ## Supported techniques
 

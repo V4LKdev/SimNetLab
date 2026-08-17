@@ -346,6 +346,13 @@ Use `client_visual.json` for a stationary observer Client. Use the same AOI, LOD
 representation, delivery, compression, or packetization shared profile in both processes for its
 named treatment.
 
+Build ordinary headless evidence binaries with:
+
+```sh
+cmake --preset evidence
+cmake --build --preset evidence
+```
+
 Build the synthetic treatments with the dedicated headless Release preset:
 
 ```sh

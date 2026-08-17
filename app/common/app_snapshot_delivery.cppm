@@ -24,7 +24,7 @@ export namespace simnet::app
     inline constexpr std::size_t maximum_retained_results = 64U;
     inline constexpr std::uint64_t maximum_retained_capacity_bytes = 128ULL * 1024ULL * 1024ULL;
     inline constexpr Nanoseconds maximum_retained_result_age = std::chrono::seconds(5);
-    /// Covers the maintained 100k workload plus application-owned entities with headroom.
+    /// Hard bound shared by queued recovery upserts and replacement snapshot validation.
     inline constexpr std::size_t maximum_recovery_upserts = 131'072U;
 
     enum class SnapshotRecoveryReason : std::uint8_t

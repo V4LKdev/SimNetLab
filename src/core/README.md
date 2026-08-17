@@ -1,5 +1,6 @@
-@defgroup core simnet.core
-@brief Dependency-free core vocabulary.
+# simnet_core
+
+`simnet_core` provides dependency-free core vocabulary.
 
 ## Exported Types
 

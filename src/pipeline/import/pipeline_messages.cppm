@@ -28,10 +28,15 @@ export namespace simnet
     {
         EntityRecordLayout layout{EntityRecordLayout::Raw};
         std::uint32_t record_bytes{};
+        /// Produced upserts included in source-to-canonical quality measurement.
         std::uint32_t quality_sample_count{};
+        /// Sum of Euclidean position error in world units.
         double position_error_sum{};
+        /// Maximum Euclidean position error in world units.
         double position_error_maximum{};
+        /// Sum of normalized heading angular error in degrees.
         double heading_angular_error_degrees_sum{};
+        /// Maximum normalized heading angular error in degrees.
         double heading_angular_error_degrees_maximum{};
     };
 

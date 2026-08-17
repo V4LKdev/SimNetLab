@@ -1,5 +1,6 @@
-@defgroup snapshot simnet.snapshot
-@brief Public replicated state contract for one simulation tick.
+# simnet_snapshot
+
+`simnet_snapshot` defines the public replicated state contract for one simulation tick.
 
 ## Exported Types
 

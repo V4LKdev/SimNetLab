@@ -1,5 +1,7 @@
-@defgroup telemetry simnet.telemetry
-@brief Logging, tracing, and typed runtime measurements.
+# simnet_telemetry
+
+`simnet_telemetry` provides logging, tracing, typed runtime measurements, and checked CSV
+persistence.
 
 ## Exported Types
 
@@ -24,6 +26,9 @@
 The application runtimes own all timing boundaries. The telemetry module owns only value-like
 records and the allocation-free current observers. Snapshot, pipeline, transport, game, and render
 reports remain domain results. They do not write research output.
+
+Server v4 has 68 columns and Client v4 has 31 columns. The role-specific CSV files are the research
+evidence authority. There is no separate boid evidence CSV and no dictionary telemetry.
 
 Server v4 records one row for every replication attempt. Static treatment configuration remains in
 the archived JSON and the configuration fingerprints rather than being repeated on every row. The
@@ -111,7 +116,8 @@ capture and row formatting. Application report flattening remains fixed-size val
 does no file I/O.
 
 No in-process field represents captured network bytes, operating-system counters, perf data,
-energy data, or netem data. Whole-process evidence remains external to application telemetry.
+energy data, or netem data. The repository has no Linux collector or perf wrapper. Whole-process
+perf evidence is collected manually outside application telemetry.
 
 ## Trace Macros
 

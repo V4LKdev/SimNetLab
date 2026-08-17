@@ -128,7 +128,7 @@ export namespace simnet
         ReassemblyReport report{};
     };
 
-    /// Throws on invalid settings. Call before first use and before each operation.
+    /// Throws on invalid settings. Packetization operations also validate settings before use.
     void validate_packetization_settings(PacketizationSettings const& settings);
 
     /// Builds a candidate packetized representation and reports failure without

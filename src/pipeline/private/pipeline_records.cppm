@@ -397,6 +397,7 @@ namespace simnet::pipeline_records
     void write_bitpacked_record(std::vector<Byte>& bytes, PreparedRecord const& prepared)
     {
         auto writer = pipeline_bitpack::BitWriter{.bytes = bytes};
+        // This looks cursed, but one explicit write per field keeps the 128-bit layout auditable.
         pipeline_bitpack::write_bits(writer, prepared.canonical.id, 32);
         pipeline_bitpack::write_bits(writer, prepared.canonical.classification.value(), 8);
         pipeline_bitpack::write_bits(writer, prepared.position_tokens[0], 16);
