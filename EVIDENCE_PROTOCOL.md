@@ -17,9 +17,12 @@ actual execution order must be archived.
 - Final run-level aggregates include only authoritative updates attributed to ticks 601 through
   2400.
 
-Reduced-cadence treatments do not produce one Server row per tick. A complete run reaches the
-complete authoritative interval and produces every update expected by the configured cadence. An
-intentionally skipped cadence tick does not require a Server row with outcome `sent`.
+Reduced-cadence treatments retain Server attempt rows on non-emission ticks. These rows use outcome
+`skipped` and outcome detail `cadence_skip`. Only configured cadence emissions may produce outcome
+`sent`. A complete run reaches the complete authoritative interval and produces every cadence
+emission expected from ticks 601 through 2400. Completeness does not require outcome `sent` on an
+intentionally skipped tick. Exclude intentionally skipped rows from sent-update, byte, and
+packet-submission aggregates.
 
 ## Run classes
 
@@ -35,21 +38,26 @@ convergence, and coarse application elapsed timings.
 - Use `build/evidence-synthetic` for the four controlled synthetic Delta workloads.
 - Rendering and Tracy must be disabled.
 - Set `telemetry.metrics_csv_enabled` to `true`.
-- Set `telemetry.console_log_enabled` and `telemetry.file_log_enabled` to `false` in the archived
-  Server and Client configurations.
+- Set `telemetry.console_log_enabled` to `true`.
+- Set `telemetry.file_log_enabled` to `false`.
+- Set `telemetry.min_level` to `info`.
 - Use the same logging and telemetry settings for every semantic treatment.
 - Use one shared run ID for Server and Client.
+- Redirect Server and Client stdout and stderr into the run archive.
+
+The redirected process output is the authority for shutdown reason, final tick, CSV writer health,
+dropped-time warnings, overload warnings, and fatal runtime diagnostics.
 
 ### Whole-process perf run
 
-A whole-process perf run collects whole-process `task-clock`, cycles, and instructions.
+A whole-process perf run collects whole-process `task-clock`, P-core cycles, and P-core instructions.
 
 - Use a separate process execution matched to the semantic treatment.
 - Set `telemetry.metrics_csv_enabled`, `telemetry.console_log_enabled`, and
   `telemetry.file_log_enabled` to `false`.
 - Keep rendering and Tracy disabled.
 - Keep the simulation and networking treatment identical to the matched semantic run.
-- Invoke each process directly with `perf stat -- <complete application command>`.
+- Invoke each process with the direct affinity and `perf stat` commands below.
 - Archive raw perf output and the exact expanded command.
 
 Application stage elapsed values are elapsed wall time. They are not process CPU time.
@@ -170,14 +178,22 @@ Client v4 has one row per received Snapshot-lane application packet. Nonterminal
 have `tick = 0`, `sequence = 0`, and `snapshot_kind = not_available`.
 
 - Do not select all Client packet rows by their own `tick` field.
-- Group Client rows by `packet_group_id`.
-- The terminal row establishes the decoded update tick and sequence.
-- Attribute every packet row in that completed group to the terminal row's tick and sequence.
-- Include the complete group when its terminal tick is from 601 through 2400.
-- Exclude the complete group when its terminal tick is outside the measured interval.
-- Treat a group originating from the measured interval but lacking a terminal row as an incomplete
-  run.
-- Do not use incomplete packet rows as independent observations.
+- Group packetized Client rows by `(peer_id, packet_group_id)`.
+- Never coalesce rows whose `packet_group_id` is zero.
+- Every nonzero `packet_group_id` corresponds to the Server snapshot sequence for that packetized
+  update.
+- Join Client `(peer_id, packet_group_id)` to Server `(peer_id, sequence)`.
+- Use the joined Server row to obtain the authoritative tick.
+- For a completed group, the terminal Client row also establishes decoded tick and sequence.
+- Include every packet row from a completed group when the joined Server tick is from 601 through
+  2400.
+- Exclude every packet row from a group whose joined Server tick is outside that interval.
+- A group with observed Client packet rows but no terminal Client row represents incomplete delivery
+  or observed loss.
+- An observed nonterminal group does not by itself invalidate an unreliable treatment.
+- Invalidate a repetition for an archive inconsistency, an unmatched nonzero Client group, another
+  declared completeness failure, or failure of final canonical convergence.
+- Expected unreliable packet loss does not automatically invalidate the repetition.
 - Treat Client packet bytes as diagnostic and validation evidence.
 - Derive primary submitted-byte and packet-count outcomes from Server v4.
 
@@ -258,6 +274,50 @@ The applications directly create only the timestamped v4 semantic CSV files in t
 passed to `perf stat`. If canonical semantic archive names are introduced after a run, they are
 post-run copies or renames made only after the application writer closes successfully.
 
+## Collection host CPU and perf setup
+
+The validated collection host exposes `cpu_core` CPUs `0-11` and `cpu_atom` CPUs `12-19`. The
+P-core SMT sibling pairs are:
+
+- `(0,1)`
+- `(2,3)`
+- `(4,5)`
+- `(6,7)`
+- `(8,9)`
+- `(10,11)`
+
+The E-cores are CPUs `12-19`. Final measurements use only the P-core PMU. Server affinity is CPUs
+`4,5`, and Client affinity is CPUs `6,7`. These are distinct physical P-cores. Apply the same
+affinities to semantic and whole-process perf runs for every treatment and repetition. Never sum
+Core and Atom hardware counts.
+
+The original host value was `kernel.perf_event_paranoid=2`. The collection value is
+`kernel.perf_event_paranoid=1`. Value `1` is required so unprivileged per-process measurement
+includes user and kernel execution. Recheck the value before every collection session and archive
+it with every run block. Restore the original value after collection, or document that a reboot
+restored it.
+
+Archive the exact output of:
+
+```sh
+sysctl kernel.perf_event_paranoid
+cat /sys/bus/event_source/devices/cpu_core/cpus
+cat /sys/bus/event_source/devices/cpu_atom/cpus
+lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE
+```
+
+The required perf events are:
+
+```text
+task-clock
+cpu_core/cycles/
+cpu_core/instructions/
+```
+
+A collection preflight is valid only when all three values are numeric, neither hardware event is
+`<not counted>`, no `cpu_atom` event is produced, no event is restricted with a `:u` modifier, and
+hardware event running coverage is effectively 100 percent. Archive the exact preflight output.
+
 ## Exact semantic commands
 
 Run Server and Client in separate terminals. Replace `<archive-root>` and `<run-id>` with archived
@@ -267,7 +327,7 @@ defined above.
 Ordinary Server:
 
 ```sh
-build/evidence/app/Server \
+taskset -c 4,5 build/evidence/app/Server \
   --config <archive-root>/config/server-semantic.json \
   --shared-config <archive-root>/config/shared.json \
   --run-id <run-id> \
@@ -278,7 +338,7 @@ build/evidence/app/Server \
 Ordinary Client:
 
 ```sh
-build/evidence/app/Client \
+taskset -c 6,7 build/evidence/app/Client \
   --config <archive-root>/config/client-semantic.json \
   --shared-config <archive-root>/config/shared.json \
   --run-id <run-id> \
@@ -289,7 +349,7 @@ build/evidence/app/Client \
 Synthetic Server:
 
 ```sh
-build/evidence-synthetic/app/Server \
+taskset -c 4,5 build/evidence-synthetic/app/Server \
   --config <archive-root>/config/server-semantic.json \
   --shared-config <archive-root>/config/shared.json \
   --run-id <run-id> \
@@ -300,7 +360,7 @@ build/evidence-synthetic/app/Server \
 Synthetic Client:
 
 ```sh
-build/evidence-synthetic/app/Client \
+taskset -c 6,7 build/evidence-synthetic/app/Client \
   --config <archive-root>/config/client-semantic.json \
   --shared-config <archive-root>/config/shared.json \
   --run-id <run-id> \
@@ -308,7 +368,8 @@ build/evidence-synthetic/app/Client \
   > <archive-root>/semantic/client.stdout.txt 2>&1
 ```
 
-Do not use a launcher. Archive both expanded commands exactly.
+Do not use a repository launcher or wrapper. Execute these `taskset` commands directly and archive
+both expanded commands exactly.
 
 ## Direct whole-process perf commands
 
@@ -318,8 +379,11 @@ perf-specific shared run ID and archived perf configurations with CSV and loggin
 Server terminal:
 
 ```sh
-perf stat --no-big-num -x, \
-  -e task-clock,cycles,instructions \
+taskset -c 4,5 \
+  perf stat --no-big-num -x, \
+  -e task-clock \
+  -e cpu_core/cycles/ \
+  -e cpu_core/instructions/ \
   -o <archive-root>/perf/server.csv \
   -- build/evidence/app/Server \
   --config <archive-root>/config/server-perf.json \
@@ -332,8 +396,11 @@ perf stat --no-big-num -x, \
 Client terminal:
 
 ```sh
-perf stat --no-big-num -x, \
-  -e task-clock,cycles,instructions \
+taskset -c 6,7 \
+  perf stat --no-big-num -x, \
+  -e task-clock \
+  -e cpu_core/cycles/ \
+  -e cpu_core/instructions/ \
   -o <archive-root>/perf/client.csv \
   -- build/evidence/app/Client \
   --config <archive-root>/config/client-perf.json \
@@ -378,12 +445,14 @@ wrapper are not part of this procedure.
 
 Before final collection, run five paired control repetitions with semantic CSV enabled and five
 matched control repetitions with semantic CSV disabled. Use the same host, binaries, treatment,
-and tick limits. Interleave or randomize the enabled and disabled order.
+affinity, and tick limits. Interleave or randomize the enabled and disabled execution order.
 
-Compare paired whole-process `task-clock` and primary networking outcomes. Report relative
-difference as `(enabled - disabled) / disabled` when the denominator is nonzero. Do not infer an
-unrecorded value. Keep final semantic and perf evidence separate when instrumentation materially
-changes process cost.
+Collect direct whole-process `task-clock` for both classes and compare paired whole-process
+`task-clock`. Report relative difference as `(enabled - disabled) / disabled` when the denominator
+is nonzero. Use only the CSV-enabled pilot runs to verify semantic validity and primary networking
+outcomes. CSV-disabled runs expose no SimNet CSV networking outcomes. Do not compare unrecorded
+networking outcomes between enabled and disabled runs. Keep final semantic and perf evidence as
+separate executions.
 
 ## Final dry-run checklist
 
