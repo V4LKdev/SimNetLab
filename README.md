@@ -32,7 +32,7 @@ run-level aggregates rather than treating individual tick or packet rows as inde
 Evidence builds exclude rendering. Direct whole-process perf measurements use separate process
 executions from semantic CSV runs. The authoritative collection procedure, fixed tick window,
 validity rules, commands, and archive convention are in
-[EVIDENCE_PROTOCOL.md](EVIDENCE_PROTOCOL.md).
+[BENCHMARKING.md](BENCHMARKING.md).
 
 ## Supported environment
 
@@ -108,8 +108,7 @@ build/evidence/app/Client \
   --max-ticks 2460
 ```
 
-Use the archived logging configuration, 30 repetitions, treatment ordering, and aggregation rules
-from the [final evidence protocol](EVIDENCE_PROTOCOL.md) for thesis data collection.
+See the [benchmarking guide](BENCHMARKING.md) when preparing measurements.
 
 ## Optional visual demonstration
 
