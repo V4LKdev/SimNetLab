@@ -1,48 +1,42 @@
 # simnet_transport
 
-`simnet_transport` moves opaque bytes between ENet peers and owns the SimNet session handshake. Apps provide session identity and map configuration at their boundary.
+`simnet_transport` moves opaque application bytes between ENet peers and performs the SimNet session
+handshake.
 
-It does not depend on config, telemetry, pipeline, snapshots, game modules, Flecs, rendering, benchmarking, or gameplay data.
-
-```txt
+```text
 public:  simnet_core
 private: ENet
 ```
 
 ## Session lifecycle
 
-```txt
+```text
 ENet connect
 -> ClientHello on lane 0
 -> ServerAccept or ServerReject
 -> PeerSessionReady
 ```
 
-`PeerConnected` reports an ENet connection. `PeerSessionReady` reports a matching SimNet session identity and permits app payloads. Duplicate hello messages after readiness are protocol errors. Identity mismatches identify the first mismatching field.
-
-The handshake payload is protocol version 4 and uses fixed-field message shapes for client hello, server accept, and server reject.
+`PeerConnected` reports the ENet connection. `PeerSessionReady` confirms a matching SimNet session
+identity and permits application payloads. The private handshake uses protocol version 4 with
+fixed-field ClientHello, ServerAccept, and ServerReject messages. Identity mismatches report the
+first differing field, and duplicate hello messages after readiness are protocol errors.
 
 ## Lanes and delivery
 
-`TransportLane::Lane0`, `Lane1`, and `Lane2` map directly to ENet channels 0, 1, and 2. The application owns the meaning of each lane after session readiness. Transport exposes every post-session payload as `ReceivedPacket` and accepts it through generic send operations. It does not parse application messages, acknowledgments, packet groups, or snapshot bytes.
+`TransportLane::Lane0`, `Lane1`, and `Lane2` map directly to ENet channels 0, 1, and 2. After session
+readiness, received payloads are exposed as `ReceivedPacket` without interpreting application
+messages.
 
-The API exposes only reliable sequenced and unreliable sequenced delivery. Reliable sequenced maps
-to `ENET_PACKET_FLAG_RELIABLE`. Unreliable sequenced maps to flags zero and therefore retains ENet's
-per-channel sequencing without reliability. Application configuration selects snapshot delivery.
+Reliable sequenced delivery maps to `ENET_PACKET_FLAG_RELIABLE`. Unreliable sequenced delivery uses
+ENet channel sequencing without reliability.
 
 `TransportLimits` rejects payloads above the configured application limit before ENet. Reliable
-sends within that limit may use ENet's internal fragmentation. Unreliable sequenced sends also
-reject payloads above the live peer MTU after public ENet protocol overhead because ENet would
-otherwise promote fragmentation to reliable delivery.
+payloads within that limit may use ENet fragmentation. Unreliable payloads also reject sizes above
+the live peer MTU after ENet protocol overhead, preventing ENet from promoting fragmentation to
+reliable delivery.
 
 ## Threading
 
-One owner thread uses each `TransportServer` or `TransportClient`. All lifecycle, poll, send, and disconnect calls stay on that thread. There are no background networking threads, callbacks, or hidden synchronization.
-
-Transport integration coverage is under `tests/` and verifies handshake readiness, identity rejection, lane traffic, limits, disconnects, timeout behavior, and reconnects.
-
-Lanes follow ENet channel ordering per protocol version 4 session rules.
-Reliable and unreliable delivery are session-transported application payload paths only.
-Transport remains byte-opaque.
-Disconnect events are application-visible commit points for lifecycle ownership changes.
-Diagnostic events continue to report recovery-relevant failures.
+One owner thread performs every lifecycle, poll, send, and disconnect operation for a
+`TransportServer` or `TransportClient`. Transport creates no background networking thread.

@@ -27,13 +27,13 @@ The application runtimes own all timing boundaries. The telemetry module owns on
 records and the allocation-free current observers. Snapshot, pipeline, transport, game, and render
 reports remain domain results. They do not write research output.
 
-Server v4 has 68 columns and Client v4 has 31 columns. The role-specific CSV files are the research
-evidence authority. There is no separate boid evidence CSV and no dictionary telemetry.
+Server v4 has 68 columns and Client v4 has 31 columns. These role-specific files contain the
+replication measurements. There is no separate boid CSV and no dictionary telemetry.
 
-Server v4 records one row for every replication attempt. Static treatment configuration remains in
-the archived JSON and the configuration fingerprints rather than being repeated on every row. The
-retained technique evidence covers AOI and LOD populations and scheduling, Delta selection and byte
-savings, representation error, compression, recovery, and canonical state identity.
+Server v4 records one row for every replication attempt. Static configuration stays in the JSON and
+configuration fingerprints instead of being repeated on every row. Its technique fields cover AOI
+and LOD populations and scheduling, Delta selection and byte savings, representation error,
+compression, recovery, and canonical state identity.
 
 `encoded_update_bytes` is the complete pipeline update including its application header.
 `transport_accepted_bytes` is the sum of application payload bytes accepted by the transport API.
@@ -59,8 +59,8 @@ Per-packet decompression fields describe only the current packet. Raw and Zstd p
 own encoding, input, output, and complete transform elapsed time. Whole-update decompression appears
 only on the packet that completes reassembly. Earlier whole-update packets use `not_required` with
 zero decompression values. Disabled compression uses `disabled` with zero decompression values.
-Outcomes are the status authority, so packet outcome totals are derived by counting rows. Retained
-reconstructed snapshots remain canonical Client state, and canonical count and fingerprint appear
+The `outcome` field records packet status, so outcome totals are derived by counting rows.
+Reconstructed snapshots remain canonical Client state, and canonical count and fingerprint appear
 only after successful application.
 
 Every replication duration column ending in `_elapsed_ns` is elapsed wall time measured with
@@ -115,9 +115,8 @@ When CSV evidence is disabled, writers create no directory or file. They also sk
 capture and row formatting. Application report flattening remains fixed-size value assignment and
 does no file I/O.
 
-No in-process field represents captured network bytes, operating-system counters, perf data,
-energy data, or netem data. The repository has no Linux collector or perf wrapper. Whole-process
-perf evidence is collected manually outside application telemetry.
+Application telemetry does not record operating-system counters, perf data, energy data, or netem
+data. Whole-process perf measurements are collected separately from application telemetry.
 
 ## Trace Macros
 
@@ -141,5 +140,5 @@ Tracy instrumentation is controlled by the CMake `SIMNET_ENABLE_TRACY` option. I
   `off`. Invalid values leave the active logger unchanged.
 - Replication measurement observation and CSV submission perform fixed-size value assignment
   without formatting, logging, file I/O, or heap allocation after startup reservation.
-- Tracy is an optional diagnostic view. It is not final research evidence.
+- Tracy is an optional diagnostic view and is excluded from headless measurements.
 - The color palette returned by `category_trace_color` is based on Tableau 10 and is tuned for distinctness in the profiler.

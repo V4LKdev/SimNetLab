@@ -1,6 +1,7 @@
 # simnet_pipeline
 
-`simnet_pipeline` selects snapshot data, transforms it, produces encoded updates, and decodes them into `SnapshotUpdate` values. It does not depend on transport, Flecs, configuration, telemetry, rendering, or client storage.
+`simnet_pipeline` selects snapshot data, transforms it, produces encoded updates, and decodes them
+into `SnapshotUpdate` values.
 
 ## Public API
 
@@ -42,7 +43,9 @@ bypass temporal scheduling.
 positions within configured bounds. `OctHeading` requires quantization and encodes a heading as two
 octahedral components.
 
-`BitPacking` requires quantization and octahedral headings. The current record layout totals 128 bits, which is also 16 bytes in the byte-aligned representation. It is retained for technique evaluation even though it currently does not reduce record size.
+`BitPacking` requires quantization and octahedral headings. The current record layout totals 128
+bits, which is also 16 bytes in the byte-aligned representation. This keeps layout comparison
+explicit even though it does not currently reduce record size.
 
 Every representation report identifies the active complete-record layout and width. When quality
 collection is requested, it reports Euclidean position error and normalized heading angular error

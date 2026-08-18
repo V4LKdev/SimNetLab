@@ -243,7 +243,7 @@ above. They also accept `gameplay`.
 | Key | Type and accepted values | Default | Meaning |
 | --- | --- | --- | --- |
 | `role` | `stationary_observer` or `player` | `stationary_observer` | Role requested after session readiness |
-| `stationary_observer_position` | Array of exactly three finite numbers | `[0, 0, 0]` | Locked observer position |
+| `stationary_observer_position` | Array of exactly three finite numbers | `[0, 0, 0]` | Fixed observer position |
 
 The gameplay role and observer position affect the Client runtime fingerprint but not network
 compatibility. Synthetic mode accepts only stationary observers.

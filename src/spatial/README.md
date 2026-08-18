@@ -1,11 +1,11 @@
 # simnet_spatial
 
-`simnet_spatial` is a reusable bounded sparse sorted uniform-grid acceleration module.
+`simnet_spatial` provides a bounded sparse uniform grid over caller-owned structure-of-arrays
+position data.
 
-It indexes external structure-of-arrays position data without owning those arrays.
+Rebuilds prepare worker-local scratch, build independent shards, then commit after validation and
+grid construction succeed. Committed ordering is deterministic for every worker count and shard
+completion order.
 
-Rebuilds are staged. Callers prepare reusable worker-local scratch, run shard builds, then commit only after validation and grid construction succeed. Committed output ordering is deterministic regardless of worker count or shard-completion order.
-
-Queries are allocation-free and read-only. Radius and AABB boundaries are inclusive, and exact position filtering runs after overlapping-cell enumeration.
-
-`simnet_spatial` depends on `simnet_core` and owns no gameplay, ECS, AOI policy, rendering, transport, or replication policy.
+Queries are allocation-free and read-only. Radius and AABB boundaries are inclusive, with exact
+position filtering after overlapping-cell enumeration.
