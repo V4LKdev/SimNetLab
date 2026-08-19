@@ -38,5 +38,6 @@ reliable delivery.
 
 ## Threading
 
-One owner thread performs every lifecycle, poll, send, and disconnect operation for a
-`TransportServer` or `TransportClient`. Transport creates no background networking thread.
+Each `TransportServer` or `TransportClient` is operated by one application-owned thread. A Server
+instance handles all connected peers on that same owner thread. SimNet and ENet create no
+additional networking thread.

@@ -8,17 +8,14 @@ simulation.
 
 ## Techniques
 
-- Area-of-interest selection with radius and field-of-view modes
-- Every-tick and reduced snapshot cadence
-- Distance-band level of detail
-- Position quantization
-- Octahedral heading encoding
-- Bit-packed records
-- Whole-record and field-mask Delta encoding
-- Reliable and unreliable sequenced delivery
-- No compression, whole-update Zstd, and per-packet Zstd
-- Bounded application packetization
-- Controlled synthetic Delta workloads
+- **Selection and scheduling:** Radius and field-of-view AOI, every-tick and reduced cadence, and
+  distance-band LOD.
+- **Representation:** Raw records, position quantization, octahedral heading encoding, and 128-bit
+  bit-packed records.
+- **Update reduction:** Whole-record and field-mask Delta encoding.
+- **Delivery:** Reliable and unreliable sequenced delivery with bounded application packetization.
+- **Compression:** No compression, whole-update ordinary Zstd, and per-packet ordinary Zstd.
+- **Workloads:** Authoritative boids and controlled synthetic Delta workloads.
 
 The [pipeline](src/pipeline/README.md) describes selection, representation, Delta, AOI, LOD, and
 encoding. See [compression](src/compression/README.md), [packetization](src/packetization/README.md),
@@ -42,8 +39,8 @@ executions from semantic CSV measurements. See [BENCHMARKING.md](BENCHMARKING.md
 - Dependencies supplied through the vcpkg submodule
 - Raylib only for optional rendering
 
-GNU C++ 16.2.1 was used for final headless validation. The optional renderer was not part of that
-measurement environment.
+The final headless benchmark builds were validated with GNU C++ 16.2.1. Raylib is required only for
+optional visual builds, which are excluded from benchmark runs.
 
 ## Setup
 
@@ -121,7 +118,8 @@ Visual state is for demonstration and diagnosis. See [render](src/render/README.
 
 ## Structure
 
-- `app/server` and `app/client` compose the executable runtimes.
+- `app/server` and `app/client` compose and orchestrate the executable runtimes. `app/common`
+  provides the shared application protocol and delivery state.
 - `simnet_core` defines bytes, identifiers, math, and fixed-step types.
 - `simnet_runtime` plans fixed-step frames and evaluates runtime limits.
 - `simnet_config` loads strict JSON configuration and computes fingerprints.
@@ -137,12 +135,11 @@ Visual state is for demonstration and diagnosis. See [render](src/render/README.
 - `simnet_telemetry` provides logging and versioned CSV persistence.
 - `simnet_render` provides the optional Raylib demonstration.
 
-## Limitations
+## Scope and limitations
 
 - SimNetLab is Linux-focused.
 - ENet is the only transport.
-- Application payload bytes are not physical wire bytes.
+- Reported transport bytes are application payload bytes accepted by ENet. They exclude lower-level
+  protocol overhead and physical network traffic.
 - The Client has no prediction.
-- Rendering is demonstrative and excluded from measurements.
 - Packet-loss recovery requires controlled and documented network impairment.
-- SimNetLab is a thesis prototype rather than release software.

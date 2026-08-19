@@ -23,35 +23,45 @@ concurrent decoder needs its own `ClientReplicationState`.
 
 ## Supported techniques
 
+### Cadence and incremental scheduling
+
 `SendInterval` uses the authoritative snapshot tick. Interval `1` emits every tick. Interval `N > 1`
-emits only when `tick % N == 0`. Other ticks return `Skipped` and do not change sequence,
-selection, scratch, or baseline state. `Incremental` without `Delta`
-schedules round-robin candidate upserts. `Delta` filters scheduled candidates against a retained
-explicit baseline, while retaining every baseline-only delete. The first non-Delta
-`Incremental` emission is a complete `FullReplace` and does not advance the cursor. Later
-incremental Patch carries the exact replica sequence and includes every entity removed from that
-replica. Applications choose the latest submitted replica for reliable ordered delivery or the
-latest ACK-proven replica for loss recovery. Without a
-baseline, `Delta` emits a complete `FullReplace` and does not advance the incremental cursor.
-`DistanceBands` level of detail operates on the AOI-retained population. It keeps complete entity
-records while making Near entities due every tick and distributing Medium and Far work across
-configured deterministic intervals. Due work remains latched until a successful update commit.
-It produces explicit-baseline Patches with or without Incremental and Delta. Incremental caps only
-ordinary pending work. Player self and delivery-recovery upserts bypass that cap. Deletes always
-bypass temporal scheduling.
-`Quantization` encodes
-positions within configured bounds. `OctHeading` requires quantization and encodes a heading as two
-octahedral components.
+emits only when `tick % N == 0`. Other ticks return `Skipped` without changing sequence, selection,
+scratch, or baseline state.
 
-`BitPacking` requires quantization and octahedral headings. The current record layout totals 128
-bits, which is also 16 bytes in the byte-aligned representation. This keeps layout comparison
-explicit even though it does not currently reduce record size.
+`Incremental` without `Delta` schedules candidate upserts with a fair round-robin scan. Its first
+emission is a complete `FullReplace` and does not advance the cursor. Later incremental Patches carry
+the exact replica sequence and include every entity removed from that replica.
 
-Every representation report identifies the active complete-record layout and width. When quality
-collection is requested, it reports Euclidean position error and normalized heading angular error
-for produced upserts only. Delta-suppressed candidates and deletes are not quality samples. Raw
-records report exact zero error. Byte-aligned and bit-packed octahedral records report identical
-canonical precision.
+### AOI and temporal LOD
+
+`DistanceBands` operates on the AOI-retained population and keeps complete entity records. Near
+entities are due every tick, while Medium and Far work is distributed across configured
+deterministic intervals. Due work remains latched until a successful update commit. Distance bands
+produce explicit-baseline Patches with or without `Incremental` and `Delta`.
+
+The Incremental cap limits only ordinary pending work. Player self and delivery-recovery upserts
+bypass the cap. Deletes bypass temporal scheduling.
+
+### Delta and recovery
+
+`Delta` filters scheduled candidates against an explicit retained baseline and preserves every
+baseline-only delete. Applications use the latest submitted replica for reliable ordered delivery
+and the latest ACK-proven replica for loss recovery. Without a baseline, `Delta` emits a complete
+`FullReplace` and does not advance the incremental cursor. Delivery-recovery upserts are merged
+after temporal scheduling and therefore bypass LOD and the ordinary Incremental cap.
+
+### Representation
+
+Raw records preserve the source values. `Quantization` encodes positions within configured bounds.
+`OctHeading` requires quantization and encodes a heading as two octahedral components. `BitPacking`
+requires both techniques and produces a 128-bit record. Byte-aligned octahedral and bit-packed
+records are both 16 bytes and have identical canonical precision.
+
+Each representation report identifies its complete-record layout and width. Optional quality
+collection reports Euclidean position error in world units and normalized heading angular error in
+degrees for produced upserts only. Delta-suppressed candidates and deletes are not samples. Raw
+records report exact zero error.
 
 ## Stage order and compatibility
 
@@ -63,7 +73,7 @@ canonical precision.
 | 4 | Update scheduling | `Incremental` | Optionally caps ordinary pending LOD work with a fair cyclic scan. It advances by serviced candidates, including candidates later removed by delta selection. |
 | 5 | Delivery recovery merge | Application-provided canonical IDs | Recovery upserts bypass temporal LOD and the ordinary Incremental cap. |
 | 6 | Delta selection | `Delta` plus an exact retained baseline | Filters scheduled or complete upsert candidates. Baseline-only deletes remain truthful and are included. Without a baseline this stage is inactive. |
-| 7 | Representation encoding | `Quantization`, `OctHeading` | Octahedral headings require quantization. PIPE-011 owns comparing delta candidates by canonical encoded values. |
+| 7 | Representation encoding | `Quantization`, `OctHeading` | Octahedral headings require quantization. Delta candidates are compared using canonical encoded values so representation changes remain consistent with transmitted state. |
 | 8 | Record layout | `BitPacking` | Bitpacking requires quantization and octahedral headings. It does not change decoded precision. |
 | 9 | Whole-update compression | `simnet_compression` | Outside the pipeline. It transforms the complete encoded update as opaque bytes. |
 | 10 | Application packetization | `simnet_packetization` | Outside the pipeline. It owns the hard payload budget and consumes opaque pipeline bytes. |
@@ -74,30 +84,42 @@ Unsupported stages fail validation. All active techniques otherwise compose when
 
 ## Contracts
 
+### State and sequencing
+
 - Sequence zero is reserved. Encoding fails if allocation would wrap to zero.
 - The encoded update size target is used only for reporting. Transport owns actual send limits.
 - `PipelineScratch` should be reused across calls to avoid recurring allocations.
+- With retained population `N`, Incremental cap `K`, and cadence `S`, persistent ordinary due work
+  is serviced within at most `ceil(N / K)` committed emissions. A conservative scheduling-age
+  bound is the band interval plus `ceil(N / K) * S` ticks. Network delivery delay is separate.
+
+### AOI and LOD boundaries
+
 - Active AOI requires a finite authoritative interest source. A missing source returns a skipped
   result and never falls back to the complete population.
 - Radius and conical FOV boundaries are inclusive. The FOV setting is a full angle in degrees.
   Zero-distance entities are retained and entities behind the source are rejected.
 - For offset `d`, radius accepts `dot(d, d) <= radius^2`. FOV also requires
   `dot(forward, d) >= 0` and `dot(forward, d)^2 >= dot(d, d) * cos(fov_degrees / 2)^2`.
-- The private wire header carries a magic value, protocol and schema versions, and a decode signature. Schema version 5 requires every Patch to carry an explicit nonzero baseline sequence. Decode rejects mismatches and stale sequences.
-- Patch decoding reports the declared baseline sequence. Client storage must retain and resolve that exact reconstructed snapshot before applying the patch.
 - Distance LOD uses Near when `distance_squared <= near_distance^2`, Medium through the inclusive
   medium boundary, and Far for the remainder of the AOI. Player self is always Near.
 - Boundary oscillation can increase transmitted work. No hysteresis is applied, and oscillation
   cannot clear pending work or change canonical convergence.
-- With retained population `N`, Incremental cap `K`, and cadence `S`, persistent ordinary due work
-  is serviced within at most `ceil(N / K)` committed emissions. A conservative scheduling-age
-  bound is the band interval plus `ceil(N / K) * S` ticks. Network delivery delay is separate.
+
+### Wire and baseline contract
+
+- The private wire header carries a magic value, protocol and schema versions, and a decode
+  signature. Schema versions 5 and 6 require every Patch to carry an explicit nonzero baseline
+  sequence. Decode rejects identity mismatches and stale sequences.
+- Patch decoding reports the declared baseline sequence. Client storage must retain and resolve that
+  exact reconstructed snapshot before applying the Patch.
 
 ### Reference FullReplace codec
 
 The reference layout is a complete, baseline-independent `FullReplace` with baseline sequence zero.
-All fields are fixed-width and written in network byte order. It uses IEEE 754 binary32 bit patterns
-for float fields and is not a native C++ object representation.
+All fields are fixed-width and written in network byte order. Float values are converted to their
+standard 32-bit IEEE 754 bit patterns and written in network byte order. The codec never writes a
+native C++ struct directly, so compiler padding and host byte order cannot alter the wire format.
 
 | Field | Width | Order |
 | --- | ---: | --- |
