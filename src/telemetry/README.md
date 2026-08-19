@@ -61,7 +61,8 @@ only after successful application and canonical commit.
 
 `compression_input_bytes` and `compression_output_bytes` cover complete ordinary Raw or Zstd
 transforms. Whole-update values describe the transform before packetization. Per-packet values are
-sums over complete packet transforms, so their input includes explicit packet headers.
+sums over complete packet transforms. When packetization is enabled, their input includes the
+explicit application packet headers.
 `compression_encoding` is `disabled`, `raw`, `zstd`, or `mixed`.
 `compression_raw_fallback` is true for whole-update Raw output or when any per-packet transform uses
 Raw.
@@ -84,19 +85,19 @@ and is populated only for `applied` rows.
 
 ## CSV lifecycle
 
-Server and Client accept optional `--run-id TEXT`. A supplied ID contains 1 to 64 ASCII characters
-and matches `[A-Za-z0-9][A-Za-z0-9._-]*`. It is preserved in the rows and never used in a path.
-Omitting it creates a process-local `server-<process_started_unix_ns>` or
+Server and Client accept optional `--run-id TEXT`. A supplied ID must contain 1 to 64 ASCII
+characters and match `[A-Za-z0-9][A-Za-z0-9._-]*`. It is preserved in the rows and never used in a
+path. Omitting it creates a process-local `server-<process_started_unix_ns>` or
 `client-<process_started_unix_ns>` value, which does not associate independently started processes.
 
 The application captures each record envelope after the measured stage. `record_order` defines file
 order. `recorded_at_unix_ns` supports approximate cross-process alignment, while
 `elapsed_since_process_start_ns` is monotonic within one process.
 
-Each writer reserves 256 typed records and requests a drain at 128. Submission copies the
-measurement and envelope. Formatting and file I/O occur during explicit application drains outside
-replication timing. Observation and submission remain fixed-size value assignment after startup
-reservation.
+Each writer reserves 256 typed records and requests a drain at 128. Runtime observation is
+fixed-size value assignment. Writer submission copies the measurement and takes ownership of its
+text fields. Formatting and file I/O occur during explicit application drains outside replication
+timing.
 
 Files use exclusive creation and are never truncated, appended to, or overwritten. Buffer overflow
 and open, write, flush, or close failures fail evidence collection and the owning process. Explicit
