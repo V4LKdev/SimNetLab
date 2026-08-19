@@ -55,6 +55,10 @@ cd SimNetLab
 ./bootstrap.sh
 ```
 
+The script initializes the vcpkg submodule, bootstraps vcpkg when needed, configures the Debug
+preset, and builds it. The following CMake commands are the equivalent manual commands. Run the
+test preset afterward:
+
 ```sh
 cmake --preset debug
 cmake --build --preset debug
@@ -81,16 +85,20 @@ Start Server and Client in separate terminals with the same shared profile and r
 ```sh
 build/evidence/app/Server \
   --config config/server_default.json \
-  --shared-config config/shared_compression_none_aoi_radius_visual.json \
-  --run-id example-headless
+  --shared-config config/shared_demo_network.json \
+  --run-id example-headless \
+  --max-ticks 600
 ```
 
 ```sh
 build/evidence/app/Client \
   --config config/client_default.json \
-  --shared-config config/shared_compression_none_aoi_radius_visual.json \
-  --run-id example-headless
+  --shared-config config/shared_demo_network.json \
+  --run-id example-headless \
+  --max-ticks 600
 ```
+
+The tick limit only keeps the example bounded. It is not an experiment prescription.
 
 ## Visual demo
 
@@ -113,6 +121,7 @@ Visual state is for demonstration and diagnosis. See [render](src/render/README.
 
 ## Structure
 
+- `app/server` and `app/client` compose the executable runtimes.
 - `simnet_core` defines bytes, identifiers, math, and fixed-step types.
 - `simnet_runtime` plans fixed-step frames and evaluates runtime limits.
 - `simnet_config` loads strict JSON configuration and computes fingerprints.

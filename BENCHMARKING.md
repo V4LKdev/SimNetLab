@@ -89,7 +89,7 @@ Server:
 ```sh
 build/evidence/app/Server \
   --config config/server_default.json \
-  --shared-config config/shared_compression_none_aoi_radius_visual.json \
+  --shared-config config/shared_demo_network.json \
   --run-id public-example \
   --max-ticks 600
 ```
@@ -99,7 +99,7 @@ Client:
 ```sh
 build/evidence/app/Client \
   --config config/client_default.json \
-  --shared-config config/shared_compression_none_aoi_radius_visual.json \
+  --shared-config config/shared_demo_network.json \
   --run-id public-example \
   --max-ticks 600
 ```
