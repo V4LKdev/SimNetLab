@@ -1,144 +1,130 @@
 # simnet_telemetry
 
-`simnet_telemetry` provides logging, tracing, typed runtime measurements, and checked CSV
-persistence.
+`simnet_telemetry` provides logging, tracing, typed runtime measurements, and checked CSV persistence.
 
-## Exported Types
+## Public API
 
-### simnet.telemetry:types
-- `LogLevel` - severity levels: Trace, Debug, Info, Warn, Error, Critical, Off.
-- `LogCategory` - source categories: Core, Config, Telemetry, Simulation, Snapshot, Spatial, Pipeline, Transport, Render, Benchmark.
-- `category_trace_color` - returns a Tracy-compatible RGBA color for each log category.
+- `simnet.telemetry:types` exports `LogLevel`, `LogCategory`, timing aliases, and `category_trace_color`.
+- `simnet.telemetry:log` exports `initialize_telemetry`, `shutdown_telemetry`, `log`, and `log_enabled`.
+- `simnet.telemetry:metrics` exports Server and Client measurement records and current observers.
+- `simnet.telemetry:csv` exports `EvidenceRunContext`, `EvidenceCsvFile`, and role-specific writers.
 
-### simnet.telemetry:log
-- `initialize_telemetry` - replaces the configured logging sinks. Zero sinks disable logging.
-- `shutdown_telemetry` - flushes and releases all sinks. Safe to call multiple times.
-- `log` - writes a message when a configured sink accepts its severity.
-- `log_enabled` - reports whether a configured sink accepts a severity before callers format text.
+Application runtimes own the measurement boundaries. Telemetry owns value-like records, current
+observers, logging, and persistence. Snapshot, pipeline, transport, game, and render reports remain
+domain results and do not write CSV output.
 
-### simnet.telemetry:metrics
-- `ServerReplicationMeasurement` - one Server replication attempt with application-owned stage
-  durations and explicit byte ownership.
-- `ClientReplicationMeasurement` - one Snapshot-lane application packet received by the Client.
-- `ServerReplicationMeasurements` / `ClientReplicationMeasurements` - allocation-free summary
-  counts and current Server records used by the application runtimes.
+## Evidence ownership
 
-The application runtimes own all timing boundaries. The telemetry module owns only value-like
-records and the allocation-free current observers. Snapshot, pipeline, transport, game, and render
-reports remain domain results. They do not write research output.
+Server v4 has 68 columns and Client v4 has 31 columns. Static configuration remains in archived JSON
+and fingerprints instead of being repeated in every row. The role-specific CSV files contain the
+replication measurements. There is no separate boid CSV or dictionary telemetry.
 
-Server v4 has 68 columns and Client v4 has 31 columns. These role-specific files contain the
-replication measurements. There is no separate boid CSV and no dictionary telemetry.
+Runtime configuration fingerprints are role-local and are not expected to match across processes.
+Network compatibility and application-wire fingerprints must match between a connected Server and
+Client. Server rows carry the Server-assigned peer ID and accepted gameplay role. Client rows carry
+that peer ID and the authoritative role from `JoinAccepted`.
 
-Server v4 records one row for every replication attempt. Static configuration stays in the JSON and
-configuration fingerprints instead of being repeated on every row. Its technique fields cover AOI
-and LOD populations and scheduling, Delta selection and byte savings, representation error,
-compression, recovery, and canonical state identity.
+## Server v4
+
+Server v4 records one row for every replication attempt, including skips and terminal failures. Its
+technique fields cover AOI and LOD populations and scheduling, Delta selection and bytes,
+representation error, compression, recovery, and canonical state identity.
 
 `encoded_update_bytes` is the complete pipeline update including its application header.
-`transport_accepted_bytes` is the sum of application payload bytes accepted by the transport API.
-`transport_accepted_packet_count` is the number of accepted application packet submissions. These
-values do not claim to be physical UDP wire bytes or datagrams. Mean accepted application packet
-size is derived by dividing accepted bytes by accepted packet count. `packet_header_bytes` is the
-total explicit application packet header size prepared for the update.
+`transport_accepted_bytes` is the application payload accepted by the transport API, and
+`transport_accepted_packet_count` counts accepted application packet submissions. Neither field
+claims physical wire bytes or UDP datagrams. `packet_header_bytes` is the total explicit application
+packet header size prepared for the update.
 
-`compression_input_bytes` and `compression_output_bytes` bound the complete ordinary Raw or Zstd
-transform. `compression_encoding` is `disabled`, `raw`, `zstd`, or `mixed`.
-`compression_raw_fallback` is true for whole-update Raw output or when any per-packet transform used
-Raw. Whole-update values describe the transform before packetization. Per-packet values are sums
-over complete packet transforms, so their input includes the explicit packet headers. Server v4
-has no dictionary, compression payload, or compression envelope columns.
+The runtime observer retains the latest attempt, latest successful result, and summary counts. The
+application also submits every attempt to the Server writer after the measured stage ends.
+
+## Client v4
 
 Client v4 records exactly one row for each received Snapshot-lane application packet.
-`received_packet_bytes` is the current transport payload size. `packet_group_id` is reassembly
-identity, while `sequence` is decoded update identity. Before valid header inspection, sequence and
-update fields are zero and `snapshot_kind` is `not_available`. Functional reassembly expiry produces
-no CSV row.
+`received_packet_bytes` is the current packet's transport payload size. `packet_group_id` identifies
+reassembly, while `sequence` identifies a decoded update.
+
+Before valid update-header inspection, sequence and update fields are zero and `snapshot_kind` is
+`not_available`. Functional reassembly expiry emits no CSV row. The `outcome` field records packet
+status.
 
 Per-packet decompression fields describe only the current packet. Raw and Zstd packets retain their
-own encoding, input, output, and complete transform elapsed time. Whole-update decompression appears
-only on the packet that completes reassembly. Earlier whole-update packets use `not_required` with
-zero decompression values. Disabled compression uses `disabled` with zero decompression values.
-The `outcome` field records packet status, so outcome totals are derived by counting rows.
-Reconstructed snapshots remain canonical Client state, and canonical count and fingerprint appear
-only after successful application.
+own encoding, input, output, and elapsed transform work. Whole-update decompression appears only on
+the packet that completes reassembly. Earlier packets use `not_required` with zero decompression
+values. Disabled compression uses `disabled` with zero decompression values.
 
-Every replication duration column ending in `_elapsed_ns` is elapsed wall time measured with
-`std::chrono::steady_clock`. It is not process CPU time. Server v4 retains only encode, compression,
-transport submission, and total replication elapsed time. Compression elapsed time covers the
-complete successful caller-visible transform, including envelope work, Raw copying, scratch work,
-and final output construction. Server total elapsed time starts with per-peer baseline work and ends
-after retention commit. Representation quality sampling runs after encoding and is excluded from
-both encode and total replication durations. Client v4 retains only decompression, decode, and
-decode-to-applied elapsed time. Decode-to-applied is populated only for `applied` rows.
+Reconstructed snapshots are canonical Client state. Canonical count and fingerprint are populated
+only after successful application and canonical commit.
 
-The current runtime consumer keeps the latest attempt, latest successful result, and counts for
-the shutdown summary. Each application also submits every attempt to its role-specific CSV
-writer after the measured stage ends.
+## Timing and byte boundaries
 
-### simnet.telemetry:csv
+`compression_input_bytes` and `compression_output_bytes` cover complete ordinary Raw or Zstd
+transforms. Whole-update values describe the transform before packetization. Per-packet values are
+sums over complete packet transforms, so their input includes explicit packet headers.
+`compression_encoding` is `disabled`, `raw`, `zstd`, or `mixed`.
+`compression_raw_fallback` is true for whole-update Raw output or when any per-packet transform uses
+Raw.
 
-- `EvidenceRunContext` - immutable process role, process-start clocks, and validated run ID.
-- `ServerReplicationCsvWriter` - bounded peer-attributed Server rows and the Server v4 schema.
-- `ClientReplicationCsvWriter` - bounded typed Client packet rows and the Client v4 schema.
-- `EvidenceCsvFile` - exclusive creation and checked write, flush, and close operations.
+Every replication field ending in `_elapsed_ns` is steady-clock elapsed wall time, not process CPU
+time. Compression and decompression timing covers the complete caller-visible transform, including
+envelope work, codec or Raw work, scratch storage, and final output construction. A failed Client
+decompression attempt reports only work completed for that current packet.
 
-Server and Client accept optional `--run-id TEXT`. Supplied values must contain 1 to 64 ASCII
-characters and match `[A-Za-z0-9][A-Za-z0-9._-]*`. The value is preserved in CSV fields and is
-never used in a path. An omitted value becomes `server-<process_started_unix_ns>` or
-`client-<process_started_unix_ns>`. Independently generated defaults do not prove that two
-processes belong to the same experiment.
+Server v4 retains `encode_elapsed_ns`, `compression_elapsed_ns`,
+`transport_submission_elapsed_ns`, and `total_replication_elapsed_ns`. Total replication timing
+starts with per-peer baseline work and ends after retention commit. Encode timing wraps pipeline
+encoding, while transport submission timing wraps the complete packet-submission loop.
+Representation quality sampling runs after encoding and is excluded from encode and total
+replication timing.
 
-The application captures each record envelope after its measured replication stage.
-`record_order` is the authoritative order within one file. `recorded_at_unix_ns` supports
-approximate cross-process alignment. `elapsed_since_process_start_ns` is monotonic within the
-process. The role and process-start timestamp identify the producing process. Server rows store
-the Server-assigned peer ID and accepted gameplay role. Client rows store the Server-assigned peer
-ID and authoritative role from `JoinAccepted`. Runtime configuration fingerprints are role-local
-and are not expected to match. Network compatibility and application-wire fingerprints are
-expected to match between Server and Client.
+Client v4 retains `decompression_elapsed_ns`, `decode_elapsed_ns`, and
+`decode_to_applied_elapsed_ns`. Decode-to-applied starts with decode and ends after canonical commit,
+and is populated only for `applied` rows.
 
-Replication writers reserve 256 typed records at startup and request a drain at 128. Submission
-copies only the measurement and envelope. Formatting and file I/O occur during explicit
-application drains outside replication timing boundaries. Buffer overflow and open, write, flush,
-or close failures make evidence collection fail and cause the owning process to fail. Files use
-exclusive creation and are never truncated, appended to, or overwritten.
+## CSV lifecycle
 
-Applications use explicit `close()` calls as the failure-reporting boundary. Destructors perform
-only best-effort fallback cleanup and do not report failures.
+Server and Client accept optional `--run-id TEXT`. A supplied ID contains 1 to 64 ASCII characters
+and matches `[A-Za-z0-9][A-Za-z0-9._-]*`. It is preserved in the rows and never used in a path.
+Omitting it creates a process-local `server-<process_started_unix_ns>` or
+`client-<process_started_unix_ns>` value, which does not associate independently started processes.
 
-Enabled files are named `server_replication_v4_<process_started_unix_ns>.csv` and
+The application captures each record envelope after the measured stage. `record_order` defines file
+order. `recorded_at_unix_ns` supports approximate cross-process alignment, while
+`elapsed_since_process_start_ns` is monotonic within one process.
+
+Each writer reserves 256 typed records and requests a drain at 128. Submission copies the
+measurement and envelope. Formatting and file I/O occur during explicit application drains outside
+replication timing. Observation and submission remain fixed-size value assignment after startup
+reservation.
+
+Files use exclusive creation and are never truncated, appended to, or overwritten. Buffer overflow
+and open, write, flush, or close failures fail evidence collection and the owning process. Explicit
+`close()` is the checked failure boundary. Destructors perform only best-effort cleanup.
+
+Enabled filenames are `server_replication_v4_<process_started_unix_ns>.csv` and
 `client_replication_v4_<process_started_unix_ns>.csv`. Semantic column changes require a new schema
-version.
+version. When CSV is disabled, writers create no directory or file and skip timestamp capture and
+row formatting.
 
-When CSV evidence is disabled, writers create no directory or file. They also skip timestamp
-capture and row formatting. Application report flattening remains fixed-size value assignment and
-does no file I/O.
+## Logging
 
-Application telemetry does not record operating-system counters, perf data, energy data, or netem
-data. Whole-process perf measurements are collected separately from application telemetry.
+`initialize_telemetry` validates configuration and replaces the active sinks. Zero sinks disable
+logging, while initialization failure preserves the current logger. `log_enabled` lets callers
+avoid formatting rejected messages. `shutdown_telemetry` flushes and releases sinks and is
+idempotent.
 
-## Trace Macros
+Logging calls are thread-safe, but initialization and shutdown must be serialized externally.
+Calls before initialization, after shutdown, or with no sinks are no-ops. Accepted level names are
+`trace`, `debug`, `info`, `warn`, `error`, `critical`, and `off`. Invalid values leave the active
+logger unchanged. Application-owned replication observers are not synchronized.
 
-Include `<simnet/telemetry_trace.hpp>` to use these macros. They expand to no-ops unless the build system sets `SIMNET_ENABLE_TRACY=1` and links `Tracy::TracyClient`.
+## Tracy
 
-- `SIMNET_TRACE_SCOPE(name)` - scoped profiling zone.
-- `SIMNET_TRACE_SCOPE_C(name, color)` - scoped zone with a user-defined RGBA color.
-- `SIMNET_TRACE_PLOT(name, value)` - plots a value on a timeline.
-- `SIMNET_TRACE_FRAME(name)` - marks a frame boundary.
+Include `<simnet/telemetry_trace.hpp>` for `SIMNET_TRACE_SCOPE`, `SIMNET_TRACE_SCOPE_C`,
+`SIMNET_TRACE_PLOT`, and `SIMNET_TRACE_FRAME`. They expand to no-ops unless CMake enables
+`SIMNET_ENABLE_TRACY=1` and links `Tracy::TracyClient`.
 
-Use `category_trace_color(...)` to obtain the recommended color for a `LogCategory` when calling `SIMNET_TRACE_SCOPE_C`.
-
-Tracy instrumentation is controlled by the CMake `SIMNET_ENABLE_TRACY` option. It is not a JSON runtime setting. Capture while the process is running. Server and Client log whether their executable includes Tracy instrumentation during startup.
-
-## Notes
-
-- Logging functions are thread-safe. Initialization and shutdown must be serialized externally.
-  Calls before initialization, after shutdown, or under a zero-sink configuration are no-ops.
-  Replication observers are application-owned and are not synchronized.
-- Logging initialization accepts only `trace`, `debug`, `info`, `warn`, `error`, `critical`, or
-  `off`. Invalid values leave the active logger unchanged.
-- Replication measurement observation and CSV submission perform fixed-size value assignment
-  without formatting, logging, file I/O, or heap allocation after startup reservation.
-- Tracy is an optional diagnostic view and is excluded from headless measurements.
-- The color palette returned by `category_trace_color` is based on Tableau 10 and is tuned for distinctness in the profiler.
+Tracy is a compile-time diagnostic option, not a JSON setting, and is excluded from headless
+measurements. Server and Client report its availability at startup. `category_trace_color` supplies
+the recommended `LogCategory` color for colored zones.

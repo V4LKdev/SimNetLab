@@ -1,84 +1,78 @@
 # simnet_render
 
-`simnet_render` is a generic Raylib viewer for caller-owned entity SoA data. Its public API depends only on `simnet_core`. Raylib is a private implementation dependency.
+## Purpose and boundary
 
-The implementation is divided by responsibility. `render_viewer.cpp` owns
-window/resource lifetime, cameras, input, and selection.
-`render_viewer_scene.cpp` prepares and submits entity and debug geometry, and
-`render_ui_model.cpp` builds fixed-capacity inspector sections without recurring
-heap allocation. `render_viewer_panel.cpp` owns sidebar layout, scrolling, and
-UI interaction. `render_viewer_viewport_ui.cpp` draws the
-toolbar menus, contextual help, selection card, and orientation gizmo. The shared
-private implementation header contains only Viewer state and internal helpers.
-It is not part of the module's public API.
+`simnet_render` is a generic Raylib viewer for caller-owned structure-of-arrays entity data. Its
+public API depends only on `simnet_core`, while Raylib is a private implementation dependency.
 
-Viewer construction releases every acquired Raylib resource if a later initialization step fails.
-Normal destruction releases the same resources in reverse ownership order.
+The application owns simulation, networking, snapshots, gameplay roles, and configuration. The
+viewer consumes prepared presentation data and returns user intent plus aggregate timing and draw
+statistics.
 
-The private panel uses the tracked JetBrains Mono Nerd Font Regular resource
-from `src/render/assets/JetBrainsMonoNerdFont-Regular.ttf`. The viewer loads a bounded
-ASCII and interface-icon glyph set at startup rather than building an atlas for
-the entire patched font. The font is distributed under the SIL Open Font
-License 1.1 in `src/render/assets/JetBrainsMonoNerdFont-OFL.txt`.
+## Input and ownership
 
-`RenderEntityView` does not own state. Its identifier, position, heading, and hue spans must remain valid for the duration of `Viewer::draw()`. Mismatched span lengths reject the entity frame without reading it. Entities with non-finite position or heading values are skipped during preparation.
+`RenderEntityView` contains non-owning identifier, position, heading, and hue spans. The caller must
+keep every span valid for the complete `Viewer::draw()` call. Mismatched lengths reject the entity
+batch, and entities with non-finite positions or headings are skipped during preparation.
 
-The viewer creates one fixed `1800 x 1080` window per process. A `420` pixel
-Raylib panel provides room for the 16-pixel body type scale. The remaining
-`1380 x 1080` region draws the scene render texture. The procedural wedge mesh
-points along local `+Z` with local `+Y` up.
+Other frame inputs are also caller-owned. `SpatialDebugView`, producer-resolved debug primitives,
+selected-entity details, camera poses, and `RunSetupView` remain valid for the draw call.
+Applications prepare the read-only Setup view from effective configuration and fingerprints. They
+also resolve presentation interpolation before calling `Viewer::draw()`.
 
-The viewer uses 32 persistent hue buckets and one instanced draw per non-empty bucket. It renders world bounds, optional world-origin axes, a permanent camera-relative orientation gizmo, and an overview orbit camera. Right drag orbits, the wheel zooms, and `R` resets the active camera. The Server viewer can pause locally. A ready Client viewer requests an authoritative pause state and continues applying snapshots while paused.
+## Rendering
 
-`ViewerConfig::entity_mesh_path` optionally selects an OBJ model loaded once during Viewer construction. Every mesh in a loaded model uses the same instanced hue buckets. An empty or failed path uses the procedural wedge, which points along local `+Z` with local `+Y` up. The reference `boid.obj` already uses local `+Z` forward and centimeter-sized coordinates, so the private loader bakes its static scale into mesh vertices once. The caller's `entity_scale` remains the final visual scale.
+Entities are divided into 32 persistent hue buckets and submitted with one instanced draw per
+non-empty bucket. Capability-gated overlays can show world bounds, axes, spatial cells, observer
+volumes, selection state, and producer-provided debug geometry.
 
-Inspector page and camera mode are independent. `F1` shows selective runtime,
-world, spatial, presentation, and viewer-performance facts. `F2` shows
-capability-aware connection and replication facts. `F3` shows selected-entity
-behavior with deeper data behind Advanced Diagnostics. `F4` shows the
-effective read-only experiment Setup.
-Each page retains its own scroll position. The fixed header and passive footer
-remain visible while the information region scrolls.
+`ViewerConfig::entity_mesh_path` can select an OBJ model loaded during construction. An empty or
+failed path uses the procedural wedge. Both the fallback mesh and reference `boid.obj` use local
+`+Z` as forward and `+Y` as up. The configured entity scale remains the final visual scale.
 
-The viewport toolbar exposes pause, an explicit camera menu, visual overlays,
-and contextual help. `P`, `C`, `M`, and `H` provide the matching shortcuts.
-`Escape` retains its Raylib meaning and quits the application. Overlay availability
-comes from producer capabilities. Bounds, world-origin axes, spatial cells, stationary observer
-geometry, selected marker, rule radii, steering vectors, queried cells, FOV,
-trail, and bounded debug labels remain viewer-local presentation choices.
-Only one toolbar popover can be open at a time.
+## Cameras and controls
 
-`RunSetupView` is a generic non-owning section/row contract. Server and Client
-applications format it once from the effective shared and local configuration,
-resolved pipeline definition, and fingerprints. The renderer neither reparses
-JSON nor imports configuration or pipeline types. Disabled techniques remain
-visible on Setup because they define the experimental condition. Transient
-packet outcomes remain Network-page data.
+The camera modes are Overview Orbit, Entity Follow, stationary observer, and an
+application-provided game camera. Entity Follow uses a stable `EntityNetId`. The observer and game
+camera poses remain application-owned, and a missing requested pose falls back to Overview Orbit.
 
-Applications may supply presentation interpolation facts for F1. The renderer still consumes one already-resolved entity view and has no snapshot-history policy. Server and Client application code interpolate presentation snapshots before `Viewer::draw()`.
+| Action | Controls |
+| --- | --- |
+| Open Overview, Network, Entity, or Setup inspector | `F1`, `F2`, `F3`, `F4` |
+| Choose a camera | `C` |
+| Orbit, zoom, or reset Overview and Entity Follow | Right drag, wheel, `R` |
+| Select, step through, or clear entities | Left click, `[`, `]`, `Backspace` |
+| Rotate the stationary observer | Arrow keys |
+| Pause, choose overlays, or show help | `P`, `M`, `H` |
+| Save a screenshot or exit | `F12`, `Escape` |
 
-Applications can optionally supply either a local `StationaryObserverView` or an application-resolved `GameCameraView` without giving the renderer simulation, role, or networking ownership. `C` opens a menu containing only the available cameras. Arrow keys rotate the application-owned stationary observer. Its vertical FOV determines the matching horizontal FOV for the scene aspect. Overview can display its marker, forward line, interest sphere, and frustum. The Server supplies neither special camera.
+Game-camera input is returned as semantic state in `ViewerResult` for the application to map to its
+protocol. Server pause is local. A ready Client requests authoritative pause while continuing to
+apply snapshots.
 
-A Client may instead supply a resolved `GameCameraView`. The generic viewer uses its position, target, up vector, and FOV without knowing about replication or player authority. Game emits semantic key/button state through `ViewerResult`. The application calculates the chase camera and maps those inputs to its protocol. A missing camera pose falls back to Overview Orbit.
+## Inspectors and diagnostics
 
-Applications can also supply bounded occupied-cell data through `SpatialDebugView`. The renderer draws only supplied cell bounds and never imports `simnet_spatial`. The Server currently rebuilds this view from its authoritative render snapshot and uses the configured shared spatial cell size.
+`F1` presents runtime, world, spatial, interpolation, and viewer facts. `F2` presents available
+connection and replication facts. `F3` presents selected-entity details and optional deeper
+diagnostics. `F4` presents the caller-prepared read-only Setup.
 
-Interpolated entity meshes may trail authoritative Server spatial cells and rule data by at most one simulation tick. Selected-boid vector origins use the displayed interpolated position so the gizmos remain readable.
+Selection stores a stable ID rather than a frame-local index. Optional details can include motion,
+neighbor, spatial-query, steering, and replication values. The selected entity has a
+presentation-only trail bounded to 2,400 displayed positions. Changing selection clears it, and it
+never affects simulation or replication.
 
-Left click in the scene viewport performs a nearest-hit ray-to-sphere selection using the configured picking radius. The Viewer stores the stable `EntityNetId`, not a frame-local array index. A hit opens the Entity inspector and enters Entity Follow with an independent orbit camera and a wire highlight. F1/F2/F4 may then change inspector context without changing the camera. `Backspace` clears the selection and returns both concerns to Overview. `[` and `]` select the previous and next valid visible IDs with wrapping. Optional `SelectedEntityDetails` are shown only when their ID matches the current selection. The authoritative Server can supply velocity, acceleration, neighbor counts, and steering contributions without giving the renderer simulation ownership.
+Spatial cells and debug primitives are bounded non-owning views. Inspector sections and overlays
+appear only when the producer supplies the corresponding capability and data.
 
-The Viewer also keeps a presentation-only trail for the selected entity. It samples the already-resolved displayed position after meaningful movement, retains at most 2,400 points in a deque, and submits the fading path as one line batch. Changing or clearing selection resets it. Paused frames do not add duplicate points. The overlay menu can hide the trail without discarding its bounded history. This state never feeds simulation, snapshots, networking, or spatial queries.
+## Lifetime and performance
 
-The normal inspector deliberately omits renderer implementation counters,
-static configuration, and normal zero/false states. Conditional warnings appear
-only when relevant. Full vectors, spatial query internals, hue details, and
-replication history live behind Advanced Diagnostics. Viewer CPU
-reports completed previous-frame viewer work and excludes `EndDrawing`
-presentation wait. `ViewerResult` returns the completed current frame. Missing optionals remain distinct from real zeroes.
-The private constexpr palette provides restrained surface, text, accent,
-success, warning, error, and selection colors.
+Construction rolls back every acquired Raylib resource after a later failure. Normal destruction
+releases resources in reverse ownership order. Instance buffers grow to the supplied population and
+are reused. Inspector rows, debug labels, visible spatial cells, and trail history remain bounded.
 
-The viewer returns user intent and aggregate CPU timings. Simulation, networking, and replicated
-state remain in the application.
+API fields such as `viewer_cpu_time` report steady-clock elapsed viewer work and exclude
+`EndDrawing` presentation wait. They are not process CPU counters. Optional Tracy instrumentation
+emits aggregate zones and plots without per-entity or per-cell tracing.
 
-The public render API remains telemetry independent. Its private implementation emits aggregate Tracy zones and plots through `simnet_telemetry` when the build enables Tracy. It does not trace per entity or per cell.
+The panel font is JetBrains Mono Nerd Font Regular, distributed under the SIL Open Font License 1.1
+in `src/render/assets/JetBrainsMonoNerdFont-OFL.txt`.
