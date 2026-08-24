@@ -4,14 +4,21 @@
   "dependencies": [
     "flecs",
     "enet",
-    {
-      "name": "raylib",
-      "platform": "!linux"
-    },
     "spdlog",
     "nlohmann-json",
     "zstd",
     "catch2",
     "tracy"
-  ]
+  ],
+  "features": {
+    "render": {
+      "description": "Build the optional Raylib visualizer",
+      "dependencies": [
+        {
+          "name": "raylib",
+          "default-features": false
+        }
+      ]
+    }
+  }
 }

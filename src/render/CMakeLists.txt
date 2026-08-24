@@ -1,5 +1,6 @@
 # render
 find_package(raylib REQUIRED)
+find_package(glfw3 CONFIG REQUIRED)
 
 add_library(simnet_render)
 
@@ -31,12 +32,8 @@ target_link_libraries(simnet_render
         simnet_core
     PRIVATE
         raylib
+        glfw
         simnet_telemetry
-)
-
-target_compile_definitions(simnet_render
-    PRIVATE
-        SIMNET_NERD_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/JetBrainsMonoNerdFont-Regular.ttf"
 )
 
 simnet_configure_target(simnet_render)

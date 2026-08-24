@@ -116,6 +116,18 @@ build/relWithDebInfo/app/Client \
 Visual state is for demonstration and diagnosis. See [render](src/render/README.md) and
 [configuration](config/README.md) for details.
 
+The precompiled Linux demo package uses one background headless Server and one visual Client. Build
+and stage it with:
+
+```sh
+cmake --preset linux-demo
+cmake --build --preset linux-demo
+./packaging/linux-demo/package_demo.sh
+```
+
+The resulting ignored `dist/SimNetLab-Demo-0.1.0-linux-x86_64.tar.gz` archive is intended for a
+GitHub Release asset, not for committing to Git.
+
 ## Structure
 
 - `app/server` and `app/client` compose and orchestrate the executable runtimes. `app/common`

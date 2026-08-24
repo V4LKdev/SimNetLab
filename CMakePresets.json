@@ -29,7 +29,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "SIMNET_ENABLE_ASAN": true,
-        "SIMNET_ENABLE_UBSAN": true
+        "SIMNET_ENABLE_UBSAN": true,
+        "VCPKG_MANIFEST_FEATURES": "render"
       }
     },
     {
@@ -38,7 +39,8 @@
       "inherits": "base",
       "binaryDir": "${sourceDir}/build/relWithDebInfo",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VCPKG_MANIFEST_FEATURES": "render"
       }
     },
     {
@@ -47,7 +49,8 @@
       "inherits": "base",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_MANIFEST_FEATURES": "render"
       }
     },
     {
@@ -75,6 +78,22 @@
         "SIMNET_ENABLE_SYNTHETIC": true,
         "SIMNET_ENABLE_TRACY": false
       }
+    },
+    {
+      "name": "linux-demo",
+      "displayName": "Portable Linux demo (Release)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/linux-demo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": false,
+        "SIMNET_ENABLE_RENDER": true,
+        "SIMNET_ENABLE_SYNTHETIC": false,
+        "SIMNET_ENABLE_TRACY": false,
+        "SIMNET_WARNINGS_AS_ERRORS": true,
+        "VCPKG_MANIFEST_FEATURES": "render",
+        "CMAKE_EXE_LINKER_FLAGS": "-static-libgcc -static-libstdc++"
+      }
     }
   ],
 
@@ -98,6 +117,10 @@
     {
       "name": "evidence-synthetic",
       "configurePreset": "evidence-synthetic"
+    },
+    {
+      "name": "linux-demo",
+      "configurePreset": "linux-demo"
     }
   ],
 

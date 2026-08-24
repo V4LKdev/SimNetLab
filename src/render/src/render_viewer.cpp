@@ -33,6 +33,17 @@ namespace
 {
     using Clock = std::chrono::steady_clock;
 
+    [[nodiscard]] std::filesystem::path viewer_font_path()
+    {
+        constexpr auto packaged_path = "assets/render/JetBrainsMonoNerdFont-Regular.ttf";
+        if (std::filesystem::exists(packaged_path))
+        {
+            return packaged_path;
+        }
+
+        return "src/render/assets/JetBrainsMonoNerdFont-Regular.ttf";
+    }
+
     constexpr float automatic_orbit_angular_speed = simnet::render_detail::pi / 18.0F;
 
     bool viewer_active = false;
@@ -316,8 +327,9 @@ namespace simnet
         try
         {
             static constexpr auto glyphs = viewer_glyphs();
+            auto const font_path = viewer_font_path().string();
             font_ = LoadFontEx(
-                SIMNET_NERD_FONT_PATH,
+                font_path.c_str(),
                 40,
                 glyphs.data(),
                 static_cast<int>(glyphs.size())
